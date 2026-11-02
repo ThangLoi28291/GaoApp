@@ -11,6 +11,97 @@ namespace GaoApp.Tests.Security;
 public sealed class CustomerDepositSqlServerTests
 {
     [Fact]
+    public async Task All_deposits_are_paged_filterable_and_receipts_preserve_received_amount_and_store_permissions()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        using var cashier = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
+        var (_, customerId) = await Start(app, cashier, store);
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var customer = await db.Customers.SingleAsync(c => c.Id == customerId);
+            customer.Name = "Khách in phiếu <script>";
+            customer.Phone = "0912345678";
+            customer.Address = "Địa chỉ khách in phiếu";
+            await db.SaveChangesAsync();
+        }
+        var received = await cashier.JsonAsync(HttpMethod.Post, "/admin/customer-deposit/receive", new
+        {
+            clientRequestId = Guid.NewGuid(), customerId, amount = 100, method = 0,
+            purpose = "Nội dung phiếu chính <script>alert(1)</script>", expectedDeliveryDate = "2026-10-20", note = "Ghi chú phiếu chính"
+        });
+        var depositId = received.GetProperty("depositId").GetInt32();
+        await cashier.JsonAsync(HttpMethod.Post, "/admin/customer-deposit/refund", new
+        {
+            clientRequestId = Guid.NewGuid(), depositId, amount = 30, method = 0, note = "Hoàn một phần trước khi in"
+        });
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var otherCustomer = new Customer { StoreId = store.StoreId, Name = "Khách danh sách tổng", Phone = "0988888888" };
+            db.Customers.Add(otherCustomer);
+            await db.SaveChangesAsync();
+            var shiftId = await db.POSShifts.Select(s => s.Id).SingleAsync();
+            for (var i = 0; i < 26; i++)
+            {
+                var deposit = new CustomerDeposit { StoreId = store.StoreId, CustomerId = otherCustomer.Id,
+                    Purpose = $"Phiếu danh sách {i}", Balance = i == 0 ? 0 : 10 };
+                db.Add(deposit);
+                await db.SaveChangesAsync();
+                db.Add(new CustomerDepositEntry { StoreId = store.StoreId, CustomerDepositId = deposit.Id,
+                    POSShiftId = shiftId, Kind = "Receive", Amount = 10, Method = PaymentMethod.Cash });
+                if (i == 0) db.Add(new CustomerDepositEntry { StoreId = store.StoreId, CustomerDepositId = deposit.Id,
+                    POSShiftId = shiftId, Kind = "Refund", Amount = -10, Method = PaymentMethod.Cash });
+            }
+            await db.SaveChangesAsync();
+        }
+        using var viewer = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.CustomerDeposit.View));
+        async Task<string> Page(string path)
+        {
+            using var response = await viewer.Http.GetAsync(path);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return await response.Content.ReadAsStringAsync();
+        }
+        var all = await Page("/admin/customer-deposit");
+        Assert.Equal(25, System.Text.RegularExpressions.Regex.Matches(all, "data-deposit-id=").Count);
+        Assert.Contains("27 phiếu", all);
+        Assert.Contains("320", all);
+        var secondPage = await Page("/admin/customer-deposit?page=999");
+        Assert.Equal(2, System.Text.RegularExpressions.Regex.Matches(secondPage, "data-deposit-id=").Count);
+        Assert.Contains("Trang 2 / 2", secondPage);
+        Assert.Contains($"/admin/customer-deposit/{depositId}/print", secondPage);
+        var phone = await Page("/admin/customer-deposit?search=0912345678");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(phone, "data-deposit-id="));
+        Assert.Contains($"data-deposit-id=\"{depositId}\"", phone);
+        var code = await Page($"/admin/customer-deposit?search=PCOC-{depositId:D6}");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(code, "data-deposit-id="));
+        var closed = await Page("/admin/customer-deposit?status=closed");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(closed, "data-deposit-id="));
+        Assert.DoesNotContain($"data-deposit-id=\"{depositId}\"", closed);
+        var active = await Page("/admin/customer-deposit?status=active&page=2");
+        Assert.Contains("26 phiếu", active);
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(active, "data-deposit-id="));
+        var scoped = await Page($"/admin/customer-deposit?customerId={customerId}&tab=list");
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(scoped, "data-deposit-id="));
+        Assert.DoesNotContain("Khách danh sách tổng", scoped);
+        var print = await Page($"/admin/customer-deposit/{depositId}/print");
+        Assert.Contains($"PCOC-{depositId:D6}", print);
+        Assert.Contains("100 đ", print);
+        Assert.Contains("70 đ", print);
+        Assert.Contains("0912345678", print);
+        Assert.Contains("20/10/2026", print);
+        Assert.Contains("customer-deposit-print.js", print);
+        Assert.DoesNotContain("<script>alert(1)</script>", print);
+        using var foreign = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        using (var hidden = await foreign.Http.GetAsync($"/admin/customer-deposit/{depositId}/print"))
+            Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+        using (var foreignList = await foreign.Http.GetAsync("/admin/customer-deposit"))
+            Assert.DoesNotContain("data-deposit-id=", await foreignList.Content.ReadAsStringAsync());
+        using var unauthorized = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View));
+        using (var denied = await unauthorized.Http.GetAsync($"/admin/customer-deposit/{depositId}/print"))
+            Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+    }
+
+    [Fact]
     public async Task Receive_replay_use_partial_cash_and_void_restore_without_double_cash()
     {
         await using var app = await FullApplicationFixture.StartAsync();

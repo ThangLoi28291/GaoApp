@@ -7,6 +7,7 @@
 public sealed class CustomerRewardBalanceDto
 {
     public int CustomerId { get; set; }
+    public bool IsPointEligible { get; set; } = true;
 
     public decimal BalanceAmount { get; set; }
 
@@ -17,7 +18,7 @@ public sealed class CustomerRewardBalanceDto
     public decimal VoucherValue { get; set; }
 
     public decimal AvailablePoints =>
-        MoneyPerPoint <= 0 ? 0 : Math.Floor(BalanceAmount / MoneyPerPoint);
+        !IsPointEligible || MoneyPerPoint <= 0 ? 0 : Math.Floor(BalanceAmount / MoneyPerPoint);
 
     public int AvailableVoucherCount =>
         PointsPerVoucher <= 0 ? 0 : (int)(AvailablePoints / PointsPerVoucher);

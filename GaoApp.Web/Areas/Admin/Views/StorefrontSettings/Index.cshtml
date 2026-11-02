@@ -1,0 +1,81 @@
+@model GaoApp.Application.Storefront.StorefrontSettingsPage
+@{
+    ViewData["Title"] = "Cấu hình website bán hàng";
+    var control = ViewData["SalesControl"] as GaoApp.Application.Storefront.StorefrontSalesControlState;
+}
+<div class="container-fluid py-3">
+    <h1 class="h3">Cấu hình website bán hàng</h1>
+    <p>Chuẩn bị thông tin cửa hàng, thanh toán và giao hàng cho website.</p>
+    <div class="alert alert-info" role="status" id="storefront-intake-status">@(control?.IsEnabled == true ? "Cấu hình cửa hàng cho phép nhận đơn mới. Trạng thái này không xác nhận cổng public đã phát hành hoặc hoàn tất nghiệm thu." : "Cửa hàng đang dừng nhận đơn website mới. Đơn, tiền và yêu cầu cũ vẫn cần tiếp tục xử lý.")</div>
+    <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+    @if (control is not null && Model.CanManageSettings)
+    {
+        <section class="card mb-3" aria-labelledby="intake-control-title"><div class="card-body">
+            <h2 class="h5" id="intake-control-title">Điều khiển nhận đơn mới</h2>
+            <p>Lưu cấu hình đầy đủ sẽ dừng nhận đơn. Chỉ bật lại sau khi kiểm tra dữ liệu hiện tại và hoàn tất nghiệm thu; không dùng biểu mẫu cũ để mở lại.</p>
+            @if (control.ActivationBlockers.Count > 0)
+            { <p>Cần kiểm tra trước khi bật: <span id="storefront-activation-blockers">@string.Join("; ", control.ActivationBlockers.Select(GaoApp.Application.Storefront.StorefrontSalesControlMessages.Describe))</span>. Xem hướng dẫn vận hành WEB09 để xử lý đúng nhóm cấu hình.</p> }
+            <form asp-action="@(control.IsEnabled ? "StopNewOrders" : "Activate")" method="post" id="storefront-sales-control">
+                <input type="hidden" name="Version" value="@control.Version" />
+                <label for="sales-control-reason" class="form-label">Lý do @(control.IsEnabled ? "dừng nhận đơn" : "cho phép nhận đơn")</label>
+                <textarea id="sales-control-reason" name="Reason" class="form-control mb-3" required maxlength="1000" rows="2"></textarea>
+                <button type="submit" class="btn @(control.IsEnabled ? "btn-danger" : "btn-primary")" disabled="@(control.IsEnabled ? !control.CanStop : !control.CanActivate)">@(control.IsEnabled ? "Dừng nhận đơn mới" : "Cho phép nhận đơn mới")</button>
+            </form>
+        </div></section>
+    }
+    <form asp-action="Save" method="post">
+        <input asp-for="Settings.Version" type="hidden" />
+        <input asp-for="Settings.IsEnabled" type="hidden" value="false" />
+        <input asp-for="Settings.ShippingFeeTreatment" type="hidden" />
+        <fieldset disabled="@(!Model.CanManageSettings)">
+            <div class="card mb-3"><div class="card-body">
+                <h2 class="h5">Thông tin cửa hàng</h2>
+                <div class="row g-3">
+                    <div class="col-md-6"><label asp-for="Settings.DisplayName" class="form-label">Tên hiển thị</label><input asp-for="Settings.DisplayName" class="form-control" maxlength="200" required /></div>
+                    <div class="col-md-6"><label asp-for="Settings.ContactPhone" class="form-label">Điện thoại liên hệ</label><input asp-for="Settings.ContactPhone" class="form-control" maxlength="30" type="tel" /></div>
+                    <div class="col-12"><label asp-for="Settings.Description" class="form-label">Giới thiệu cửa hàng</label><textarea asp-for="Settings.Description" class="form-control" rows="3" maxlength="2000"></textarea></div>
+                    <div class="col-12"><label asp-for="Settings.LogoPath" class="form-label">Đường dẫn logo đã tải lên</label><input asp-for="Settings.LogoPath" class="form-control" maxlength="260" placeholder="/uploads/.../logo.png" /></div>
+                </div>
+            </div></div>
+            <div class="card mb-3"><div class="card-body">
+                <h2 class="h5">Kho và phí giao hàng</h2>
+                @if (Model.UsesMultipleLegalEntities)
+                { <p>Đang dùng phân bổ nguồn kho theo các chủ thể của cửa hàng. Kho chọn dưới đây không thay thế chính sách phân bổ hiện tại.</p> }
+                <label asp-for="Settings.SourceWarehouseId" class="form-label">Kho nguồn</label>
+                <select asp-for="Settings.SourceWarehouseId" class="form-select mb-3"><option value="">Chưa chọn</option>@foreach (var warehouse in Model.Warehouses) { <option value="@warehouse.Id">@warehouse.Name</option> }</select>
+                <div class="form-check mb-2"><input asp-for="Settings.AllowNegativeInventory" class="form-check-input" /><label asp-for="Settings.AllowNegativeInventory" class="form-check-label">Cho phép nhận đơn và xuất bán âm kho</label></div>
+                <div class="form-check mb-2"><input asp-for="Settings.ShippingByWeight" class="form-check-input" /><label asp-for="Settings.ShippingByWeight" class="form-check-label">Tự tính phí theo tổng kg của đơn</label></div>
+                <p class="mb-1">Tắt tính theo kg: lấy phí cố định theo vùng. Bật: cần đủ kg cho các đơn vị đang đăng bán.</p>
+                <p class="mb-0"><strong>Cửa hàng thu phí giao hàng; chi phí trả shipper/hãng ghi riêng.</strong> Áp dụng cho giao gần và toàn quốc.</p>
+            </div></div>
+            <div class="card mb-3"><div class="card-body">
+                <h2 class="h5">Phương thức thanh toán</h2>
+                <div class="form-check mb-2"><input asp-for="Settings.CodEnabled" class="form-check-input" /><label asp-for="Settings.CodEnabled" class="form-check-label">COD — khách trả khi nhận hàng</label></div>
+                <div class="form-check mb-3"><input asp-for="Settings.QrEnabled" class="form-check-input" /><label asp-for="Settings.QrEnabled" class="form-check-label">Chuẩn bị phương thức QR tự xác nhận</label></div>
+                <div class="row g-3">
+                    <div class="col-md-6"><label asp-for="Settings.QrHoldMinutes" class="form-label">Thời gian chờ QR (phút)</label><input asp-for="Settings.QrHoldMinutes" class="form-control" type="number" min="1" max="10080" /></div>
+                    <div class="col-md-6"><label asp-for="Settings.BankAccountId" class="form-label">Tài khoản ACB nhận tiền</label><select asp-for="Settings.BankAccountId" class="form-select"><option value="">Chưa chọn</option>@foreach (var bank in Model.BankAccounts) { <option value="@bank.Id">@bank.Name</option> }</select></div>
+                    <div class="col-md-6"><label asp-for="Settings.ReceivingLegalEntityId" class="form-label">Chủ thể nhận tiền đã xác định</label><select asp-for="Settings.ReceivingLegalEntityId" class="form-select"><option value="">Chưa chọn</option>@foreach (var owner in Model.LegalEntities) { <option value="@owner.Id">@owner.Name</option> }</select></div>
+                    <div class="col-md-6"><label asp-for="Settings.CollectionSourceLegalEntityIds" class="form-label">Các chủ thể nguồn hàng được phép thu tiền</label><select asp-for="Settings.CollectionSourceLegalEntityIds" class="form-select" multiple size="4">@foreach (var owner in Model.LegalEntities) { <option value="@owner.Id">@owner.Name</option> }</select></div>
+                    <div class="col-md-6"><label asp-for="Settings.BankTerminalCode" class="form-label">Mã terminal đăng ký với ngân hàng</label><input asp-for="Settings.BankTerminalCode" class="form-control" maxlength="100" /></div>
+                    <div class="col-md-6"><label asp-for="Settings.BankUserCode" class="form-label">Mã user đăng ký với ngân hàng</label><input asp-for="Settings.BankUserCode" class="form-control" maxlength="100" /></div>
+                </div>
+                <p class="mt-3 mb-0">Chọn đúng tài khoản và quyền thu tiền; các mã ngân hàng dùng riêng cho kênh website. Kết nối QR sẽ được kiểm chứng trước khi mở bán.</p>
+            </div></div>
+            @if (Model.CanManageSettings) { <button type="submit" class="btn btn-primary mb-4">Lưu cấu hình</button> }
+        </fieldset>
+    </form>
+    <div class="card"><div class="card-body">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3"><h2 class="h5 mb-0">Vùng giao và bảng phí</h2>@if (Model.CanManageShipping) { <a asp-action="NewZone" class="btn btn-outline-primary">Thêm vùng giao</a> }</div>
+        @if (Model.Zones.Count == 0) { <p>Chưa có vùng giao. Lưu cấu hình trước, sau đó thêm khu vực giao gần và bảng phí toàn quốc.</p> }
+        else
+        {
+            <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Vùng</th><th>Hình thức</th><th>Phí mức đầu</th><th>Phí mỗi bước</th><th>Thời gian</th><th>Trạng thái</th><th></th></tr></thead><tbody>
+            @foreach (var zone in Model.Zones)
+            {
+                <tr><td><strong>@zone.Name</strong><div>@zone.Code · @(zone.ProvinceCode == "" ? "Toàn quốc" : zone.ProvinceCode) @zone.WardCode</div></td><td>@(zone.DeliveryMethod == GaoApp.Domain.Storefront.StorefrontDeliveryMethod.Local ? "Giao gần" : "Toàn quốc")<div>@(zone.ByWeight ? "Theo kg" : "Cố định")</div></td><td>@zone.BaseFee.ToString("N0") đ</td><td>@zone.AdditionalFee.ToString("N0") đ / @zone.AdditionalStepKg kg</td><td>@zone.MinDeliveryDays–@zone.MaxDeliveryDays ngày</td><td>@(zone.IsActive ? "Đang dùng" : "Tạm tắt")</td><td>@if (Model.CanManageShipping) { <a asp-action="EditZone" asp-route-id="@zone.Id">Sửa</a> }</td></tr>
+            }
+            </tbody></table></div>
+        }
+    </div></div>
+</div>

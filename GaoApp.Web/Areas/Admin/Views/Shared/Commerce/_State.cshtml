@@ -1,0 +1,17 @@
+@using GaoApp.Web.Areas.Admin.ViewModels.Commerce
+@model CommerceState
+@{
+    var kind = Model.Kind switch { CommerceStateKind.Loading => "loading", CommerceStateKind.Error => "error", _ => "empty" };
+}
+<div class="gds-state gds-state--@kind" role="@(Model.Kind == CommerceStateKind.Error ? "alert" : "status")">
+    @if (Model.Kind == CommerceStateKind.Loading)
+    {
+        <div class="gds-skeleton-group" aria-hidden="true"><span class="gds-skeleton"></span><span class="gds-skeleton"></span><span class="gds-skeleton"></span></div>
+    }
+    else
+    {
+        <span class="gds-state__icon" aria-hidden="true">@(Model.Kind == CommerceStateKind.Error ? "!" : "∅")</span>
+    }
+    <strong>@Model.Title</strong>
+    <p>@Model.Description</p>
+</div>

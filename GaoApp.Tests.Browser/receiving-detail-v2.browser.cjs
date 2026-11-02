@@ -1,0 +1,122 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+module.exports=async({page,info,context,out,errors,idle,close,login})=>{
+ const checks=[],writes=[],csp=[];let completed=false;
+ page.on('console',m=>{if(/Content Security Policy/i.test(m.text()))csp.push(m.text());});
+ page.on('request',r=>{if(!['GET','HEAD'].includes(r.method())&&/\/admin\/(?:warehouse-receiving|api\/stock-documents)/.test(new URL(r.url()).pathname))writes.push({url:r.url(),method:r.method(),body:r.postDataJSON()});});
+ const receiptUrl=id=>info.baseUrl+'/admin/warehouse-receiving/'+id;
+ const settle=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+ const shot=name=>page.screenshot({path:path.join(out,name+'.png'),animations:'disabled'});
+ async function ready(){await page.waitForFunction(()=>window.WarehouseReceivingApp&&window.ReceiptIntake);await idle();await page.evaluate(()=>document.fonts.ready);await settle();}
+ async function size(width,height){await page.setViewportSize({width,height});await page.waitForFunction(w=>!!document.querySelector('[data-receiving-phone]')===(w<768),width);await settle();}
+ async function overflow(){const box=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert.ok(box.scroll<=box.width+1,JSON.stringify(box));}
+ const canonical=html=>html.replace(/(<input[^>]*?) style=""/g,'$1');
+ try{
+  await ready();await size(1440,900);await page.evaluate(()=>scrollTo(0,0));
+  const selectors=['.wrd-topbar','.wrd-layout','#receiptDocumentActions'];
+  const baseline=(await page.evaluate(selectors=>{window.__ui05bOriginal=selectors.flatMap(s=>[...document.querySelectorAll(s+', '+s+' *')]);return selectors.map(s=>document.querySelector(s).outerHTML);},selectors)).map(canonical);
+  const initialRowCount=await page.locator('tr[data-receiving-key]').count();assert.equal(initialRowCount,22);
+  await shot('detail-desktop-1440');
+  for(const [width,height]of[[1600,1000],[1440,900],[1366,768],[1024,768],[768,1024],[767,900],[430,932],[390,844],[360,800],[320,740]]){
+   await size(width,height);await overflow();
+   if(width<768){
+    assert.equal(await page.locator('[data-wra-tab]').count(),2);
+    assert.equal(await page.locator('#wrdOpenCamera').count(),1);assert.equal(await page.locator('#btnSubmitReceiving').count(),1);
+    assert.equal(await page.locator('#quickLookupInput + .select2').isVisible(),true);
+    assert.equal(await page.locator('#wraSummary').isVisible(),false);
+    for(const box of await page.locator('.wra-tabs button,.wra-dock-actions button,.wra-header > button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect())))assert.ok(box.height>=44&&box.width>=44);
+    await page.locator('[data-wra-tab=info]').click();
+    assert.equal(await page.locator('#wraItems').isVisible(),false);
+   assert.equal(await page.locator('#wraInfo > .wrd-topbar').isVisible(),true);
+   assert.equal(await page.locator('#wraInfo > #receiptDocumentActions').isVisible(),true);
+    assert.match(await page.locator('#wraInfo .wrd-document-title').innerText(),/<kiểm tra> & đối chiếu/);
+    assert.equal(await page.locator('#wrdTotalQty').isVisible(),false);
+    await overflow();if(width===390)await shot('detail-info-390');
+    await page.locator('[data-wra-tab=items]').click();await page.evaluate(()=>scrollTo(0,0));
+    await shot('detail-phone-'+width);
+    const search=await page.locator('.wrd-scan-panel').boundingBox(),dock=await page.locator('.wra-dock').boundingBox();
+    assert.ok(search.y+search.height<dock.y,'Search stays above actions '+width);
+   }
+   checks.push('viewport-'+width+'x'+height);
+  }
+  await size(1440,900);
+  assert.deepEqual((await page.evaluate(selectors=>selectors.map(s=>document.querySelector(s).outerHTML),selectors)).map(canonical),baseline);
+  assert.equal(await page.evaluate(()=>window.__ui05bOriginal.every(n=>n.isConnected)),true);
+  checks.push('desktop-original-nodes-HTML-and-heading-position-restored');
+  const current=await page.screenshot({animations:'disabled'});fs.writeFileSync(path.join(out,'detail-desktop-current.png'),current);
+  await page.locator('link[href*="warehouse-receiving-detail.mobile-v2.css"]').evaluate(n=>n.disabled=true);
+  const original=await page.screenshot({animations:'disabled'});fs.writeFileSync(path.join(out,'detail-desktop-baseline.png'),original);
+  assert.ok(current.equals(original),'Desktop pixels unchanged with new stylesheet disabled');
+  await page.locator('link[href*="warehouse-receiving-detail.mobile-v2.css"]').evaluate(n=>n.disabled=false);
+  checks.push('desktop-pixel-equality');assert.deepEqual(writes,[]);
+  await size(390,844);
+  await page.locator('[data-wra-tab=items]').focus();await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('[data-wra-tab=info]').getAttribute('aria-selected'),'true');
+  await page.keyboard.press('ArrowLeft');assert.equal(await page.locator('[data-wra-tab=items]').getAttribute('aria-selected'),'true');
+  await page.locator('#wraMore').click();await page.locator('#wraMoreModal.show').waitFor();
+  assert.equal(await page.locator('#wraMoreModal [data-configured-menu-open]').count(),1);
+  assert.equal(await page.locator('#wraMoreModal a:not([data-menu-id])').count(),0);
+  await page.locator('#wraShowInfo').click();await page.locator('#wraMoreModal').waitFor({state:'hidden'});
+  await page.waitForFunction(()=>document.querySelector('[data-wra-tab=info]').getAttribute('aria-selected')==='true');
+  assert.equal(await page.locator('[data-wra-tab=info]').getAttribute('aria-selected'),'true');
+  await page.locator('[data-wra-tab=items]').click();checks.push('two-tabs-keyboard-and-existing-configured-more-menu');
+  await page.locator('[data-wra-menu]').click();await page.waitForFunction(()=>document.documentElement.classList.contains('layout-menu-expanded'));
+  await page.locator('[data-nav-close]').click();await page.waitForFunction(()=>!document.documentElement.classList.contains('layout-menu-expanded'));
+  checks.push('original-configured-sidebar-opens-and-closes-clear-of-swipe-target');
+  await page.locator('#quickLookupInput + .select2').click();
+  await page.locator('.select2-container--open .select2-search__field').fill('sua tuoi');
+  await page.locator('.select2-results__option--selectable').first().waitFor();
+  assert.match(await page.locator('.select2-results__option--selectable').first().innerText(),/Sữa tươi/);
+  await page.locator('.select2-results__option--selectable').first().click();await page.locator('#quickAddProductModal.show').waitFor();
+  await page.locator('#popupQuickQty').fill('2.5');await size(1440,900);await size(390,844);
+  assert.equal(await page.locator('#popupQuickQty').inputValue(),'2.5');
+  await close('#quickAddProductModal');checks.push('unaccented-search-original-quantity-sheet-retains-draft-on-resize');
+  await page.locator('#wrdOpenCamera').click();await page.locator('#quickAddProductModal.show').waitFor();
+  assert.equal(await page.locator('#popupBarcode').innerText(),'INTERNAL-BOX');
+  assert.equal(await page.evaluate(()=>testStreams.every(s=>s.getTracks().every(t=>t.readyState==='ended'))),true);
+  await page.locator('#popupQuickQty').fill('3');await shot('detail-capture-quantity-390');
+  await page.locator('#btnPopupQuickAddLine').click();await page.locator('#quickAddProductModal').waitFor({state:'hidden'});await idle();
+  await page.locator('#wrdLastSaved').waitFor();assert.match(await page.locator('#wrdScanName').innerText(),/Sữa tươi/);
+  assert.match(await page.locator('#wrdScanAdded').innerText(),/3/);assert.match(await page.locator('#wrdScanTotal').innerText(),/3/);
+  assert.equal(await page.locator('tr[data-receiving-key]').count(),23);
+  const feedback=await page.locator('#wrdLastSaved').textContent();
+  await page.locator('[data-wra-tab=info]').click();await page.locator('[data-wra-tab=items]').click();
+  assert.equal(await page.locator('#wrdLastSaved').textContent(),feedback);
+  await page.evaluate(()=>scrollTo(0,0));await shot('detail-last-received-390');
+  assert.equal(writes.filter(x=>x.url.endsWith('/intake/known')).length,1);
+  checks.push('camera-decoder-mocked-media-stops-and-real-known-item-command-recorded-once');
+  checks.push('acknowledged-feedback-per-unit-survives-tab-switch-and-no-auto-overlay');
+  assert.equal(await page.locator('#wrdScanPhotoModal.show').count(),0);
+  await page.locator('#wrdOpenVoice').click();await page.locator('#wrdCaptureModal.show').waitFor();
+  await page.evaluate(()=>testSpeech.onresult({results:[Object.assign([{transcript:'Sữa'}],{isFinal:true})]}));
+  await page.locator('.wrd-capture-result').first().waitFor();
+  assert.equal(await page.locator('#quickAddProductModal.show').count(),0);await shot('detail-voice-390');await close('#wrdCaptureModal');
+  checks.push('voice-search-keeps-explicit-selection-owner');
+  await page.goto(receiptUrl(info.ui05b.emptyId));await ready();assert.match(await page.locator('.wrd-empty').innerText(),/Chưa có hàng/);await shot('detail-empty-390');
+  await page.goto(receiptUrl(info.ui05b.rejectedId));await ready();await page.locator('[data-wra-tab=info]').click();
+  assert.match(await page.locator('#wraInfo').innerText(),/Kiểm tra lại quy cách/);assert.equal(await page.locator('#wrdOpenCamera').isVisible(),true);await shot('detail-rejected-390');
+  checks.push('real-empty-and-rejected-receipts-use-existing-actions-and-reason');
+  await page.goto(receiptUrl(info.receiptId));await ready();
+  await page.locator('#btnSubmitReceiving').click();await page.locator('#submitReceivingModal.show').waitFor();
+  await page.locator('#btnConfirmSubmitReceiving').click();await page.waitForURL(u=>u.pathname==='/admin/warehouse-receiving');
+  await page.goto(receiptUrl(info.receiptId));await ready();
+  assert.equal(await page.locator('#wraDockActions').count(),0);assert.equal(await page.locator('[data-wra-edit]').count(),0);
+  assert.equal(await page.locator('#wraCount').innerText(),'23');
+  assert.match(await page.locator('.wrb-readonly-status').innerText(),/Phiếu chỉ xem · Chờ duyệt/);
+  await page.locator('[data-wra-tab=info]').click();assert.match(await page.locator('#wraInfo').innerText(),/Phiếu đã gửi quản lý duyệt/);
+  await page.locator('#btnRequestRevision').click();await page.locator('#requestRevisionModal.show').waitFor();await close('#requestRevisionModal');
+  await shot('detail-readonly-390');checks.push('real-submit-transitions-to-readonly-with-existing-revision-entry');
+  await page.emulateMedia({forcedColors:'active'});await overflow();await shot('detail-forced-colors-390');await page.emulateMedia({forcedColors:'none'});
+  await page.evaluate(()=>document.documentElement.style.fontSize='24px');await overflow();await shot('detail-text-150-percent-390');await page.evaluate(()=>document.documentElement.style.fontSize='');
+  checks.push('forced-colors-and-150-percent-text-no-horizontal-overflow');
+  const deniedPage=await context.newPage();await login(deniedPage,info.ui05b.denied);
+  const denied=await deniedPage.request.get(receiptUrl(info.receiptId),{headers:{Accept:'application/json'},maxRedirects:0});assert.equal(denied.status(),403);await deniedPage.close();
+  checks.push('original-create-permission-gate-blocks-view-only-account');
+  assert.equal(writes.length,2,JSON.stringify(writes));assert.equal(writes.filter(x=>x.url.endsWith('/submit-approval')).length,1);
+  assert.deepEqual(errors,[]);assert.deepEqual(csp,[]);checks.push('only-one-known-add-and-one-submit-no-JS-or-CSP-error');completed=true;
+ }finally{
+  if(!completed)await shot('ui05b-failure').catch(()=>{});
+  fs.writeFileSync(path.join(out,'result.json'),JSON.stringify({completed,checks,writes,errors,csp,media:'Canvas camera and SpeechRecognition mocked; decoder, Razor/HTTP/SQL and commands real'},null,2));
+ }
+ console.log('UI-05B BROWSER PASS: '+checks.length+' groups, own headless Chrome only.');
+};

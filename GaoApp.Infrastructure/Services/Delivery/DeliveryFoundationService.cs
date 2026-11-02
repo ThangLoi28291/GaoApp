@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace GaoApp.Infrastructure.Services.Delivery;
 
-public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user,
+public sealed partial class DeliveryFoundationService(AppDbContext db, ICurrentUser user,
     ICurrentStorePermissionService permissions) : IDeliveryFoundationService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -30,6 +30,8 @@ public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user
     }
     private async Task Scope(DeliveryOrder order, CancellationToken ct)
     {
+        if (order.SourceKind != GaoApp.Domain.Delivery.DeliverySourceKind.Pos || order.SourceCartId is null || order.CreatedShiftId is null || order.CreatedTerminalId is null)
+            throw Error(403, "POS_ORIGIN_REQUIRED", "Đơn website dùng hồ sơ chuẩn bị và giao website riêng.");
         if (order.StoreId != Store || !await db.Warehouses.AnyAsync(x =>
             x.StoreId == Store && x.Id == order.SourceWarehouseId && x.IsActive && x.LegalEntityId == order.SourceLegalEntityId, ct) ||
             !await db.LegalEntities.AnyAsync(x => x.StoreId == Store && x.Id == order.SourceLegalEntityId && x.IsActive, ct))
@@ -46,7 +48,7 @@ public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user
     public async Task<IReadOnlyList<DeliverySummaryDto>> ListAsync(int take, CancellationToken ct = default)
     {
         await Authorize(PermissionCodes.Delivery.View, ct);
-        return await db.DeliveryOrders.AsNoTracking().Where(x => x.StoreId == Store &&
+        return await db.DeliveryOrders.AsNoTracking().Where(x => x.StoreId == Store && x.SourceKind == GaoApp.Domain.Delivery.DeliverySourceKind.Pos &&
             db.Warehouses.Any(w => w.StoreId == Store && w.Id == x.SourceWarehouseId && w.IsActive && w.LegalEntityId == x.SourceLegalEntityId) &&
             db.LegalEntities.Any(l => l.StoreId == Store && l.Id == x.SourceLegalEntityId && l.IsActive))
             .OrderByDescending(x => x.Id).Take(Math.Clamp(take, 1, 100))
@@ -123,7 +125,8 @@ public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user
         await DeliverySqlLock.AcquireAsync(db, "source:" + Store + ":" + request.SourceCartId, ct);
         if (await db.DeliveryOrders.AnyAsync(x => x.StoreId == Store && x.SourceCartId == request.SourceCartId, ct))
             throw Error(409, "SOURCE_ALREADY_USED", "Giỏ đã có hồ sơ giao hàng.");
-        var cart = await db.Orders.Include(x => x.Lines).SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == request.SourceCartId, ct)
+        var cart = await db.Orders.Include(x => x.Lines).Include(x => x.RewardVouchers).ThenInclude(x => x.Voucher)
+            .SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == request.SourceCartId, ct)
             ?? throw Error(404, "SOURCE_NOT_FOUND", "Không tìm thấy giỏ nguồn.");
         var shift = await db.POSShifts.SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == cart.POSShiftId, ct);
         if (shift is null || shift.OpenedByUserId != Actor || shift.TerminalId != user.TerminalId ||
@@ -135,9 +138,12 @@ public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user
             throw Error(409, "SOURCE_NOT_DRAFT", "Chỉ chụp giỏ nháp chưa nhận tiền.");
         var warehouse = await db.Warehouses.SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == shift.WarehouseId, ct)
             ?? throw Error(403, "SOURCE_SCOPE_INVALID", "Kho nguồn không hợp lệ.");
-        var approved = DeliveryPricingPolicy.Approve(cart.Lines.Select(x => new DeliveryPriceLine(x.Id, x.Quantity, x.UnitPrice, x.LineDiscount)).ToArray(),
-            cart.OrderDiscount, cart.VoucherDiscountTotal != 0 || cart.PromotionDiscountTotal != 0 || cart.ComboDiscountTotal != 0 ||
-            cart.Lines.Any(x => x.PromotionId.HasValue || x.ComboPromotionId.HasValue));
+        if (cart.PromotionDiscountTotal != DeliveryValues.RoundMoney(cart.Lines.Sum(x => x.PromotionDiscount)))
+            throw Error(409, "QUOTE_MISMATCH", "Tổng khuyến mãi POS không khớp các dòng nguồn.");
+        var approved = DeliveryPricingPolicy.ApprovePos(cart.Lines.Select(x => new DeliveryPosPriceLine(x.Id, x.Quantity,
+            x.UnitPrice, x.LineDiscount, x.PromotionDiscount, x.LineTotal, x.IsPromotionGift,
+            x.PromotionType == PromotionType.ComboFixedPrice)).ToArray(), cart.Subtotal,
+            cart.OrderDiscount, cart.ComboDiscountTotal, cart.VoucherDiscountTotal, cart.GrandTotal);
         if (approved.Sum(x => x.Net) != cart.GrandTotal) throw Error(409, "QUOTE_MISMATCH", "Tổng snapshot khác giỏ nguồn.");
         var now = DateTime.UtcNow;
         var order = new DeliveryOrder { StoreId = Store, Code = "GH-" + now.AddHours(7).ToString("yyyyMMdd") + "-" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8)),
@@ -162,6 +168,7 @@ public sealed class DeliveryFoundationService(AppDbContext db, ICurrentUser user
                 AllocatedOrderDiscount = price.AllocatedOrderDiscount, Net = price.Net });
         }
         db.DeliveryOrders.Add(order); await db.SaveChangesAsync(ct);
+        await DeliveryVoucherReservationService.ReserveAsync(db, order, cart, ct);
         return await Record(order, request.ClientRequestId, "foundation-create", hash, ct);
     }
     private async Task<DeliveryDetailDto?> Replay(Guid key, string hash, CancellationToken ct)
@@ -220,6 +227,7 @@ internal static class DeliverySqlLock
 {
     internal static async Task AcquireAsync(AppDbContext db, string resource, CancellationToken ct)
     {
+        if (!db.CanWriteStoreData) throw new TenantDataScopeException();
         var tx = db.Database.CurrentTransaction ?? throw new InvalidOperationException("SQL lock requires transaction.");
         await using var command = db.Database.GetDbConnection().CreateCommand();
         command.Transaction = tx.GetDbTransaction();

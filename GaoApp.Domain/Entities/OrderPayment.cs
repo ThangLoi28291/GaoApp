@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -6,8 +6,11 @@ using GaoApp.Domain.Enums;
 namespace GaoApp.Domain.Entities;
 
 [Table("OrderPayments")]
-public class OrderPayment : BaseStoreEntity
+public class OrderPayment : BaseStoreEntity, IAuditTrackedEntity
 {
+    public int? BankVerifiedReceiptId { get; set; }
+    public int? StorefrontCodReceiptId { get; set; }
+    public int? StorefrontCarrierWithholdingId { get; set; }
     public int OrderId { get; set; }
     public Order Order { get; set; } = default!;
 

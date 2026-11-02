@@ -1,0 +1,40 @@
+/* Device frames belong only to the internal comparison page. */
+:root { color-scheme: light; font-family: "Public Sans",system-ui,sans-serif; color: #19253b; background: #f1f4f9; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+button,a { -webkit-tap-highlight-color: transparent; }
+:is(button,a):focus-visible { outline: 3px solid #245fce; outline-offset: 3px; }
+.comparison { max-width: 1700px; margin: 0 auto; padding: 32px; }
+.comparison__header { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.comparison__eyebrow { margin: 0 0 8px; color: #647188; font-size: 12px; font-weight: 650; letter-spacing: .06em; }
+.comparison h1 { margin: 0; font-size: clamp(22px,2vw,30px); letter-spacing: -.04em; line-height: 1.35; }
+.comparison__description { margin: 10px 0 0; color: #647188; font-size: 14px; line-height: 1.6; }
+.comparison__direct { display: inline-flex; align-items: center; justify-content: center; gap: 12px; min-height: 44px; padding: 10px 16px; flex-shrink: 0; border: 1px solid #8794aa; border-radius: 12px; color: #3858df; background: #fff; text-decoration: none; font-size: 13px; font-weight: 600; }
+.comparison__toolbar { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-top: 24px; padding: 4px; border: 1px solid #e5eaf1; border-radius: 14px; background: #fff; }
+.comparison__toolbar button { min-height: 44px; padding: 10px 20px; border: 0; border-radius: 10px; color: #647188; background: transparent; font-family: inherit; font-size: 13px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.comparison__toolbar button[aria-pressed="true"] { color: #fff; background: #3858df; }
+.comparison__status { color: #647188; margin: 12px 0 24px; font-size: 12px; line-height: 1.6; }
+.comparison__grid { display: grid; grid-template-columns: minmax(0,1fr); align-items: start; gap: 28px; }
+.comparison[data-mode="both"] .comparison__grid { grid-template-columns: minmax(0,1fr) 406px; }
+.comparison__panel { min-width: 0; }
+.comparison__panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.comparison__panel-heading h2 { font-size: 15px; margin: 0; font-weight: 650; }
+.comparison__panel-heading > span { color: #647188; font-size: 12px; }
+.comparison__browser-bar { display: flex; align-items: center; gap: 24px; padding: 12px 16px; border: 1px solid #e5eaf1; border-radius: 14px 14px 0 0; background: #fff; color: #647188; font-size: 11px; }
+.comparison__browser-bar > span:first-child { color: #b8c4d6; letter-spacing: 4px; }
+.comparison__viewport { position: relative; width: 100%; overflow: hidden; background: #fff; }
+.comparison__viewport--desktop { aspect-ratio: 1440 / 960; border: 1px solid #e5eaf1; border-top: 0; border-radius: 0 0 14px 14px; box-shadow: 0 16px 48px rgb(25 37 59 / 5%); }
+.comparison__viewport iframe { position: absolute; top: 0; left: 0; display: block; width: var(--device-width); height: var(--device-height); border: 0; transform: scale(var(--preview-scale,1)); transform-origin: top left; }
+.comparison__panel--phone { width: min(100%,406px); justify-self: center; }
+.comparison__phone-shell { padding: 7px; border: 1px solid #cbd4e3; border-radius: 32px; background: #fff; box-shadow: 0 16px 48px rgb(25 37 59 / 8%); }
+.comparison__viewport--phone { aspect-ratio: 390 / 844; border-radius: 24px; }
+.comparison__caption { margin: 12px 0 0; color: #647188; font-size: 12px; line-height: 1.7; }
+.comparison__note { margin: 32px 0 0; padding-top: 20px; border-top: 1px solid #e5eaf1; color: #647188; font-size: 12px; line-height: 1.7; }
+@media (max-width: 1199.98px) { .comparison[data-mode="both"] .comparison__grid { grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 767.98px) {
+    .comparison { padding: 20px 16px; }
+    .comparison__header { align-items: flex-start; flex-direction: column; gap: 16px; }
+    .comparison__toolbar { display: flex; }
+    .comparison__toolbar button { flex: 1 1 0; padding-inline: 10px; }
+}

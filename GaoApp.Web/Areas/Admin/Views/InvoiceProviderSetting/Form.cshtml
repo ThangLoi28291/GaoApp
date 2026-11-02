@@ -7,6 +7,10 @@
     var actionName = isEdit ? "Edit" : "Create";
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-integration.mobile.css" asp-append-version="true" />
+}
+
 <style>
     .invoice-provider-form .page-title {
         font-weight: 700;
@@ -223,7 +227,7 @@
 
                             <div class="col-md-3">
                                 <label asp-for="SupplierTaxCode" class="form-label">
-                                    MST phát hành <span class="required-mark">*</span>
+                                    MST kết nối Viettel <span class="required-mark">*</span>
                                 </label>
 
                                 <input asp-for="SupplierTaxCode"
@@ -231,6 +235,7 @@
                                        placeholder="0100109106-509" />
 
                                 <span asp-validation-for="SupplierTaxCode" class="text-danger"></span>
+                                <div class="help-text">MST tài khoản dùng để gọi API Viettel. Có thể là MST cũ; MST người bán hiển thị trên hóa đơn do Viettel quản lý.</div>
                             </div>
 
                             <div class="col-md-12">
@@ -251,7 +256,7 @@
 
                             <div class="col-md-6">
                                 <label asp-for="Username" class="form-label">
-                                    Username <span class="required-mark">*</span>
+                                    Tên đăng nhập Viettel <span class="required-mark">*</span>
                                 </label>
 
                                 <input asp-for="Username"
@@ -260,6 +265,7 @@
                                        placeholder="0100109106-509" />
 
                                 <span asp-validation-for="Username" class="text-danger"></span>
+                                <div class="help-text">Giữ tên đăng nhập do Viettel cấp, kể cả khi thông tin MST người bán đã thay đổi.</div>
                             </div>
 
                             <div class="col-md-6">
@@ -281,7 +287,7 @@
 
                                     <button type="button"
                                             class="password-toggle-btn"
-                                            onclick="toggleInvoicePassword()"
+                                            data-csp-action="invoice-password"
                                             title="Hiện/ẩn mật khẩu">
                                         <i class="bx bx-show"></i>
                                     </button>
@@ -481,7 +487,7 @@
                             </div>
 
                             <div class="preview-row">
-                                <span class="preview-label">MST</span>
+                                <span class="preview-label">MST kết nối</span>
                                 <span class="preview-value">@(string.IsNullOrWhiteSpace(Model.SupplierTaxCode) ? "-" : Model.SupplierTaxCode)</span>
                             </div>
 
@@ -534,7 +540,7 @@
 
                         <div class="mb-2">
                             <i class="bx bx-check text-success"></i>
-                            MST khớp tài khoản
+                            MST kết nối đúng tài khoản Viettel
                         </div>
 
                         <div class="mb-2">
@@ -585,4 +591,8 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         }
     </script>
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-integration.mobile.js" asp-append-version="true"></script>
 }

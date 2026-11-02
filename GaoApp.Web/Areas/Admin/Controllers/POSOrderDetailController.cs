@@ -37,6 +37,14 @@ public class POSOrderDetailController : BasePOSPageController
         await BindPOSHeaderContextAsync(ct);
 
         var receipt = await _pos.GetReceiptAsync(orderId, ct);
+        // Phone presentation follows the same policies as the existing destination actions.
+        // This does not grant access or change their controller/service checks.
+        ViewBag.MobileCanReturn = (await _authorization.AuthorizeAsync(User, PermissionCodes.Pos.Order.Refund)).Succeeded
+            && (await _authorization.AuthorizeAsync(User, PermissionCodes.Pos.Payment.Refund)).Succeeded;
+        ViewBag.MobileCanVoid = (await _authorization.AuthorizeAsync(User, PermissionCodes.Pos.Order.Void)).Succeeded;
+        ViewBag.MobileCanReprint = (await _authorization.AuthorizeAsync(User, PermissionCodes.Pos.Order.Reprint)).Succeeded;
+        ViewBag.MobileCanViewBank = (await _authorization.AuthorizeAsync(User, PermissionCodes.Pos.Payment.View)).Succeeded;
+        ViewBag.MobileCanOpenPaymentRequests = (await _authorization.AuthorizeAsync(User, PermissionCodes.Pos.Shift.View)).Succeeded;
         ViewBag.CanCompleteReturnRestock = (await _authorization.AuthorizeAsync(User, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded;
         var canReconcile = await _authorization.AuthorizeAsync(
             User,

@@ -1,0 +1,20 @@
+@model IReadOnlyList<GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminNavigationNode>
+@foreach (var item in Model)
+{
+    var expanded = item.Children.Count > 0 && item.ContainsCurrent;
+    <li class="menu-item @(item.ContainsCurrent ? "active" : "") @(expanded ? "open" : "")" data-nav-node data-nav-title="@item.Title" data-nav-menu-id="@item.Id">
+        @if (item.Children.Count > 0)
+        {
+            <a href="#" class="menu-link menu-toggle" data-nav-branch aria-expanded="@(expanded ? "true" : "false")" aria-controls="admin-nav-children-@item.Id">
+                <span class="gao-nav-icon" aria-hidden="true"><i class="menu-icon icon-base @item.Icon"></i></span><span class="gao-nav-label">@item.Title</span>
+            </a>
+            <ul class="menu-sub" id="admin-nav-children-@item.Id">@await Html.PartialAsync("Sections/Menu/_NavigationItems", item.Children)</ul>
+        }
+        else
+        {
+            <a href="@item.Href" class="menu-link" data-nav-destination aria-current="@(item.IsCurrent ? "page" : null)">
+                <span class="gao-nav-icon" aria-hidden="true"><i class="menu-icon icon-base @item.Icon"></i></span><span class="gao-nav-label">@item.Title</span>
+            </a>
+        }
+    </li>
+}

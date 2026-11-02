@@ -1,0 +1,40 @@
+Browser resource policy (security issue 12)
+
+The default is enforced CSP. Security:Csp:ReportOnly=true is an explicit diagnostic
+rollout mode and does not block injected scripts. Browser verification exercises
+both modes. No production deployment or configuration change is made by the tests.
+
+Scripts compiled from Razor receive a fresh 192-bit nonce per HTTP response.
+Raw response HTML is never rewritten to add nonces. Inline event attributes and
+eval are forbidden. Styles still allow inline styling for the existing UI and
+receipt rendering. Image/media HTTPS sources remain available for configured
+store content. API connections are same-origin, with only the fixed loopback
+printing endpoints explicitly permitted. The POS worker has its own self-only
+script policy because importScripts has no HTML nonce.
+
+No third-party runtime script, stylesheet or font is loaded from a CDN. Pinned
+packages and their licenses are vendored by tools/browser-assets/build.cjs.
+The package lock fixes transitive versions and registry integrity values.
+eng/security/browser-assets.manifest.json records served file hashes and origins.
+Existing template bundles have reviewed input/output hashes and fixed versions in
+tools/browser-assets/template-bundles.json. Their webpack eval wrappers are parsed
+as string data, never executed by the build. Changing a package declaration alone
+cannot silently label an old template as a newer version.
+
+Rebuild from the repository root:
+  npm ci --prefix tools/browser-assets --ignore-scripts
+  npm --prefix tools/browser-assets run build
+  npm --prefix tools/browser-assets audit
+  npm --prefix tools/store-monitor-3d audit
+  npm --prefix GaoApp.Tests.Browser audit
+  dotnet list GaoApp.Web/GaoApp.Web.csproj package --vulnerable --include-transitive
+
+For updates, review upstream advisories/release notes, pin compatible versions,
+rebuild the actual asset, review the hash diff, and run ContentSecurityPolicyTests,
+ContentSecurityPolicyBrowserTests, POS offline/receipt, loopback print helper and
+store monitor browser probes. Template updates require explicit input/output hash
+review. Do not add startup downloads, unversioned CDN fallbacks or global
+unsafe-inline/unsafe-eval script exceptions. Framework major upgrades are tracked
+separately from browser dependency maintenance.
+
+Verification evidence for this change is in .artifacts/security-issue12/.

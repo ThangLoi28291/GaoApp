@@ -41,7 +41,8 @@ public sealed class PromotionConfiguration : IEntityTypeConfiguration<Promotion>
 
         b.Property(x => x.ComboPricingMode)
             .HasConversion<byte>()
-            .HasDefaultValue(ComboPricingMode.RequiredItems);
+            .HasDefaultValue(ComboPricingMode.RequiredItems)
+            .HasSentinel(ComboPricingMode.RequiredItems);
         b.Property(x => x.ComboQuantity).HasPrecision(18, 4);
 
         b.Property(x => x.ComboNote)

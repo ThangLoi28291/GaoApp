@@ -202,7 +202,7 @@
             <div class="pos-context-sub" id="posCtxShiftOpenedAt">
                 @if (Model.OpenedAtUtc.HasValue)
                 {
-                    <text>Mở lúc: @Model.OpenedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</text>
+                    <text>Mở lúc: @Model.OpenedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</text>
                 }
             </div>
         </div>

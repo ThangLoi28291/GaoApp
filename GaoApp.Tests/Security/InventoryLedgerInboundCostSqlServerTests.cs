@@ -101,7 +101,8 @@ public sealed class InventoryLedgerInboundCostSqlServerTests
         using (var response = await adminClient.Http.GetAsync($"/admin/inventory-ledger/quick-view?transactionId={otherTransactionId}"))
             Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
-        var evidence = Path.Combine(FullApplicationFixture.SourceRoot(), "Logs", "inventory-ledger-cost-ui");
+        var evidence = Environment.GetEnvironmentVariable("GAO_LEDGER_COST_REVIEW_OUTPUT")
+            ?? Path.Combine(FullApplicationFixture.SourceRoot(), "Logs", "inventory-ledger-cost-ui");
         Directory.CreateDirectory(evidence);
         foreach (var (profile, client, list, detail) in new[]
         {

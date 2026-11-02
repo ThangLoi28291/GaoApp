@@ -214,6 +214,12 @@ public sealed class InvoiceIssuanceRouteService
 
         foreach (var head in heads)
         {
+            if (route == InvoiceIssuanceRoute.Automatic && head.RevenueTaxPercentage.HasValue)
+            {
+                await tx.RollbackAsync(ct);
+                return Result<InvoiceIssuanceRouteDto>.Failure(Error.Conflict(
+                    $"Hóa đơn #{head.Id} đang có lựa chọn giảm 20% tỷ lệ thuế theo doanh thu. Tắt lựa chọn này trước khi chuyển sang phát hành tự động."));
+            }
             var currentHead = await _invoices.GetInvoiceHeadByIdAsync(head.Id, ct);
             if (currentHead == null || currentHead.StoreId != order.StoreId ||
                 !InvoiceIssuanceStatePolicy.CanChangeRoute(currentHead))

@@ -1,5 +1,6 @@
 ﻿// GaoApp.Web/Areas/Admin/Controllers/AdminMenusController.cs
 using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.DTOs.AdminMenus;
 using GaoApp.Application.Interfaces.Services.AdminMenus;
 using Microsoft.AspNetCore.Authorization;
@@ -9,6 +10,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Authorize(Policy = PermissionCodes.Security.Role.Permissions)]
+[ServiceFilter(typeof(GaoApp.Web.Security.AdministrationConfirmationRateLimitFilter))]
 public class AdminMenusController : BaseAdminController
 {
     private readonly IAdminMenuService _adminMenuService;
@@ -46,6 +48,7 @@ public class AdminMenusController : BaseAdminController
     {
         if (!ModelState.IsValid)
         {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
             await LoadOptionsAsync(null, ct);
             return View(request);
         }
@@ -61,8 +64,9 @@ public class AdminMenusController : BaseAdminController
             ToastSuccess("Tạo menu thành công.");
             return RedirectToAction(nameof(Index));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is ValidationAppException or InvalidOperationException)
         {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
             ModelState.AddModelError(string.Empty, ex.Message);
             await LoadOptionsAsync(null, ct);
             return View(request);
@@ -87,16 +91,6 @@ public class AdminMenusController : BaseAdminController
             return RedirectToAction(nameof(Index));
         }
 
-        // =====================================================
-        // LOAD ROLE ĐÃ ĐƯỢC GÁN CHO PERMISSION
-        // =====================================================
-
-        var assignedRoleIds =
-            await _adminMenuService.GetAssignedRoleIdsAsync(
-                CurrentStoreId,
-                item.PermissionCode,
-                ct);
-
         var vm = new SaveAdminMenuItemRequest
         {
             Id = item.Id,
@@ -109,13 +103,7 @@ public class AdminMenusController : BaseAdminController
             Icon = item.Icon,
             PermissionCode = item.PermissionCode,
             SortOrder = item.SortOrder,
-            IsActive = item.IsActive,
-
-            // =====================================================
-            // QUAN TRỌNG
-            // =====================================================
-
-            AssignRoleIds = assignedRoleIds
+            IsActive = item.IsActive
         };
 
         return View(vm);
@@ -128,6 +116,7 @@ public class AdminMenusController : BaseAdminController
     {
         if (!ModelState.IsValid)
         {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
             await LoadOptionsAsync(request.Id, ct);
             return View(request);
         }
@@ -149,8 +138,9 @@ public class AdminMenusController : BaseAdminController
             ToastSuccess("Cập nhật menu thành công.");
             return RedirectToAction(nameof(Index));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is ValidationAppException or InvalidOperationException)
         {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
             ModelState.AddModelError(string.Empty, ex.Message);
             await LoadOptionsAsync(request.Id, ct);
             return View(request);
@@ -187,6 +177,5 @@ public class AdminMenusController : BaseAdminController
 
         ViewBag.ParentMenus = options.ParentMenus;
         ViewBag.Permissions = options.Permissions;
-        ViewBag.Roles = options.Roles;
     }
 }

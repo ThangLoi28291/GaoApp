@@ -27,7 +27,7 @@
 
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow" />
     <meta name="request-verification-token" content="@antiForgeryToken" />
 
@@ -50,32 +50,46 @@
     @RenderSection("VendorStyles", required: false)
 
     <!-- Toastr CSS -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css" />
+    <link rel="stylesheet" href="~/lib/toastr/toastr.min.css"  asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/gaoapp.design-system.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/gaoapp.responsive-navigation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.commerce-tokens.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.admin-navigation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.mobile-pins.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.navigation-edge-cases.mobile.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/employee-account.css" asp-append-version="true" />
 
     <!-- Page Styles -->
     @RenderSection("PageStyles", required: false)
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.mobile-shell.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.mobile-viewport.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.mobile-account-states.css" asp-append-version="true" />
 
     <!-- Include Scripts for customizer, helper, analytics, config -->
     @await Html.PartialAsync("Sections/_ScriptsIncludes")
 </head>
 
-<body data-store-activity-ticket="@ViewData["StoreActivityTicket"]">
+<body data-store-activity-ticket="@ViewData["StoreActivityTicket"]" data-store-online-url="@Url.Action("Online", "StoreActivity", new { area = "Admin" })"
+      data-mobile-shell-owner="@ViewData["MobileShellOwner"]" data-mobile-dock-owner="@ViewData["MobileDockOwner"]">
     <!-- Layout Content -->
     @RenderBody()
     @await Component.InvokeAsync("EmployeeAccount")
+    @await Component.InvokeAsync("Assistant")
     <!--/ Layout Content -->
     <!-- Core Scripts -->
     @await Html.PartialAsync("Sections/_Scripts")
 
     <!-- Thư viện dùng chung. jQuery đã được nạp một lần trong Sections/_Scripts. -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <script src="~/lib/toastr/toastr.min.js" asp-append-version="true"></script>
+    <script src="~/lib/signalr/signalr.min.js" asp-append-version="true"></script>
     <script src="~/lib/sweetalert2/sweetalert2.all.min.js" asp-append-version="true"></script>
     <script src="~/Admin/js/gaoapp.ui.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.offline.privacy.js" asp-append-version="true"></script>
     <script src="~/Admin/js/employee-account.js" asp-append-version="true"></script>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <script src="~/Admin/js/store-activity.online.js" asp-append-version="true"></script>
+    }
     @if (ViewData["StoreActivityTicket"] is string)
     {
         <script src="~/Admin/js/store-activity.presence.js" asp-append-version="true"></script>
@@ -120,6 +134,11 @@
 
     <!-- Main JS -->
     <script src="~/js/main.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/gaoapp.admin-navigation.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/gaoapp.mobile-pins.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/gaoapp.configured-shortcuts.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/gaoapp.mobile-shell.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/gaoapp.mobile-viewport.js" asp-append-version="true"></script>
 
     <partial name="~/Areas/Admin/Views/Shared/_ToastMessages.cshtml" />
 </body>

@@ -1,0 +1,29 @@
+@model GaoApp.Web.Areas.Admin.Models.Inventory.StockDocumentNotePresentation
+
+@if (!string.IsNullOrWhiteSpace(Model.OriginalNote))
+{
+    <section class="sd-document-note" aria-label="Ghi chú phiếu">
+        <div class="sd-document-note-heading">
+            <h5><i class="bx bx-note" aria-hidden="true"></i>Ghi chú phiếu</h5>
+            @if (Model.IsLegacy)
+            {
+                <span class="sd-document-note-origin">Dữ liệu từ hệ thống cũ</span>
+            }
+        </div>
+        @if (Model.IsLegacy && !string.IsNullOrWhiteSpace(Model.Summary))
+        {
+            <p class="sd-document-note-summary" title="Thông tin tại thời điểm chuyển dữ liệu từ hệ thống cũ">@Model.Summary</p>
+        }
+        @if (!Model.IsLegacy || Model.HasSourceNote || string.IsNullOrWhiteSpace(Model.Summary))
+        {
+            <p class="sd-document-note-text">@Model.Text</p>
+        }
+        @if (Model.IsLegacy)
+        {
+            <details class="sd-document-note-original">
+                <summary>Xem ghi chú gốc</summary>
+                <p>@Model.OriginalNote</p>
+            </details>
+        }
+    </section>
+}

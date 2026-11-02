@@ -347,8 +347,11 @@ public sealed class InputInvoiceXmlTenantGuardTests
         reloadedMap.Note.Should().Be("unchanged");
     }
 
-    [Fact]
-    public async Task UpdateLineMapAsync_ValidTenantLinkedDetail_UpdatesMap()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(8)]
+    [InlineData(10)]
+    public async Task UpdateLineMapAsync_ValidTenantLinkedDetail_UpdatesMap(decimal vatRate)
     {
         await using var context = CreateContext(out var tenant);
         SeedReceipt(
@@ -371,6 +374,11 @@ public sealed class InputInvoiceXmlTenantGuardTests
         SeedLineMap(context);
         await context.SaveChangesAsync();
         await AssertCompleteSuccessFixtureAsync(context);
+        var xmlDetail = await context.InputInvoiceDetails.SingleAsync(x => x.Id == DetailId);
+        var receiptLine = await context.StockDocumentLines.SingleAsync(x => x.Id == ReceiptLineId);
+        xmlDetail.VatRate = vatRate.ToString(System.Globalization.CultureInfo.InvariantCulture) + "%";
+        receiptLine.LineTotal = xmlDetail.LineAmount * (1m + vatRate / 100m);
+        await context.SaveChangesAsync();
         SetTenantStore(context, tenant);
         var map = await context.StockDocumentLineInputInvoiceMaps.SingleAsync();
 
@@ -511,7 +519,7 @@ public sealed class InputInvoiceXmlTenantGuardTests
     private static InMemoryAppDbContext CreateContext(out TenantContext tenant)
     {
         tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;

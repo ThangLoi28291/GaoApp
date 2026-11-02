@@ -1,5 +1,6 @@
 (function () {
     'use strict';
+    const formatTaxCode = value => String(value ?? '').trim().replace(/^(\d{10})(\d{3})$/, '$1-$2');
 
     let modalInstance = null;
     let candidates = [];
@@ -50,11 +51,11 @@
     });
 
     async function openPicker() {
-        const now = new Date();
+        const now = new Date(Date.now() + 7 * 3600000);
         const year = document.getElementById('inputInvoicePickerYear');
         const month = document.getElementById('inputInvoicePickerMonth');
-        if (year && !year.value) year.value = String(now.getFullYear());
-        if (month && !month.value) month.value = String(now.getMonth() + 1);
+        if (year && !year.value) year.value = String(now.getUTCFullYear());
+        if (month && !month.value) month.value = String(now.getUTCMonth() + 1);
         modalInstance.show();
         await browse();
         (document.querySelector('#inputInvoicePickerCandidates [aria-selected="true"]')
@@ -71,7 +72,7 @@
         const sequence = ++browseSequence;
         const supplierId = Number(document.getElementById('CurrentSupplierId')?.value || 0);
         const supplierName = document.getElementById('CurrentSupplierText')?.value || 'Chưa chọn nhà cung cấp';
-        const supplierTax = document.getElementById('inputInvoiceSupplierTaxCode')?.textContent || 'Chưa có MST';
+        const supplierTax = formatTaxCode(document.getElementById('inputInvoiceSupplierTaxCode')?.textContent) || 'Chưa có MST';
         setText('inputInvoicePickerSupplierContext', `${supplierName} · MST ${supplierTax}`);
         candidates = [];
         associationContext = null;
@@ -114,12 +115,13 @@
     }
 
     function renderContext(context) {
-        const text = `${context.supplierCode || ''} · ${context.supplierName || '-'} · MST ${context.supplierTaxCode || '-'}`;
+        const supplierTax = formatTaxCode(context.supplierTaxCode) || '-';
+        const text = `${context.supplierCode || ''} · ${context.supplierName || '-'} · MST ${supplierTax}`;
         setText('inputInvoicePickerSupplierContext', text);
         setText('inputInvoicePickerOwnerContext',
             `Chủ thể phiếu: ${context.receiptOwnerLegalEntityName || 'Chưa xác định'} · ` +
             'MST người mua phải phân giải đúng duy nhất chủ thể này.');
-        setText('inputInvoiceSupplierTaxCode', context.supplierTaxCode || '-');
+        setText('inputInvoiceSupplierTaxCode', supplierTax);
         const relinkMode = Boolean(relinkExpectedInputInvoiceHeadId);
         const title = document.getElementById('inputInvoicePickerTitle');
         if (title) title.textContent = relinkMode ? 'Thay hóa đơn liên kết' : 'Chọn hóa đơn';
@@ -365,8 +367,8 @@
 
     function formatDate(value) {
         if (!value) return '-';
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('vi-VN');
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
+        return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function escapeHtml(value) {

@@ -1,5 +1,6 @@
 @model GaoApp.Application.DTOs.Inventory.InputInvoices.InputInvoiceXmlPreviewDto
 @using System.Globalization
+@using GaoApp.Web.Areas.Admin.Models.Inventory
 @{
     var ownerLabel = Model.BuyerOwnerMatchesReceipt
         ? "Đúng pháp nhân"
@@ -25,10 +26,10 @@
 
     <dl class="row small">
         <dt class="col-sm-3">Người bán</dt><dd class="col-sm-9">@(Model.SellerName ?? "-")</dd>
-        <dt class="col-sm-3">MST người bán</dt><dd class="col-sm-9">@(Model.SellerTaxCode ?? "-")</dd>
+        <dt class="col-sm-3">MST người bán</dt><dd class="col-sm-9">@(TaxCodePresentation.Format(Model.SellerTaxCode) ?? "-")</dd>
         <dt class="col-sm-3">Địa chỉ</dt><dd class="col-sm-9">@(Model.SellerAddress ?? "-")</dd>
         <dt class="col-sm-3">Người mua</dt><dd class="col-sm-9">@(Model.BuyerName ?? "-")</dd>
-        <dt class="col-sm-3">MST người mua</dt><dd class="col-sm-9">@(Model.BuyerTaxCode ?? "-")</dd>
+        <dt class="col-sm-3">MST người mua</dt><dd class="col-sm-9">@(TaxCodePresentation.Format(Model.BuyerTaxCode) ?? "-")</dd>
         <dt class="col-sm-3">Đối chiếu chủ thể</dt>
         <dd class="col-sm-9">
             @if (Model.BuyerOwnerMatchesReceipt)

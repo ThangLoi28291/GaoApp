@@ -9,6 +9,7 @@ public enum AcbSessionStatus { Creating, Pending, Received, Completed, Cancelled
 /// <summary>Immutable routing and amount snapshot for one bank QR attempt.</summary>
 public sealed class AcbQrSession : BaseStoreEntity
 {
+    public string? BankBindingSnapshotJson { get; set; }
     public int QrRequestId { get; set; }
     public int OrderId { get; set; }
     public int ShiftId { get; set; }

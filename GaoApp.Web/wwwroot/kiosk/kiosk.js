@@ -8,7 +8,7 @@
     let paymentQrId, nextBankCheckAt = 0, nextPollAt = 0, checkingBank = false, bankRetry = false;
     const e = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const money = n => Number(n ?? 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + 'đ';
-    const date = s => s ? new Date(s.endsWith('Z') ? s : s + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
+    const date = s => s ? new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(s) ? s : s + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
     const paths = {
         bag: '<path d="M5 7h14l1 14H4L5 7Z M8 8V6a4 4 0 0 1 8 0v2"/>',
         scan: '<path d="M3 8V3h5m8 0h5v5M3 16v5h5m8 0h5v-5M7 7v10m3-10v10m4-10v10m3-10v10"/>',
@@ -39,7 +39,7 @@
         if (next.mode === 'payment' && next.qr?.id !== paymentQrId) {
             paymentQrId = next.qr?.id;
             const deadline = next.paymentCheckAfterUtc;
-            nextBankCheckAt = deadline ? Date.parse(deadline.endsWith('Z') ? deadline : deadline + 'Z') : Date.now() + 30000;
+            nextBankCheckAt = deadline ? Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(deadline) ? deadline : deadline + 'Z') : Date.now() + 30000;
             if (!Number.isFinite(nextBankCheckAt)) nextBankCheckAt = Date.now() + 30000;
             bankRetry = false;
         } else if (!['payment', 'review'].includes(next.mode)) { paymentQrId = null; nextBankCheckAt = 0; bankRetry = false; }
@@ -103,9 +103,14 @@
         </article>`;
     }
     function login() { return `<div class="g-login"><div><div class="g-login-icon">${icon('person')}</div><div class="g-eyebrow">KHÁCH HÀNG GAO MART</div><h1>Thông tin<br>của bạn</h1><p class="g-muted" style="margin-top:22px">Nhập số điện thoại đã đăng ký để xem điểm, voucher và lịch sử mua hàng.</p>${btn(icon('back') + ' Chọn chức năng', 'menu')}<div class="g-note">Chỉ tra cứu thông tin.<br>Không đổi điểm hoặc sử dụng voucher tại màn hình này.</div></div><div class="g-panel"><label for="g-phone">Số điện thoại</label><input id="g-phone" type="tel" inputmode="numeric" maxlength="15" autocomplete="off" placeholder="Nhập số điện thoại" style="border-bottom:2px solid var(--g-accent);margin:12px 0"><div class="g-keypad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Xóa', '0', '⌫'].map(k => btn(k, 'key-' + k)).join('')}</div><button class="g-btn g-primary g-wide" style="margin-top:20px" data-action="lookup">Xem thông tin ${icon('arrow')}</button></div></div>`; }
+    function customerCanUsePoints() {
+        return String(customer?.priceTier || '').trim().toUpperCase() !== 'WHOLESALE' && customer?.rewards?.isPointEligible !== false;
+    }
     function customerScreen() {
         const rewards = customer.rewards;
-        return `<div class="g-heading"><div><div class="g-eyebrow">HỒ SƠ KHÁCH HÀNG</div><h1>Xin chào, ${e(customer.name)}</h1><p>${e(customer.phone)}</p></div>${btn('Kết thúc tra cứu', 'end-customer', true)}</div><div class="g-stats"><div class="g-stat">Điểm hiện tại<strong>${rewards ? e(rewards.availablePoints) : '—'} <small>điểm</small></strong></div><div class="g-stat">Voucher còn hiệu lực<strong>${rewards ? e(rewards.availableVoucherCount) : '—'} <small>phiếu</small></strong><small class="g-muted">${rewards ? money(rewards.availableVoucherValue) : e(customer.rewardNotice)}</small></div><div class="g-stat">Đơn đã mua<strong>${e(customer.completedOrders)} <small>đơn</small></strong><small class="g-muted">${money(customer.netSales)} sau hoàn trả</small></div></div><div class="g-tabs" role="tablist">${[['orders', 'Lịch sử mua hàng'], ['points', 'Lịch sử điểm'], ['vouchers', 'Voucher']].map(([v, t]) => `<button class="g-btn" role="tab" aria-selected="${tab === v}" data-action="tab-${v}">${t}</button>`).join('')}</div><div class="g-panel"><div class="g-filters"><label>Từ ngày<input id="g-from" type="date" value="${e(from)}"></label><label>Đến ngày<input id="g-to" type="date" value="${e(to)}"></label>${btn('Lọc lịch sử', 'filter')}</div>${history ? historyRows() : '<div class="g-loading">Đang tải lịch sử…</div>'}${history ? `<div class="g-pager">${btn('← Trước', 'prev', false, page <= 1)}<span>Trang ${page} / ${Math.max(1, Math.ceil(history.total / history.pageSize))}</span>${btn('Tiếp →', 'next', false, page * history.pageSize >= history.total)}</div>` : ''}</div>`;
+        const isPointEligible = customerCanUsePoints();
+        const tabs = [['orders', 'Lịch sử mua hàng'], ...(isPointEligible ? [['points', 'Lịch sử điểm']] : []), ['vouchers', 'Voucher']];
+        return `<div class="g-heading"><div><div class="g-eyebrow">HỒ SƠ KHÁCH HÀNG</div><h1>Xin chào, ${e(customer.name)}</h1><p>${e(customer.phone)}</p></div>${btn('Kết thúc tra cứu', 'end-customer', true)}</div><div class="g-stats">${isPointEligible ? `<div class="g-stat">Điểm hiện tại<strong>${rewards ? e(rewards.availablePoints) : '—'} <small>điểm</small></strong></div>` : ''}<div class="g-stat">Voucher còn hiệu lực<strong>${rewards ? e(rewards.availableVoucherCount) : '—'} <small>phiếu</small></strong><small class="g-muted">${rewards ? money(rewards.availableVoucherValue) : e(customer.rewardNotice)}</small></div><div class="g-stat">Đơn đã mua<strong>${e(customer.completedOrders)} <small>đơn</small></strong><small class="g-muted">${money(customer.netSales)} sau hoàn trả</small></div></div><div class="g-tabs" role="tablist">${tabs.map(([v, t]) => `<button class="g-btn" role="tab" aria-selected="${tab === v}" data-action="tab-${v}">${t}</button>`).join('')}</div><div class="g-panel"><div class="g-filters"><label>Từ ngày<input id="g-from" type="date" value="${e(from)}"></label><label>Đến ngày<input id="g-to" type="date" value="${e(to)}"></label>${btn('Lọc lịch sử', 'filter')}</div>${history ? historyRows() : '<div class="g-loading">Đang tải lịch sử…</div>'}${history ? `<div class="g-pager">${btn('← Trước', 'prev', false, page <= 1)}<span>Trang ${page} / ${Math.max(1, Math.ceil(history.total / history.pageSize))}</span>${btn('Tiếp →', 'next', false, page * history.pageSize >= history.total)}</div>` : ''}</div>`;
     }
     function historyRows() {
         if (!history.items.length) return '<div class="g-empty">Chưa có lịch sử trong khoảng thời gian này.</div>';
@@ -132,18 +137,17 @@
             <button class="g-btn g-primary g-wide g-checkout-button" data-action="checkout" ${!lines.length ? 'disabled' : ''}>${icon('qr')} Thanh toán QR ${icon('arrow')}</button>${invoiceSummary()}<p class="g-checkout-invoice-help">Cần lấy hóa đơn? Bấm Gọi nhân viên để được hỗ trợ.</p><button class="g-btn g-cancel-cart" data-action="cancel-cart">Hủy giỏ hàng</button></aside>
         </div>`;
     }
-    function renderPaymentCountdown() {
-        const value = root.querySelector('#g-bank-countdown'), label = root.querySelector('#g-bank-countdown-label');
-        if (!value || !label) return;
-        const seconds = Math.max(0, Math.ceil((nextBankCheckAt - Date.now()) / 1000));
-        label.textContent = checkingCancellation ? 'Đang kiểm tra để hủy…' : checkingBank ? 'Đang kiểm tra ACB…' : !network.hidden ? 'Kết nối gián đoạn · thử lại sau' : bankRetry ? 'Thử kiểm tra lại sau' : seconds === 0 ? 'Đang chờ lượt kiểm tra…' : 'Kiểm tra ACB tiếp theo sau';
-        value.textContent = checkingBank || checkingCancellation ? '…' : `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
+    function renderPaymentStatus() {
+        const label = root.querySelector('#g-bank-status'), button = root.querySelector('[data-action="check-payment"]');
+        if (!label) return;
+        label.textContent = checkingCancellation ? 'Đang kiểm tra ngân hàng để hủy…' : checkingBank ? 'Đang kiểm tra ACB…' : !network.hidden ? 'Kết nối gián đoạn. Hệ thống sẽ tự kiểm tra lại.' : bankRetry ? 'Chưa kiểm tra được ACB. Hệ thống sẽ tự thử lại.' : 'Đã chuyển khoản? Bạn có thể kiểm tra ngay.';
+        if (button) button.disabled = checkingBank || checkingCancellation;
     }
     function payment() {
         const reviewing = screen === 'review', qr = server.qr, creating = !reviewing && server.paymentStatus === 'Creating';
         return `<div class="g-payment"><div class="g-payment-copy"><div class="g-eyebrow">${reviewing || creating ? 'ĐANG KIỂM TRA GIAO DỊCH' : 'THANH TOÁN AN TOÀN'}</div><h1>${reviewing ? 'Vui lòng chờ<br>nhân viên hỗ trợ' : creating ? 'Đang xác minh<br>lần tạo QR' : 'Quét mã QR<br>để thanh toán'}</h1><p class="g-muted g-payment-intro">${reviewing ? (server.paymentStatus === 'Received' ? 'Đã nhận tiền. Hệ thống đang kiểm tra để hoàn tất đơn; vui lòng không thanh toán thêm.' : 'Giao dịch cần kiểm tra trước khi hoàn tất. Vui lòng không thanh toán thêm.') : creating ? 'Chưa nhận được mã QR hợp lệ từ ngân hàng. Giỏ hàng vẫn được giữ nguyên để kiểm tra.' : 'Mở ứng dụng ngân hàng, quét mã và kiểm tra số tiền trước khi chuyển.'}</p>
         <section class="g-panel g-payment-amount"><span>Số tiền thanh toán</span><div class="g-total">${money(server.order?.grandTotal)}</div><p>${e(server.terminal)}</p>${invoiceSummary()}</section>
-        <div class="g-payment-status" role="status"><span class="g-spinner"></span><span>${checkingCancellation ? 'Đang kiểm tra ngân hàng để hủy…' : reviewing ? 'Đã gửi yêu cầu hỗ trợ.' : 'Tự động xác nhận khi nhận được tiền.'}</span></div>${!reviewing ? `<div class="g-bank-check"><div><span id="g-bank-countdown-label">Kiểm tra ACB tiếp theo sau</span><strong id="g-bank-countdown">00:30</strong></div><button type="button" class="g-btn" data-action="check-payment" ${checkingBank || checkingCancellation ? 'disabled' : ''}>Kiểm tra ngay</button></div>` : ''}<p class="g-payment-reminder">Đã chuyển tiền? Vui lòng chờ xác nhận, không chuyển thêm lần nữa.</p></div>
+        <div class="g-payment-status" role="status"><span class="g-spinner"></span><span>${checkingCancellation ? 'Đang kiểm tra ngân hàng để hủy…' : reviewing ? 'Đã gửi yêu cầu hỗ trợ.' : 'Tự động xác nhận khi nhận được tiền.'}</span></div>${!reviewing ? `<div class="g-bank-check"><span id="g-bank-status" role="status">Đã chuyển khoản? Bạn có thể kiểm tra ngay.</span><button type="button" class="g-btn" data-action="check-payment" ${checkingBank || checkingCancellation ? 'disabled' : ''}>Kiểm tra ngay</button></div>` : ''}<p class="g-payment-reminder">Đã chuyển tiền? Vui lòng chờ xác nhận, không chuyển thêm lần nữa.</p></div>
         <section class="g-panel g-payment-code"><div class="g-payment-bank">${icon('qr')} ${creating ? 'Chưa có QR để thanh toán' : 'Quét bằng ứng dụng ngân hàng'}</div>${!reviewing && safeImage(qr?.qrDataUrl) ? `<img class="g-qr-image" src="${e(safeImage(qr.qrDataUrl))}" alt="Mã QR thanh toán cho giỏ hàng hiện tại">` : `<div class="g-loading"><span class="g-spinner"></span>${creating ? 'Đang kiểm tra lần tạo QR' : 'Đang xử lý giao dịch'}</div>`}<h3>${e(server.store)}</h3><p class="g-payment-content">${e(qr?.content)}</p><p class="g-status-note">${!creating && qr?.expireAtUtc ? 'Hiệu lực đến ' + date(qr.expireAtUtc) : 'Giữ màn hình này trong lúc hệ thống kiểm tra.'}</p>
         ${creating ? `<button type="button" class="g-btn g-primary g-wide g-retry-payment" data-action="retry-payment">Kiểm tra & tạo lại QR</button><p class="g-payment-cancel-hint">Chỉ tạo lại sau khi xác nhận hủy được lần trước. Nếu đã nhận tiền, hệ thống sẽ hoàn tất đơn.</p>` : ''}
         ${!reviewing ? `<button type="button" class="g-btn g-wide g-cancel-payment" data-action="cancel-payment" ${checkingCancellation ? 'disabled' : ''}>${checkingCancellation ? 'Đang kiểm tra ngân hàng…' : 'Hủy thanh toán'}</button><p class="g-payment-cancel-hint">Đổi ý không mua? Hệ thống sẽ kiểm tra giao dịch trước khi hủy.</p>` : btn('Gọi nhân viên hỗ trợ', 'help')}</section></div>`;
@@ -154,12 +158,15 @@
         searchAbort?.abort(); searchSequence++;
         const body = ({ menu, product, login, customer: customerScreen, shop, payment, review: payment, success, paused: () => '<div class="g-empty"><h1>Quầy tạm ngưng phục vụ</h1><p style="margin:20px 0">Vui lòng sử dụng quầy thu ngân hoặc gọi nhân viên hỗ trợ.</p></div>' })[screen];
         content.innerHTML = (screen === 'activate' ? activate() : screen === 'idle' ? idle() : `<main data-screen="${screen}">${error ? `<div class="g-error" role="alert">${e(error)} ${btn('Đóng', 'dismiss')}</div>` : ''}${body ? body() : menu()}</main>`);
-        renderPaymentCountdown();
+        renderPaymentStatus();
         if (error && ['activate', 'idle'].includes(screen)) { network.hidden = false; network.textContent = error; }
     }
     function showDialog(title, html, buttons, className = '') { dialog.className = className; dialog.setAttribute('aria-labelledby', 'g-dialog-title'); dialog.innerHTML = `<h2 id="g-dialog-title">${e(title)}</h2><div>${html}</div><div class="g-actions" style="margin-top:22px">${buttons}</div>`; if (!dialog.open) dialog.showModal(); }
     async function endCustomer() { customer = null; history = null; screen = 'idle'; dialog.close(); render(); from = ''; to = ''; await api('api/customer/end', {}); }
-    async function loadHistory() { history = await api('api/customer/history', { tab, page, pageSize: 20, from: from || null, to: to || null }); page = history.page; }
+    async function loadHistory() {
+        if (tab === 'points' && !customerCanUsePoints()) { tab = 'orders'; page = 1; }
+        history = await api('api/customer/history', { tab, page, pageSize: 20, from: from || null, to: to || null }); page = history.page;
+    }
     async function searchNow(exact = false) {
         const value = query.trim(); if (!value) { items = []; const r = root.querySelector('#g-results'); if (r) r.hidden = true; return; }
         const seq = ++searchSequence; searchAbort?.abort(); searchAbort = new AbortController();
@@ -259,7 +266,7 @@
         if (!server || busy || polling || disposed) return;
         polling = true;
         const checkPayment = screen === 'payment' && (forceBank || Date.now() >= nextBankCheckAt);
-        checkingBank = checkPayment; nextPollAt = Date.now() + (screen === 'payment' ? 2000 : 4000); renderPaymentCountdown();
+        checkingBank = checkPayment; nextPollAt = Date.now() + (screen === 'payment' ? 2000 : 4000); renderPaymentStatus();
         try {
             const old = server.mode, oldQr = server.qr?.id, oldStatus = server.paymentStatus, hadQrImage = !!server.qr?.qrDataUrl;
             const next = await api('api/poll', { recentActivity: Date.now() - activity < 15000 && !['idle', 'paused'].includes(screen), checkPayment });
@@ -270,14 +277,14 @@
         finally {
             // Callback-state reads must not postpone the independent bank-check deadline.
             if (checkPayment && screen === 'payment') nextBankCheckAt = Date.now() + 8000;
-            checkingBank = false; polling = false; renderPaymentCountdown();
+            checkingBank = false; polling = false; renderPaymentStatus();
         }
     }
-    setInterval(() => { renderPaymentCountdown(); if (Date.now() >= nextPollAt) poll(); }, 1000);
+    setInterval(() => { if (Date.now() >= nextPollAt) poll(); }, 1000);
     setInterval(() => {
         if (!server || busy || disposed) return;
         if (screen === 'success') {
-            const completed = server.completedAtUtc ? Date.parse(server.completedAtUtc.endsWith('Z') ? server.completedAtUtc : server.completedAtUtc + 'Z') : Date.now();
+            const completed = server.completedAtUtc ? Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(server.completedAtUtc) ? server.completedAtUtc : server.completedAtUtc + 'Z') : Date.now();
             const remain = Math.max(0, Math.ceil((completed + 15000 - Date.now()) / 1000)); const label = root.querySelector('#g-countdown'); if (label) label.textContent = `Tự trở về quảng cáo sau ${remain} giây`;
             if (remain <= 0) work(async () => { await command('finish'); customer = null; history = null; screen = 'idle'; });
         } else if (screen === 'idle') {

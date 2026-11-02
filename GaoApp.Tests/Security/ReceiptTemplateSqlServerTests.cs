@@ -20,8 +20,23 @@ public sealed class ReceiptTemplateSqlServerTests
         using var foreign = await app.LoginAsync(await PosShiftAdministrationSqlServerTests.AddAdminAsync(app, app.Stores[1]));
         const string endpoint = "/admin/receipt-templates/default";
         var initial = await employee.JsonAsync(HttpMethod.Get, endpoint);
+        Assert.Contains("id=\"showCustomerPoints\"", await admin.Http.GetStringAsync("/admin/receipt-templates"));
         Assert.Equal("modern-80", initial.GetProperty("template").GetProperty("key").GetString());
-        using (var page = await employee.Http.GetAsync("/admin/receipt-templates")) Assert.Equal(HttpStatusCode.Forbidden, page.StatusCode);
+        using(var adminPageDenied=await employee.Http.GetAsync("/admin/receipt-templates"))Assert.Equal(HttpStatusCode.Forbidden,adminPageDenied.StatusCode);
+        var printerPage = await employee.Http.GetStringAsync("/admin/pos/printer-settings");
+        Assert.Contains("id=\"applyTemplate\"", printerPage);
+        Assert.DoesNotContain("id=\"designFields\"", printerPage);
+        Assert.DoesNotContain("id=\"saveStoreIdentity\"", printerPage);
+        using (var staff = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View)))
+        {
+            var staffPage = await staff.Http.GetStringAsync("/admin/pos/printer-settings");
+            Assert.Contains("id=\"checkHelper\"", staffPage);
+            Assert.Contains("id=\"applyTemplate\"", staffPage);
+            var pos = await staff.Http.GetStringAsync("/admin/pos");
+            // The separate setup page is available without creating a menu entry.
+            Assert.DoesNotContain("href=\"/admin/receipt-templates\"", pos);
+            Assert.DoesNotContain("href=\"/admin/pos/printer-settings\"", pos);
+        }
         var design = new ReceiptDesign { Name = "Mẫu mặc định 45", PaperSize = "45", Title = "HÓA ĐƠN CHUNG" };
         using (var createDenied = await employee.Http.PostAsJsonAsync("/admin/receipt-templates/data", new SaveReceiptTemplateRequest(design, null)))
             Assert.Equal(HttpStatusCode.Forbidden, createDenied.StatusCode);
@@ -51,6 +66,7 @@ public sealed class ReceiptTemplateSqlServerTests
         var orderId = draft.GetProperty("orderId").GetInt32();
         var print = await employee.Http.GetStringAsync($"/admin/pos/orders/{orderId}/print?autoPrint=false&size=A4");
         Assert.DoesNotContain("printTemplateChoice", print);
+        Assert.Contains("href=\"/admin/pos/printer-settings\"", print);
         Assert.DoesNotContain("href=\"/admin/receipt-templates\"", print);
         Assert.Contains("printTemplateName", print);
         Assert.Contains("receiptDefault", print);
@@ -150,14 +166,16 @@ public sealed class ReceiptTemplateSqlServerTests
         Assert.Equal("itemwide-80", wide.GetProperty("key").GetString());
         Assert.Equal("80", wide.GetProperty("design").GetProperty("paperSize").GetString());
         Assert.All(builtins.EnumerateArray(), x => Assert.Equal("#000000", x.GetProperty("design").GetProperty("accentColor").GetString()));
+        Assert.All(builtins.EnumerateArray(), x => Assert.True(x.GetProperty("design").GetProperty("showCustomerPoints").GetBoolean()));
         Assert.Equal(5, builtins.EnumerateArray().Select(x => x.GetProperty("design").GetProperty("paperSize").GetString()).Distinct().Count());
-        var design = new ReceiptDesign { Name = "Mẫu riêng cửa hàng A", PaperSize = "45", AccentColor = "#dd3399", FooterText = new string('ệ', 400) };
+        var design = new ReceiptDesign { Name = "Mẫu riêng cửa hàng A", PaperSize = "45", AccentColor = "#dd3399", FooterText = new string('ệ', 400), ShowCustomerPoints = false };
         var create = new SaveReceiptTemplateRequest(design, null);
         using (var forbidden = await cashier.Http.PostAsJsonAsync(url, create)) Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
         using (var invalid = await manager.Http.PostAsJsonAsync(url, new SaveReceiptTemplateRequest(design with { AccentColor = "red; background:url(https://example.invalid)" }, null)))
             Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         var saved = await manager.JsonAsync(HttpMethod.Post, url, create);
         Assert.Equal("#000000", saved.GetProperty("design").GetProperty("accentColor").GetString());
+        Assert.False(saved.GetProperty("design").GetProperty("showCustomerPoints").GetBoolean());
         var key = saved.GetProperty("key").GetString()!;
         var id = int.Parse(key.Replace("custom-", ""));
         var version = saved.GetProperty("rowVersion").GetString();
@@ -181,12 +199,15 @@ public sealed class ReceiptTemplateSqlServerTests
         Assert.Equal(16, (await manager.JsonAsync(HttpMethod.Get, url)).GetArrayLength());
         await using var db = app.Database.CreateTenantContext(app.Stores[0].StoreId);
         Assert.True((await db.Set<PosReceiptTemplate>().IgnoreQueryFilters().SingleAsync(x => x.Id == id)).IsDeleted);
-        var legacyJson = System.Text.Json.JsonSerializer.Serialize(design, ReceiptTemplateService.Json);
+        var legacyDefinition = System.Text.Json.Nodes.JsonNode.Parse(System.Text.Json.JsonSerializer.Serialize(design, ReceiptTemplateService.Json))!.AsObject();
+        legacyDefinition.Remove("showCustomerPoints");
+        var legacyJson = legacyDefinition.ToJsonString();
         var legacy = new PosReceiptTemplate { StoreId = app.Stores[0].StoreId, Name = "Mẫu màu cũ", DefinitionJson = legacyJson };
         db.Add(legacy); await db.SaveChangesAsync();
         var legacyVersion = Convert.ToBase64String(legacy.RowVersion);
         var projected = (await manager.JsonAsync(HttpMethod.Get, url)).EnumerateArray().Single(x => x.GetProperty("key").GetString() == $"custom-{legacy.Id}");
         Assert.Equal("#000000", projected.GetProperty("design").GetProperty("accentColor").GetString());
+        Assert.True(projected.GetProperty("design").GetProperty("showCustomerPoints").GetBoolean());
         Assert.Equal(legacyVersion, projected.GetProperty("rowVersion").GetString());
         var persisted = await db.Set<PosReceiptTemplate>().AsNoTracking().SingleAsync(x => x.Id == legacy.Id);
         Assert.Equal(legacyJson, persisted.DefinitionJson);

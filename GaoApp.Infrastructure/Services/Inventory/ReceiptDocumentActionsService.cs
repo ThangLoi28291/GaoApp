@@ -4,6 +4,7 @@ using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
+using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
@@ -11,7 +12,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Services.Inventory;
 
-public sealed class ReceiptDocumentActionsService(AppDbContext db, ITenantContext tenant, ICurrentUser user)
+public sealed partial class ReceiptDocumentActionsService(AppDbContext db, ITenantContext tenant, ICurrentUser user,
+    IInputInvoiceRepository inputInvoices)
     : IReceiptDocumentActionsService
 {
     private int StoreId => tenant.StoreId is > 0 ? tenant.StoreId.Value
@@ -19,12 +21,27 @@ public sealed class ReceiptDocumentActionsService(AppDbContext db, ITenantContex
     private static bool NeverSubmitted(StockDocument document) => document.Status == StockDocumentStatus.Draft &&
         document.SubmittedAtUtc == null && document.SubmittedByUserId == null &&
         document.ApprovedAtUtc == null && document.ConfirmedAtUtc == null;
+    private static bool CanDelete(StockDocument document) => NeverSubmitted(document) ||
+        document.Status == StockDocumentStatus.Rejected &&
+        document.ApprovedAtUtc == null && document.ConfirmedAtUtc == null;
 
     public async Task<ReceiptDocumentActionsDto> GetAsync(int id, CancellationToken ct)
     {
         var document = await LoadAsync(id, false, ct);
+        var supplierCorrectionBlocked = await HasSupplierSettlementAsync(document, ct);
         return new(document.Id, document.DocumentNo, document.DocumentTitle, document.WarehouseId, document.ReceiptSource,
-            document.Status, Convert.ToBase64String(document.RowVersion), NeverSubmitted(document), await ProposalAsync(id, ct));
+            document.Status, Convert.ToBase64String(document.RowVersion), NeverSubmitted(document), await ProposalAsync(id, ct))
+        {
+            CanDelete = CanDelete(document),
+            SupplierId = document.SupplierId, SupplierName = document.Supplier?.Name,
+            SupplierTaxCode = document.Supplier?.TaxCode,
+            HasPurchaseOrder = document.PurchaseOrderId.HasValue || document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder,
+            IsMerchandisePaid = document.IsMerchandisePaid,
+            CanCorrectSupplier = document.Status == StockDocumentStatus.Confirmed && !supplierCorrectionBlocked,
+            SupplierCorrectionBlockedReason = supplierCorrectionBlocked ? SupplierSettlementCorrectionMessage : null,
+            HasLinkedInvoice = await db.StockDocumentInputInvoiceMaps.AsNoTracking()
+                .AnyAsync(x => x.StoreId == StoreId && x.StockDocumentId == id, ct)
+        };
     }
 
     public async Task RenameAsync(int id, ReceiptTitleRequest request, bool manager, CancellationToken ct)
@@ -74,11 +91,13 @@ public sealed class ReceiptDocumentActionsService(AppDbContext db, ITenantContex
     {
         var document = await LoadAsync(id, true, ct);
         Version(document, request.RowVersion);
-        if (!NeverSubmitted(document)) throw new BusinessRuleException("Chỉ được xóa phiếu nháp chưa từng gửi duyệt.");
+        if (!CanDelete(document)) throw new BusinessRuleException("Chỉ được xóa phiếu nháp chưa từng gửi duyệt hoặc phiếu bị trả về/từ chối chưa nhập kho.");
         if (document.ReceivingLeaseExpiresAtUtc > DateTime.UtcNow && document.ReceivingOwnerUserId != user.UserId)
             throw new BusinessRuleException("Nhân viên khác đang nhập phiếu này. Vui lòng chờ kết thúc phiên nhập.");
         AddEvent(document, PurchaseReceiptAuditEventType.ReceiptDraftDeleted, document.DocumentTitle,
-            document.DocumentTitle, null, "Xóa phiếu nhập nháp chưa gửi duyệt");
+            document.DocumentTitle, null, document.Status == StockDocumentStatus.Rejected
+                ? "Xóa phiếu nhập bị trả về/từ chối"
+                : "Xóa phiếu nhập nháp chưa gửi duyệt");
         // Existing DbContext soft-delete preserves the receipt and its business audit evidence.
         db.StockDocuments.Remove(document);
         await SaveAsync(null, ct);
@@ -86,7 +105,7 @@ public sealed class ReceiptDocumentActionsService(AppDbContext db, ITenantContex
 
     private async Task<StockDocument> LoadAsync(int id, bool tracked, CancellationToken ct)
     {
-        var query = db.StockDocuments.Where(x => x.Id == id && x.StoreId == StoreId &&
+        var query = db.StockDocuments.Include(x => x.Supplier).Where(x => x.Id == id && x.StoreId == StoreId &&
             !x.IsDeleted && x.Type == StockDocumentType.Receipt && x.Status != StockDocumentStatus.Cancelled);
         return await (tracked ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct)
             ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập hoặc phiếu đã bị xóa/hủy.");

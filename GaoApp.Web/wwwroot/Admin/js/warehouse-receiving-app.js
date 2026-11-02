@@ -2,7 +2,7 @@
     'use strict';
     const page = document.querySelector('.wrd-page');
     if (!page || !document.getElementById('wraMore')) return;
-    const byId = id => document.getElementById(id), media = matchMedia('(max-width: 768px)');
+    const byId = id => document.getElementById(id), media = matchMedia('(max-width: 767.98px)');
     const inputSelector = '.js-receiving-qty,[data-intake-quantity]';
     const rows = () => [...byId('wrdLinesContainer').querySelectorAll('tr[data-receiving-key]')];
     const number = value => Number(String(value).trim().replace(',', '.'));
@@ -68,6 +68,9 @@
             text('wraStatus',quantities().hasFailed()?'Chưa xác nhận lưu số lượng. Bấm Lưu lại.':quantities().isSaving()?'Đang lưu · có thể tiếp tục chỉnh số lượng':'Số lượng đã đổi · sẽ tự lưu');
             byId('wraStatus').dataset.state=quantities().hasFailed()?'error':quantities().isSaving()?'saving':'pending';
         }
+        else if(window.ReceivingDraftRecovery?.hasPending()){
+            text('wraStatus','Có phần nhập chưa xác nhận lưu. Khôi phục để tiếp tục.');byId('wraStatus').dataset.state='pending';
+        }
         const dirty=entries.some(row=>{const input=row.querySelector(inputSelector);return input&&!input.readOnly&&number(input.value)!==number(input.defaultValue);});
         byId('wraRetry').hidden=!((dirty || window.receivingHasPendingChanges?.()) && !quantityBusy && !window.ReceiptQuantityControls?.isBusy() && source?.dataset.state!=='saving');
         if(quantities()?.hasPending())byId('wraRetry').hidden=!quantities().hasFailed();
@@ -90,7 +93,10 @@
         enhanceRows();
         if(!viewport || tab!=='items')return;
         const anchor=rows().find(row=>row.dataset.receivingKey===viewport.key);
-        const top=anchor && Number.isFinite(viewport.top) ? scrollY+anchor.getBoundingClientRect().top-viewport.top : viewport.scroll;
+        // On phones already at the top, keep the confirmation and newest row visible.
+        // Lower rows and every desktop viewport retain the existing row anchor policy.
+        const top=media.matches && viewport.scroll===0 ? 0
+            : anchor && Number.isFinite(viewport.top) ? scrollY+anchor.getBoundingClientRect().top-viewport.top : viewport.scroll;
         window.scrollTo({left:viewport.left,top,behavior:'instant'});
     }
     function currentInput(){return rows().find(row=>row.dataset.receivingKey===quantityKey)?.querySelector(inputSelector);}
@@ -153,6 +159,8 @@
         }
         place(byId('receiptIntake'),info);
         [...page.children].filter(node=>node.classList.contains('alert')).forEach(node=>place(node,info));
+        // Recovery must be visible on both phone tabs, above the receipt content.
+        if(byId('receivingRecovery'))page.querySelector('.wrd-layout').before(byId('receivingRecovery'));
         const dock=byId('wraDockActions');
         place(byId('wrdOpenVoice'),dock);place(byId('wrdOpenCamera'),dock);place(byId('btnSubmitReceiving'),dock);
         page.querySelectorAll('[data-wra-tab]').forEach(button=>{
@@ -167,7 +175,8 @@
         }));
         byId('wraRetry').addEventListener('click',()=>{
             if(quantities()?.hasPending()){void quantities().retry();return;}
-            const dirty=rows().find(row=>{const input=row.querySelector(inputSelector);return input&&!input.readOnly&&number(input.value)!==number(input.defaultValue);});
+            if(window.ReceivingDraftRecovery?.hasPending()){void window.ReceivingDraftRecovery.recover();return;}
+            const dirty=rows().find(row=>{const input=row.querySelector(inputSelector);return input&&!input.readOnly&&(input.dataset.receiptQuantityUncertain==='1'||number(input.value)!==number(input.defaultValue));});
             if(dirty)openQuantity(dirty,true);else window.receivingRetryChanges?.();
         });
         byId('wrdLinesContainer').addEventListener('click',event=>{
@@ -179,7 +188,8 @@
         byId('wraQuantityModal').addEventListener('hide.bs.modal',event=>{if(quantityBusy)event.preventDefault();});
         byId('wraQuantityModal').addEventListener('hidden.bs.modal',()=>{const row=rows().find(row=>row.dataset.receivingKey===quantityKey);row?.querySelector('[data-wra-edit]')?.focus({preventScroll:true});});
         byId('wraQuantity').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();void saveQuantity();}});
-        document.querySelectorAll('[data-wra-quantity-step]').forEach(button=>button.addEventListener('click',()=>{if(!byId('wraQuantity').disabled)byId('wraQuantity').value=String(Math.max(1,Math.round((number(byId('wraQuantity').value)||0)*1000+Number(button.dataset.wraQuantityStep)*1000)/1000));}));
+        byId('wraQuantity').addEventListener('input',()=>window.ReceivingDraftRecovery?.saveQuantityDraft(currentInput(),byId('wraQuantity').value));
+        document.querySelectorAll('[data-wra-quantity-step]').forEach(button=>button.addEventListener('click',()=>{if(!byId('wraQuantity').disabled){byId('wraQuantity').value=String(Math.max(media.matches ? .001 : 1,Math.round((number(byId('wraQuantity').value)||0)*1000+Number(button.dataset.wraQuantityStep)*1000)/1000));byId('wraQuantity').dispatchEvent(new Event('input',{bubbles:true}));}}));
         byId('wraSaveQuantity').addEventListener('click',()=>void saveQuantity());
         byId('wraRemove').addEventListener('click',()=>{
             if(quantityBusy || quantityFailed)return;
@@ -198,6 +208,7 @@
         });
         document.addEventListener('receipt-quantity:idle',scheduleRefresh);
         document.addEventListener('receiving:quantity-draft',refresh);
+        document.addEventListener('receiving:recovery',scheduleRefresh);
         // canStep depends on modal visibility as well as pending work. Recompute
         // at lifecycle completion so the next action sees the current lock state.
         document.addEventListener('shown.bs.modal',refresh);

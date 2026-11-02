@@ -9,17 +9,18 @@
     const assets = document.documentElement.dataset.assetsPath;
     if (assets) endpoint.pathname = assets.replace(/\/$/, '') + '/admin/api/store-activity/presence';
     let lastEdit = 0, lastSent = 0, busy = false, stopped = false, editTimer, pendingTicket = false;
-    const form = state => {
+    const form = (state, interaction = false) => {
         const body = new FormData();
         body.append('ticket', ticket); body.append('tabId', tabId); body.append('state', state);
+        body.append('interaction', String(interaction));
         body.append('__RequestVerificationToken', token);
         return body;
     };
-    async function send(state) {
+    async function send(state, interaction = false) {
         if (stopped || busy) return;
         busy = true; lastSent = Date.now();
         try {
-            const response = await fetch(endpoint, { method: 'POST', body: form(state), credentials: 'same-origin', keepalive: true });
+            const response = await fetch(endpoint, { method: 'POST', body: form(state, interaction), credentials: 'same-origin', keepalive: true });
             if ([401, 403].includes(response.status)) stopped = true;
         } catch (_) { /* The server expires missing heartbeats; business work continues. */ }
         finally {
@@ -38,7 +39,7 @@
         if (event.type === 'pointerdown' && !event.target.closest('input,textarea,select,button,[role="button"]')) return;
         lastEdit = Date.now();
         clearTimeout(editTimer);
-        editTimer = setTimeout(() => send('editing'), Math.max(0, 2000 - (Date.now() - lastSent)));
+        editTimer = setTimeout(() => send('editing', true), Math.max(0, 2000 - (Date.now() - lastSent)));
     }
     ['input', 'change', 'pointerdown'].forEach(name => document.addEventListener(name, interact, { passive: true }));
     function leave() {

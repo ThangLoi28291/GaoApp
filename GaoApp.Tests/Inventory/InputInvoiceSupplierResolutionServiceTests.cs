@@ -195,7 +195,7 @@ public sealed class InputInvoiceSupplierResolutionServiceTests
         public static Task<Fixture> CreateAsync()
         {
             var tenant = new TenantContext();
-            tenant.SetHostAdmin();
+            tenant.SetHostAdminForTest();
             var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
             return Task.FromResult(new Fixture(

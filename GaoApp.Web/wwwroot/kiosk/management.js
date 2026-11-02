@@ -1,7 +1,7 @@
 (() => {
     'use strict';
     const notice = document.getElementById('kioskMonitorState');
-    const date = x => x ? new Date(x.endsWith('Z') ? x : x + 'Z').toLocaleString('vi-VN') : 'Chưa kết nối';
+    const date = x => x ? new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(x) ? x : x + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chưa kết nối';
     let loading = false;
     async function refresh() {
         if (loading || document.hidden) return; loading = true;
@@ -11,7 +11,7 @@
             for (const s of await response.json()) {
                 const card = document.querySelector(`[data-kiosk-id="${s.id}"]`); if (!card) continue;
                 const status = card.querySelector('[data-status]');
-                status.textContent = !s.isActive ? 'Đã thu hồi' : s.isPaused ? 'Tạm dừng' : !s.activated ? 'Chờ kích hoạt' : s.lastSeenAtUtc && Date.now() - Date.parse(s.lastSeenAtUtc.endsWith('Z') ? s.lastSeenAtUtc : s.lastSeenAtUtc + 'Z') < 30000 ? 'Đang kết nối' : 'Mất kết nối';
+                status.textContent = !s.isActive ? 'Đã thu hồi' : s.isPaused ? 'Tạm dừng' : !s.activated ? 'Chờ kích hoạt' : s.lastSeenAtUtc && Date.now() - Date.parse(/(Z|[+-]\d{2}:?\d{2})$/i.test(s.lastSeenAtUtc) ? s.lastSeenAtUtc : s.lastSeenAtUtc + 'Z') < 30000 ? 'Đang kết nối' : 'Mất kết nối';
                 status.className = 'badge ' + (status.textContent === 'Đang kết nối' ? 'bg-label-success' : 'bg-label-warning');
                 card.querySelector('[data-seen]').textContent = 'Truy cập gần nhất: ' + date(s.lastSeenAtUtc);
                 const help = card.querySelector('[data-help]'); help.hidden = !s.helpRequestedAtUtc;
@@ -25,7 +25,7 @@
                     }
                 }
             }
-            notice.textContent = 'Đã cập nhật ' + new Date().toLocaleTimeString('vi-VN') + ' · Tự cập nhật mỗi 5 giây';
+            notice.textContent = 'Đã cập nhật ' + new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) + ' · Tự cập nhật mỗi 5 giây';
         } catch { notice.textContent = 'Chưa cập nhật được trạng thái. Đang thử kết nối lại…'; }
         finally { loading = false; }
     }

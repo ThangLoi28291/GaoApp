@@ -1,6 +1,4 @@
 using GaoApp.Application.DTOs.Audit;
-using GaoApp.Application.Interfaces.Services.Audit;
-using GaoApp.Domain.Enums;
 using GaoApp.Web.Areas.Admin.ViewModels.Account;
 using GaoApp.Web.Hubs;
 using GaoApp.Web.Services.Accounts;
@@ -16,8 +14,8 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Route("admin/account")]
 [Authorize]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class EmployeeAccountController(EmployeeAccountService accounts, IAuditLogService audit,
-    RevocablePosHubLifetimeManager sessions, ILogger<EmployeeAccountController> logger) : Controller
+public sealed class EmployeeAccountController(EmployeeAccountService accounts,
+    RevocablePosHubLifetimeManager sessions) : Controller
 {
     [HttpPost("change-password")]
     [ValidateAntiForgeryToken]
@@ -44,20 +42,6 @@ public sealed class EmployeeAccountController(EmployeeAccountService accounts, I
         // All cookies become invalid through AuthSessionStamp; close this user's live POS connections as well.
         sessions.RevokeUser(int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!));
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-        try
-        {
-            await audit.WriteAsync(new WriteAuditLogRequest
-            {
-                Module = AuditModuleType.Authentication, ActionType = AuditActionType.Update,
-                Summary = "Nhân viên tự đổi mật khẩu. Các phiên cũ cần đăng nhập lại.", IsSuccess = true
-            }, ct);
-        }
-        catch (Exception ex)
-        {
-            // A completed credential change must not be presented as a failed change if its audit sink is unavailable.
-            logger.LogWarning("Password change audit failed. TraceId={TraceId}; ExceptionType={ExceptionType}",
-                HttpContext.TraceIdentifier, ex.GetType().Name);
-        }
         TempData["PasswordChanged"] = "Đổi mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.";
         return Ok(new { message = "Đổi mật khẩu thành công.", redirectUrl = Url.Action("Login", "Account", new { area = "Admin" }) });
     }

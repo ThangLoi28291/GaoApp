@@ -8,13 +8,32 @@ Tài liệu mô tả **source đang tồn tại**, không mặc định rằng t
 
 | Thuộc tính | Giá trị |
 |---|---|
-| Source root | `D:\Datacode` |
+| Source root | Thư mục chứa `GaoApp.sln`, không cố định ổ đĩa |
 | Last verified branch | `fix/r2-0-c2-durable-inventory-posting` |
 | Last verified commit | `0a5b2cf5734fd69dfa1e709de3984222c1ee4158` |
 | Last verified date | 2026-08-03 |
 | Runtime/build/test during verification | Không chạy; đây là task tài liệu Level A |
 
 > Cảnh báo cập nhật: bản đồ này phải được kiểm tra lại sau mọi thay đổi schema, workflow, endpoint, permission hoặc Confirm posting. Không dùng commit ở trên như bằng chứng cho source mới hơn.
+
+### Chạy local sau khi chuyển thư mục hoặc ổ đĩa
+
+Từ thư mục chứa `GaoApp.sln`, chạy:
+
+```powershell
+.\scripts\start-local-web.ps1
+# Chỉ restore/build, không khởi động Web:
+.\scripts\start-local-web.ps1 -BuildOnly
+# Tùy chọn: -Configuration Release -LaunchProfile http
+```
+
+Script tự tìm source theo vị trí của chính nó, dùng cấu hình launch của dự án và tạo build trong `.artifacts/local-web/`. Mỗi vị trí source có thư mục build riêng, nên khi copy cả source sang nơi khác, manifest tài nguyên và `obj` từ ổ cũ không được dùng lại. Lệnh chạy local này tắt tự cập nhật schema; không chạy seeder hoặc tạo menu. Khi cần cập nhật schema, dùng quy trình Migrator riêng của dự án.
+
+Nếu chạy bằng Visual Studio, mở solution tại vị trí mới và restore/build lại; không chạy trực tiếp executable cũ bằng `--no-build` sau khi di chuyển. Các publish profile tính đầu ra từ `$(MSBuildProjectDirectory)` vào `publish/portable/`, `publish/releases/` hoặc `publish/server/` trong source.
+
+Uploads, database, DataProtection keys và cấu hình host là dữ liệu riêng của máy, không đi theo đường dẫn source. Giữ nguyên key ring đang dùng để tiếp tục giải mã dữ liệu. Development trên máy hiện tại dùng `C:\GaoAppData\Uploads` và `C:\GaoAppData\DataProtectionKeys`; có thể cấu hình nơi khác qua `Storage__UploadRoot`, `DataProtection__KeysPath` hoặc user-secrets. Khi đổi máy cần cấu hình SQL, dữ liệu, khóa và quyền truy cập tương ứng.
+
+ChatbotLocal là source/dịch vụ riêng. Script chatbot nhận `-ChatbotDirectory` hoặc `CHATBOTLOCAL_DIRECTORY`; file API key có thể ghi đè bằng `ChatbotTestApi__ApiKeyFilePath`. Các đường dẫn D: còn trong log, hồ sơ kiểm thử, ví dụ triển khai trên server và script migration cũ mô tả máy hoặc lần chạy trước, không phải cấu hình khởi động Web.
 
 Baseline hiện tại bao gồm governance R2.0-A2 (`3086b86daf7c8ae5bfc2868c6badb3da3542f339`, merge `ae7bf491f2e75fa1b8009a600d064eac2b4883b9`), C1 tenant-safe XML detail mapping (`f0ebd2b4a864d18605806fb85b833dc547fa9f76`, merge `d9b4b06c2a8f35bc0021c8f41a88361307e1d634`) và ba chặng C2: C2A atomic posting core `d1b06dce5343808493ebb7d1b599e01a06ae5113`, C2B1 non-POS adoption `3c99f19131a8c1af0bbfeeba94eb286c0081686c`, C2B2 POS/Return/LegalEntity/Reservation/Revaluation adoption `0a5b2cf5734fd69dfa1e709de3984222c1ee4158`. Tại thời điểm cập nhật tài liệu, C2B2 đã có Independent Review PASS và GitHub required checks 2/2 Success trên head này; PR #8 vẫn open và unmerged. Đây là evidence của implementation C2, không phải verdict cho task documentation C2C.
 

@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
@@ -26,8 +26,8 @@ public class ViettelInvoiceSyncController : Controller
         {
             Query = new ViettelInvoiceListSyncRequestDto
             {
-                FromDate = DateTime.Today,
-                ToDate = DateTime.Today,
+                FromDate = VietnamTime.Today,
+                ToDate = VietnamTime.Today,
                 PageSize = 100,
                 UpdateLocalInvoices = true
             }
@@ -44,7 +44,7 @@ public class ViettelInvoiceSyncController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message ?? "Đồng bộ danh sách Viettel thất bại.";
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error) ?? "Đồng bộ danh sách Viettel thất bại.";
 
             return View(new ViettelInvoiceSyncIndexViewModel
             {

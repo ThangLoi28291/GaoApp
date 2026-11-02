@@ -1,0 +1,127 @@
+/* UI-13: phone presentation only; legal entity settings, controls and report values stay native. */
+@media (max-width: 767.98px) {
+    body[data-legal-phone] { --legal-phone-ink: #172d4d; --legal-phone-blue: #2463eb; --legal-phone-line: #dce5f0; background: #f3f6fb; }
+    body[data-legal-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    [data-legal-phone-root] { width: 100%; max-width: 100%; min-width: 0; color: var(--legal-phone-ink); padding-bottom: 20px; }
+    [data-legal-phone-root] :is(.row > *, .card, .card-body, .le-card, .le-field, .le-head > *, .preflight-check .d-flex > div, .canary-check .d-flex > div, .canary-event, .feature-state-control) { min-width: 0; }
+    [data-legal-phone-root] :is(h2, h4, h5, h6, strong, p, a, .badge, .legal-muted, .le-note, .le-subtitle, .le-stat-value, .canary-metric-value, .legal-stat-value) { overflow-wrap: anywhere; white-space: normal; }
+    [data-legal-phone-root] :is(h2, h4, h5, h6) { color: var(--legal-phone-ink); line-height: 1.4; }
+    [data-legal-phone-root] :is(h2.le-title, h4) { font-size: 22px; font-weight: 750; }
+    [data-legal-phone-root] :is(p.text-muted, .le-subtitle) { font-size: 13px; line-height: 1.65; font-weight: 400; }
+    body[data-legal-phone] :is([data-legal-phone-root], #legalEntityModal, .swal2-popup) :is(.btn, .le-btn, button.swal2-styled) { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; max-width: 100%; border-radius: 12px; white-space: normal; font-size: 14px; line-height: 1.5; }
+    body[data-legal-phone] :is([data-legal-phone-root], #legalEntityModal) .btn-primary { background: var(--legal-phone-blue); border-color: var(--legal-phone-blue); box-shadow: none; }
+    body[data-legal-phone] :is([data-legal-phone-root], #legalEntityModal, .swal2-popup) :is(.form-control, .form-select, .swal2-input, .swal2-textarea) { min-width: 0; min-height: 48px; max-width: 100%; border-radius: 12px; font-size: 16px !important; border-color: #cfdbea; }
+    body[data-legal-phone] :is(button, a, input, select, textarea):focus-visible { outline: 3px solid #2463eb70; outline-offset: 3px; }
+    [data-legal-phone-root] :is(.card, .le-card) { border: 1px solid var(--legal-phone-line) !important; border-radius: 18px; box-shadow: 0 3px 14px #172d4d05 !important; background: #fff; }
+    [data-legal-phone-root] :is(.card-header, .card-body, .le-card-head, .le-card-body) { padding: 16px; }
+    [data-legal-phone-root] :is(.card-header, .le-card-head) { border-color: var(--legal-phone-line); background: #fff; }
+    [data-legal-phone-root] :is(.card-header .small, .le-note, .legal-muted) { line-height: 1.6; }
+    #legalEntityPage > .d-flex:first-child { padding: 16px; border: 1px solid var(--legal-phone-line); border-radius: 18px; background: #fff; gap: 14px !important; }
+    #legalEntityPage > .d-flex:first-child > .d-flex, .le-actions { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; width: 100%; }
+    #featureGateBanner { padding: 16px; border-radius: 18px; gap: 12px !important; }
+    #featureGateBanner > .bx { display: none; }
+    #featureGateBanner .feature-state-control { width: 100%; min-width: 0; padding: 12px; }
+    #featureGateBanner .form-switch { display: flex; align-items: center; gap: 12px; min-height: 44px; padding-left: 0; }
+    #featureGateBanner .form-switch .form-check-input { flex: 0 0 44px; width: 44px; height: 24px; margin: 0; }
+    #featureGateBanner .form-switch .form-check-label { display: flex; align-items: center; min-height: 44px; }
+    #legalEntityPage > .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-right: 0; margin-left: 0; }
+    #legalEntityPage > .row > div { width: auto; padding: 0; margin: 0; }
+    #legalEntityPage .legal-stat-card { border-left: 4px solid var(--legal-phone-blue) !important; }
+    #legalEntityPage .legal-stat-card .card-body { padding: 14px 12px; }
+    #legalEntityPage .legal-stat-card .small { font-size: 12px; line-height: 1.5; }
+    #legalEntityPage .legal-stat-value { font-size: 26px; }
+    #preflightChecks { gap: 12px; margin-left: 0; margin-right: 0; }
+    #preflightChecks > div { width: 100%; margin: 0; padding: 0; }
+    #legalEntityPage .preflight-check, #legalEntityPage .canary-check, #legalEntityPage .canary-event { padding: 14px; border-radius: 14px; border-color: var(--legal-phone-line); }
+    #canaryPanel .card-header > div:first-child > .d-flex { flex-wrap: wrap; }
+    #canaryPanel .card-header h5 { font-size: 18px; }
+    #canaryMetrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-left: 0; margin-right: 0; }
+    #canaryMetrics > div { width: auto; margin: 0; padding: 0; }
+    #canaryMetrics .canary-metric { padding: 12px; border-radius: 14px; background: #f5f8fc; border-color: var(--legal-phone-line); }
+    #canaryMetrics .small { font-size: 12px; line-height: 1.5; }
+    .le-page[data-legal-phone-root] { gap: 16px; }
+    .le-head { display: flex; flex-direction: column; gap: 14px; padding: 16px; border: 1px solid var(--legal-phone-line); border-radius: 18px; background: #fff; }
+    .le-page > .alert { border-radius: 16px; padding: 16px; overflow-wrap: anywhere; }
+    .le-filter { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    .le-field label { font-size: 13px; font-weight: 650; }
+    .le-filter > .d-flex { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; }
+    .le-check { min-height: 48px; padding: 10px 12px; border-radius: 12px; font-size: 14px; }
+    .le-check input { flex-shrink: 0; width: 20px; height: 20px; }
+    .le-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .le-stat { min-width: 0; padding: 14px 12px; border-radius: 16px; border-color: var(--legal-phone-line); }
+    .le-stat-label { font-size: 11px; line-height: 1.5; }
+    .le-stat-value { font-size: 21px; line-height: 1.4; }
+    .le-stat .le-note { margin-top: 6px; font-size: 12px; }
+    .le-status { white-space: normal; font-size: 12px; line-height: 1.4; }
+    .le-pager { flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; }
+    .le-pager > .d-flex { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; }
+    .le-link { display: inline-flex; align-items: center; min-height: 44px; min-width: 44px; }
+
+    /* Existing physical rows become labelled cards; values and command nodes stay in place. */
+    [data-legal-phone-root] .table-responsive:has([data-legal-phone-table]) { overflow: visible; }
+    [data-legal-phone-table] { display: block; width: 100%; min-width: 0; margin: 0; }
+    [data-legal-phone-table] thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); clip-path: inset(50%); white-space: nowrap; }
+    [data-legal-phone-table] tbody { display: grid; gap: 12px; padding: 12px; }
+    [data-legal-phone-table] tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; padding: 16px; border: 1px solid var(--legal-phone-line); border-radius: 16px; background: #fff; }
+    [data-legal-phone-table] tbody > tr > td:not([hidden]):not(.d-none) { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 0; border: 0; white-space: normal; overflow-wrap: anywhere; text-align: left !important; color: var(--legal-phone-ink); box-shadow: none; }
+    [data-legal-phone-table] [data-legal-phone-label]::before { content: attr(data-legal-phone-label); color: #627591; font-size: 12px; font-weight: 600; line-height: 1.5; }
+    [data-legal-phone-table] [data-legal-phone-label=""]::before { display: none; }
+    [data-legal-phone-table] [data-legal-phone-wide] { grid-column: 1 / -1; }
+    #legalEntityTable [data-legal-phone-label="Ưu tiên"] { display: flex !important; flex-direction: row; align-items: center; justify-content: space-between; }
+    #legalEntityTable .legal-priority { width: 36px; height: 36px; border-radius: 12px; background: #edf4ff; color: var(--legal-phone-blue); }
+    #legalEntityTable .legal-code { color: var(--legal-phone-blue); font-size: 12px; }
+    #legalEntityTable .fw-semibold { font-size: 14px; line-height: 1.55; }
+    #legalEntityTable .text-truncate { max-width: 100% !important; white-space: normal; overflow: visible; }
+    #legalEntityTable .form-switch { min-height: 44px; align-items: center; justify-content: flex-start !important; margin: 0; padding: 0; }
+    #legalEntityTable .form-switch .form-check-input { width: 44px; height: 24px; margin: 0; }
+    #legalEntityTable [data-legal-phone-label="Thao tác"]::before { display: none; }
+    #legalEntityTable [data-legal-phone-label="Thao tác"] > .btn { width: 100%; }
+    [data-legal-phone-table] .le-empty { padding: 24px 0; }
+
+    /* Native form remains the owner; one body scrolls inside a bounded phone sheet. */
+    body[data-legal-phone] #legalEntityModal { padding: 0 !important; }
+    body[data-legal-phone] #legalEntityModal .modal-dialog:not(.modal-fullscreen) { display: flex; align-items: flex-end; width: 100%; max-width: none; height: var(--gao-mobile-visible-height, 100dvh); min-height: 0; margin: 0; padding-top: max(12px, env(safe-area-inset-top)); box-sizing: border-box; }
+    body[data-legal-phone] #legalEntityModal .modal-content { display: flex; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); width: 100%; padding: 0; border: 0; border-radius: 22px 22px 0 0; overflow: hidden; }
+    body[data-legal-phone] #legalEntityForm { display: flex; flex-direction: column; min-height: 0; max-height: inherit; overflow: hidden; }
+    body[data-legal-phone] #legalEntityModal :is(.modal-header, .modal-footer) { flex-shrink: 0; padding: 16px; gap: 12px; border-color: var(--legal-phone-line); }
+    body[data-legal-phone] #legalEntityModal .modal-header { align-items: flex-start; }
+    body[data-legal-phone] #legalEntityModal .modal-header > div { flex: 1; min-width: 0; }
+    body[data-legal-phone] #legalEntityModal .modal-title { color: var(--legal-phone-ink); font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
+    body[data-legal-phone] #legalEntityModal .modal-header .small { font-size: 12px; line-height: 1.5; }
+    body[data-legal-phone] #legalEntityModal .modal-header .btn-close,
+    body[data-legal-phone] #legalEntityModal .modal-header .btn-close:hover { position: static; inset: auto; flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; transform: none !important; box-sizing: border-box; }
+    body[data-legal-phone] #legalEntityModal .modal-body { flex: 1 1 auto; min-height: 0; padding: 16px; overflow: auto; overscroll-behavior: contain; }
+    #legalEntityForm .row > div { width: 100%; min-width: 0; }
+    #legalEntityForm [data-legal-phone-section]::before { content: attr(data-legal-phone-section); display: block; margin: 4px 0 14px; padding-bottom: 10px; border-bottom: 1px solid var(--legal-phone-line); color: var(--legal-phone-ink); font-size: 15px; font-weight: 700; }
+    #legalEntityForm .form-label { color: #405572; font-size: 13px; font-weight: 600; }
+    #legalEntityForm .form-text { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+    #legalEntityForm .form-switch { display: flex; align-items: center; gap: 12px; min-height: 44px; padding-left: 0; }
+    #legalEntityForm .form-switch .form-check-input { flex: 0 0 44px; width: 44px; height: 24px; margin: 0; }
+    #legalEntityForm .form-switch label { display: flex; align-items: center; min-height: 44px; font-size: 14px; }
+    #legalEntityForm textarea { min-height: 100px !important; }
+    body[data-legal-phone] #legalEntityModal .modal-footer { display: flex; flex-wrap: nowrap; padding-bottom: calc(16px + env(safe-area-inset-bottom)); background: #fff; }
+    body[data-legal-phone] #legalEntityModal .modal-footer > .btn { flex: 1 1 0; margin: 0; }
+
+    body[data-legal-phone] .select2-container { min-width: 0; max-width: 100%; }
+    body[data-legal-phone] > .select2-container--open { max-width: calc(100vw - 64px); }
+    body[data-legal-phone] .select2-dropdown { min-width: 0 !important; max-width: calc(100vw - 64px); }
+    body[data-legal-phone] .select2-search__field { min-height: 44px; font-size: 16px !important; }
+    body[data-legal-phone] .select2-results__option { min-height: 44px; padding: 12px; overflow-wrap: anywhere; }
+    body[data-legal-phone] .swal2-container { padding: 12px !important; }
+    body[data-legal-phone] .swal2-popup.swal2-modal { display: flex !important; flex-direction: column; width: 100% !important; max-width: 100%; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 24px); box-sizing: border-box; padding: 0 0 16px; border: 1px solid var(--legal-phone-line); border-radius: 22px; color: var(--legal-phone-ink); overflow: hidden; }
+    body[data-legal-phone] .swal2-popup.swal2-modal > :not(.swal2-html-container) { flex-shrink: 0; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-title { padding: 18px 16px 0; font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-icon { width: 60px; height: 60px; margin: 16px auto 0; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-icon-content { font-size: 48px; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-html-container { flex: 1 1 auto; min-height: 0; margin: 16px; padding: 0; font-size: 14px; line-height: 1.6; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; overflow-wrap: anywhere; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-input-label { margin: 16px 16px 0; font-size: 14px; line-height: 1.5; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-textarea { width: calc(100% - 32px); min-height: 76px; height: 96px; max-height: 24dvh; margin: 12px 16px 0; box-sizing: border-box; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-actions { display: flex; flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; gap: 10px; width: auto; margin: 16px 16px 0; padding-bottom: env(safe-area-inset-bottom); }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-actions button.swal2-styled { flex: 1 1 0; width: auto; min-height: 48px; margin: 0; padding: 12px; font-size: 14px; }
+    body[data-legal-phone] .swal2-popup.swal2-modal .swal2-validation-message { margin: 12px 16px 0; padding: 12px; border-radius: 12px; font-size: 13px; }
+    body[data-legal-phone] .swal2-popup.swal2-show { animation: legal-phone-reveal .18s ease-out; }
+    @keyframes legal-phone-reveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    body[data-legal-phone] :is(.modal-dialog, .swal2-popup) { animation: none !important; transition: none !important; }
+}

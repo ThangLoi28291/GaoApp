@@ -89,35 +89,13 @@
     function toDateTimeLocal(dateValue) {
         if (!dateValue) return '';
 
-        const d = new Date(dateValue);
+        const d = new Date(typeof dateValue === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(dateValue) ? dateValue + 'Z' : dateValue);
         if (Number.isNaN(d.getTime())) return '';
-
-        const pad = n => String(n).padStart(2, '0');
-
-        return [
-            d.getFullYear(),
-            pad(d.getMonth() + 1),
-            pad(d.getDate())
-        ].join('-') + 'T' + [
-            pad(d.getHours()),
-            pad(d.getMinutes())
-        ].join(':');
+        return new Date(d.getTime() + 7 * 3600000).toISOString().slice(0, 16);
     }
 
     function nowDateTimeLocal(offsetDays) {
-        const d = new Date();
-        d.setDate(d.getDate() + (offsetDays || 0));
-
-        const pad = n => String(n).padStart(2, '0');
-
-        return [
-            d.getFullYear(),
-            pad(d.getMonth() + 1),
-            pad(d.getDate())
-        ].join('-') + 'T' + [
-            pad(d.getHours()),
-            pad(d.getMinutes())
-        ].join(':');
+        return new Date(Date.now() + 7 * 3600000 + (offsetDays || 0) * 86400000).toISOString().slice(0, 16);
     }
 
     function typeText(type) {
@@ -866,8 +844,8 @@
             buyQuantity: type === 3 ? toNumber(val('promoBuyQuantity')) : null,
             getQuantity: type === 3 ? toNumber(val('promoGetQuantity')) : null,
             requireGiftQuantityInCart: val('promoRequireGiftQuantityInCart') === 'true',
-            startAtUtc: new Date(val('promoStartAt')).toISOString(),
-            endAtUtc: new Date(val('promoEndAt')).toISOString(),
+            startAtUtc: new Date(val('promoStartAt') + '+07:00').toISOString(),
+            endAtUtc: new Date(val('promoEndAt') + '+07:00').toISOString(),
             isActive: getChecked('promoIsActive'),
             priority: toNumber(val('promoPriority')),
             customerPriceTier: val('promoCustomerTier') || null,
@@ -882,7 +860,7 @@
 
         if (!req.startAtUtc || !req.endAtUtc) return 'Vui lòng chọn thời gian áp dụng.';
 
-        if (new Date(req.endAtUtc) <= new Date(req.startAtUtc)) {
+        if (new Date(typeof req.endAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(req.endAtUtc) ? req.endAtUtc + 'Z' : req.endAtUtc) <= new Date(typeof req.startAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(req.startAtUtc) ? req.startAtUtc + 'Z' : req.startAtUtc)) {
             return 'Ngày kết thúc phải lớn hơn ngày bắt đầu.';
         }
 

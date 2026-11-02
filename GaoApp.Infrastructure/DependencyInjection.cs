@@ -109,6 +109,7 @@ public static class DependencyInjection
         // Dùng cho các service hạ tầng cần đọc request hiện tại.
         // =========================================================
         services.AddHttpContextAccessor();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.Security.ISecurityAdministrationGuard, SecurityAdministrationGuard>();
 
         // Cache
         services.AddMemoryCache();
@@ -146,6 +147,32 @@ public static class DependencyInjection
         // nên phần này bắt buộc phải được đăng ký ở Infrastructure.
         // =========================================================
         services.AddScoped<TenantContext>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontSettingsService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontSettingsService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontSalesControlService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontSalesControlService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontProductService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontProductService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontCatalogService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontCatalogService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontOrderInboxService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontOrderInboxService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontFulfillmentService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontFulfillmentService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontCancellationService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontCancellationService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontRefundService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontRefundService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontSettlementService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontSettlementService>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontSaleBridge,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontSaleBridge>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontInvoiceProcessor,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontInvoiceProcessor>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontInventoryIssueAdapter,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontInventoryIssueAdapter>();
+        services.AddScoped<GaoApp.Application.Storefront.IStorefrontBankEvidenceReadService,
+            GaoApp.Infrastructure.Services.Storefront.StorefrontBankEvidenceReadService>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryFoundationService,
             GaoApp.Infrastructure.Services.Delivery.DeliveryFoundationService>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryPickingService,
@@ -406,15 +433,18 @@ public static class DependencyInjection
         services.AddScoped<IInventoryCostLayerAllocationRepository, InventoryCostLayerAllocationRepository>();
         services.AddScoped<IInputInvoiceRepository, InputInvoiceRepository>();
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+        services.AddScoped<IInvoiceOrderDraftRepository, InvoiceOrderDraftRepository>();
         services.AddScoped<IAutoInvoiceRepository, AutoInvoiceRepository>();
         services.AddScoped<
     IInvoiceBuyerSelfServiceRepository,
     InvoiceBuyerSelfServiceRepository>();
         services.AddScoped<IInvoiceInputStockRepository, InvoiceInputStockRepository>();
+        services.AddScoped<IInvoiceProductPickerRepository, InvoiceInputStockRepository>();
         services.AddScoped<IInvoiceInputStockReadRepository, InvoiceInputStockReadRepository>();
         services.AddScoped<IAdminMenuRepository, AdminMenuRepository>();
         services.AddScoped<IAdminMenuPermissionRepository, AdminMenuPermissionRepository>();
         services.AddScoped<GaoApp.Application.Interfaces.Services.AdminMenus.IAdminMenuVisibilityService, AdminMenuVisibilityService>();
+        services.AddScoped<GaoApp.Application.Interfaces.Services.AdminMenus.IAdminMenuPinService, AdminMenuPinService>();
 
         // =========================================================
         // UNIT OF WORK
@@ -457,6 +487,7 @@ public static class DependencyInjection
         services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         services.AddScoped<IAuditExecutionContextAccessor, HttpAuditExecutionContextAccessor>();
         services.AddScoped<AuditSaveChangesInterceptor>();
+        services.AddScoped<AuditOutboxProcessor>();
 
         // =========================================================
         // DB CONTEXT

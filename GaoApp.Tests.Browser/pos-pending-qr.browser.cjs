@@ -31,7 +31,9 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
                 else {
                     pending = { id: qrs.length + 1, orderId: 15, bankAccountId: 1, amount: input.amount,
                         requestCode: `QR-${qrs.length + 1}`, status: 0, content: 'TEST PAYMENT', bankName: 'Ngân hàng thử nghiệm',
-                        accountNumber: '123456789', accountName: 'POS TEST', createdAtUtc: new Date().toISOString(),
+                        // This isolated conflict probe models an already granted manual review.
+                        // The real SQL phone probe separately checks the server's waiting period.
+                        accountNumber: '123456789', accountName: 'POS TEST', manualFallback: true, createdAtUtc: new Date().toISOString(),
                         qrDataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l1kAAAAASUVORK5CYII=' };
                     qrs.push(pending); body = pending;
                 }

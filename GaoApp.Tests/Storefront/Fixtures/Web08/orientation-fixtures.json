@@ -1,0 +1,268 @@
+{
+  "AuthoringOnly": true,
+  "NoApplicationTestRun": true,
+  "Source": "Independently authored asymmetric four-colour marker image",
+  "Licence": "CC0-1.0; test-fixture authors waive rights in this generated image",
+  "NoMerchantPhotoOrPhysicalDeviceClaim": true,
+  "Python": "3.12.14",
+  "Pillow": "12.3.0",
+  "ExpectedMapping": "EXIF standard orientation transforms, independent of production image scaler",
+  "Fixtures": [
+    {
+      "File": "orientation-1.jpg",
+      "SHA256": "129F9B06BC0EE7E2450F82C3D61A82345838AFC1DC63D12C09BD99A398D8199C",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 1,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 80,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          232,
+          32,
+          32
+        ],
+        [
+          25,
+          190,
+          45
+        ],
+        [
+          25,
+          55,
+          220
+        ],
+        [
+          230,
+          205,
+          20
+        ]
+      ]
+    },
+    {
+      "File": "orientation-2.jpg",
+      "SHA256": "AF7596DAC534C6D1A01F6293E7ADA9FFA66A888F4268B6435C95C7D449EC06FD",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 2,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 80,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          25,
+          190,
+          45
+        ],
+        [
+          232,
+          32,
+          32
+        ],
+        [
+          230,
+          205,
+          20
+        ],
+        [
+          25,
+          55,
+          220
+        ]
+      ]
+    },
+    {
+      "File": "orientation-3.jpg",
+      "SHA256": "D84E8853B7C6248CBB6069749F6282A940BBA59FD9B81D835FB6126FDAF97FFD",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 3,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 80,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          230,
+          205,
+          20
+        ],
+        [
+          25,
+          55,
+          220
+        ],
+        [
+          25,
+          190,
+          45
+        ],
+        [
+          232,
+          32,
+          32
+        ]
+      ]
+    },
+    {
+      "File": "orientation-4.jpg",
+      "SHA256": "26BFA847D1761F5CD1FB56BB02FED811D76E83D22B816CA6FA64B30BED13D0D1",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 4,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 80,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          25,
+          55,
+          220
+        ],
+        [
+          230,
+          205,
+          20
+        ],
+        [
+          232,
+          32,
+          32
+        ],
+        [
+          25,
+          190,
+          45
+        ]
+      ]
+    },
+    {
+      "File": "orientation-5.jpg",
+      "SHA256": "3D1DF19F696C7D0C38FEE8DF5C8AD25274E796AE8BCC8454860CA4C191813EE2",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 5,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 320,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          232,
+          32,
+          32
+        ],
+        [
+          25,
+          55,
+          220
+        ],
+        [
+          25,
+          190,
+          45
+        ],
+        [
+          230,
+          205,
+          20
+        ]
+      ]
+    },
+    {
+      "File": "orientation-6.jpg",
+      "SHA256": "242C1A24395E63292D1DA9757B550309E7F07092950358D429E41F558086577D",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 6,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 320,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          25,
+          55,
+          220
+        ],
+        [
+          232,
+          32,
+          32
+        ],
+        [
+          230,
+          205,
+          20
+        ],
+        [
+          25,
+          190,
+          45
+        ]
+      ]
+    },
+    {
+      "File": "orientation-7.jpg",
+      "SHA256": "2D1CA8EF991A7F993B82027DFC85B65DE74BC8EB143DADDAF04D5E930FDF0A7A",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 7,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 320,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          230,
+          205,
+          20
+        ],
+        [
+          25,
+          190,
+          45
+        ],
+        [
+          25,
+          55,
+          220
+        ],
+        [
+          232,
+          32,
+          32
+        ]
+      ]
+    },
+    {
+      "File": "orientation-8.jpg",
+      "SHA256": "F2F4C332DC6F3916841AF3922D69105D5976045E348043124142890FA4FC271F",
+      "Bytes": 10160,
+      "EncodedWidth": 640,
+      "EncodedHeight": 320,
+      "ExifOrientation": 8,
+      "ExpectedDerivativeWidth": 160,
+      "ExpectedDerivativeHeight": 320,
+      "ExpectedCornersTLTRBLBR": [
+        [
+          25,
+          190,
+          45
+        ],
+        [
+          230,
+          205,
+          20
+        ],
+        [
+          232,
+          32,
+          32
+        ],
+        [
+          25,
+          55,
+          220
+        ]
+      ]
+    }
+  ]
+}

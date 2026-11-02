@@ -39,7 +39,7 @@ public sealed partial class ProductLabelService
             if (ids is null || ids.Count is 0 or > 500 || ids.Distinct().Count() != ids.Count || ids.Any(id => source.Products.All(p => p.VariantId != id)))
                 throw new ValidationAppException("Chọn sản phẩm thuộc phiếu nhập này.");
             var conversions = await QuickCatalog().Where(x => ids.Contains(x.ProductVariantId) && x.IsBaseUnit && x.Factor == 1 && x.UnitId == x.ProductVariant.Product.BaseUnitId)
-                .Select(x => x.Id).ToListAsync(ct);
+                .OrderBy(x => x.Id).Select(x => x.Id).ToListAsync(ct);
             options = await QuickOptions(conversions, ct);
             if (options.Count != ids.Count) throw new ConflictAppException("Có sản phẩm chưa có đơn vị gốc đang hoạt động. Kiểm tra danh mục trước.");
             options = options.Select(o => o with { Product = source.Products.Single(p => p.VariantId == o.Product.VariantId) }).ToList();

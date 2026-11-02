@@ -30,8 +30,9 @@
         ['Khôi phục hàng chờ duyệt', 'goods'],
         ['Đổi tên phiếu nhập', 'receipt'], ['Yêu cầu đổi tên phiếu nhập', 'approval'],
         ['Duyệt đổi tên phiếu nhập', 'approval'], ['Từ chối đổi tên phiếu nhập', 'approval'],
-        ['Xóa phiếu nháp chưa gửi duyệt', 'receipt'],
-        ['Kết thúc chờ hóa đơn', 'invoice'], ['Xác nhận đã kiểm tra hóa đơn', 'invoice']
+        ['Xóa phiếu nhập', 'receipt'],
+        ['Kết thúc chờ hóa đơn', 'invoice'], ['Xác nhận đã kiểm tra hóa đơn', 'invoice'],
+        ['Sửa nhà cung cấp sau duyệt', 'receipt']
     ];
     const labels = {
         Quantity: 'Số lượng nhập', BaseQuantity: 'Số lượng quy đổi', Factor: 'Hệ số quy đổi',
@@ -41,6 +42,7 @@
         WaitForInputInvoice: 'Chờ nhà cung cấp gửi hóa đơn',
         InvoiceFollowUp: 'Theo dõi hóa đơn', MapId: 'Liên kết hóa đơn', EvidenceFingerprint: 'Dấu kiểm tra số liệu',
         WarehouseId: 'Kho nhập', SupplierId: 'Nhà cung cấp', ReceiptSource: 'Nguồn nhập', PurchaseOrderId: 'Đơn đặt hàng',
+        SupplierName: 'Tên nhà cung cấp', SupplierTaxCode: 'Mã số thuế nhà cung cấp', PurchasePayables: 'Công nợ tiền hàng',
         DocumentDate: 'Ngày phiếu', DocumentTitle: 'Tên phiếu', RequestId: 'Mã yêu cầu', IsDeleted: 'Đã xóa', DirectReceiptReason: 'Lý do nhập trực tiếp',
         HasVat: 'Có VAT', SubtotalBeforeVat: 'Tiền hàng trước VAT', VatAmount: 'Tiền VAT',
         IncludeVatInInventoryCost: 'Tính VAT vào giá vốn', HasFreight: 'Có phí vận chuyển',
@@ -114,7 +116,7 @@
         if (key === 'Status') return (model.type >= 37 && model.type <= 45 ? provisionalStates : documentStates)[value] ?? `Trạng thái ${value}`;
         if (key === 'ReceiptSource') return sourceStates[value] ?? String(value);
         if (own(fieldStates, key)) return fieldStates[key][value] ?? String(value);
-        if (/AtUtc$/.test(key) || key === 'DocumentDate') return date(value, key !== 'DocumentDate')?.toLocaleString('vi-VN') ?? String(value);
+        if (/AtUtc$/.test(key) || key === 'DocumentDate') return date(value)?.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) ?? String(value);
         if (typeof value === 'object') return 'Xem dữ liệu gốc trong chi tiết kỹ thuật';
         if (/Id$/.test(key)) return `Mã #${value}`;
         return typeof value === 'number' ? number.format(value) : String(value);
@@ -158,8 +160,8 @@
         const body = text('div', 'rh-event-body');
         const head = text('div', 'rh-event-head');
         head.append(text('h6', 'rh-title', model.title));
-        const time = text('time', 'rh-time', model.occurred?.toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) || 'Chưa rõ giờ');
-        if (model.occurred) {time.dateTime = model.occurred.toISOString(); time.title = model.occurred.toLocaleString('vi-VN');}
+        const time = text('time', 'rh-time', model.occurred?.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',hour:'2-digit', minute:'2-digit', second:'2-digit'}) || 'Chưa rõ giờ');
+        if (model.occurred) {time.dateTime = model.occurred.toISOString(); time.title = model.occurred.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });}
         head.append(time);
         const meta = text('div', 'rh-meta');
         meta.append(text('span', 'rh-actor', model.actor), text('span', 'rh-badge', groups[model.group][0]));
@@ -238,7 +240,7 @@
             const shown = filtered.slice(0, limit), fragment = document.createDocumentFragment();
             let lastDay = null;
             for (const model of shown) {
-                const day = model.occurred?.toLocaleDateString('vi-VN', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'}) || 'Chưa rõ ngày';
+                const day = model.occurred?.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'}) || 'Chưa rõ ngày';
                 if (day !== lastDay) {fragment.append(text('h6', 'rh-day', day)); lastDay = day;}
                 fragment.append(buildItem(model));
             }

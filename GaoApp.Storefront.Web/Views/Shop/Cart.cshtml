@@ -1,0 +1,13 @@
+@{ var checkout = ViewData["Checkout"] is true; ViewData["Title"] = checkout ? "Kiểm tra trước khi đặt" : "Giỏ hàng"; }
+<div class="page-shell cart-page" data-cart-page data-checkout="@(checkout ? "true" : "false")">
+    <header class="page-heading"><p class="eyebrow">Chọn vừa đủ, mua thật rõ</p><h1>@ViewData["Title"]</h1><p>Giá và trạng thái sản phẩm được kiểm tra lại từ cửa hàng mỗi lần bạn mở trang.</p></header>
+    @if (checkout) { <section class="checkout-notice"><h2>Cửa hàng chưa nhận đơn trên website</h2><p>Bạn có thể chuẩn bị giỏ và kiểm tra lựa chọn. Đặt hàng, nhập địa chỉ và thanh toán sẽ được mở sau khi cửa hàng sẵn sàng.</p><p>Chưa có đơn được tạo và chưa giữ hàng trong kho.</p></section> }
+    <div id="cart-loading" class="cart-loading" role="status"><span class="spinner" aria-hidden="true"></span> Đang kiểm tra giỏ hàng…<div class="skeleton-row" aria-hidden="true"></div><div class="skeleton-row" aria-hidden="true"></div></div>
+    <div id="cart-error" class="error-state" role="alert" hidden><h2>Chưa kiểm tra được giỏ</h2><p data-error-message>Vui lòng kiểm tra kết nối rồi thử lại.</p><button class="button" id="cart-retry" type="button">Thử lại</button></div>
+    <div id="cart-empty" class="empty-state" hidden><partial name="_Icon" model='"cart"' /><h2>Giỏ hàng đang trống</h2><p>Tìm món hợp nhu cầu và chọn đúng đơn vị bạn muốn mua.</p><a class="button" href="/shop/products">Khám phá sản phẩm</a></div>
+    <div id="cart-content" class="cart-layout" hidden>
+        <section aria-label="Sản phẩm trong giỏ"><div id="cart-lines" class="cart-lines"></div><a class="text-link" href="/shop/products">← Chọn thêm sản phẩm</a></section>
+        <aside class="cart-summary"><h2>Tạm tính giỏ hàng</h2><div class="summary-amount"><span>Tiền hàng</span><strong id="cart-estimate">—</strong></div><p>Chưa gồm phí giao. Giá tại bước đặt hàng sẽ được xác nhận lại.</p><p id="cart-notice" role="status"></p>@if (!checkout) { <a id="continue-cart" class="button" href="/shop/checkout">Kiểm tra trước khi đặt <partial name="_Icon" model='"arrow"' /></a> } else { <button class="button" type="button" disabled>Chưa mở đặt hàng</button> }<button id="refresh-cart" class="button secondary-button" type="button">Kiểm tra lại giỏ</button></aside>
+    </div>
+    <noscript><div class="empty-state"><h2>Bật JavaScript để mở giỏ đã lưu</h2><p>Giỏ được lưu trên trình duyệt này. Bạn vẫn có thể xem danh mục và liên hệ cửa hàng.</p><a class="button" href="/shop/products">Về danh mục</a></div></noscript>
+</div>

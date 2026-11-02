@@ -1,0 +1,122 @@
+/* UI-16: screen-only phone presentation; original invoice money, stock, queue and logs stay native. */
+@media screen and (max-width: 767.98px) {
+    body[data-invoice-operations-phone] { background: #f3f6fb; }
+    body[data-invoice-operations-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal, .swal2-popup) { --xs-primary: #2463eb; --xs-text: #172d4d; --xs-border: #dce5f0; --ops-ink: #172d4d; --ops-blue: #2463eb; --ops-line: #dce5f0; color: #172d4d; font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; min-width: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] { width: 100%; max-width: 100%; padding: 0 0 20px; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.row > *, .card, .card-body, .card-header, .input-group, .d-flex > *, form) { min-width: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] { display: flex; flex-direction: column; align-items: stretch !important; gap: 12px; padding: 4px 0 6px; margin-bottom: 16px !important; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] > :first-child { min-width: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] :is(h3, .gds-page-header__title) { color: #172d4d; font-size: 23px; line-height: 1.3; letter-spacing: -.4px; margin: 0 0 7px; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] :is(.text-muted, .gds-page-header__subtitle) { color: #62738b !important; font-size: 13px; line-height: 1.6; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] > :is(.d-flex, .gds-page-header__actions) { display: flex; flex-wrap: wrap; width: 100%; gap: 8px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] :is(.btn, form) { flex: 1 1 130px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] > .btn { flex: 0 0 auto; width: 100%; }
+    body[data-invoice-operations-phone] [data-invoice-ops-header] form .btn { width: 100%; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal, .swal2-popup) :is(.btn, .page-link, .xs-eye, .xs-page-button) { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; min-width: 0; border-radius: 12px; font-size: 13px; white-space: normal; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.xs-eye, .xs-page-button) { min-width: 44px; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal) .btn-primary { color: #fff; background: #2463eb; border-color: #2463eb; box-shadow: 0 4px 12px #2463eb1f; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal) .btn-outline-primary { color: #2463eb; background: #fff; border-color: #b7cefa; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal) .btn-outline-primary:is(:hover, :focus) { background: #edf3ff; border-color: #2463eb; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], .modal) :is(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea) { min-width: 0; max-width: 100%; min-height: 46px; font-size: 16px; border-radius: 12px; border-color: #cfdbea; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], .modal) :is(.form-control, .form-select):focus { border-color: #2463eb; box-shadow: 0 0 0 3px #2463eb18; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(label.form-label, .xs-filters label) { color: #52647c; font-size: 13px; font-weight: 600; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.form-text, .small, small) { line-height: 1.6; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .card { border: 1px solid #dce5f0 !important; border-radius: 18px; box-shadow: 0 3px 12px #172d4d05 !important; overflow: hidden; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .card-header { background: #fff; border-bottom-color: #dce5f0; padding: 15px; gap: 10px; flex-wrap: wrap; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .card-body { padding: 15px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .card-footer { padding: 14px; border-top-color: #dce5f0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .alert { border-radius: 14px; padding: 14px; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.table-responsive, .xs-table-wrap) { max-width: 100%; overflow: visible; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table]:not([hidden]):not(.d-none) { display: block; width: 100%; min-width: 0; max-width: 100%; border: 0; table-layout: auto; margin-bottom: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] thead:not([data-invoice-ops-interactive-head]), body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] thead[data-invoice-ops-interactive-head] th:not(:has(input,button,select)) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] thead[data-invoice-ops-interactive-head] { display: block; padding: 8px 14px; border-bottom: 1px solid #dce5f0; background: #f8faff; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] thead[data-invoice-ops-interactive-head] tr { display: block; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] thead[data-invoice-ops-interactive-head] th:has(input,button,select) { display: flex; align-items: center; gap: 10px; min-height: 44px; width: auto !important; padding: 6px 0; white-space: normal; border: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] thead[data-invoice-ops-interactive-head] th[data-invoice-ops-label]::after { content: attr(data-invoice-ops-label); font-size: 12px; color: #52647c; font-weight: 600; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] tbody:not([hidden]):not(.d-none) { display: block; width: 100%; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] tbody tr:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; min-width: 0; margin: 12px; padding: 14px; border: 1px solid #dce5f0; border-radius: 15px; background: #fff; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] td:not([hidden]):not(.d-none) { display: block; padding: 0; width: auto !important; min-width: 0; max-width: 100%; border: 0; font-size: 13px; white-space: normal !important; overflow-wrap: anywhere; text-align: left !important; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] td[data-invoice-ops-label]::before { content: attr(data-invoice-ops-label); display: block; margin-bottom: 5px; color: #71839a; font-size: 11px; font-weight: 500; line-height: 1.55; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] td:is(:first-child, [data-invoice-ops-wide], [data-invoice-ops-actions]) { grid-column: 1 / -1; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] td[data-invoice-ops-actions] :is(form, .btn) { max-width: 100%; margin: 4px 4px 0 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] table[data-invoice-ops-table] td :is(code, pre, .text-nowrap) { max-width: 100%; white-space: normal !important; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .pagination { gap: 4px; flex-wrap: wrap; margin: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .page-link { min-width: 44px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] > .row:has(.auto-metric), body[data-invoice-operations-phone] [data-invoice-ops-root="cleanup"] .row:has(.stat-box) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-left: 0; margin-right: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] > .row:has(.auto-metric) > div, body[data-invoice-operations-phone] [data-invoice-ops-root="cleanup"] .row:has(.stat-box) > div { width: auto; padding: 0; margin: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.auto-metric, .stat-box) { min-width: 0; padding: 13px; border: 1px solid #dce5f0; border-radius: 15px; box-shadow: none; background: #fff; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.auto-metric strong, .stat-value) { font-size: 24px; line-height: 1.3; color: #172d4d; font-variant-numeric: tabular-nums; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.auto-label, .stat-label) { font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] > .nav-tabs { display: flex; flex-wrap: nowrap; gap: 6px; overflow-x: auto; max-width: 100%; padding: 5px; border: 0; border-radius: 14px; background: #e8eef7; scrollbar-width: thin; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] > .nav-tabs .nav-item { flex: 0 0 auto; min-width: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] > .nav-tabs .nav-link { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 9px 13px; border: 0; border-radius: 10px; font-size: 13px; color: #52647c; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] > .nav-tabs .nav-link.active { color: #2463eb; background: #fff; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="auto"] form .row, body[data-invoice-operations-phone] [data-invoice-ops-root="cleanup"] form .row { row-gap: 15px !important; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="correction"] > .card:not(:has(form)) .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="correction"] > .card:not(:has(form)) .row > div { width: auto; padding: 0; margin: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="correction"] form .text-end { display: flex; gap: 8px; flex-wrap: wrap; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="correction"] form .text-end .btn { flex: 1 1 110px; min-height: 48px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] :is(.log-url, .log-error) { max-width: 100%; display: block; white-space: normal; text-overflow: clip; overflow-wrap: anywhere; font-size: 12px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .meta-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 10px 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .meta-label { color: #71839a; white-space: normal; font-size: 12px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .meta-value { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root] .body-box { width: 100%; max-width: 100%; min-height: 120px; max-height: 52dvh; padding: 13px; border-radius: 13px; font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] { gap: 16px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-tabs { gap: 5px; padding: 5px; border-radius: 14px; background: #e8eef7; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-tabs button { min-width: 0; min-height: 46px; padding: 9px 8px; border-radius: 10px; font-size: 13px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-tabs button.active { color: #2463eb; background: #fff; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-metric { padding: 13px; min-width: 0; border: 1px solid #dce5f0; border-radius: 16px; box-shadow: none; gap: 9px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-metric > span:last-child { min-width: 0; font-size: 11px; line-height: 1.5; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-metric strong { font-size: 24px; line-height: 1.35; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-icon { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 10px; font-size: 20px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] :is(.xs-filter-card, .xs-results-title) { padding: 15px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] :is(.xs-section-title, .xs-results-title) { gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] :is(.xs-section-title h5, .xs-results-title h5) { font-size: 17px; line-height: 1.4; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 10px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-filters label:not([hidden]) { display: flex; flex-direction: column; width: auto; min-width: 0; gap: 6px; margin: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-filters :is(.xs-search, .xs-filter-actions) { grid-column: 1 / -1; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-filter-actions { display: flex; gap: 8px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-filter-actions .btn:first-child { flex: 1; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-name { min-width: 0; max-width: 100%; font-size: 15px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] :is(.xs-footer, .xs-results-title) { flex-wrap: wrap; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-footer { padding: 14px; gap: 12px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-pagination { width: 100%; justify-content: flex-start; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-page-jump { flex-wrap: wrap; white-space: normal; margin-left: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-count { max-width: 100%; white-space: normal; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog { width: calc(100vw - 24px); max-width: calc(100vw - 24px); max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 24px); margin: auto; padding: 0; border-radius: 18px; overflow: hidden; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog[open] { display: flex; flex-direction: column; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog-header { flex-shrink: 0; padding: 12px 14px; gap: 10px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog-header > div { flex: 1; min-width: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog-header :is(h4, p) { overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog-header p { font-size: 12px; line-height: 1.5; margin: 6px 0 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] :is(#xsClose, #xsBackfillClose) { flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; padding: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] :is(#xsDialogBody, .xs-backfill-body) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-detail-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog-footer { flex-shrink: 0; position: static; display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 14px; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] .xs-dialog-footer .btn { flex: 1 1 110px; min-height: 48px; margin: 0; }
+    body[data-invoice-operations-phone] [data-invoice-ops-root="stock"] #xsBackfillSelected { width: 100%; flex-basis: 100%; font-size: 12px; }
+    body[data-invoice-operations-phone] .select2-container--open { max-width: calc(100vw - 64px) !important; min-width: 0 !important; }
+    body[data-invoice-operations-phone] .select2-dropdown { min-width: 0 !important; max-width: calc(100vw - 64px) !important; }
+    body[data-invoice-operations-phone] .select2-search__field { min-height: 44px; font-size: 16px !important; }
+    body[data-invoice-operations-phone] .modal .modal-dialog:not(.modal-fullscreen) { display: flex; flex-direction: column; width: 100%; max-width: none; min-height: 0; height: var(--gao-mobile-visible-height, 100dvh); max-height: var(--gao-mobile-visible-height, 100dvh); margin: 0; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+    body[data-invoice-operations-phone] .modal .modal-content { min-height: 0; max-height: 100%; border-radius: 18px; overflow: hidden; }
+    body[data-invoice-operations-phone] .modal .modal-header { flex-shrink: 0; gap: 10px; padding: 12px 14px; }
+    body[data-invoice-operations-phone] .modal .modal-header > :first-child { flex: 1; min-width: 0; }
+    body[data-invoice-operations-phone] .modal .modal-header .btn-close { position: static; inset: auto; width: 44px; height: 44px; flex: 0 0 44px; margin: 0; transform: none !important; }
+    body[data-invoice-operations-phone] .modal .modal-body { min-height: 0; overflow-y: auto; padding: 14px; }
+    body[data-invoice-operations-phone] .modal .modal-footer { flex-shrink: 0; gap: 8px; padding: 12px; }
+    body[data-invoice-operations-phone] .modal .modal-footer .btn { flex: 1 1 100px; min-height: 48px; margin: 0; }
+    body[data-invoice-operations-phone] .swal2-popup.swal2-modal { display: flex !important; flex-direction: column; min-height: 0; width: calc(100vw - 24px); max-width: calc(100vw - 24px); max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 24px); border-radius: 18px; overflow: hidden; padding: 16px 0; }
+    body[data-invoice-operations-phone] .swal2-popup.swal2-modal > :not(.swal2-html-container) { flex-shrink: 0; }
+    body[data-invoice-operations-phone] .swal2-popup .swal2-title { padding: 12px 16px 0; font-size: 20px; }
+    body[data-invoice-operations-phone] .swal2-popup .swal2-html-container { min-height: 0; flex: 1; margin: 12px 16px; overflow-y: auto; font-size: 14px; overflow-wrap: anywhere; }
+    body[data-invoice-operations-phone] .swal2-popup .swal2-actions { width: auto; max-width: calc(100% - 24px); flex-direction: row; gap: 8px; margin: 12px; }
+    body[data-invoice-operations-phone] .swal2-popup .swal2-actions button { flex: 1 1 0; width: auto; min-height: 48px; margin: 0; }
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal) :is(button, a, summary):focus-visible { outline: 3px solid #2463eb80; outline-offset: 3px; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    body[data-invoice-operations-phone] :is([data-invoice-ops-root], [data-invoice-ops-header], .modal, .modal-dialog, .swal2-popup) { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}

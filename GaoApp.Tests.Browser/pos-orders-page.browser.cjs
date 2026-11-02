@@ -6,15 +6,26 @@ const { chromium } = require('playwright');
 
 (async () => {
     const info = JSON.parse(await new Promise(resolve => { let text = ''; process.stdin.on('data', data => text += data); process.stdin.on('end', () => resolve(text)); }));
-    const output = path.resolve('TestResults/pos-orders-page/browser'); fs.mkdirSync(output, { recursive: true });
+    const output = path.resolve(process.env.GAO_POS_ORDERS_OUTPUT || 'TestResults/pos-orders-page/browser'); fs.mkdirSync(output, { recursive: true });
     const browser = await chromium.launch({ channel: 'chrome', headless: true });
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, reducedMotion: 'reduce' });
-    const page = await context.newPage(), errors = [], commands = [];
+    const page = await context.newPage(), errors = [], commands = [], cspErrors = [];
+    let completed = false;
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+        if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) cspErrors.push(message.text());
+    });
     page.on('request', request => { if (request.method() !== 'GET' && new URL(request.url()).pathname.startsWith('/admin/pos/')) commands.push(request.url()); });
     let fixtures = false, listError = false, receiptError = false, empty = false, race = false, receiptDelay = false, listDelay = false;
     const requests = [], receiptRequests = [];
     const now = new Date();
+    const qr1 = 'QR-105-9a700d6ab6c0402099b673909da876fe';
+    const qr2 = 'QR-105-b6fbd01dee4e44e669f6a2acf971eede';
+    let previewPayments = [
+        { paymentId: 1, method: 'Cash', amount: 30000, createdAt: now.toISOString() },
+        { paymentId: 2, method: 'BankTransfer', amount: 50000, createdAt: now.toISOString(), reference: qr1 },
+        { paymentId: 3, method: 'BankTransfer', amount: 78000, createdAt: now.toISOString(), reference: qr2 }
+    ];
     const rows = [
         { orderId: 105, orderNumber: 'POS-20260910-00003', status: 'Completed', paymentStatus: 'Paid', grandTotal: 158000, paidTotal: 158000, balanceDue: 0, hasBankTransfer: true },
         { orderId: 106, orderNumber: null, status: 'Draft', paymentStatus: 'Unpaid', grandTotal: 215000, paidTotal: 0, balanceDue: 215000 },
@@ -31,10 +42,10 @@ const { chromium } = require('playwright');
         isCreditSale: i === 0 || i === 3 }));
     const receipt = id => ({ ...rows.find(row => row.orderId === id), orderId: id, customerName: 'Nguyễn Minh Anh', cashierName: 'Trần Ngọc Hà', shiftCode: 'SHIFT-20260910-01', customerPhone: '0901 234 567', finalizedAtUtc: now.toISOString(),
         subtotal: 168000, discountTotal: 10000, grandTotal: 158000, paidTotal: 158000, balanceDue: 0,
-        lines: [{ itemName: 'Sữa tươi TH true MILK không đường 180 ml', productVariantName: 'Sữa tươi TH true MILK không đường 180 ml', scannedBarcode: '2000105515438', barcode: 'TH-PACK', sku: 'TH180', quantity: 2, unitPrice: 32000, lineTotal: 64000, sellingUnitName: 'lốc' },
-            { itemName: 'Ngũ cốc dinh dưỡng nguyên hạt', barcode: '0893850597419', sku: 'NC-001', quantity: 1, unitPrice: 68000, lineTotal: 68000, sellingUnitName: 'hộp' },
-            { itemName: 'Bánh mì nguyên cám', sku: 'BMC-001', quantity: 1, unitPrice: 36000, lineTotal: 36000, sellingUnitName: 'gói' }],
-        payments: [{ method: 'BankTransfer', amount: 158000, createdAt: now.toISOString(), reference: 'POS105-ACB' }], note: 'Khách lấy hóa đơn.\nGiao hàng tại quầy.' });
+        lines: [{ itemName: 'Sữa tươi TH true MILK không đường 180 ml', productVariantName: 'Sữa tươi TH true MILK không đường 180 ml', scannedBarcode: '2000105515438', barcode: 'TH-PACK', sku: 'TH180', quantity: 2, unitPrice: 32000, grossAmount: 64000, lineTotal: 64000, sellingUnitName: 'lốc' },
+            { itemName: 'Ngũ cốc dinh dưỡng nguyên hạt', barcode: '0893850597419', sku: 'NC-001', quantity: 1, unitPrice: 68000, grossAmount: 68000, lineTotal: 68000, sellingUnitName: 'hộp' },
+            { itemName: 'Bánh mì nguyên cám', sku: 'BMC-001', quantity: 1, unitPrice: 36000, grossAmount: 36000, lineTotal: 36000, sellingUnitName: 'gói' }],
+        payments: previewPayments, note: 'Khách lấy hóa đơn.\nGiao hàng tại quầy.' });
     await page.route('**/admin/pos/orders?*', async route => {
         if (!fixtures) return route.continue();
         const query = new URL(route.request().url()).searchParams;
@@ -104,11 +115,52 @@ const { chromium } = require('playwright');
         assert.match(firstText, /Nguyễn Minh Anh/); assert.match(firstText, /Trần Ngọc Hà/);
         assert.match(firstText, /Quầy thu ngân 01/); assert.match(firstText, /Tiền mặt/); assert.match(firstText, /Chuyển khoản/);
         assert.match(firstText, /Công nợ/);
-        for (const [width, height] of [[1600, 1000], [1440, 900], [1366, 768], [1024, 768], [768, 1024], [390, 844], [360, 800]]) {
-            await page.setViewportSize({ width, height }); await noOverflow();
+        // UI-04a begin: retain real node identity across the phone/desktop round trip.
+        const beforeResponsiveRequests = requests.length;
+        await page.evaluate(() => {
+            window.ui04aOriginalRows = [...document.querySelectorAll('.po-order-row')].map(row => ({
+                row, cells: [...row.cells].map(cell => [...cell.childNodes])
+            }));
+        });
+        // UI-04a end
+        for (const [width, height] of [[1600, 1000], [1440, 900], [1366, 768], [1024, 768], [768, 1024], [767, 900], [430, 932], [390, 844], [360, 800], [320, 740]]) {
+            await page.setViewportSize({ width, height });
+            // UI-04a begin: wait for matchMedia before inspecting the current presentation.
+            await page.waitForFunction(() => (innerWidth < 768) === (document.querySelector('[data-mobile-orders]').dataset.mobileOrdersMode === 'cards'));
+            if (width < 768) {
+                assert.equal(await page.locator('.po-mobile-order-card').count(), 8);
+                assert.equal(await page.locator('#ordersFilters').count(), 1, 'Keep one original filter form');
+                assert.equal(await page.locator('#ordersBody [data-preview-id="105"]').count(), 1, 'Keep one original action control');
+                const overview = page.locator('.po-mobile-order-overview');
+                assert.equal(await overview.evaluate(node => node.open), false);
+                await overview.locator('summary').click();
+                assert.equal(await page.locator('#metricCount').innerText(), '28');
+                assert.equal(await page.locator('#metricPaid').isVisible(), true);
+                if (width === 390) await screenshot('overview-390');
+                await overview.locator('summary').click();
+                await page.evaluate(() => scrollTo(0, 0));
+                const firstOrder = await page.locator('.po-mobile-order-card').first().boundingBox();
+                assert.ok(firstOrder.y < height - 120, 'Phone entry screen should reveal the first order');
+                const firstAmount = await page.locator('.po-mobile-order-amount .po-amount').first().boundingBox();
+                assert.ok(firstAmount.y + firstAmount.height <= height - 72, 'First order amount should be visible above the phone dock');
+            }
+            // UI-04a end
+            await noOverflow();
             if (width >= 768) assert.equal(await page.locator('#btnToggleFilters').isVisible(), false, 'Mobile filter toggle stays hidden on desktop/tablet');
             await page.evaluate(() => scrollTo(0, 0)); await screenshot('orders-' + width);
             if (width === 390) {
+                // UI-04a begin: secondary data is available through native disclosure.
+                const secondary = page.locator('[data-order-id="105"] .po-mobile-order-details');
+                assert.equal(await secondary.evaluate(node => node.open), false);
+                await secondary.locator('summary').click();
+                assert.equal(await secondary.evaluate(node => node.open), true);
+                assert.match(await secondary.innerText(), /Trần Ngọc Hà/);
+                assert.match(await secondary.innerText(), /Quầy thu ngân 01/);
+                assert.match(await secondary.innerText(), /Công nợ/);
+                await secondary.locator('summary').press('Enter');
+                assert.equal(await secondary.evaluate(node => node.open), false);
+                assert.equal(await page.locator('#orderPreview').evaluate(node => node.open), false);
+                // UI-04a end
                 await page.locator('#btnToggleFilters').click();
                 assert.equal(await page.locator('#fromDate').isVisible(), true);
                 await page.locator('#btnToggleFilters').click();
@@ -116,8 +168,16 @@ const { chromium } = require('playwright');
                 await page.locator('.po-order-row').first().scrollIntoViewIfNeeded(); await screenshot('orders-cards-390');
             }
         }
-        console.log('PASS list totals, all status variants and seven responsive widths.');
+        console.log('PASS list totals, all status variants and ten responsive widths.');
         await page.setViewportSize({ width: 1440, height: 900 });
+        // UI-04a begin: restore every original child in order without another list request.
+        await page.waitForFunction(() => !document.querySelector('[data-mobile-orders]').hasAttribute('data-mobile-orders-mode'));
+        assert.equal(await page.evaluate(() => window.ui04aOriginalRows.every(({ row, cells }) => row.isConnected
+            && cells.every((children, index) => row.cells[index].childNodes.length === children.length
+                && children.every((child, i) => row.cells[index].childNodes[i] === child)))), true);
+        assert.equal(await page.locator('.po-mobile-order-card,.po-mobile-order-shortcuts,.po-mobile-order-overview').count(), 0);
+        assert.equal(requests.length, beforeResponsiveRequests, 'Changing presentation must not refetch orders');
+        // UI-04a end
         for (const [id, value] of [['employee', 'Ngọc Hà'], ['customer', '0901234567'], ['terminal', 'POS01']]) await page.locator('#' + id).fill(value);
         await page.locator('#settlement').selectOption('Mixed');
         await page.locator('#btnSearch').click(); await loaded();
@@ -171,6 +231,11 @@ const { chromium } = require('playwright');
         assert.equal(receiptRequests.length, beforeRowPreview + 1, 'Double-clicking row content requests its receipt once');
         assert.match(await page.locator('#previewBody').innerText(), /Nguyễn Minh Anh/);
         assert.match(await page.locator('#previewBody').innerText(), /Sữa tươi TH/);
+        const paymentSection = page.locator('#previewBody section').filter({ has: page.locator('h3', { hasText: 'Các khoản thanh toán' }) });
+        assert.match(await paymentSection.innerText(), /QR-105-1\s/);
+        assert.match(await paymentSection.innerText(), /QR-105-2\s/);
+        assert.ok(!(await paymentSection.innerText()).includes(qr1) && !(await paymentSection.innerText()).includes(qr2));
+        assert.deepEqual(previewPayments.map(payment => payment.reference), [undefined, qr1, qr2]);
         assert.equal(await page.locator('#previewDetailLink').getAttribute('href'), '/admin/pos/order-detail/105');
         await screenshot('preview-1440');
         await page.setViewportSize({ width: 390, height: 844 });
@@ -187,7 +252,23 @@ const { chromium } = require('playwright');
         await page.locator('#previewBody .po-preview-lines').first().waitFor();
         assert.equal(await page.locator('#orderPreview').evaluate(node => node.open), true, 'Double-click on the code must not immediately dismiss the preview');
         assert.equal(receiptRequests.length, beforeCodePreview + 1, 'The existing code button still requests one receipt');
+        assert.match(await paymentSection.innerText(), /QR-105-1\s/);
+        assert.match(await paymentSection.innerText(), /QR-105-2\s/);
         await page.keyboard.press('Escape');
+        previewPayments = [{ paymentId: 1, method: 'Cash', amount: 30000, createdAt: now.toISOString() },
+            { paymentId: 2, method: 'BankTransfer', amount: 128000, createdAt: now.toISOString(), reference: qr1 }];
+        await page.locator('[data-preview-id="105"]').click();
+        await page.locator('#previewBody .po-preview-lines').first().waitFor();
+        assert.match(await paymentSection.innerText(), /QR-105\s/);
+        assert.doesNotMatch(await paymentSection.innerText(), /QR-105-/);
+        await screenshot('preview-single-transfer');
+        await page.keyboard.press('Escape');
+        previewPayments = [{ method: 'BankTransfer', amount: 158000, createdAt: now.toISOString(), reference: 'POS105-ACB' }];
+        await page.locator('[data-preview-id="105"]').click();
+        await page.locator('#previewBody .po-preview-lines').first().waitFor();
+        assert.match(await paymentSection.innerText(), /POS105-ACB/);
+        await page.keyboard.press('Escape');
+        console.log('PASS single/multiple QR transfers are compact in quick view; cash is not numbered and manual references stay intact.');
         receiptError = true; await page.locator('[data-preview-id="105"]').click();
         await page.locator('[data-retry-preview]').waitFor();
         assert.match(await page.locator('#previewBody').innerText(), /chưa có quyền/);
@@ -287,6 +368,14 @@ const { chromium } = require('playwright');
         assert.equal(requests.at(-1).page, '3', 'Out-of-range bookmark recovers to last page');
         assert.deepEqual(commands, [], 'List/preview must not send financial commands');
         assert.deepEqual(errors, []);
+        assert.deepEqual(cspErrors, [], 'Orders page must not introduce CSP violations');
+        completed = true;
         console.log('PASS pagination/filter/date validation/reset/URL restore, escaped content, stale response cancellation, empty/error/retry; zero financial commands or page errors.');
-    } finally { await browser.close(); }
+    } catch (error) {
+        await screenshot('failure').catch(() => {});
+        throw error;
+    } finally {
+        fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify({ completed, errors, commands, cspErrors }, null, 2));
+        await browser.close();
+    }
 })().catch(error => { console.error(error); process.exitCode = 1; });

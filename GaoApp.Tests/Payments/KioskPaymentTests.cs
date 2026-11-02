@@ -7,6 +7,7 @@ using GaoApp.Application.Interfaces.Services.Orders;
 using GaoApp.Domain.Enums;
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Domain.Entities;
+using GaoApp.Infrastructure.Services.Banking;
 using GaoApp.Web.Services.Acb;
 using GaoApp.Web.Services.Kiosk;
 using Microsoft.EntityFrameworkCore;
@@ -19,7 +20,9 @@ public sealed partial class AcbPaymentTests
     private static async Task<KioskStation> AddKiosk(Fixture f)
     {
         var station = new KioskStation { StoreId = 1, TerminalId = 3, Terminal = new POSTerminal { Id = 3, StoreId = 1, Code = "KIOSK", Name = "Quầy tự phục vụ" }, SystemUserId = 7, OrderId = 100, CartTouchedAtUtc = DateTime.UtcNow, CustomerId = 19, CustomerExpiresAtUtc = DateTime.UtcNow.AddMinutes(2) };
-        f.Db.Stores.Add(new Store { Id = 1, Name = "Test store", SubDomain = "test", SubDomainNormalized = "TEST" }); f.Db.Add(station); await f.Db.SaveChangesAsync();
+        var store = await f.Db.Stores.SingleAsync(x => x.Id == 1);
+        store.Name = "Test store"; store.SubDomain = "test"; store.SubDomainNormalized = "TEST";
+        f.Db.Add(station); await f.Db.SaveChangesAsync();
         return station;
     }
     [Fact]
@@ -242,8 +245,14 @@ public sealed partial class AcbPaymentTests
         await using (var callbackDb = new TestContext((DbContextOptions<TestContext>)f.Db.GetService<IDbContextOptions>(), f.Tenant))
         {
             var received = await callbackDb.Set<AcbQrSession>().SingleAsync();
+            var account = GlobalBankReceiptLedger.AccountSnapshot(await callbackDb.StoreBankAccounts.SingleAsync(x => x.Id == 1));
+            var bankTime = confirmedAt.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+            var proof = await new GlobalBankReceiptLedger(callbackDb, f.Protocol.Core).RecordVerifiedAsync(new(account,
+                received.ProviderOrderId, BankPaymentChannel.Pos, "CALLBACK-FIRST", 70000m, "COMPLETED", bankTime,
+                JsonSerializer.Serialize(new { transactionNumber = "CALLBACK-FIRST", amount = 70000m, status = "COMPLETED", origPostDate = bankTime })), default);
+            Assert.False(proof.Conflict);
             received.Status = AcbSessionStatus.Received; received.ConfirmationSource = AcbConfirmationSource.Callback; received.ConfirmedAtUtc = confirmedAt;
-            callbackDb.Add(new AcbPaymentTransaction { StoreId = 1, SessionId = received.Id, TransactionNumber = "CALLBACK-FIRST", Amount = 70000, Status = "COMPLETED" });
+            callbackDb.Add(new AcbPaymentTransaction { StoreId = 1, SessionId = received.Id, TransactionNumber = "CALLBACK-FIRST", Amount = 70000, Status = "COMPLETED", BankVerifiedReceiptId = proof.Id });
             await callbackDb.SaveChangesAsync();
         }
         Assert.Equal(AcbSessionStatus.Pending, stale.Status);

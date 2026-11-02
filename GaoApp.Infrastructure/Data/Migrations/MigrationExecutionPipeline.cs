@@ -106,7 +106,7 @@ public sealed class MigrationExecutionPipeline
             Console.WriteLine("Applying schema migrations only...");
             await _migrationExecutor.MigrateAsync(ct);
             var verified = await _databasePreflight.InspectAsync(ct);
-            EnsureCurrentSchema(verified);
+            EnsureCurrentSchema(verified, migrationWasAttempted: true);
             Console.WriteLine("SCHEMA_ONLY_VERIFIED; SourceMigrations={0}; AppliedMigrations={1}",
                 verified.SourceMigrationCount, verified.AppliedMigrationCount);
             return;
@@ -146,15 +146,15 @@ public sealed class MigrationExecutionPipeline
         Console.WriteLine("Explicit operation completed: {0}.", mode);
     }
 
-    private static void EnsureCurrentSchema(DatabaseCompatibilityResult result)
+    private static void EnsureCurrentSchema(DatabaseCompatibilityResult result, bool migrationWasAttempted = false)
     {
         if (!result.IsAllowed || result.State != DatabaseCompatibilityState.CurrentBaseline
             || result.AppliedMigrationCount != result.SourceMigrationCount)
             throw new DatabaseCompatibilityException(result with
             {
                 IsAllowed = false,
-                SafeReasonCode = "CurrentSchemaRequired"
-            });
+                SafeReasonCode = result.IsAllowed ? "CurrentSchemaRequired" : result.SafeReasonCode
+            }, migrationWasAttempted);
     }
 
     private static void EnsureBootstrapPlanIsAccepted(

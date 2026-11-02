@@ -24,6 +24,7 @@
     </div>
 }
 <link rel="stylesheet" href="~/Admin/css/media-library.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/Admin/css/media-workspace.mobile.css" asp-append-version="true" />
 <div class="media-library" data-media-library>
     @Html.AntiForgeryToken()
     <div class="media-summary" aria-label="Tổng quan thư viện">
@@ -40,7 +41,7 @@
             <small>Ảnh còn được sử dụng luôn được giữ. @(options.Enabled ? $"Kiểm tra mỗi {options.IntervalMinutes} phút khi ứng dụng đang chạy." : "Bạn vẫn có thể kiểm tra và dọn thủ công.")</small>
             @if (run != null)
             {
-                <small class="d-block mt-1">Lượt xử lý gần nhất trong phiên chạy này: <time data-local-time datetime="@run.AtUtc.ToString("O")">@run.AtUtc.ToString("dd/MM/yyyy HH:mm") UTC</time> · Đã dọn @run.Result.Deleted · Chờ thử lại @run.Result.Failed</small>
+                <small class="d-block mt-1">Lượt xử lý gần nhất trong phiên chạy này: <time data-local-time datetime="@run.AtUtc.ToString("O")">@run.AtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</time> · Đã dọn @run.Result.Deleted · Chờ thử lại @run.Result.Failed</small>
             }
         </div>
         @if (canManage)
@@ -83,10 +84,10 @@
                         <div class="media-info">
                             <h6 title="@item.Name">@item.Name</h6>
                             <div class="media-meta"><span>@Size(item.SizeBytes)</span><span>#@item.Id</span></div>
-                            <small>Tải lên <time data-local-time datetime="@item.CreatedAtUtc.ToString("O")">@item.CreatedAtUtc.ToString("dd/MM/yyyy")</time></small>
+                            <small>Tải lên <time data-local-time datetime="@item.CreatedAtUtc.ToString("O")">@item.CreatedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy")</time></small>
                             @if (item.ExpireAtUtc != null && !item.Used)
                             {
-                                <small>Dọn từ <time data-local-time datetime="@item.ExpireAtUtc.Value.ToString("O")">@item.ExpireAtUtc.Value.ToString("dd/MM/yyyy HH:mm") UTC</time></small>
+                                <small>Dọn từ <time data-local-time datetime="@item.ExpireAtUtc.Value.ToString("O")">@item.ExpireAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</time></small>
                             }
                             <div class="media-usage">
                                 @foreach (var product in item.Products)
@@ -121,3 +122,4 @@
     <dialog class="media-lightbox" data-media-lightbox><button type="button" class="btn btn-light" data-close-preview aria-label="Đóng ảnh">Đóng ×</button><img alt="" /><p></p></dialog>
 </div>
 <script src="~/Admin/js/media-library.js" asp-append-version="true" defer></script>
+<script src="~/Admin/js/media-workspace.mobile.js" asp-append-version="true" defer></script>

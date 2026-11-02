@@ -15,4 +15,7 @@ public static class CustomerPriceTiers
     /// Khách sỉ - ưu tiên dùng giá sỉ.
     /// </summary>
     public const string Wholesale = "WHOLESALE";
+
+    public static bool IsWholesale(string? priceTier)
+        => string.Equals(priceTier?.Trim(), Wholesale, StringComparison.OrdinalIgnoreCase);
 }

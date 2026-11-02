@@ -109,7 +109,7 @@ public sealed class InvoiceManualIssuanceUiContractTests
         Assert.DoesNotContain("AsEnumerable", filter);
         Assert.True(source.IndexOf("query = ApplyManualWorkspaceFilter", StringComparison.Ordinal) <
                     source.IndexOf("var total = await query.CountAsync", StringComparison.Ordinal));
-        Assert.Contains(".Skip((page - 1) * pageSize)", source);
+        Assert.Contains(".Skip(offset)", source);
         Assert.Contains(".Take(pageSize)", source);
     }
 
@@ -150,7 +150,7 @@ public sealed class InvoiceManualIssuanceUiContractTests
         Assert.Equal(expectedIds.Length, result.Total);
         Assert.Equal(expectedIds, result.Items.Select(head => head.Id).OrderBy(value => value).ToArray());
         if (mode != InvoiceListDisplayMode.All)
-            Assert.All(result.Items, head => Assert.Equal(InvoiceIssuanceRoute.Manual, head.Order!.InvoiceIssuanceRoute));
+            Assert.All(result.Items, head => Assert.Equal(InvoiceIssuanceRoute.Manual, head.InvoiceIssuanceRoute));
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public sealed class InvoiceManualIssuanceUiContractTests
         Assert.Equal(InvoiceIssuanceRoute.Manual, dto.InvoiceIssuanceRoute);
         Assert.Equal(manual.ProviderStatus, dto.ProviderStatus);
         Assert.Equal(manual.LastErrorCode, dto.LastErrorCode);
-        Assert.Equal(manual.LastErrorMessage, dto.LastErrorMessage);
+        Assert.Equal(GaoApp.Application.Common.Security.InvoiceErrorReadSanitizer.Message(manual.LastErrorMessage, manual.LastErrorCode), dto.LastErrorMessage);
         Assert.Equal(InvoiceIssuanceRoute.Unselected,
             Assert.Single(result.Value.Items, item => item.Id == 2).InvoiceIssuanceRoute);
     }
@@ -311,8 +311,17 @@ public sealed class InvoiceManualIssuanceUiContractTests
         new DbContextOptionsBuilder<InMemoryAppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options,
         new Tenant(), new User());
 
-    private static Task<(List<InvoiceHead> Items, int Total)> Query(InvoiceRepository repository, InvoiceListDisplayMode mode) =>
-        repository.QueryInvoiceHeadsAsync(null, null, null, null, mode, InvoiceListSortMode.OrderIdAsc, 1, 1000);
+    private static async Task<(List<InvoiceListItemDto> Items, int Total)> Query(InvoiceRepository repository, InvoiceListDisplayMode mode)
+    {
+        var items = new List<InvoiceListItemDto>();
+        for (var page = 1; ; page++)
+        {
+            var result = await repository.QueryInvoiceHeadsAsync(null, null, null, null, mode, InvoiceListSortMode.OrderIdAsc, page, 100);
+            items.AddRange(result.Items);
+            if (items.Count >= result.Total) return (items, result.Total);
+            Assert.NotEmpty(result.Items);
+        }
+    }
 
     private static string Read(string path)
     {

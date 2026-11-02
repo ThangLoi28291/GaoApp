@@ -1193,6 +1193,7 @@ public sealed class PurchaseOrderService : IPurchaseOrderService
 
         return new PurchaseOrderLineDto
         {
+            Note = line.Note,
             Id = line.Id, SourcePurchaseRequestLineId = line.SourcePurchaseRequestLineId,
             LineNo = line.LineNo, ItemKind = line.ItemKind, ProductVariantId = line.ProductVariantId,
             ProductUnitConversionId = line.ProductUnitConversionId, UnitId = line.UnitId, TaxId = line.TaxId,

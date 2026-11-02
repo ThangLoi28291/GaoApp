@@ -3,16 +3,21 @@
 @using Microsoft.AspNetCore.Mvc.Rendering
 
 @{
-    ViewData["Title"] = "Cập nhật người dùng trong store";
+    ViewData["Title"] = "Cập nhật thông tin nhân viên";
     var mappingInfo = ViewBag.MappingInfo as UserInStoreEditDto;
     var roleOptions = ViewBag.RoleOptions as List<SelectListItem> ?? new();
+    var hostProfile = mappingInfo?.IsHostAdmin == true;
+    var canEditProfile = (bool?)ViewBag.CanEditProfile == true;
+    var administrator = ViewBag.SecurityAdministrator as GaoApp.Application.Interfaces.Services.Security.SecurityAdministrator;
+    var canChangeSecurity = !hostProfile && mappingInfo?.UserId != administrator?.UserId &&
+        administrator?.CanAdminister == true && (mappingInfo?.RoleCode != "ADMIN" || administrator.IsHostAdmin);
 }
 
 <div class="container-fluid edit-userinstore-page">
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
-            <h3 class="mb-1">Cập nhật người dùng trong store</h3>
-            <div class="text-muted">Điều chỉnh vai trò và trạng thái của người dùng trong cửa hàng hiện tại.</div>
+            <h3 class="mb-1">Cập nhật thông tin nhân viên</h3>
+            <div class="text-muted">@(hostProfile ? "Sửa thông tin cá nhân của bạn. Quyền Host Admin được bảo vệ." : "Điều chỉnh thông tin nhân viên trong cửa hàng hiện tại.")</div>
         </div>
 
         <a asp-area="Admin"
@@ -123,17 +128,47 @@
           method="post">
         @Html.AntiForgeryToken()
         <input asp-for="Id" type="hidden" />
+        <input asp-for="UpdateProfile" type="hidden" />
+        @if (canChangeSecurity)
+        {
+            <partial name="_SecurityActionConfirmation" />
+        }
 
         <div class="card shadow-sm border-0 form-card">
             <div class="card-header bg-white border-0 pb-0">
                 <h5 class="mb-1">Thông tin cập nhật</h5>
-                <div class="text-muted small">Cập nhật vai trò và trạng thái hoạt động trong store.</div>
+                <div class="text-muted small">Thông tin liên hệ và công việc tại cửa hàng.</div>
             </div>
 
             <div class="card-body">
                 <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
                 <div class="row g-4">
+                    @if (canEditProfile)
+                    {
+                        <div class="col-lg-6">
+                            <label asp-for="FullName" class="form-label fw-semibold">Họ tên hiển thị</label>
+                            <input asp-for="FullName" class="form-control" autocomplete="name" maxlength="200" required />
+                            <span asp-validation-for="FullName" class="text-danger small"></span>
+                        </div>
+                        <div class="col-lg-6">
+                            <label asp-for="Email" class="form-label fw-semibold">Email</label>
+                            <input asp-for="Email" class="form-control" type="email" autocomplete="email" maxlength="200" />
+                            <span asp-validation-for="Email" class="text-danger small"></span>
+                        </div>
+                    }
+                    @if (!canChangeSecurity)
+                    {
+                        <input asp-for="RoleId" type="hidden" />
+                        <input asp-for="IsActive" type="hidden" />
+                        <div class="col-lg-12">
+                            <div class="alert alert-light border mb-0">
+                                <i class="bx bx-shield-quarter me-1"></i> Vai trò và trạng thái được bảo vệ với tài khoản đang thao tác.
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
                     <div class="col-lg-6">
                         <label asp-for="RoleId" class="form-label fw-semibold">Vai trò</label>
                         <select asp-for="RoleId" class="form-select">
@@ -159,6 +194,7 @@
                             <label asp-for="IsActive" class="form-check-label fw-semibold">Đang hoạt động trong store</label>
                         </div>
                     </div>
+                    }
                     <div class="col-lg-6">
                         <label asp-for="PhoneNumber" class="form-label fw-semibold">Số điện thoại</label>
                         <input asp-for="PhoneNumber"
@@ -221,3 +257,11 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
 }
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
+}
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="UserInStores/Edit"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

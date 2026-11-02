@@ -1,0 +1,14 @@
+export { Engine } from '@babylonjs/core/Engines/engine.js';
+export { Scene } from '@babylonjs/core/scene.js';
+export { Vector3, Matrix } from '@babylonjs/core/Maths/math.vector.js';
+export { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
+export { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
+export { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js';
+export { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js';
+export { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
+export { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture.js';
+export { TransformNode } from '@babylonjs/core/Meshes/transformNode.js';
+export { Mesh } from '@babylonjs/core/Meshes/mesh.js';
+export { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder.js';
+export { PointerEventTypes } from '@babylonjs/core/Events/pointerEvents.js';
+import '@babylonjs/core/Materials/standardMaterial.js';

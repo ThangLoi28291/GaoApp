@@ -16,6 +16,10 @@
         PermissionCodes.Catalog.ProductAttribute.Create)).Succeeded;
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/catalog-foundation.mobile.css" asp-append-version="true" />
+}
+
 @section header {
     <div data-gao-ui="modern" class="w-100">
         <div class="gds-page-header gds-page-header--compact">
@@ -137,5 +141,6 @@
 </div>
 
 @section PageScripts {
+    <script src="~/Admin/js/catalog-foundation.mobile.js" asp-append-version="true"></script>
     <script src="~/admin/js/product-attributes.index.js" asp-append-version="true"></script>
 }

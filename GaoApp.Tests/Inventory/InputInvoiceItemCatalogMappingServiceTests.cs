@@ -545,7 +545,12 @@ public sealed class InputInvoiceItemCatalogMappingServiceTests
             1, 100, 101, 200, 50, 61, null);
         await fixture.Repository.SaveChangesAsync();
 
-        if (drift == "Unit") fixture.BoxConversion.UnitId = 42;
+        if (drift == "Unit")
+        {
+            // Persist a stale confirmed unit signature. UnitId itself is an EF
+            // alternate key and cannot be mutated in-place on a tracked conversion.
+            (await fixture.Context.InputInvoiceItemCatalogMaps.SingleAsync()).ConfirmedUnitId = 42;
+        }
         if (drift == "Factor") fixture.BoxConversion.Factor = 20m;
         if (drift == "BaseUnit") fixture.Product.BaseUnitId = 42;
         await fixture.Context.SaveChangesAsync();

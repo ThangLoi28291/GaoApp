@@ -1,0 +1,20 @@
+@model StorefrontProductsPage
+@{ ViewData["Title"] = "Danh mục sản phẩm"; var pages = Math.Max(1, (int)Math.Ceiling((double)Model.Products.TotalCount / Model.Query.PageSize)); }
+<div class="page-shell">
+    <header class="page-heading"><p class="eyebrow">Chọn món cho mỗi ngày</p><h1>Danh mục sản phẩm</h1><p>Tìm sản phẩm theo tên hoặc biến thể; có thể nhập tiếng Việt không dấu.</p></header>
+    <form class="catalog-filters" method="get" action="/shop/products">
+        <div class="filter-search"><label for="catalog-search">Tìm sản phẩm</label><input id="catalog-search" name="Search" value="@Model.Query.Search" maxlength="200" placeholder="Tên sản phẩm hoặc biến thể" /></div>
+        <div><label for="catalog-group">Nhóm trưng bày</label><select id="catalog-group" name="DisplayGroup"><option value="">Tất cả nhóm</option>@foreach (var group in Model.Groups) { <option selected="@(group == Model.Query.DisplayGroup)" value="@group">@group</option> }</select></div>
+        <div><label for="catalog-sort">Sắp xếp</label><select id="catalog-sort" name="Sort"><option value="Featured" selected="@(Model.Query.Sort == StorefrontCatalogSort.Featured)">Cửa hàng gợi ý</option><option value="NameAsc" selected="@(Model.Query.Sort == StorefrontCatalogSort.NameAsc)">Tên A → Z</option><option value="NameDesc" selected="@(Model.Query.Sort == StorefrontCatalogSort.NameDesc)">Tên Z → A</option></select></div>
+        <button class="button" type="submit">Áp dụng</button>
+    </form>
+    <p class="results-count" role="status">@Model.Products.TotalCount sản phẩm @if (!string.IsNullOrWhiteSpace(Model.Query.Search)) { <span>cho “@Model.Query.Search”</span> }</p>
+    @if (Model.Products.Items.Count == 0) { <div class="empty-state"><partial name="_Icon" model='"search"' /><h2>Chưa tìm thấy món phù hợp</h2><p>Thử từ khóa ngắn hơn hoặc xem tất cả nhóm sản phẩm.</p><a class="button secondary-button" href="/shop/products">Xem tất cả sản phẩm</a></div> }
+    else { <div class="product-grid">@foreach (var product in Model.Products.Items) { <partial name="_ProductCard" model="product" /> }</div> }
+    @if (pages > 1 || Model.Query.Page > 1)
+    { <nav class="pagination" aria-label="Trang kết quả">
+        @if (Model.Query.Page > 1) { <a class="button secondary-button" asp-action="Products" asp-route-Search="@Model.Query.Search" asp-route-DisplayGroup="@Model.Query.DisplayGroup" asp-route-Sort="@Model.Query.Sort" asp-route-Page="@(Model.Query.Page - 1)" asp-route-PageSize="@Model.Query.PageSize">Trang trước</a> }
+        <span>Trang @Model.Query.Page / @pages</span>
+        @if (Model.Query.Page < pages) { <a class="button secondary-button" asp-action="Products" asp-route-Search="@Model.Query.Search" asp-route-DisplayGroup="@Model.Query.DisplayGroup" asp-route-Sort="@Model.Query.Sort" asp-route-Page="@(Model.Query.Page + 1)" asp-route-PageSize="@Model.Query.PageSize">Trang sau</a> }
+    </nav> }
+</div>

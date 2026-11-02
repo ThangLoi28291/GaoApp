@@ -1,0 +1,12 @@
+@model StorefrontCatalogProduct
+@{
+    var variant = Model.Variants.First(); var unit = variant.Units.First();
+    var image = Model.Media.FirstOrDefault(x => x.Kind == StorefrontMediaKind.Image);
+}
+<article class="product-card" data-product-id="@Model.ProductId">
+    <a class="product-visual" href="/shop/products/@Model.ProductId" tabindex="-1" aria-hidden="true"><img src="@(image is null ? "/assets/product-fallback.svg" : image.Path + "?width=320")" srcset="@(image is null ? null : $"{image.Path}?width=160 160w, {image.Path}?width=320 320w, {image.Path}?width=640 640w, {image.Path}?width=960 960w")" sizes="(max-width:600px) calc((100vw - 46px)/2), (max-width:900px) 30vw, 25vw" alt="" loading="lazy" decoding="async" width="440" height="440" data-image-fallback /></a>
+    @if (!string.IsNullOrWhiteSpace(Model.DisplayGroup)) { <p class="product-group">@Model.DisplayGroup</p> }
+    <h3><a href="/shop/products/@Model.ProductId">@Model.Name</a></h3>
+    <p class="product-variant">@variant.Name</p>
+    <div class="product-price-row"><p class="price">@unit.RetailPrice.ToString("#,0.##", System.Globalization.CultureInfo.GetCultureInfo("vi-VN")) <span>đ</span><small>/ @unit.Name</small></p><a class="icon-button product-open" href="/shop/products/@Model.ProductId" aria-label="Chọn đơn vị của @Model.Name"><partial name="_Icon" model='"plus"' /></a></div>
+</article>

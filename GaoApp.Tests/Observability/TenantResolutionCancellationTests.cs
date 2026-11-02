@@ -95,7 +95,7 @@ public sealed class TenantResolutionCancellationTests
             RowVersion = new byte[8]
         };
         db.Stores.Add(store);
-        await db.SaveChangesAsync();
+        await SaveSeedAsync(db, tenant);
         tenant.Clear();
         var nextCalls = 0;
         var middleware = CreateMiddleware(
@@ -155,7 +155,7 @@ public sealed class TenantResolutionCancellationTests
             RowVersion = new byte[8]
         };
         db.Stores.Add(store);
-        await db.SaveChangesAsync();
+        await SaveSeedAsync(db, tenant);
         var nextCalls = 0;
         var middleware = CreateMiddleware(
             context =>
@@ -200,7 +200,7 @@ public sealed class TenantResolutionCancellationTests
                 IsActive = false,
                 RowVersion = new byte[8]
             });
-            await db.SaveChangesAsync();
+            await SaveSeedAsync(db, tenant);
         }
 
         var nextCalls = 0;
@@ -240,7 +240,7 @@ public sealed class TenantResolutionCancellationTests
             IsActive = true,
             RowVersion = new byte[8]
         });
-        await db.SaveChangesAsync();
+        await SaveSeedAsync(db, tenant);
         tenant.Clear();
         var nextCalls = 0;
         var middleware = CreateMiddleware(
@@ -308,6 +308,32 @@ public sealed class TenantResolutionCancellationTests
             nameof(ObjectDisposedException),
             body,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Localhost_without_query_or_configured_default_stops_before_store_data()
+    {
+        var tenant = new TenantContext();
+        await using var db = CreateDbContext(tenant);
+        var nextCalls = 0;
+        var middleware = CreateMiddleware(
+            _ => { nextCalls++; return Task.CompletedTask; },
+            new GlobalExceptionMiddlewareTests.RecordingLogger<TenantResolutionMiddleware>(),
+            Environments.Development);
+        var context = CreateContext("localhost", queryString: null);
+
+        await middleware.InvokeAsync(context, db, tenant);
+
+        Assert.Equal(0, nextCalls);
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Null(tenant.StoreId);
+        Assert.False(tenant.CanReadAllStores);
+    }
+
+    private static async Task SaveSeedAsync(AppDbContext db, TenantContext tenant)
+    {
+        using (tenant.BeginSystemAccess(SystemDataAccessPurpose.Provisioning))
+            await db.SaveChangesAsync();
     }
 
     private static TenantResolutionMiddleware CreateMiddleware(

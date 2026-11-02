@@ -118,6 +118,8 @@
 
 @section PageStyles {
     <link rel="stylesheet" href="~/Admin/css/purchase-request-details.css" asp-append-version="true" />
+
+    <link rel="stylesheet" href="~/Admin/css/purchasing.mobile.css" asp-append-version="true" />
 }
 
 <div class="pr-review-page gds-page" data-gao-ui="modern" id="purchaseRequestDetailsPage">
@@ -198,6 +200,7 @@
                                                 <span class="pr-product-index">@line.LineNo</span>
                                                 <div class="min-w-0">
                                                     <div class="fw-semibold pr-product-name">@line.ProductName</div>
+                                                    @if (!string.IsNullOrWhiteSpace(line.Note)) { <div class="pr-line-note"><strong>Ghi chú sản phẩm:</strong> @line.Note</div> }
                                                     <div class="pr-product-meta">
                                                         @if (!string.IsNullOrWhiteSpace(line.Sku)) { <span>SKU: @line.Sku</span> }
                                                         <span>@line.UnitName</span>
@@ -314,6 +317,7 @@
                                             <span class="pr-product-index">@line.LineNo</span>
                                             <div class="min-w-0">
                                                 <div class="fw-semibold pr-product-name">@line.ProductName</div>
+                                                @if (!string.IsNullOrWhiteSpace(line.Note)) { <div class="pr-line-note"><strong>Ghi chú sản phẩm:</strong> @line.Note</div> }
                                                 <div class="pr-product-meta">
                                                     @if (!string.IsNullOrWhiteSpace(line.Sku)) { <span>SKU: @line.Sku</span> }
                                                     <span>@line.UnitName</span>
@@ -406,7 +410,7 @@
                     {
                         <div class="pr-latest-action">
                             <span><i class="bx @ActionIcon(latestAction.ActionType)"></i></span>
-                            <div><strong>@ActionLabel(latestAction.ActionType)</strong><small>@latestAction.ActorName · @latestAction.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small></div>
+                            <div><strong>@ActionLabel(latestAction.ActionType)</strong><small>@latestAction.ActorName · @latestAction.OccurredAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</small></div>
                         </div>
                         @if (!string.IsNullOrWhiteSpace(latestAction.Note)) { <p class="pr-latest-note">@latestAction.Note</p> }
                         <button type="button" class="btn btn-label-secondary w-100 mt-3" data-bs-toggle="modal" data-bs-target="#requestHistoryModal">
@@ -460,7 +464,7 @@
                 {
                     <div class="pr-history-item">
                         <span class="pr-history-icon"><i class="bx @ActionIcon(action.ActionType)"></i></span>
-                        <div><strong>@ActionLabel(action.ActionType)</strong><small>@action.ActorName · @action.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</small>@if (!string.IsNullOrWhiteSpace(action.Note)) { <p>@action.Note</p> }</div>
+                        <div><strong>@ActionLabel(action.ActionType)</strong><small>@action.ActorName · @action.OccurredAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</small>@if (!string.IsNullOrWhiteSpace(action.Note)) { <p>@action.Note</p> }</div>
                     </div>
                 }
                 </div>
@@ -535,4 +539,5 @@
 
 @section PageScripts {
     <script src="~/Admin/js/purchase-request-details.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/purchasing.mobile.js" asp-append-version="true"></script>
 }

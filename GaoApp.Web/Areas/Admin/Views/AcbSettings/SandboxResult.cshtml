@@ -13,3 +13,6 @@
     <p>Nhật ký tham chiếu: <code>App_Data/Logs/@Model.JournalFolder/@(Model.RunId.ToString("N")).json</code></p>
     <a asp-action="Index" asp-route-tenant="@Context.Request.Query["tenant"]" class="btn btn-primary">Về cài đặt ACB</a>
 </div></div>
+
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/bank-settings.mobile.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/bank-settings.mobile.js" asp-append-version="true"></script> }

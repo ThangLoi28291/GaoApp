@@ -210,6 +210,7 @@
                     <div class="modal-body">
                         <div class="mb-3"><label for="employeeNewPassword" class="form-label fw-semibold">Mật khẩu mới</label><input id="employeeNewPassword" name="NewPassword" type="password" class="form-control" minlength="12" maxlength="128" required autocomplete="new-password" placeholder="Từ 12 đến 128 ký tự" /></div>
                         <div class="mb-3"><label for="employeeConfirmPassword" class="form-label fw-semibold">Nhập lại mật khẩu</label><input id="employeeConfirmPassword" name="ConfirmPassword" type="password" class="form-control" minlength="12" maxlength="128" required autocomplete="new-password" placeholder="Nhập lại mật khẩu mới" /></div>
+                        <partial name="_SecurityActionConfirmation" view-data='new ViewDataDictionary(ViewData) { ["ConfirmationRequired"] = true }' />
                         <div class="alert alert-warning small mb-0">Nhân viên cần dùng mật khẩu mới trong lần đăng nhập tiếp theo.</div>
                     </div>
                     <div class="modal-footer border-0"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="submit" class="btn btn-primary">Lưu mật khẩu mới</button></div>
@@ -225,7 +226,9 @@
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="id" id="employeeToggleMappingId" />
                     <div class="modal-header border-0"><div><h5 class="modal-title" id="employeeToggleTitle">Cập nhật trạng thái</h5><small class="text-muted" id="employeeToggleIdentity">—</small></div><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                    <div class="modal-body"><div class="alert mb-0" id="employeeToggleMessage"></div></div>
+                    <div class="modal-body"><div class="alert mb-0" id="employeeToggleMessage"></div>
+                        <partial name="_SecurityActionConfirmation" view-data='new ViewDataDictionary(ViewData) { ["ConfirmationPassword"] = false, ["ConfirmationRequired"] = true }' />
+                    </div>
                     <div class="modal-footer border-0"><button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Hủy</button><button type="submit" class="btn" id="employeeToggleConfirm">Xác nhận</button></div>
                 </form>
             </div>
@@ -236,3 +239,11 @@
 @section PageScripts {
     <script src="~/Admin/js/employee-index.js" asp-append-version="true"></script>
 }
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
+}
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="UserInStores/Index"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

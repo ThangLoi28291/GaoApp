@@ -13,16 +13,53 @@ window.PosCheckoutFeedback = (() => {
     function create({ modal, submit, isBusy, choosePrint }) {
         if (!modal) return null;
         let printChoice = false;
+        let pendingCashReminder = null;
+        let awaitingCashReminder = null;
+        let reminderTimer = null;
+        const reminder = document.getElementById('posCashReminder');
         const el = id => modal.querySelector('#' + id);
         const money = value => amount(value).toLocaleString('vi-VN') + ' đ';
-        function begin(summary) {
+        function hideReminder() {
+            clearTimeout(reminderTimer);
+            reminderTimer = null;
+            if (reminder) {
+                reminder.hidden = true;
+                reminder.classList.remove('is-visible');
+            }
+        }
+        function showReminder(snapshot) {
+            if (!reminder || !snapshot) return;
+            hideReminder();
+            reminder.querySelector('#posCashReminderReceived').textContent = snapshot.received.toLocaleString('vi-VN');
+            reminder.querySelector('#posCashReminderChange').textContent = snapshot.change.toLocaleString('vi-VN');
+            const order = reminder.querySelector('#posCashReminderOrder');
+            order.hidden = !snapshot.orderId;
+            order.textContent = snapshot.orderId ? `Đơn #${snapshot.orderId}` : '';
+            reminder.hidden = false;
+            void reminder.offsetWidth;
+            reminder.classList.add('is-visible');
+            reminderTimer = setTimeout(hideReminder, 4000);
+        }
+        function showReminderWhenPosReturns() {
+            if (!awaitingCashReminder || document.hidden || document.hasFocus?.() === false) return;
+            const snapshot = awaitingCashReminder;
+            awaitingCashReminder = null;
+            showReminder(snapshot);
+        }
+        function begin(summary, orderId) {
+            hideReminder();
+            awaitingCashReminder = null;
+            pendingCashReminder = summary && amount(summary.received) > 0
+                ? { received: amount(summary.received), change: amount(summary.change),
+                    orderId: Number.isInteger(Number(orderId)) && Number(orderId) > 0 ? Number(orderId) : null }
+                : null;
             printChoice = false;
             el('receiptPrintChoices').hidden = true;
             el('cashReceiptSummary').hidden = !summary;
-            el('invoiceIntentChoices').hidden = false;
-            el('invoiceIntentModalTitle').textContent = 'Khách có lấy hóa đơn điện tử không?';
-            el('invoiceIntentDescription').textContent = 'Chọn phương thức hóa đơn trước khi in bill.';
-            el('invoiceIntentHelp').textContent = 'Enter / K: Không lấy hóa đơn · C: Có lấy hóa đơn';
+            el('invoiceIntentChoices').hidden = true;
+            el('invoiceIntentModalTitle').textContent = 'Hoàn tất đơn hàng';
+            el('invoiceIntentDescription').textContent = 'Hóa đơn được xử lý tự động theo cấu hình.';
+            el('invoiceIntentHelp').textContent = 'Enter: Thử lại hoàn tất';
             if (summary) {
                 el('cashReceiptTotal').textContent = money(summary.total);
                 el('cashReceiptReceived').textContent = money(summary.received);
@@ -30,6 +67,16 @@ window.PosCheckoutFeedback = (() => {
                 el('cashReceiptOtherRow').hidden = !summary.other;
                 el('cashReceiptOther').textContent = money(summary.other);
             }
+        }
+        function complete() {
+            awaitingCashReminder = pendingCashReminder;
+            pendingCashReminder = null;
+            showReminderWhenPosReturns();
+        }
+        function showRetry() {
+            printChoice = false;
+            el('invoiceIntentChoices').hidden = false;
+            el('receiptPrintChoices').hidden = true;
         }
         function askPrint() {
             printChoice = true;
@@ -43,17 +90,20 @@ window.PosCheckoutFeedback = (() => {
         el('btnReceiptDoNotPrint')?.addEventListener('click', () => { if (printChoice && !isBusy()) choosePrint(false); });
         el('btnReceiptPrint')?.addEventListener('click', () => { if (printChoice && !isBusy()) choosePrint(true); });
         modal.addEventListener('shown.bs.modal', () => el(printChoice ? 'btnReceiptDoNotPrint' : 'btnInvoiceIntentAutomatic').focus());
+        modal.addEventListener('hidden.bs.modal', complete);
+        window.addEventListener?.('focus', showReminderWhenPosReturns);
+        document.addEventListener('visibilitychange', showReminderWhenPosReturns);
         document.addEventListener('keydown', event => {
             if (!modal.classList.contains('show') || event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
             if (event.target?.matches?.('input, textarea, select, [contenteditable="true"]')) return;
             const key = event.key.toLowerCase();
-            if (!['enter', 'k', 'c'].includes(key)) return;
+            if (!(printChoice ? ['enter', 'k', 'c'].includes(key) : key === 'enter')) return;
             event.preventDefault(); event.stopImmediatePropagation();
             if (event.repeat || isBusy()) return;
             if (printChoice) choosePrint(key === 'c');
-            else submit(key === 'c' ? 2 : 1);
+            else submit(1);
         }, true);
-        return { begin, askPrint };
+        return { begin, askPrint, showRetry, complete };
     }
     return { cashSummary, create };
 })();

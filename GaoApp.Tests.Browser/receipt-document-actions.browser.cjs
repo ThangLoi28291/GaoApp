@@ -3,6 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {chromium}=require('playwright');
+const ui11 = require('./receipt-mobile-review.cjs'); // UI-11 review hook
 (async()=>{
     const info=JSON.parse(await new Promise(resolve=>{let data='';process.stdin.on('data',chunk=>data+=chunk);process.stdin.on('end',()=>resolve(data));}));
     const browser=await chromium.launch({channel:'chrome',headless:true});
@@ -11,6 +12,7 @@ const {chromium}=require('playwright');
     try{
         async function login(user,password){
             const context=await browser.newContext({viewport:{width:1440,height:1050}}), page=await context.newPage();
+            await ui11.protect(context,info.baseUrl); // UI-11 review hook
             page.setDefaultTimeout(15000);page.on('pageerror',error=>errors.push(error.message));
             await page.goto(info.baseUrl+'/admin/account/login');
             await page.locator('[name=UserName]').fill(user);await page.locator('[name=Password]').fill(password);
@@ -22,6 +24,7 @@ const {chromium}=require('playwright');
         const staffUrl=info.baseUrl+'/admin/warehouse-receiving/'+info.receiptId;
         const managerUrl=info.baseUrl+'/admin/stock-documents/'+info.receiptId;
         async function openTitle(page){
+            await require('./browser-contract.cjs').reveal(page, `[data-receipt-title="${info.receiptId}"]`);
             await page.locator(`[data-receipt-title="${info.receiptId}"]`).first().click();
             await page.waitForFunction(()=>document.getElementById('receiptDocumentMessage').textContent==='');
             await page.locator('#receiptNewTitle').waitFor();
@@ -61,15 +64,21 @@ const {chromium}=require('playwright');
         assert.match(await staff.locator('.wrd-document-title').textContent(),/Phiếu nhập buổi sáng/);
 
         await manager.goto(managerUrl);
+        await require('./browser-contract.cjs').reveal(manager, '#receiptTitleProposalNotice');
         await manager.locator('#receiptTitleProposalNotice').filter({hasText:'Tên đề nghị sau khi gửi duyệt'}).waitFor();
         assert.match(await manager.locator('[data-retail-unit]').first().textContent(),/48[.,]000 đ\/Lốc/);
         assert.match(await manager.locator('[data-retail-unit]').nth(1).textContent(),/280[.,]000 đ\/Thùng/);
+        await ui11.review(manager,'manager-commercial-goods',ui11.output('document-actions')); // UI-11 review hook
         await manager.locator('.commercial-unit-price').first().fill('12345');
         assert.ok(await manager.locator('.commercial-unit-price').first().evaluate(node=>node.clientWidth>=110),'Retail column leaves price inputs readable');
         if(output)await manager.locator('#commercialApprovalWorkbench').screenshot({path:path.join(output,'retail-comparison.png')});
         await openTitle(manager);await manager.locator('#receiptTitleApprove').waitFor();
+        await ui11.dialog(manager,'#receiptDocumentModal','manager-title',ui11.output('document-actions')); // UI-11 review hook
         if(output)await manager.screenshot({path:path.join(output,'manager-title-approval.png')});
-        await manager.locator('#receiptTitleApprove').click();await manager.locator('#receiptDocumentModal').waitFor({state:'hidden'});
+        const approvalResponse = manager.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/document-actions/review-title'));
+        await manager.locator('#receiptTitleApprove').click();
+        const approval=await approvalResponse;assert.equal(approval.status(),200,await approval.text());
+        await manager.locator('#receiptDocumentModal').waitFor({state:'hidden'});
         assert.equal(await manager.locator('[data-receipt-document-title]').textContent(),'Tên đề nghị sau khi gửi duyệt');
         assert.equal(await manager.locator('.commercial-unit-price').first().inputValue(),'12345','Title decisions preserve unsaved commercial inputs');
         await staff.reload();await saveTitle(staff,'Tên đề nghị bị từ chối');
@@ -88,11 +97,13 @@ const {chromium}=require('playwright');
         const firstRetail=manager.locator('[data-retail-unit]').first(), unitId=await firstRetail.getAttribute('data-retail-unit');
         await manager.locator('.js-receipt-selling-prices').first().click();
         await manager.locator('#rspContent').waitFor({state:'visible'});
-        for(const checkbox of await manager.locator('#rspUnits [data-field="selected"]').all())await checkbox.uncheck();
-        const pricedUnit=manager.locator(`#rspUnits [data-unit-id="${unitId}"]`);
+        const pricedUnit=manager.locator(`#rspUnits .rsp-unit[data-unit-id="${unitId}"]`);
         await pricedUnit.locator('[data-field="price"]').fill('60000');
-        await pricedUnit.locator('[data-field="selected"]').check();
         await manager.locator('#rspSave').click();
+        await manager.locator('#rspConfirmation').waitFor({state:'visible'});
+        const priceSaved=manager.waitForResponse(response=>response.request().method()==='POST'&&response.url().endsWith('/selling-prices'));
+        await manager.locator('#rspSave').click();
+        assert.equal((await priceSaved).ok(),true);
         await manager.waitForFunction(()=>document.getElementById('rspMessage').textContent.startsWith('Đã cập nhật 1'));
         assert.match(await firstRetail.textContent(),/60[.,]000 đ\/Lốc/);
         assert.match(await manager.locator('[data-retail-unit]').nth(1).textContent(),/280[.,]000 đ\/Thùng/);

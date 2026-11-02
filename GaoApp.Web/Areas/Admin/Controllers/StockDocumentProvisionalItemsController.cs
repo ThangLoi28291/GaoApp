@@ -6,6 +6,7 @@ using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using GaoApp.Web.Security;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
@@ -170,7 +171,15 @@ public sealed class StockDocumentProvisionalItemsController : Controller
 
     private async Task<IActionResult> JsonCall(Func<Task<ProvisionalReceivingStateDto>> action)
     {
-        try { return Json(await action()); }
+        try
+        {
+            var state = await action();
+            var policy = state.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+                ? PermissionCodes.Purchase.Receipt.Approve : PermissionCodes.Inventory.StockDocument.Approve;
+            if (!await HasAnyAsync(policy, PermissionCodes.Purchase.Order.ViewCost))
+                ReceiptCommercialRedaction.Apply(state.Items);
+            return Json(state);
+        }
         catch (BusinessRuleException ex) { return Conflict(new { message = ex.SafeMessage }); }
     }
 

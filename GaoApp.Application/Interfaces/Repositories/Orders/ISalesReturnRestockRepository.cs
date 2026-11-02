@@ -9,6 +9,7 @@ public interface ISalesReturnRestockRepository
     Task AddRangeAsync(IReadOnlyCollection<SalesReturnRestockFragment> rows, CancellationToken ct);
     Task<List<OrderLegalEntityAllocationReversal>> GetLegalReservationsAsync(int returnId, CancellationToken ct);
     Task<List<SalesReturnRestockFragment>> GetPendingAsync(int? returnId, CancellationToken ct);
+    Task<Dictionary<(int ReturnLineId, int WarehouseId), decimal>> GetCompletedQuantitiesAsync(IReadOnlyCollection<int> returnLineIds, CancellationToken ct);
     Task<bool> HasFragmentsAsync(int returnId, CancellationToken ct);
     Task<Dictionary<int, decimal>> GetLegacyReservedQuantitiesAsync(IReadOnlyCollection<int> sourceIds, CancellationToken ct);
 }

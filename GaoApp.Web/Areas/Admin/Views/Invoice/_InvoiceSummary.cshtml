@@ -65,6 +65,10 @@
                 <div class="fs-3 fw-bold">
                     @Model.GrandTotal.ToString("N0")
                 </div>
+                @if (Model.RevenueTaxPercentage.HasValue)
+                {
+                    <div class="small mt-1">Đã giảm thuế @Model.RevenueTaxReductionAmount.ToString("N0") đ</div>
+                }
             </div>
         </div>
     </div>

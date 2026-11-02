@@ -17,6 +17,7 @@ public sealed class PurchaseReceiptPricingAllocationRequest
     public string? PlanRowVersion { get; set; }
     public decimal ActualBillTotal { get; set; }
     public decimal GlobalDiscountPercent { get; set; }
+    public decimal GlobalDiscountAmount { get; set; }
     public List<PurchaseReceiptPricingLineInput> Lines { get; set; } = [];
     public List<PurchaseReceiptPricingRuleInput> Rules { get; set; } = [];
     public List<PurchaseReceiptGiftValuationInput> GiftValuations { get; set; } = [];

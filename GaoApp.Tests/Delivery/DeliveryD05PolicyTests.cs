@@ -10,6 +10,28 @@ public sealed class DeliveryD05PolicyTests
 {
     private static decimal Number(string value) => decimal.Parse(value, CultureInfo.InvariantCulture);
 
+    [Fact]
+    public void POS_aggregate_rounding_keeps_free_gifts_zero_and_reconciles_header_discount_once()
+    {
+        var lines = new DeliveryPosPriceLine[] { new(1, 1, .5m, 0, 0, 1), new(2, 1, .5m, 0, 0, 1), new(3, 1, 0, 0, 0, 0, true) };
+        var prices = DeliveryPricingPolicy.ApprovePos(lines, 1, 0, 0, 0, 1);
+        Assert.Equal(1m, prices.Sum(x => x.Net)); Assert.Equal(0m, Assert.Single(prices, x => x.LineId == 3).Net);
+        Assert.Equal(1m, prices.Sum(x => x.Gross));
+        var replay = DeliveryPricingPolicy.ApprovePos(lines, 1, 0, 0, 0, 1);
+        Assert.Equal(prices, replay);
+    }
+
+    [Fact]
+    public void POS_discounts_cannot_be_double_counted_or_detached_from_the_source_total()
+    {
+        var lines = new DeliveryPosPriceLine[] { new(1, 2, 10000, 0, 2000, 18000), new(2, 1, 0, 0, 0, 0, true) };
+        var prices = DeliveryPricingPolicy.ApprovePos(lines, 20000, 1000, 3000, 2000, 12000);
+        Assert.Equal(12000m, prices.Sum(x => x.Net)); Assert.Equal(6000m, prices.Sum(x => x.AllocatedOrderDiscount));
+        Assert.Equal(0m, Assert.Single(prices, x => x.LineId == 2).Net);
+        Assert.Equal("QUOTE_MISMATCH", Assert.Throws<DeliveryRuleException>(() =>
+            DeliveryPricingPolicy.ApprovePos(lines, 20000, 1000, 3000, 2000, 14000)).Code);
+    }
+
     [Theory]
     [InlineData(DeliveryState.Created, true)]
     [InlineData(DeliveryState.Picking, true)]

@@ -47,9 +47,13 @@ public sealed class PosDashboardV2UiContractTests
         Assert.Contains("aria-live=\"polite\"", view, StringComparison.Ordinal);
         Assert.Contains("aria-busy=\"true\"", view, StringComparison.Ordinal);
 
-        Assert.Contains("/admin/pos/orders-page", view, StringComparison.Ordinal);
-        Assert.Contains("/admin/pos-shift", view, StringComparison.Ordinal);
-        Assert.Contains("/admin/pos-shift/history", view, StringComparison.Ordinal);
+        // Shortcuts are store-configured, permission-filtered nodes, never a fixed list of functional menus.
+        Assert.Contains("Navigation.GetAsync(ViewContext)", view, StringComparison.Ordinal);
+        Assert.Contains("navigation.PosNodes()", view, StringComparison.Ordinal);
+        Assert.Contains("!navigation.IsCustomerDisplay(item) && !item.IsCurrent", view, StringComparison.Ordinal);
+        Assert.Contains("href=\"@item.Href\"", view, StringComparison.Ordinal);
+        Assert.Contains("data-menu-id=\"@item.Id\"", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/admin/pos", view, StringComparison.Ordinal);
     }
 
     [Fact]

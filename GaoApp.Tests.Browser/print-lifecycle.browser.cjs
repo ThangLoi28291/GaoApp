@@ -14,8 +14,22 @@ const receipt = { orderId: 123, orderNumber: 'TEST-PRINT-123', storeName: 'Cửa
     subtotal: 6000, grandTotal: 6000, paidTotal: 6000, payments: [] };
 const view = fs.readFileSync(path.join(web, 'Areas/Admin/Views/ReceiptTemplates/Print.cshtml'), 'utf8');
 const errors = [], jobs = [];
+const posApp = fs.readFileSync(path.join(web, 'wwwroot/Admin/js/pos/pos.app.js'), 'utf8');
+const checkoutStart = posApp.indexOf('function prepareReceiptPrint(');
+const checkoutEnd = posApp.indexOf('async function submitInvoiceIntent(', checkoutStart);
+assert.ok(checkoutStart >= 0 && checkoutEnd > checkoutStart, 'Production checkout print functions must be present');
+// Read the actual POS functions so this regression cannot silently keep passing
+// against an outdated copy when checkout or print-window ownership changes.
+const checkoutLogic = posApp.slice(checkoutStart, checkoutEnd);
 const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (/^\/Admin\/(?:css|js)\//.test(url.pathname)) {
+        const file = path.resolve(web, 'wwwroot', '.' + url.pathname);
+        const assets = path.resolve(web, 'wwwroot', 'Admin') + path.sep;
+        if (!file.startsWith(assets) || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
+        res.setHeader('Content-Type', file.endsWith('.css') ? 'text/css' : 'text/javascript');
+        res.end(fs.readFileSync(file)); return;
+    }
     if (url.pathname === '/Admin/js/pos/qrcodegen.js') {
         res.setHeader('Content-Type', 'text/javascript');
         res.end(fs.readFileSync(path.join(web, 'wwwroot/Admin/js/pos/qrcodegen.js'))); return;
@@ -26,23 +40,31 @@ const server = http.createServer((req, res) => {
         res.end(fs.readFileSync(path.join(web, 'wwwroot/Admin/js/printing', name))); return;
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    if (url.pathname === '/receipt') {
-        const setup = { receipt, templates: [], storeId: 123, terminalId: 456, autoPrint: url.searchParams.get('auto') === '1' };
+    if (url.pathname === '/receipt' || url.pathname.startsWith('/admin/pos/receipt/')) {
+        const checkoutId=Number(url.pathname.split('/').at(-1));
+        const actualReceipt = url.pathname.startsWith('/admin/pos/receipt/') ? {...receipt,orderId:checkoutId,status:'Completed',paidTotal:checkoutId===124?8000:6000,changeDue:checkoutId===124?2000:0,payments:[{method:checkoutId===124?'BankTransfer':'Cash',amount:checkoutId===124?8000:6000}]} : receipt;
+        const setup = { receipt:actualReceipt, templates: [], storeId: 123, terminalId: 456, autoPrint: url.pathname.startsWith('/admin/pos/receipt/') || url.searchParams.get('auto') === '1' };
+        if(url.searchParams.get('data')==='true'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(setup));return;}
         res.end(view.slice(view.indexOf('<!doctype'))
             .replace('@Model.Receipt.OrderNumber', receipt.orderNumber)
             .replace('@Html.Raw(JsonSerializer.Serialize(Model, ReceiptTemplateService.Json))', JSON.stringify(setup))
-            .replaceAll('src="~/', 'src="/')); return;
+            .replaceAll('src="~/', 'src="/').replaceAll('href="~/', 'href="/')); return;
     }
     if (url.pathname === '/simple') {
         res.end('<!doctype html><title>Bill</title><p>Bill</p><script src="/Admin/js/printing/print.lifecycle.js" data-auto-close></script>'); return;
     }
-    res.end(`<!doctype html><title>POS giữ nguyên</title><input id="cartNote" value="Đơn đang bán" />${scripts}`);
+    res.end(`<!doctype html><title>POS giữ nguyên</title><main id="posShell" data-store-id="123" data-terminal-id="456"><input id="cartNote" value="Đơn đang bán" /><button id="checkout">Thanh toán tiền mặt</button><button id="overpaid">Chuyển khoản dư</button></main>${scripts}<script>
+    const preparedReceiptPrintWindows=new Map();window.PosOffline={print:()=>false};
+    const getJson=async url=>(await fetch(url)).json();const showError=message=>{throw Error(message)};
+    ${checkoutLogic}
+    for(const [button,id] of [['checkout',123],['overpaid',124]])document.getElementById(button).onclick=()=>{prepareReceiptPrint(id);Promise.resolve().then(()=>printReceiptAfterInvoiceIntent(id,null,true));};
+    </script>`);
 });
 
 (async () => {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${server.address().port}`;
-    const browser = await chromium.launch({ channel: 'chrome', headless: true });
+    const browser = await chromium.launch({... (process.env.GAO_PLAYWRIGHT_CHROME?{executablePath:process.env.GAO_PLAYWRIGHT_CHROME}:{channel:'chrome'}),headless:true});
     const context = await browser.newContext();
     await context.exposeFunction('recordPrintJob', job => jobs.push(job));
     await context.addInitScript(() => {
@@ -73,6 +95,17 @@ const server = http.createServer((req, res) => {
         }, fail);
     }
     try {
+        // Actual POS checkout preopens a native Chrome tab during the cashier
+        // gesture, keeps it until afterprint, then returns to the next sale.
+        for(const button of ['checkout','overpaid']){
+            const readyCheckout=context.waitForEvent('page');await parent.locator('#'+button).click();
+            const checkout=await readyCheckout;
+            await checkout.waitForFunction(()=>document.querySelector('#receiptPaper')?.contentWindow.__printStarted);
+            assert.equal(checkout.isClosed(),false);
+            assert.equal(await checkout.evaluate(()=>!!opener),true);
+            await finish(checkout,await checkout.locator('#receiptPaper').contentFrame());
+            assert.equal(context.pages().length,1);
+        }
         // A noopener tab still closes its outer page when the inner paper finishes.
         let page = await popup('/receipt?auto=1', true);
         let paper = await page.locator('#receiptPaper').contentFrame();
@@ -145,6 +178,6 @@ const server = http.createServer((req, res) => {
         closed = page.waitForEvent('close');
         await page.evaluate(() => { __media(true); __media(false); }); await closed;
         assert.deepEqual(errors, []);
-        console.log('PASS print lifecycle: browser completion/cancel, noopener/inner frame, manual preview, QZ success/error/retry, offline popup, embedded cleanup and print-media fallback; POS stays open.');
+        console.log('PASS print lifecycle: real cash/overpaid-transfer POS checkout, Chrome afterprint tab close, browser completion/cancel, noopener/inner frame, manual preview, QZ success/error/retry, offline popup, embedded cleanup and print-media fallback; POS stays open.');
     } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; server.close(); });

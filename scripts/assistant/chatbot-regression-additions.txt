@@ -1,0 +1,28 @@
+    [Theory]
+    [InlineData("TH")]
+    [InlineData("Vinamilk")]
+    [InlineData("có đường")]
+    public void PartialCatalogCanRefineBeyondTheFirstPage(string fragment)
+    {
+        var memory = new ScopedCatalogMemory(new("1", null, null), DateTimeOffset.MaxValue,
+            [new("1", "1", "Sữa đặc Ông Thọ")], "sua", HasMoreMatches: true);
+        Assert.True(AssistantCatalogClarification.TryQuery(memory, fragment, out var query));
+        Assert.StartsWith("sua ", query);
+        Assert.False(AssistantCatalogClarification.TryQuery(memory with { HasMoreMatches = false }, fragment, out _));
+    }
+
+    [Theory]
+    [InlineData("giá sỉ")]
+    [InlineData("giá lốc")]
+    [InlineData("cả giá lẻ và sỉ")]
+    public void PriceOnlyFollowUpCanKeepTheSelectedProduct(string message)
+        => Assert.True(AssistantCatalogClarification.IsPriceFollowUp(message));
+
+    [Theory]
+    [InlineData("giá sữa TH")]
+    [InlineData("giá lốc Coca")]
+    [InlineData("giải thích giá sỉ")]
+    [InlineData("xin chào")]
+    public void PriceFollowUpDoesNotReplaceNewProductOrGeneralChat(string message)
+        => Assert.False(AssistantCatalogClarification.IsPriceFollowUp(message));
+

@@ -88,6 +88,8 @@ public sealed class DatabaseSchemaManifestTests
             ON [dbo].[InventoryTransactions];
 
             ALTER TABLE [dbo].[InventoryTransactions]
+                DROP CONSTRAINT [CK_InventoryTransactions_DeliveryPosting];
+            ALTER TABLE [dbo].[InventoryTransactions]
                 DROP COLUMN [IdempotencyKey];
             """,
             mismatches =>
@@ -97,10 +99,10 @@ public sealed class DatabaseSchemaManifestTests
                 mismatches.Tables.Should().Be(0);
                 mismatches.PrimaryKeys.Should().Be(0);
                 mismatches.ForeignKeys.Should().Be(0);
-                mismatches.CheckConstraints.Should().Be(0);
+                mismatches.CheckConstraints.Should().Be(1);
                 mismatches.Sequences.Should().Be(0);
             },
-            expectedMismatchCategoryCount: 2);
+            expectedMismatchCategoryCount: 3);
 
     [Fact]
     public Task Current_history_wrong_inventory_idempotency_column_type_should_be_rejected()
@@ -406,6 +408,102 @@ public sealed class DatabaseSchemaManifestTests
     }
 
     [Fact]
+    public async Task Schema_only_upgrades_notification_bridge_then_verifies_and_reruns_without_seeding()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        var ids = db.Database.GetMigrations().ToArray();
+        var position = Array.IndexOf(ids, "20261014140000_AddBankNotificationBridge");
+        Assert.True(position > 0);
+        await db.GetService<IMigrator>().MigrateAsync(ids[position - 1]);
+        var preflight = CreatePreflight(db);
+        var before = await preflight.InspectAsync();
+        Assert.Equal(DatabaseCompatibilityState.SupportedPendingUpgrade, before.State);
+        Assert.Equal(position, before.AppliedMigrationCount);
+        var mandatory = new CountingMandatorySeeder();
+        var demo = new CountingDemoSeeder();
+        var bootstrap = new CountingBootstrapper();
+        var transaction = new CountingTransactionRunner();
+        var pipeline = new MigrationExecutionPipeline(
+            Options.Create(new SeedDataOptions()), Options.Create(new ProductionBootstrapOptions()),
+            new TestHostEnvironment(), new MigratorConfigurationValidator(), preflight,
+            new EfCoreDatabaseMigrationExecutor(db), mandatory, demo, bootstrap, transaction);
+        await pipeline.RunAsync(MigratorMode.SchemaOnly);
+        var verified = await preflight.InspectAsync();
+        Assert.Equal(DatabaseCompatibilityState.CurrentBaseline, verified.State);
+        Assert.Equal(ids.Length, verified.AppliedMigrationCount);
+        var history = await database.ReadMigrationHistoryAsync();
+        var fingerprint = await ReadFingerprintAsync(db);
+        await pipeline.RunAsync(MigratorMode.SchemaOnly);
+        Assert.Equal(history, await database.ReadMigrationHistoryAsync());
+        Assert.Equal(fingerprint, await ReadFingerprintAsync(db));
+        Assert.Equal(0, mandatory.Count);
+        Assert.Equal(0, demo.Count);
+        Assert.Equal(0, bootstrap.Count);
+        Assert.Equal(0, transaction.Count);
+
+        await database.ExecuteAsync("DROP INDEX [IX_BankNotificationReceipts_StoreId_EvidenceKey] ON [dbo].[BankNotificationReceipts];");
+        var error = await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => pipeline.RunAsync(MigratorMode.SchemaOnly));
+        Assert.False(error.MigrationWasAttempted);
+        Assert.Equal("StructuralSchemaMismatch", error.Result.SafeReasonCode);
+        Assert.True(error.Result.SchemaMismatches!.Indexes > 0);
+        Assert.Equal(history, await database.ReadMigrationHistoryAsync());
+    }
+
+    [Fact]
+    public async Task Schema_only_upgrades_a_64_migration_prefix_then_verifies_and_reruns_without_seeding()
+    {
+        await using var database = new PreflightAcceptanceDatabase();
+        await using var db = database.CreateContext();
+        var ids = db.Database.GetMigrations().ToArray();
+        Assert.True(ids.Length > 64);
+        await db.GetService<IMigrator>().MigrateAsync(ids[63]);
+        var preflight = CreatePreflight(db);
+        var initial = await preflight.InspectAsync();
+        Assert.Equal(DatabaseCompatibilityState.SupportedPendingUpgrade, initial.State);
+        Assert.Equal(64, initial.AppliedMigrationCount);
+        var mandatory = new CountingMandatorySeeder();
+        var demo = new CountingDemoSeeder();
+        var bootstrap = new CountingBootstrapper();
+        var transaction = new CountingTransactionRunner();
+        var pipeline = new MigrationExecutionPipeline(
+            Options.Create(new SeedDataOptions()), Options.Create(new ProductionBootstrapOptions()),
+            new TestHostEnvironment(), new MigratorConfigurationValidator(), preflight,
+            new EfCoreDatabaseMigrationExecutor(db), mandatory, demo, bootstrap, transaction);
+
+        await pipeline.RunAsync(MigratorMode.SchemaOnly);
+        var verified = await preflight.InspectAsync();
+        Assert.Equal(DatabaseCompatibilityState.CurrentBaseline, verified.State);
+        Assert.Equal(ids.Length, verified.AppliedMigrationCount);
+        Assert.Equal(0, verified.SchemaMismatchCategoryCount);
+        var history = await database.ReadMigrationHistoryAsync();
+        var fingerprint = await ReadFingerprintAsync(db);
+        await pipeline.RunAsync(MigratorMode.SchemaOnly);
+        Assert.Equal(history, await database.ReadMigrationHistoryAsync());
+        Assert.Equal(fingerprint, await ReadFingerprintAsync(db));
+        Assert.Equal(0, mandatory.Count);
+        Assert.Equal(0, demo.Count);
+        Assert.Equal(0, bootstrap.Count);
+        Assert.Equal(0, transaction.Count);
+
+        // A genuinely weaker proof must still fail; equivalent parentheses
+        // do not grant acceptance to changed predicates or disabled checks.
+        await database.ExecuteAsync("""
+            ALTER TABLE dbo.DeliveryDispatchCostFragments DROP CONSTRAINT CK_DeliveryDispatchCostFragments_CostProof;
+            ALTER TABLE dbo.DeliveryDispatchCostFragments ADD CONSTRAINT CK_DeliveryDispatchCostFragments_CostProof CHECK
+            ((IsProvisional=0 AND InventoryCostLayerId IS NOT NULL) OR
+             (IsProvisional=1 AND InventoryCostLayerId IS NULL AND InventoryCostBudgetDebitId IS NULL));
+            """);
+        var driftFingerprint = await ReadFingerprintAsync(db);
+        var error = await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => pipeline.RunAsync(MigratorMode.SchemaOnly));
+        Assert.False(error.MigrationWasAttempted);
+        Assert.Equal("StructuralSchemaMismatch", error.Result.SafeReasonCode);
+        Assert.True(error.Result.SchemaMismatches!.CheckConstraints > 0);
+        Assert.Equal(history, await database.ReadMigrationHistoryAsync());
+        Assert.Equal(driftFingerprint, await ReadFingerprintAsync(db));
+    }
+
+    [Fact]
     public async Task Current_baseline_rerun_should_be_no_op()
     {
         await using var database = new PreflightAcceptanceDatabase();
@@ -510,7 +608,13 @@ public sealed class DatabaseSchemaManifestTests
                 "20261007090000_AddMixedQuantityPromotions",
                 "20261007100000_AddDeliveryInventoryPosting",
                 "20261008100000_AddDeliveryTrips",
-                "20261008180000_AllowDeliveryOpeningCostSources");
+                "20261008120000_AddDeliveryProvisionalCosts",
+                "20261008180000_AllowDeliveryOpeningCostSources",
+                "20261009060000_WidenOrderLineSku",
+                "20261014010000_AddPurchaseLineNotes",
+                "20261014020000_AddReceiptGlobalDiscountAmount",
+                "20261014140000_AddBankNotificationBridge",
+                "20261022090000_AddDurableAuditOutbox");
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
 
         catalog.TryGetManifestForAppliedMigrationPrefix(
@@ -626,6 +730,13 @@ public sealed class DatabaseSchemaManifestTests
             await db.Database.CloseConnectionAsync();
             DatabaseSchemaCanonicalizer.CreateCategoryRecords(before).Indexes
                 .Should().Contain(expectedIndexRecord, "the target index must match before corruption");
+        }
+        if (corruptionSql.Contains("ALTER COLUMN [IdempotencyKey]", StringComparison.Ordinal))
+        {
+            // Current delivery metadata depends on this column. Preserve that exact check while corrupting only its type/nullability.
+            corruptionSql = "DECLARE @deliveryCheck nvarchar(max)=(SELECT definition FROM sys.check_constraints WHERE name=N'CK_InventoryTransactions_DeliveryPosting'); " +
+                "ALTER TABLE dbo.InventoryTransactions DROP CONSTRAINT CK_InventoryTransactions_DeliveryPosting; " + corruptionSql +
+                " EXEC(N'ALTER TABLE dbo.InventoryTransactions ADD CONSTRAINT CK_InventoryTransactions_DeliveryPosting CHECK '+@deliveryCheck);";
         }
         await database.ExecuteAsync(corruptionSql);
         if (expectedIndexRecord is not null)

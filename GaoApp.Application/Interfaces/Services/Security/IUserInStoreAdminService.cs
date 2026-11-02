@@ -43,7 +43,8 @@ public interface IUserInStoreAdminService
         int storeId,
         int id,
         int? actorUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        GaoApp.Application.DTOs.Security.SecurityActionConfirmation? confirmation = null);
 
     /// <summary>
     /// Lookup user để gán vào store.
@@ -70,10 +71,12 @@ public interface IUserInStoreAdminService
     int userId,
     string newPassword,
     int? actorUserId,
-    CancellationToken ct = default);
+    CancellationToken ct = default,
+    GaoApp.Application.DTOs.Security.SecurityActionConfirmation? confirmation = null);
     Task<(bool Success, string? ErrorMessage)> ToggleActiveAsync(
     int storeId,
     int id,
     int? actorUserId,
-    CancellationToken ct = default);
+    CancellationToken ct = default,
+    GaoApp.Application.DTOs.Security.SecurityActionConfirmation? confirmation = null);
 }

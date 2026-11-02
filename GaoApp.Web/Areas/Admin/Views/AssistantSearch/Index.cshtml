@@ -1,0 +1,47 @@
+@model GaoApp.Web.Areas.Admin.Controllers.SearchAuditPage
+@using GaoApp.Web.Services.Assistant
+@{
+    Layout = "_ContentNavbarLayout"; ViewData["Title"] = "Tìm hàng và cách gọi";
+    var byId = Model.Documents.ToDictionary(d => d.Id);
+    var duplicateNames = Model.Documents.GroupBy(d => AssistantCatalogSearch.Canonical(d.Name)).Where(g => g.Count() > 1).ToArray();
+    string State(string value) => value switch { "pending" => "Chờ duyệt", "approved" => "Đang sử dụng", _ => "Đã từ chối / thu hồi" };
+    string Match(string value) => value switch { "exact" => "Đúng tên", "sku" => "Đúng SKU", "fuzzy" => "Gần đúng, cần xác nhận", "learned" => "Cách gọi đã duyệt, cần xác nhận", _ => "Khớp từ và thuộc tính" };
+}
+<link rel="stylesheet" href="~/Admin/css/assistant-admin.mobile.css" asp-append-version="true" />
+<div id="assistantSearchAdmin" class="mx-auto" style="max-width:1200px">
+    <div class="d-flex flex-wrap justify-content-between gap-3 mb-4"><div><h3>Tìm hàng và cách gọi</h3><p class="text-muted">@Model.StoreName · Danh mục đang hoạt động của cửa hàng hiện tại</p></div><div class="d-flex flex-wrap gap-2 align-items-start"><a class="btn btn-outline-secondary" href="@Url.Content("~/admin/assistant/quality")">Chất lượng trợ lý</a><a class="btn btn-outline-primary" href="@Url.Content("~/admin/assistant/search/catalog.json")">Xuất danh mục kiểm thử</a><a class="btn btn-outline-primary" href="@Url.Content("~/admin/assistant/search/approved-cases.json")">Xuất câu đã duyệt</a></div></div>
+    @if (TempData["SearchResult"] is string notice) { <div class="alert alert-info" role="status">@notice</div> }
+    <div class="alert alert-light border">Thông tin hãng, nhóm và dung tích được trích từ tên hoặc trường dữ liệu hiện có để hỗ trợ tìm kiếm. Các số đếm dưới đây giúp khảo sát dữ liệu; thiếu dung tích không đồng nghĩa sản phẩm sai. Tên hàng gốc, giá và tồn kho không được thay đổi tại đây.</div>
+    <div class="row g-3 mb-4">
+        @foreach (var tile in new[] { ("Mã hàng đang hoạt động", Model.Documents.Length), ("Tên chưa nhận diện hãng", Model.Documents.Count(d => d.Attributes.Brand is null)), ("Tên không ghi dung tích / khối lượng", Model.Documents.Count(d => d.Attributes.Capacity is null)), ("Nhóm tên trùng cần kiểm tra", duplicateNames.Length) }) {
+            <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><p class="text-muted">@tile.Item1</p><h4>@tile.Item2.ToString("N0")</h4></div></div></div>
+        }
+    </div>
+    <div class="card mb-4"><div class="card-body"><h5>Thử tìm trên danh mục thật</h5><form method="get" action="@Url.Content("~/admin/assistant/search")" class="d-flex gap-2"><label class="visually-hidden" for="searchQuery">Câu tìm hàng</label><input class="form-control" id="searchQuery" name="query" maxlength="200" value="@Model.Query" placeholder="Tên hàng, hãng, quy cách hoặc SKU"/><button class="btn btn-primary">Tìm thử</button></form>
+    @if (Model.Results is { } result) {
+        <p class="mt-3">@result.Search.CandidateCount ứng viên · @(result.Search.RequiresConfirmation ? "Cần xác nhận sản phẩm trước khi dùng." : "Khớp tên và thuộc tính.")</p>
+        @if (result.Hits.Length == 0) { <p>Chưa tìm thấy mã phù hợp. Kiểm tra tên cũ hoặc thêm cách gọi được xác nhận ở bên dưới.</p> }
+        else { <div class="table-responsive"><table class="table"><thead><tr><th>Mã biến thể / SKU</th><th>Tên gốc</th><th>Thuộc tính từ tên</th><th>Căn cứ / điểm</th></tr></thead><tbody>@foreach (var hit in result.Hits) { var d = hit.Document; <tr><td>#@d.Id<br/>@d.Sku</td><td>@d.Name</td><td>@d.Attributes.Brand · @d.Attributes.Capacity · @d.Attributes.Sugar</td><td>@Match(hit.Kind)<br/>@hit.Score</td></tr> }</tbody></table></div> }
+    }</div></div>
+    <div class="card mb-4"><div class="card-body"><h5>Dạy thêm một cách gọi</h5><p>Tra và kiểm tra đúng mã biến thể trước khi thêm. Đề xuất mới luôn chờ duyệt; không tự động gộp các mã có tên giống nhau.</p>
+        <form method="post" action="@Url.Content("~/admin/assistant/search/propose")" class="row g-3">@Html.AntiForgeryToken()<input type="hidden" name="requestId" value="@Guid.NewGuid()"/>
+            <div class="col-md-8"><label class="form-label" for="teachQuery">Cách gọi muốn dùng để tìm</label><input class="form-control" id="teachQuery" name="query" maxlength="200" required/></div>
+            <div class="col-md-4"><label class="form-label" for="teachVariant">Mã biến thể đúng</label><input class="form-control" id="teachVariant" name="variantId" type="number" min="1" required/></div><div><button class="btn btn-outline-primary">Thêm đề xuất</button></div>
+        </form>
+    </div></div>
+    <div class="card mb-4"><div class="card-body"><h5>Duyệt cách gọi của cửa hàng</h5><p>@Model.Corrections.Count(e => e.Status == "pending") chờ duyệt · @Model.Corrections.Count(e => e.Status == "approved") đang sử dụng. Hiện 100 mục cập nhật gần nhất. Đề xuất chờ duyệt giữ 7 ngày; cách gọi đã duyệt được giữ đến khi thu hồi.</p>
+    @if (Model.Corrections.Length == 0) { <p>Chưa có đề xuất. Nhân viên có thể chọn “Sửa đúng sản phẩm” ngay dưới câu trả lời của trợ lý.</p> }
+    @foreach (var entry in Model.Corrections.Take(100)) {
+        var exists = byId.TryGetValue(entry.VariantId, out var product) && product!.ProductId == entry.ProductId;
+        <article class="border rounded p-3 mb-3"><div class="d-flex flex-wrap justify-content-between gap-3"><div><strong>@entry.Query</strong><p class="my-2">→ #@entry.VariantId · @(exists ? product!.Name : "Mã không còn hoạt động hoặc đã thay đổi")</p><small class="text-muted">NV #@entry.Owner · @entry.UpdatedAt.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm") · @State(entry.Status)</small></div><div class="d-flex flex-wrap gap-2 align-items-start">
+            @if (entry.Status != "approved" && exists) { <form method="post" action="@Url.Content("~/admin/assistant/search/review")">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@entry.Id"/><input type="hidden" name="version" value="@entry.Version"/><input type="hidden" name="requestId" value="@Guid.NewGuid()"/><input type="hidden" name="decision" value="approve"/><button class="btn btn-primary btn-sm">Duyệt đúng mã</button></form> }
+            @if (entry.Status != "rejected") { <form method="post" action="@Url.Content("~/admin/assistant/search/review")">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@entry.Id"/><input type="hidden" name="version" value="@entry.Version"/><input type="hidden" name="requestId" value="@Guid.NewGuid()"/><input type="hidden" name="decision" value="reject"/><button class="btn btn-outline-secondary btn-sm">@(entry.Status == "approved" ? "Thu hồi" : "Từ chối")</button></form> }
+        </div></div></article>
+    }
+    </div></div>
+    @if (duplicateNames.Length > 0) { <details class="card mb-4"><summary class="card-header">Các tên trùng cần kiểm tra (tối đa 30 nhóm)</summary><div class="card-body">@foreach (var group in duplicateNames.Take(30)) { <p><strong>@group.First().Name</strong><br/>Mã biến thể: @string.Join(", ", group.Select(d => "#" + d.Id))</p> }</div></details> }
+    <details class="card"><summary class="card-header">Mẫu dữ liệu tìm kiếm (50 mã đầu)</summary><div class="card-body table-responsive"><table class="table"><thead><tr><th>Mã / SKU</th><th>Tên gốc</th><th>Hãng / dung tích</th></tr></thead><tbody>@foreach (var d in Model.Documents.Take(50)) { <tr><td>#@d.Id<br/>@d.Sku</td><td>@d.Name</td><td>@d.Attributes.Brand · @d.Attributes.Capacity</td></tr> }</tbody></table></div></details>
+</div>
+@section PageScripts {
+<script src="~/Admin/js/assistant-admin.mobile.js" asp-append-version="true"></script>
+}

@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Entities;
@@ -11,17 +11,21 @@ using System.Linq.Expressions;
 
 namespace GaoApp.Infrastructure.Data;
 
-public class AppDbContext : DbContext
+public partial class AppDbContext : DbContext
 {
     private readonly ITenantContext _tenant;
     private readonly ICurrentUser _currentUser;
+    private readonly bool _invoiceNotificationsCaptureEnabled;
 
     public AppDbContext(
         DbContextOptions<AppDbContext> options,
         ITenantContext tenant,
-        ICurrentUser currentUser)
+        ICurrentUser currentUser,
+        Microsoft.Extensions.Options.IOptions<GaoApp.Application.InvoiceNotifications.InvoiceNotificationOptions>? notifications = null,
+        Microsoft.Extensions.Options.IOptionsMonitor<GaoApp.Application.InvoiceNotifications.InvoiceNotificationOptions>? notificationMonitor = null)
         : this((DbContextOptions)options, tenant, currentUser)
     {
+        _invoiceNotificationsCaptureEnabled = (notificationMonitor?.CurrentValue.Enabled ?? notifications?.Value.Enabled) == true;
     }
 
     /// <summary>
@@ -40,9 +44,18 @@ public class AppDbContext : DbContext
 
     /// <summary>
     /// StoreId hiện tại lấy từ TenantContext.
-    /// Nếu null => host admin / design-time / non-tenant context.
+    /// Null không cấp quyền dữ liệu; host/system phải có grant riêng.
     /// </summary>
     public int? CurrentStoreId => _tenant?.StoreId;
+    public bool CanReadAllStores => _tenant.CanReadAllStores;
+    public bool CanReadStoreData => CurrentStoreId is > 0 || _tenant.CanReadAllStores;
+    public bool CanWriteStoreData => CurrentStoreId is > 0 || _tenant.CanWriteAllStores;
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        base.OnConfiguring(optionsBuilder);
+        optionsBuilder.AddInterceptors(TenantQueryScopeInterceptor.Instance, TenantCommandScopeInterceptor.Instance);
+    }
 
     public int? CurrentUserId => _currentUser.UserId;
     public string? CurrentUserName => _currentUser.UserName;
@@ -79,6 +92,10 @@ public class AppDbContext : DbContext
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<CustomerMarketingConsent> CustomerMarketingConsents => Set<CustomerMarketingConsent>();
+    public DbSet<CustomerMarketingConsentEvent> CustomerMarketingConsentEvents => Set<CustomerMarketingConsentEvent>();
+    public DbSet<CustomerMarketingCampaign> CustomerMarketingCampaigns => Set<CustomerMarketingCampaign>();
+    public DbSet<CustomerMarketingCampaignRecipient> CustomerMarketingCampaignRecipients => Set<CustomerMarketingCampaignRecipient>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<DeliveryOrder> DeliveryOrders => Set<DeliveryOrder>();
     public DbSet<DeliveryTrip> DeliveryTrips => Set<DeliveryTrip>();
@@ -141,6 +158,7 @@ public class AppDbContext : DbContext
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<User> Users => Set<User>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<AuditOutboxMessage> AuditOutbox => Set<AuditOutboxMessage>();
     public DbSet<POSTerminal> POSTerminals => Set<POSTerminal>();
     public DbSet<SalesReturn> SalesReturns => Set<SalesReturn>();
     public DbSet<SalesReturnLine> SalesReturnLines => Set<SalesReturnLine>();
@@ -216,14 +234,15 @@ public class AppDbContext : DbContext
 
         // Tự apply toàn bộ IEntityTypeConfiguration trong assembly Infrastructure
         builder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
+        builder.HasSequence<long>("StorefrontBankCorrelationSequence").StartsAt(1).HasMin(1).HasMax(999999999999L).IsCyclic(false);
 
         builder.Entity<PurchaseReceiptAuditEvent>()
             .HasQueryFilter(x =>
-                CurrentStoreId == null || x.StoreId == CurrentStoreId);
+                CanReadAllStores || CurrentStoreId > 0 && x.StoreId == CurrentStoreId);
 
         builder.Entity<InputInvoiceSupplierResolutionEvent>()
             .HasQueryFilter(x =>
-                CurrentStoreId == null || x.StoreId == CurrentStoreId);
+                CanReadAllStores || CurrentStoreId > 0 && x.StoreId == CurrentStoreId);
 
         // Cấu hình nền tối thiểu còn để tại DbContext cho an toàn
         builder.Entity<Store>(e =>
@@ -312,12 +331,16 @@ public class AppDbContext : DbContext
         ChangeTracker.DetectChanges();
 
         var pendingChanges = CapturePendingChanges();
+        if (pendingChanges.Count > 0 && !CanWriteStoreData) throw new TenantDataScopeException();
         ProtectDeliveryHistory();
+        ProtectInvoiceNotificationEvidence();
+        ProtectAuditOutbox();
         ProtectPurchaseReceiptAuditEvents(pendingChanges);
         ProtectInputInvoiceSupplierResolutionEvents(pendingChanges);
         ValidateTenantOwnership(pendingChanges);
         ApplyAuditAndTenantRules(pendingChanges);
 
+        StageInvoiceNotificationsAsync(default).GetAwaiter().GetResult();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -334,7 +357,10 @@ public class AppDbContext : DbContext
         ChangeTracker.DetectChanges();
 
         var pendingChanges = CapturePendingChanges();
+        if (pendingChanges.Count > 0 && !CanWriteStoreData) throw new TenantDataScopeException();
         ProtectDeliveryHistory();
+        ProtectInvoiceNotificationEvidence();
+        ProtectAuditOutbox();
         ProtectPurchaseReceiptAuditEvents(pendingChanges);
         ProtectInputInvoiceSupplierResolutionEvents(pendingChanges);
         await ValidateTenantOwnershipAsync(
@@ -343,9 +369,16 @@ public class AppDbContext : DbContext
 
         ApplyAuditAndTenantRules(pendingChanges);
 
+        await StageInvoiceNotificationsAsync(cancellationToken);
         return await base.SaveChangesAsync(
             acceptAllChangesOnSuccess,
             cancellationToken: cancellationToken);
+    }
+
+    private void ProtectAuditOutbox()
+    {
+        if (ChangeTracker.Entries<AuditOutboxMessage>().Any(x => x.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Audit outbox evidence is append-only for application callers.");
     }
 
     private void ProtectDeliveryHistory()
@@ -632,14 +665,14 @@ public class AppDbContext : DbContext
     {
         if (pendingChange.StateBeforeAudit != EntityState.Added ||
             !currentStoreId.HasValue ||
-            pendingChange.Entry.Entity is not BaseStoreEntity storeEntity)
+            pendingChange.Entry.Metadata.FindProperty(nameof(BaseStoreEntity.StoreId))?.ClrType != typeof(int))
         {
             return;
         }
 
-        ValidateAddedStore(
-            storeEntity,
-            currentStoreId.Value);
+        var storeId = (int)pendingChange.Entry.Property(nameof(BaseStoreEntity.StoreId)).CurrentValue!;
+        if (storeId > 0 && storeId != currentStoreId.Value)
+            throw new InvalidOperationException($"StoreId={storeId} không khớp TenantContext={currentStoreId.Value}");
 
         pendingChange.VerifiedStoreId = currentStoreId.Value;
     }
@@ -658,7 +691,7 @@ public class AppDbContext : DbContext
         // Modified và Deleted, kể cả entity detached.
         var requiresTenantOwnershipCheck =
             currentStoreId.HasValue &&
-            pendingChange.Entry.Entity is BaseStoreEntity;
+            pendingChange.Entry.Metadata.FindProperty(nameof(BaseStoreEntity.StoreId))?.ClrType == typeof(int);
 
         // Mọi BaseEntity soft delete phải lấy lại database values trước khi
         // đổi Deleted -> Modified. Nếu không, Remove(detachedEntity) có thể
@@ -670,18 +703,6 @@ public class AppDbContext : DbContext
 
         return requiresTenantOwnershipCheck ||
             requiresSafeSoftDeleteValues;
-    }
-
-    private static void ValidateAddedStore(
-        BaseStoreEntity storeEntity,
-        int currentStoreId)
-    {
-        if (storeEntity.StoreId > 0 &&
-            storeEntity.StoreId != currentStoreId)
-        {
-            throw new InvalidOperationException(
-                $"StoreId={storeEntity.StoreId} không khớp TenantContext={currentStoreId}");
-        }
     }
 
     private static PropertyValues CaptureDatabaseValues(
@@ -853,7 +874,7 @@ public class AppDbContext : DbContext
         int? currentStoreId)
     {
         if (!currentStoreId.HasValue ||
-            pendingChange.Entry.Entity is not BaseStoreEntity)
+            pendingChange.Entry.Metadata.FindProperty(nameof(BaseStoreEntity.StoreId))?.ClrType != typeof(int))
         {
             return;
         }
@@ -968,8 +989,7 @@ public class AppDbContext : DbContext
     private static void ProtectVerifiedStoreId(
         PendingChange pendingChange)
     {
-        if (pendingChange.Entry.Entity is not BaseStoreEntity storeEntity ||
-            !pendingChange.VerifiedStoreId.HasValue)
+        if (!pendingChange.VerifiedStoreId.HasValue)
         {
             return;
         }
@@ -979,13 +999,11 @@ public class AppDbContext : DbContext
         // Added: gán tenant hiện tại sau khi toàn bộ batch đã được xác minh.
         if (pendingChange.StateBeforeAudit == EntityState.Added)
         {
-            storeEntity.StoreId = verifiedStoreId;
+            pendingChange.Entry.Property(nameof(BaseStoreEntity.StoreId)).CurrentValue = verifiedStoreId;
             return;
         }
 
         // Modified/Deleted: StoreId phải lấy từ database, không lấy từ client.
-        storeEntity.StoreId = verifiedStoreId;
-
         var storeIdProperty = pendingChange.Entry.Property(
             nameof(BaseStoreEntity.StoreId));
 
@@ -1049,7 +1067,7 @@ public class AppDbContext : DbContext
             var clrType = entityType.ClrType;
 
             var isBaseEntity = typeof(BaseEntity).IsAssignableFrom(clrType);
-            var isStoreEntity = typeof(BaseStoreEntity).IsAssignableFrom(clrType);
+            var isStoreEntity = entityType.FindProperty(nameof(BaseStoreEntity.StoreId))?.ClrType == typeof(int);
 
             if (!isBaseEntity && !isStoreEntity)
                 continue;
@@ -1068,7 +1086,7 @@ public class AppDbContext : DbContext
                 body = notDeleted;
             }
 
-            // Tenant filter: CurrentStoreId == null || e.StoreId == CurrentStoreId
+            // Missing tenant never grants access. Cross-store reads require an explicit grant.
             if (isStoreEntity)
             {
                 var storeProp = Expression.Property(param, nameof(BaseStoreEntity.StoreId));
@@ -1077,16 +1095,15 @@ public class AppDbContext : DbContext
                     Expression.Constant(this),
                     nameof(CurrentStoreId));
 
-                var nullCheck = Expression.Equal(
-                    currentStoreId,
-                    Expression.Constant(null, typeof(int?)));
+                var allStores = Expression.Property(Expression.Constant(this), nameof(CanReadAllStores));
+                var validStore = Expression.GreaterThan(currentStoreId, Expression.Constant((int?)0, typeof(int?)));
 
                 // So sánh nullable trực tiếp để host-admin (StoreId = null)
                 // không phải ép Nullable<int>.Value trong lúc EF tham số hóa query.
                 var nullableStoreProp = Expression.Convert(storeProp, typeof(int?));
                 var storeMatch = Expression.Equal(nullableStoreProp, currentStoreId);
 
-                var storeCondition = Expression.OrElse(nullCheck, storeMatch);
+                var storeCondition = Expression.OrElse(allStores, Expression.AndAlso(validStore, storeMatch));
 
                 body = body == null
                     ? storeCondition

@@ -2,6 +2,7 @@
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/delivery.outcomes.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/delivery.mobile.css" asp-append-version="true" />
 }
 <div class="delivery-workspace delivery-outcomes-workspace" data-actor="@(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)" data-store="@(ViewData["DeliveryStoreId"])" data-trip="@(ViewData["DeliveryTripId"])">
     @Html.AntiForgeryToken()
@@ -25,4 +26,5 @@
 @section PageScripts {
     <script src="~/Admin/js/delivery.trip.js" asp-append-version="true"></script>
     <script src="~/Admin/js/delivery.outcomes.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/delivery.mobile.js" asp-append-version="true" defer></script>
 }

@@ -1,4 +1,3 @@
-@inject GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess ReceiptAdminAccess
 @model GaoApp.Web.Areas.Admin.ViewModels.POS.POSHeaderContextViewModel
 
 @{
@@ -25,6 +24,9 @@
 
 <header class="pos-cockpit-header" data-pos-cockpit-header>
     <div class="pos-cockpit-header__identity">
+        <button type="button" class="gao-mobile-shell-menu layout-menu-toggle" aria-controls="layout-menu" aria-label="Mở menu cửa hàng" aria-expanded="false">
+            <i class="icon-base bx bx-menu" aria-hidden="true"></i>
+        </button>
         <div class="pos-cockpit-header__title">
             BÁN HÀNG
         </div>
@@ -81,66 +83,8 @@
             </span>
         </button>
 
-        <div class="dropdown">
-            <button type="button"
-                    class="pos-cockpit-header-button pos-cockpit-more-button"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false"
-                    aria-label="Mở thêm chức năng POS">
-                <i class="bx bx-dots-horizontal-rounded"
-                   aria-hidden="true"></i>
-            </button>
-
-            <ul class="dropdown-menu dropdown-menu-end pos-cockpit-menu">
-                @if (await ReceiptAdminAccess.IsAdminAsync(Context.RequestAborted)) { <li><a class="dropdown-item" href="/admin/receipt-templates" target="_blank" rel="noopener"><i class="bx bx-printer me-2" aria-hidden="true"></i>Mẫu hóa đơn & máy in</a></li> }
-                <li>
-                    <a class="dropdown-item"
-                       href="/admin/pos-shift">
-                        <i class="bx bx-time-five me-2"></i>
-                        Ca POS
-                    </a>
-                </li>
-
-                <li>
-                    <a class="dropdown-item"
-                       href="/admin/pos-shift/history">
-                        <i class="bx bx-history me-2"></i>
-                        Lịch sử ca
-                    </a>
-                </li>
-
-                <li>
-                    <a class="dropdown-item"
-                       href="/admin/pos/orders-page">
-                        <i class="bx bx-receipt me-2"></i>
-                        Đơn POS
-                    </a>
-                </li>
-
-                <li>
-                    <a class="dropdown-item"
-                       href="/admin/pos/dashboard">
-                        <i class="bx bx-bar-chart-alt-2 me-2"></i>
-                        Dashboard
-                    </a>
-                </li>
-
-                <li>
-                    <hr class="dropdown-divider" />
-                </li>
-
-                <li>
-                    <button type="button"
-                            id="btnOpenCustomerDisplay"
-                            class="dropdown-item"
-                            data-url="/admin/pos/customer-display">
-                        <i class="bx bx-desktop me-2"></i>
-                        Màn hình khách
-                    </button>
-                </li>
-            </ul>
-        </div>
-        <div class="gao-account-toolbar-slot" data-account-toolbar-slot></div>
+        <partial name="_ConfiguredMoreMenu" />
+        <div class="gao-account-toolbar-slot" data-account-toolbar-slot data-mobile-account-slot></div>
     </div>
 
     <div id="posCockpitShortcutPanel"

@@ -12,6 +12,10 @@ namespace GaoApp.Application.Interfaces.Repositories.Inventory;
 /// </summary>
 public interface IInventoryCostLayerAllocationRepository
 {
+    /// <summary>Loads receipt provisional evidence after every requested balance has been locked.</summary>
+    Task PreparePurchaseReceiptAsync(int storeId, int warehouseId, IReadOnlyCollection<int> productVariantIds, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     /// <summary>
     /// Thêm 1 allocation.
     /// </summary>

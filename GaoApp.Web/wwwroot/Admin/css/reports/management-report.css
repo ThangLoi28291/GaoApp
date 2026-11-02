@@ -4,5 +4,9 @@
 .mr-kpi-title i::before{color:var(--mr-green)}
 .dark-style .mr-workspace{background:var(--mr-bg);padding:18px;border-radius:14px;color-scheme:dark}
 .mr-menu-button{display:none}
+.mr-cost-diagnostics{margin-bottom:18px;font-size:12px}
+.mr-cost-diagnostics summary{cursor:pointer;color:var(--mr-amber);font-weight:600}
+.mr-cost-diagnostics .mr-caption{margin:12px 0}
+.mr-cost-diagnostics .mr-table th,.mr-cost-diagnostics .mr-table td{text-align:left;white-space:normal;overflow-wrap:anywhere}
 body:has([data-management-report]) .gds-responsive-nav-trigger{display:none}
 @media(max-width:1199.98px){.mr-menu-button{display:inline-flex}}

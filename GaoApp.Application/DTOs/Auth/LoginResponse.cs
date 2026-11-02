@@ -10,6 +10,12 @@ public class LoginResponse
     [System.Text.Json.Serialization.JsonIgnore]
     public string SessionStamp { get; set; } = string.Empty;
 
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int? DeviceId { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DeviceSessionStamp { get; set; } = string.Empty;
+
     public int UserId { get; set; }
     public string UserName { get; set; } = default!;
     public string? FullName { get; set; }

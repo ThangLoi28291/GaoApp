@@ -115,9 +115,9 @@
             const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
             if (match) return `${match[3]}/${match[2]}/${match[1]}`;
         }
-        const date = new Date(value);
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
         if (Number.isNaN(date.getTime())) return 'Chưa cập nhật';
-        return new Intl.DateTimeFormat('vi-VN', {
+        return new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
             day: '2-digit',
             month: '2-digit',
             year: 'numeric'
@@ -401,6 +401,7 @@
 
     const openResetPassword = (item) => {
         if (!item || !permissions.canUpdate || !item.canResetPassword || !elements.resetModal) return;
+        elements.resetModal.querySelectorAll('[data-security-confirmation] input, [data-security-confirmation] textarea').forEach(input => { input.value = ''; });
         if (elements.resetUserId) elements.resetUserId.value = String(item.userId);
         if (elements.resetIdentity) elements.resetIdentity.textContent = `${displayName(item)} (${displayValue(item.username)})`;
         if (elements.newPassword) elements.newPassword.value = '';
@@ -414,6 +415,7 @@
 
     const openToggleActive = (item) => {
         if (!item || !permissions.canUpdate || !item.canToggleActive || !elements.toggleModal) return;
+        elements.toggleModal.querySelectorAll('[data-security-confirmation] textarea').forEach(input => { input.value = ''; });
         if (elements.toggleMappingId) elements.toggleMappingId.value = String(item.mappingId);
         if (elements.toggleIdentity) elements.toggleIdentity.textContent = `${displayName(item)} (${displayValue(item.username)})`;
         if (elements.toggleTitle) elements.toggleTitle.textContent = item.isActive ? 'Khóa nhân viên' : 'Mở lại nhân viên';

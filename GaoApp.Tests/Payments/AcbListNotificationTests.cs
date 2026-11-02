@@ -99,7 +99,7 @@ public sealed partial class AcbPaymentTests
         await f.Service.CompleteAsync(qr.Id, default);
         Assert.Equal(1, f.FinalizeCount);
         Assert.Single(f.Order.Payments, x => x.Method == PaymentMethod.BankTransfer);
-        var report = await new AcbReconciliationService(f.Db).ReadAsync(ReportDay, ReportDay, null, 1, default);
+        var report = await new AcbReconciliationService(f.Db).ReadAsync(ReportDay, ReportDay, "TRANSACTION_HISTORY", 1, default);
         Assert.Equal("Matched", Assert.Single(report.Rows).State);
         Assert.Equal(70000m, report.Rows[0].PostedAmount);
         Assert.Single(report.Batches);

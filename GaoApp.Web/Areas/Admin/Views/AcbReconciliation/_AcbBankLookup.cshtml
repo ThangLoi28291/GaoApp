@@ -1,0 +1,82 @@
+@model GaoApp.Web.Services.Acb.AcbBankLookupPage
+@using System.Globalization
+@{
+    string Money(decimal value) => value.ToString("N0") + " ₫";
+    string Status(string value) => value.ToUpperInvariant() switch {
+        "COMPLETED" or "SUCCESS" or "PAID" or "APPROVED" => "Thành công",
+        "INIT" or "INITIALIZED" or "PENDING" => "Chờ thanh toán",
+        "CANCELLED" or "CANCELED" => "Đã hủy", "EXPIRED" => "Hết hạn",
+        "ERRORCORRECTED" => "Đã điều chỉnh", "FAILED" => "Không thành công",
+        "" => "Chưa rõ trạng thái", _ => value
+    };
+    string Date(string value) => DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
+        ? date.ToString("dd/MM/yyyy") : value;
+    var pageCount = Math.Max(1, Model.TotalPages);
+}
+<div class="acb-bank-meta">
+    <strong>@Model.From.ToString("dd/MM/yyyy") – @Model.To.ToString("dd/MM/yyyy")</strong>
+    <span>Lấy từ ACB lúc @Model.QueriedAtUtc.ToVietnamTime().ToString("HH:mm:ss dd/MM/yyyy") · @Model.Environment · Điểm bán @Model.MerchantId</span>
+</div>
+<div class="acb-overview acb-bank-overview">
+    <div class="acb-metric"><span>QR tại ACB</span><strong>@(Model.TotalOrders?.ToString("N0") ?? Model.Orders.Count.ToString("N0"))</strong><small>@(Model.TotalOrders.HasValue ? "Tất cả các trang" : "Trên trang này")</small></div>
+    <div class="acb-metric"><span>Giao dịch trên trang</span><strong>@Model.TransactionCount.ToString("N0")</strong><small>@Model.Orders.Count QR trên trang này</small></div>
+    <div class="acb-metric acb-metric-accent"><span>Tiền giao dịch thành công</span><strong>@Money(Model.PaidAmount)</strong><small>Chỉ các giao dịch trên trang này</small></div>
+</div>
+@if (Model.Orders.Count == 0)
+{
+    <div class="acb-empty"><span class="acb-empty-icon">⌕</span><strong>ACB chưa trả giao dịch trong khoảng ngày này</strong><p>Đã tra cứu trực tiếp ngân hàng. Có thể chọn khoảng ngày khác để kiểm tra.</p></div>
+}
+else
+{
+    <div class="acb-table-scroll"><table class="acb-ledger acb-bank-ledger">
+        <thead><tr><th>QR / Đơn POS</th><th>Giao dịch tại ACB</th><th class="acb-number">Số tiền</th><th>Trạng thái ngân hàng</th><th>Callback đã nhận</th></tr></thead>
+        <tbody>
+        @foreach (var order in Model.Orders)
+        {
+            var count = Math.Max(1, order.Transactions.Count);
+            for (var i = 0; i < count; i++)
+            {
+                var transaction = order.Transactions.Count > 0 ? order.Transactions[i] : null;
+                var status = transaction?.Status ?? order.Status;
+                <tr>
+                    @if (i == 0)
+                    {
+                        <td rowspan="@count" class="acb-tx-content"><strong>@order.ProviderOrderId</strong><small>Số tiền QR: @Money(order.RequestedAmount)</small>
+                            @if (order.CreatedAtUtc.HasValue) { <small>Tạo QR: @order.CreatedAtUtc.Value.ToVietnamTime().ToString("HH:mm:ss dd/MM/yyyy")</small> }
+                            <small>QR: @Status(order.Status)</small>
+                            @if (order.OrderId.HasValue) { <a href="/admin/acb/payments/orders/@order.OrderId" data-acb-order-id="@order.OrderId" class="acb-button mt-2">@(string.IsNullOrEmpty(order.OrderNumber) ? "Đơn #" + order.OrderId : order.OrderNumber)</a> }
+                            else { <small>Chưa ghép được đơn POS của cửa hàng</small> }
+                        </td>
+                    }
+                    <td class="acb-tx-content">
+                        @if (transaction != null) { <strong>@transaction.TransactionNumber</strong><span>@Date(transaction.PostedDate)</span><span class="acb-tx-description">@transaction.Content</span> }
+                        else { <span class="text-muted">Chưa phát sinh giao dịch</span> }
+                    </td>
+                    <td class="acb-number acb-tx-amount">@(transaction == null ? "—" : Money(transaction.Amount))</td>
+                    <td><span class="acb-badge @(GaoApp.Web.Services.Acb.AcbProtocol.IsPaid(status) ? "acb-success" : "acb-warning")">@Status(status)</span></td>
+                    @if (i == 0)
+                    {
+                        <td rowspan="@count" class="acb-bank-callback">
+                            <span class="acb-badge @(order.CallbackCount > 0 ? "acb-success" : "acb-muted")">@(order.CallbackCount > 0 ? "Đã nhận · " + order.CallbackCount + " biên nhận" : "Chưa nhận callback")</span>
+                            @if (order.LastCallbackAtUtc.HasValue) { <small>@order.LastCallbackAtUtc.Value.ToVietnamTime().ToString("HH:mm:ss dd/MM/yyyy")</small> }
+                        </td>
+                    }
+                </tr>
+            }
+        }
+        </tbody>
+    </table></div>
+}
+<div class="acb-report-paging acb-bank-paging">
+    <span>Trang @Model.Page / @pageCount · @Model.PageSize QR / trang</span>
+    <div>
+        @if (Model.Page > 1) { <button type="button" class="acb-button" data-bank-page="@(Model.Page - 1)">← Trước</button> }
+        @if (Model.Page < Model.TotalPages) { <button type="button" class="acb-button" data-bank-page="@(Model.Page + 1)">Sau →</button> }
+        @if (Model.TotalPages > 1)
+        {
+            <label>Đến trang <input type="number" value="@Model.Page" min="1" max="@pageCount" data-bank-page-input aria-label="Trang tra cứu ACB" /></label>
+            <button type="button" class="acb-button" data-bank-jump>Đi</button>
+        }
+    </div>
+</div>
+<p class="acb-bank-note">Kết quả tra cứu dùng để kiểm tra giao dịch. Cột callback chỉ phản ánh thông báo thực tế đã nhận; việc tra cứu không tạo biên nhận hoặc ghi tiền vào đơn.</p>

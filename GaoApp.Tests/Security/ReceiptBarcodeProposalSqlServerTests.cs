@@ -139,7 +139,7 @@ public sealed class ReceiptBarcodeProposalSqlServerTests
             Assert.False(await db.ProductVariantUnitBarcodes.AnyAsync(x => x.Barcode == "REJECT-ME"));
             await manager.JsonAsync(HttpMethod.Post, $"/admin/api/stock-documents/{seed.ReceiptId}/approve-commercial", new
             {
-                rowVersion = Convert.ToBase64String(doc.RowVersion), supplierId = doc.SupplierId, isMerchandisePaid = true,
+                rowVersion = Convert.ToBase64String(doc.RowVersion), supplierId = doc.SupplierId, isMerchandisePaid = false,
                 acceptPriceVariance = true,
                 lines = doc.Lines.Select(x => new { stockDocumentLineId = x.Id, unitPriceBeforeVat = 10m, taxRate = 0m }).ToArray()
             });

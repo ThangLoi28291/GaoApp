@@ -5,6 +5,12 @@ namespace GaoApp.Application.Services.Invoices;
 
 public static class InvoiceIssuanceStatePolicy
 {
+    public static bool CanEditDetails(InvoiceHead invoice)
+        => !invoice.IsDeleted && !invoice.IsLocked && !invoice.LegacyReadOnly &&
+           !invoice.IssuedAtUtc.HasValue && !IsIssuedLike(invoice) && !IsProviderUncertain(invoice) &&
+           invoice.ProviderStatus is InvoiceProviderStatus.LocalDraft or InvoiceProviderStatus.ReadyToIssue or
+               InvoiceProviderStatus.Previewed or InvoiceProviderStatus.IssueFailed;
+
     public static bool IsIssuedLike(InvoiceHead invoice)
     {
         if (!string.IsNullOrWhiteSpace(invoice.ProviderInvoiceNo))

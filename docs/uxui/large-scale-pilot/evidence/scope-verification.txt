@@ -1,0 +1,15 @@
+Verified at: 2026-11-02T15:28:55.2697619+07:00
+Branch: codex/p4-p8-20261030
+HEAD: 4495ffb7ba7cbd0a5d58507a1bf702398d0a8465
+Before manifest entries: 4427
+After manifest entries: 4427
+Manifest delta entries: 0
+Git status entries total: 2195
+Git status entries excluding new docs/uxui: 2194
+Existing  D: 67
+Existing  M: 978
+Existing ??: 1149
+New top-level status: ?? docs/uxui/
+Pilot source patch: none. Reports/evidence only; build/restore outputs generated, no application start.
+Scoped git diff --check: exit 0; since reports are untracked, a separate whitespace scan of all seven new Markdown files also ran and found no issues.
+No 07/08 report, before/after image, seed, SQL request, browser session, service operation, branch change, commit/push/deploy.

@@ -1,11 +1,16 @@
-﻿using GaoApp.Domain.Enums;
+using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.DTOs.Invoices;
 
 public class InvoiceHeadDto
 {
 
+    // Preserve the pre-display business classification without retaining raw errors.
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal bool? RequiresUuidSyncBeforeIssue { get; set; }
+
     public int Id { get; set; }
+    public bool IsAutoInvoiceGroup { get; set; }
     public int StoreId { get; set; }
 
     public int? OrderId { get; set; }
@@ -56,8 +61,13 @@ public class InvoiceHeadDto
 
     public decimal GrandTotal { get; set; }
 
+    public int? RevenueTaxPercentage { get; set; }
+    public decimal RevenueTaxReductionAmount { get; set; }
+    public string Version { get; set; } = string.Empty;
+
     public string? Note { get; set; }
     public bool IsLocked { get; set; }
+    public bool CanEditDetails { get; set; }
 
     public DateTime? LockedAtUtc { get; set; }
 

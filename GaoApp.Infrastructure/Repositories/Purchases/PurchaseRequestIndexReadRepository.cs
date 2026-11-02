@@ -215,6 +215,7 @@ public sealed class PurchaseRequestIndexReadRepository : IPurchaseRequestIndexRe
                                 .FirstOrDefault()
                             : null,
                 UnitName = line.UnitNameSnapshot,
+                Note = line.Note,
                 RequestedQuantity = line.RequestedQuantity,
                 ApprovedQuantity = line.ApprovedQuantity,
                 ConvertedQuantity = line.ConvertedQuantity,

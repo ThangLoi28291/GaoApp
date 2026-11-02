@@ -1,0 +1,51 @@
+@{
+    Layout = null;
+    var previewUrl = Url.Content("~/admin/ui-foundation");
+    var mobileUrl = Url.Content("~/admin/ui-foundation/mobile");
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>GaoApp · So sánh máy tính và điện thoại</title>
+    <link rel="stylesheet" href="~/lib/fonts/public-sans/public-sans.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/ui-foundation.compare.css" asp-append-version="true" />
+    <script src="~/Admin/js/ui-foundation.compare.js" asp-append-version="true" defer></script>
+</head>
+<body>
+    <main class="comparison" data-comparison data-mode="phone" data-desktop-url="@previewUrl" data-phone-url="@mobileUrl">
+        <header class="comparison__header">
+            <div><p class="comparison__eyebrow">GAOAPP · MOBILE REDESIGN</p><h1>Trải nghiệm điện thoại mới.</h1><p class="comparison__description">Bố cục gọn, thao tác rõ, chuyển màn nhẹ. Bấm thử năm mục menu dưới cùng.</p></div>
+            <a class="comparison__direct" data-comparison-direct href="@mobileUrl" target="_blank" rel="noopener">Mở điện thoại trực tiếp <span aria-hidden="true">↗</span></a>
+        </header>
+        <div class="comparison__toolbar" role="group" aria-label="Chọn cách xem giao diện">
+            <button type="button" data-comparison-mode="desktop" aria-pressed="false">Máy tính</button>
+            <button type="button" data-comparison-mode="phone" aria-pressed="true">Điện thoại mới</button>
+            <button type="button" data-comparison-mode="both" aria-pressed="false">So sánh</button>
+        </div>
+        <p class="comparison__status" role="status" data-comparison-status>Bản điện thoại v2 · 390 px · Dữ liệu minh họa.</p>
+        <div class="comparison__grid">
+            <section class="comparison__panel" data-comparison-panel="desktop" aria-labelledby="comparison-desktop-heading" hidden>
+                <div class="comparison__panel-heading"><h2 id="comparison-desktop-heading">Máy tính</h2><span>1440 × 960</span></div>
+                <div class="comparison__browser-bar" aria-hidden="true"><span>● ● ●</span><span>GaoApp · Không gian làm việc</span></div>
+                <div class="comparison__viewport comparison__viewport--desktop" data-preview-width="1440" data-preview-height="960">
+                    <iframe id="comparison-desktop" title="Giao diện GaoApp trên máy tính" src="@previewUrl"></iframe>
+                </div>
+                <p class="comparison__caption">Chỉ số nằm ngang, danh sách rộng và cột công việc bên cạnh. Cuộn trong khung để xem tiếp.</p>
+            </section>
+            <section class="comparison__panel comparison__panel--phone" data-comparison-panel="phone" aria-labelledby="comparison-phone-heading">
+                <div class="comparison__panel-heading"><h2 id="comparison-phone-heading">Điện thoại</h2><span>390 × 844</span></div>
+                <div class="comparison__phone-shell">
+                    <div class="comparison__viewport comparison__viewport--phone" data-preview-width="390" data-preview-height="844">
+                        <iframe id="comparison-phone" title="Giao diện GaoApp trên điện thoại" src="@mobileUrl"></iframe>
+                    </div>
+                </div>
+                <p class="comparison__caption">Năm màn riêng: Tổng quan, Đơn hàng, Nhập hàng, Bán hàng và Menu. Thử thêm hàng vào giỏ hoặc kiểm một dòng nhập hàng.</p>
+            </section>
+        </div>
+        <p class="comparison__note">Bản mẫu tương tác dùng dữ liệu minh họa. Bốn mục ghim trên điện thoại dùng để đánh giá cách điều hướng; khi tích hợp, menu lấy từ cấu hình cửa hàng và quyền truy cập.</p>
+    </main>
+</body>
+</html>

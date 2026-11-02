@@ -32,7 +32,7 @@ public sealed class AcbCallbackDiagnosticsMiddleware(RequestDelegate next, AcbCa
             diagnostics.Http(context.TraceIdentifier, tenant.StoreId, status, outcome,
                 context.Items["AcbCallbackReceiptId"] as int?, started.ElapsedMilliseconds, failure ?? context.Items["AcbCallbackFailure"] as Exception,
                 context.Request.Headers.ContainsKey("x-api-key") ? "x-api-key" : context.Request.Headers.ContainsKey("Authorization") ? "Authorization" : "missing",
-                context.Request.Host.Host, context.Items[AcbCallbackEndpoint.RoutedStoreItem] as int?);
+                context.Request.Host.Host, context.Items[AcbCallbackEndpoint.RoutedStoreItem] as int?, context.Request.Method);
         }
     }
 }

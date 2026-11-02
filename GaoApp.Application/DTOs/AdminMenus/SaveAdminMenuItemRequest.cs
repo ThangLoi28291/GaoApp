@@ -2,7 +2,7 @@
 
 namespace GaoApp.Application.DTOs.AdminMenus;
 
-public class SaveAdminMenuItemRequest
+public class SaveAdminMenuItemRequest : GaoApp.Application.DTOs.Security.SecurityActionConfirmation
 {
     public int Id { get; set; }
 
@@ -18,30 +18,28 @@ public class SaveAdminMenuItemRequest
     public string? Url { get; set; }
     public string? Icon { get; set; }
 
+    [StringLength(200)]
     public string? PermissionCode { get; set; }
 
     public int SortOrder { get; set; }
 
     public bool IsActive { get; set; } = true;
 
-    // =====================================================
-    // NÂNG CẤP: tạo permission mới ngay khi tạo menu
-    // =====================================================
-
-    public bool CreateNewPermission { get; set; }
+    // Rejection-only compatibility fields. Old forms must never create permissions
+    // or grant/revoke role access through the menu endpoint.
+    public bool? CreateNewPermission { get; set; }
 
     [StringLength(200)]
+    [DisplayFormat(ConvertEmptyStringToNull = false)]
     public string? NewPermissionCode { get; set; }
 
     [StringLength(250)]
+    [DisplayFormat(ConvertEmptyStringToNull = false)]
     public string? NewPermissionName { get; set; }
 
     [StringLength(120)]
+    [DisplayFormat(ConvertEmptyStringToNull = false)]
     public string? NewPermissionGroupName { get; set; }
 
-    // =====================================================
-    // NÂNG CẤP: gán quyền này cho các vai trò
-    // =====================================================
-
-    public List<int> AssignRoleIds { get; set; } = new();
+    public List<int>? AssignRoleIds { get; set; }
 }

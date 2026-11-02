@@ -24,6 +24,7 @@ public sealed class DeliveryPageController(IDeliveryFoundationService deliveries
         return View();
     }
     [HttpGet("trips")]
+    // Existing detailed tools remain available for exceptional or already assigned orders.
     public IActionResult Trips()
     {
         Response.Headers.CacheControl = "no-store";
@@ -38,6 +39,13 @@ public sealed class DeliveryPageController(IDeliveryFoundationService deliveries
         ViewData["DeliveryTripId"] = tripId;
         return View();
     }
+    [HttpGet("picking")]
+    public IActionResult Picking()
+    {
+        Response.Headers.CacheControl = "no-store";
+        ViewData["DeliveryStoreId"] = db.CurrentStoreId;
+        return View();
+    }
     [HttpGet("{id:int}/bill")]
     public async Task<IActionResult> Bill(int id, CancellationToken ct)
     {
@@ -46,12 +54,14 @@ public sealed class DeliveryPageController(IDeliveryFoundationService deliveries
             var detail = await deliveries.GetAsync(id, ct);
             var currentPicking = picking is null ? null : await picking.GetAsync(id, ct);
             detail = currentPicking?.Delivery ?? detail;
+            if (detail.SourceCartId is not int sourceCartId || detail.CreatedTerminalId is null || detail.CreatedShiftId is null)
+                return NotFound(); // Native website deliveries use their own authorized aggregate pages.
             var store = await db.Stores.AsNoTracking().SingleAsync(x => x.Id == db.CurrentStoreId, ct);
             // Verified delivery provenance can retain names after the originating employee/terminal is retired.
             var terminal = await db.POSTerminals.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.StoreId == store.Id && x.Id == detail.CreatedTerminalId, ct);
             var employee = await db.Users.IgnoreQueryFilters().AsNoTracking().SingleAsync(x => x.Id == detail.CreatedByUserId, ct);
             var warehouse = await db.Warehouses.AsNoTracking().SingleAsync(x => x.StoreId == store.Id && x.Id == detail.SourceWarehouseId, ct);
-            var sourceReceipt = pos is null ? null : await pos.GetReceiptAsync(detail.SourceCartId, ct);
+            var sourceReceipt = pos is null ? null : await pos.GetReceiptAsync(sourceCartId, ct);
             if (sourceReceipt is not null && sourceReceipt.OrderId != detail.SourceCartId)
                 throw new InvalidOperationException("Delivery bill source receipt does not match its immutable source cart.");
             var lookup = Url.Action(nameof(Index), "DeliveryPage", new { area = "Admin", key = detail.LookupToken, revision = detail.Revision }, Request.Scheme)!;

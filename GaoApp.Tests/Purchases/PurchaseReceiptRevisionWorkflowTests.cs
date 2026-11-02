@@ -81,6 +81,164 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
 
     private static readonly byte[] CurrentVersion = [1, 2, 3, 4];
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Line_mutation_rejects_another_parent_before_resolver_remove_or_save(bool delete)
+    {
+        var document = CreateDocument(StockDocumentStatus.Draft);
+        var line = CreateLine(document);
+        var fixture = CreateFixture(document, line);
+
+        Func<Task> action = delete
+            ? () => fixture.Service.DeleteLineAsync(document.Id + 1, line.Id, new()
+                { RowVersion = RowVersion(document), LineRowVersion = Convert.ToBase64String(line.RowVersion) })
+            : () => fixture.Service.UpdateLineAsync(document.Id + 1, line.Id, new()
+                { Quantity = 99m, RowVersion = RowVersion(document), LineRowVersion = Convert.ToBase64String(line.RowVersion) });
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*không tồn tại*");
+        line.Quantity.Should().Be(2m);
+        fixture.Repository.RemoveCalls.Should().Be(0);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.Repository.BeginTransactionCalls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(false, null, "BQYHCA==")]
+    [InlineData(false, "invalid", "BQYHCA==")]
+    [InlineData(false, "AQIDBQ==", "BQYHCA==")]
+    [InlineData(false, "AQIDBA==", null)]
+    [InlineData(false, "AQIDBA==", "invalid")]
+    [InlineData(false, "AQIDBA==", "BQYHCQ==")]
+    [InlineData(true, null, "BQYHCA==")]
+    [InlineData(true, "invalid", "BQYHCA==")]
+    [InlineData(true, "AQIDBQ==", "BQYHCA==")]
+    [InlineData(true, "AQIDBA==", null)]
+    [InlineData(true, "AQIDBA==", "invalid")]
+    [InlineData(true, "AQIDBA==", "BQYHCQ==")]
+    public async Task Line_mutation_rejects_missing_invalid_or_stale_document_and_line_versions(
+        bool delete, string? documentVersion, string? lineVersion)
+    {
+        var document = CreateDocument(StockDocumentStatus.Rejected);
+        var line = CreateLine(document);
+        var fixture = CreateFixture(document, line);
+
+        Func<Task> action = delete
+            ? () => fixture.Service.DeleteLineAsync(document.Id, line.Id, new()
+                { RowVersion = documentVersion, LineRowVersion = lineVersion })
+            : () => fixture.Service.UpdateLineAsync(document.Id, line.Id, new()
+                { Quantity = 99m, RowVersion = documentVersion, LineRowVersion = lineVersion });
+
+        await action.Should().ThrowAsync<ConcurrencyException>().WithMessage("*tải lại phiếu*");
+        line.Quantity.Should().Be(2m);
+        line.IsDeleted.Should().BeFalse();
+        fixture.Repository.RemoveCalls.Should().Be(0);
+        fixture.Repository.SaveCalls.Should().Be(0);
+        fixture.Repository.BeginTransactionCalls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(StockDocumentStatus.Draft, PurchasePayableStatus.Paid, false)]
+    [InlineData(StockDocumentStatus.Confirmed, PurchasePayableStatus.Outstanding, false)]
+    [InlineData(StockDocumentStatus.Confirmed, PurchasePayableStatus.Paid, true)]
+    [InlineData(StockDocumentStatus.Confirmed, PurchasePayableStatus.Cancelled, false)]
+    public async Task Detail_settlement_uses_current_payables_only_after_confirmation(
+        StockDocumentStatus status, PurchasePayableStatus payableStatus, bool expectedPaid)
+    {
+        var document = CreateDocument(status);
+        document.IsMerchandisePaid = true;
+        document.IsFreightPaid = true;
+        foreach (var type in new[] { PurchasePayableType.Merchandise, PurchasePayableType.Freight })
+            document.PurchasePayables.Add(new PurchasePayable
+                { StockDocumentId = document.Id, Type = type, Amount = 100m, Status = payableStatus });
+        var fixture = CreateFixture(document);
+
+        var result = await fixture.Service.GetDetailAsync(document.Id);
+
+        result!.IsMerchandisePaid.Should().Be(expectedPaid);
+        result.IsFreightPaid.Should().Be(expectedPaid);
+    }
+
+    [Theory]
+    [InlineData(StockDocumentStatus.Draft, false)]
+    [InlineData(StockDocumentStatus.PendingApproval, false)]
+    [InlineData(StockDocumentStatus.Rejected, false)]
+    [InlineData(StockDocumentStatus.Confirmed, true)]
+    public async Task Settlement_flag_fallback_is_restricted_to_confirmed_historical_receipts(
+        StockDocumentStatus status, bool expectedPaid)
+    {
+        var document = CreateDocument(status);
+        document.IsMerchandisePaid = true;
+        document.IsFreightPaid = true;
+        var fixture = CreateFixture(document);
+
+        var result = await fixture.Service.GetDetailAsync(document.Id);
+
+        result!.IsMerchandisePaid.Should().Be(expectedPaid);
+        result.IsFreightPaid.Should().Be(expectedPaid);
+    }
+
+    [Fact]
+    public async Task Corrected_line_is_saved_with_receipt_evidence_before_reconciliation_can_flush_shared_context()
+    {
+        var document = CreateDocument(StockDocumentStatus.Rejected);
+        var line = CreateLine(document);
+        ServiceFixture? fixture = null;
+        var invalidated = false;
+        var units = CreateProxy<IInventoryUnitResolver>((method, _) =>
+            method.Name == nameof(IInventoryUnitResolver.ResolveAsync)
+                ? Task.FromResult((UnitId: 3, UnitName: (string?)"Cái", Factor: 1m))
+                : throw new NotSupportedException(method.Name));
+        var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
+        {
+            if (method.Name != nameof(IInputInvoiceReconciliationService.InvalidateWithinTransactionAsync))
+                throw new NotSupportedException(method.Name);
+            // Reconciliation saves the same DbContext. It must see an already-saved
+            // physical edit, otherwise the receipt repository loses its before values.
+            fixture!.Repository.SaveCalls.Should().Be(1);
+            line.Quantity.Should().Be(5m);
+            invalidated = true;
+            return Task.CompletedTask;
+        });
+        fixture = CreateFixture(document, line, unitResolver: units, reconciliation: reconciliation);
+
+        await fixture.Service.UpdateLineAsync(document.Id, line.Id,
+            new UpdateStockDocumentLineRequest { UnitId = 3, Quantity = 5m,
+                RowVersion = RowVersion(document), LineRowVersion = Convert.ToBase64String(line.RowVersion) });
+
+        invalidated.Should().BeTrue();
+        fixture.Repository.SaveCalls.Should().Be(1);
+        fixture.Repository.BeginTransactionCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(1);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Corrected_line_rolls_back_receipt_and_audit_save_when_reconciliation_invalidation_fails()
+    {
+        var document = CreateDocument(StockDocumentStatus.Rejected);
+        var line = CreateLine(document);
+        var units = CreateProxy<IInventoryUnitResolver>((method, _) =>
+            method.Name == nameof(IInventoryUnitResolver.ResolveAsync)
+                ? Task.FromResult((UnitId: 3, UnitName: (string?)"Cái", Factor: 1m))
+                : throw new NotSupportedException(method.Name));
+        var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
+            method.Name == nameof(IInputInvoiceReconciliationService.InvalidateWithinTransactionAsync)
+                ? Task.FromException(new InvalidOperationException("Invalidation failed"))
+                : throw new NotSupportedException(method.Name));
+        var fixture = CreateFixture(document, line, unitResolver: units, reconciliation: reconciliation);
+
+        var action = () => fixture.Service.UpdateLineAsync(document.Id, line.Id,
+            new UpdateStockDocumentLineRequest { UnitId = 3, Quantity = 5m,
+                RowVersion = RowVersion(document), LineRowVersion = Convert.ToBase64String(line.RowVersion) });
+
+        await action.Should().ThrowAsync<InvalidOperationException>().WithMessage("Invalidation failed");
+        fixture.Repository.SaveCalls.Should().Be(1);
+        fixture.Repository.BeginTransactionCalls.Should().Be(1);
+        fixture.Repository.CommitTransactionCalls.Should().Be(0);
+        fixture.Repository.RollbackTransactionCalls.Should().Be(1);
+    }
+
     [Fact]
     public async Task Pending_supplier_autosave_accepts_current_version_without_posting_inventory()
     {
@@ -146,7 +304,7 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         var beforeQuantity = line.Quantity;
 
         Func<Task> action = () => fixture.Service.UpdateLineAsync(
-            line.Id,
+            document.Id, line.Id,
             new UpdateStockDocumentLineRequest { Quantity = 9m });
 
         await action.Should().ThrowAsync<BusinessRuleException>();
@@ -162,7 +320,7 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         var line = CreateLine(document);
         var fixture = CreateFixture(document, line);
 
-        Func<Task> action = () => fixture.Service.DeleteLineAsync(line.Id);
+        Func<Task> action = () => fixture.Service.DeleteLineAsync(document.Id, line.Id, new());
 
         await action.Should().ThrowAsync<BusinessRuleException>();
         fixture.Repository.RemoveCalls.Should().Be(0);
@@ -581,6 +739,43 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData("   ")]
+    public async Task Dismiss_requires_a_reason_without_resolving_the_request(string? reason)
+    {
+        var document = CreateRevisionRequestedDocument();
+        var fixture = CreateFixture(document);
+
+        var action = () => fixture.Service.ResolveRevisionRequestAsync(
+            document.Id, returnToEdit: false, RowVersion(document), reason);
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*lý do bác yêu cầu*");
+        document.HasRevisionRequest.Should().BeTrue();
+        document.RevisionResolvedAtUtc.Should().BeNull();
+        fixture.Repository.SaveCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Return_resolution_checks_other_receiving_draft_before_clearing_request()
+    {
+        var document = CreateRevisionRequestedDocument();
+        document.PurchaseOrderId = 91;
+        document.ReceivingSessionState = ReceivingSessionState.Frozen;
+        var fixture = CreateFixture(document);
+        fixture.Repository.OtherActiveReceivingDraftExists = true;
+
+        var action = () => fixture.Service.ResolveRevisionRequestAsync(
+            document.Id, returnToEdit: true, RowVersion(document));
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*phiên nhận khác*");
+        document.HasRevisionRequest.Should().BeTrue();
+        document.RevisionResolvedAtUtc.Should().BeNull();
+        document.Status.Should().Be(StockDocumentStatus.PendingApproval);
+        fixture.Repository.SaveCalls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
     [InlineData("not-base64")]
     public async Task Direct_manager_return_requires_a_valid_RowVersion(string? rowVersion)
     {
@@ -705,7 +900,9 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         Warehouse? warehouse = null,
         int currentUserId = 7,
         IReadOnlyList<InputInvoiceHead>? linkedInvoices = null,
-        IReadOnlyList<LegalEntity>? ownerCandidates = null)
+        IReadOnlyList<LegalEntity>? ownerCandidates = null,
+        IInventoryUnitResolver? unitResolver = null,
+        IInputInvoiceReconciliationService? reconciliation = null)
     {
         var repository = new RecordingStockDocumentRepository
         {
@@ -775,7 +972,7 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             [typeof(ILegalEntityRepository)] = legalEntityRepository,
             [typeof(IWarehouseRepository)] = warehouseRepository,
             [typeof(IBarcodeLookupService)] = Unused<IBarcodeLookupService>(),
-            [typeof(IInventoryUnitResolver)] = Unused<IInventoryUnitResolver>(),
+            [typeof(IInventoryUnitResolver)] = unitResolver ?? Unused<IInventoryUnitResolver>(),
             [typeof(IInventoryMovementService)] = Counted<IInventoryMovementService>(postingCalls),
             [typeof(IInventoryMovementFactory)] = Counted<IInventoryMovementFactory>(postingCalls),
             [typeof(IInventoryRevaluationService)] = Counted<IInventoryRevaluationService>(postingCalls),
@@ -785,7 +982,7 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             [typeof(ICurrentUser)] = new CurrentUserStub(currentUserId),
             [typeof(IInputInvoiceSupplierResolutionService)] = supplierResolution,
             [typeof(IInputInvoiceRepository)] = invoiceRepository,
-            [typeof(IInputInvoiceReconciliationService)] = null
+            [typeof(IInputInvoiceReconciliationService)] = reconciliation
         };
         var constructor = typeof(StockDocumentService).GetConstructors().Single();
         var arguments = constructor.GetParameters()
@@ -834,7 +1031,8 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
             ProductNameSnapshot = "Gạo",
             Quantity = 2m,
             BaseQuantity = 2m,
-            Factor = 1m
+            Factor = 1m,
+            RowVersion = [5, 6, 7, 8]
         };
         document.Lines.Add(line);
         return line;
@@ -1013,7 +1211,7 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
         public Task<ProductVariant?> GetVariantForStockDocumentAsync(int productVariantId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<ProductUnitConversion?> GetConversionAsync(int productVariantId, int unitId, CancellationToken ct = default)
-            => throw new NotSupportedException();
+            => Task.FromResult<ProductUnitConversion?>(null);
         public Task<ProductUnitConversion?> GetBaseConversionAsync(int productVariantId, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<Tax?> GetTaxAsync(int taxId, CancellationToken ct = default)
@@ -1058,6 +1256,8 @@ public sealed class PurchaseReceiptRevisionWorkflowTests
                 PurchaseOrderNumber = Document.PurchaseOrder?.OrderNumber,
                 PurchaseOrderTitle = Document.PurchaseOrder?.Title
             } });
+        public Task<List<StockDocumentListItemDto>> GetReceivingReceiptListAsync(CancellationToken ct = default)
+            => throw new NotSupportedException();
         public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
         {
             RemoveCalls++;

@@ -27,7 +27,7 @@ public class DisplayPromotionService : IDisplayPromotionService
 
         var items = await _repository.GetActiveForCustomerDisplayAsync(
             storeId,
-            DateTime.Now,
+            VietnamTime.Now,
             ct);
 
         return items.Select(MapToDto).ToList();

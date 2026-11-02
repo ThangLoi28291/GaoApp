@@ -5,6 +5,10 @@
     ViewData["Title"] = "Danh sách case tồn âm";
 }
 
+@section PageStyles {
+    <link href="~/Admin/css/inventory-operations.mobile.css" rel="stylesheet" asp-append-version="true" />
+}
+
 <div class="container-fluid py-3 inventory-issue-index-page">
     @if (TempData["Success"] != null)
     {
@@ -180,14 +184,14 @@
                                 <div class="col-md-3">
                                     <div class="mini-info neutral">
                                         <div class="mini-label">Mở case</div>
-                                        <div class="mini-value">@item.OpenedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                        <div class="mini-value">@item.OpenedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</div>
                                     </div>
                                 </div>
 
                                 <div class="col-md-3">
                                     <div class="mini-info @(item.IsOverdue ? "danger" : "neutral")">
                                         <div class="mini-label">Deadline</div>
-                                        <div class="mini-value">@item.DueAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                        <div class="mini-value">@item.DueAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</div>
                                     </div>
                                 </div>
 
@@ -276,7 +280,7 @@
                                         <div class="col-md-4">
                                             <div class="info-box">
                                                 <div class="label">Deadline</div>
-                                                <div class="value">@item.DueAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                                <div class="value">@item.DueAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</div>
                                             </div>
                                         </div>
                                     </div>
@@ -629,4 +633,8 @@
             _ => "pending"
         };
     }
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/inventory-operations.mobile.js" asp-append-version="true"></script>
 }

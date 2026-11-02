@@ -20,15 +20,170 @@ async Task<object> Call(object? target, Type type, string method, params object[
     await task; return task.GetType().GetProperty("Result")!.GetValue(task)!;
 }
 var type = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.FullApplicationFixture")!;
-var fixture = await Call(null, type, args.Contains("--delivery-picking") || args.Contains("--delivery-inventory") || args.Contains("--delivery-trips") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
+var fixture = await Call(null, type, args.Contains("--pos-session-mobile") || args.Contains("--pos-order-acceptance") || args.Contains("--pos-order-detail") || args.Contains("--delivery-picking") || args.Contains("--delivery-inventory") || args.Contains("--delivery-trips") ? "StartDeliveryAsync" : args.Contains("--receipt-supplier") || args.Contains("--input-invoice-library") ? "StartWithInvoiceLibraryAsync" : "StartAsync");
 await using var cleanup = (IAsyncDisposable)fixture;
 var store = ((IEnumerable)Read(fixture, "Stores")).Cast<object>().First();
-var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") || args.Contains("--operations-reports")
+var account = args.Contains("--receipt-templates") || args.Contains("--kiosk") || args.Contains("--operations-reports") || args.Contains("--role-permissions") || args.Contains("--shift-admin")
+    || args.Contains("--pos-shift-records-mobile")
+    || args.Contains("--pos-shift-review-mobile")
     ? await Call(null, typeof(PosShiftAdministrationSqlServerTests), "AddAdminAsync", fixture, store)
     : await Call(fixture, type, "AddAccountAsync", store, new[] { "*" });
 var client = await Call(fixture, type, "LoginAsync", account);
 using var clientCleanup = (IDisposable)client;
 var http = (HttpClient)Read(client, "Http");
+if (args.Contains("--receiving-list"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceivingListBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    object AccountData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password") };
+    var receivingListStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    receivingListStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    receivingListStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "receiving-list.browser.cjs"));
+    using var probe = Process.Start(receivingListStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        manager = AccountData(account), employee = AccountData(Read(seed, "Employee")), denied = AccountData(Read(seed, "Denied")),
+        terminalId = Read(store, "TerminalId"), otherLegalEntityId = Read(seed, "OtherLegalEntityId"),
+        otherWarehouseId = Read(seed, "OtherWarehouseId"), activeIds = Read(seed, "ActiveIds")
+    }));
+    probe.StandardInput.Close();
+    using var receivingListTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    try { await probe.WaitForExitAsync(receivingListTimeout.Token); }
+    catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("Receiving list browser failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Read-only list browser changed documents, stock, payables or store menus.");
+    Console.WriteLine("RECEIVING LIST PASS — real Razor/HTTP/SQL, business data and store menus unchanged; disposable SQL only.");
+    return;
+}
+if (args.Contains("--receipt-approval-workspace"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceiptApprovalWorkspaceBrowserFixture")
+        ?? throw new InvalidOperationException("Receipt approval workspace browser fixture is missing.");
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store);
+    var receiptId = (int)Read(seed, "ReceiptId");
+    var workspaceDatabase = Read(fixture, "Database");
+    AppDbContext ReceiptContext() => (AppDbContext)workspaceDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(workspaceDatabase, new object?[] { Read(store, "StoreId"), null })!;
+    Dictionary<int, decimal> beforeQuantities;
+    Dictionary<int, decimal> receivedQuantities;
+    await using (var before = ReceiptContext())
+    {
+        beforeQuantities = (await before.InventoryBalances.AsNoTracking().ToListAsync())
+            .GroupBy(x => x.ProductVariantId).ToDictionary(x => x.Key, x => x.Sum(v => v.OnHandQty));
+        receivedQuantities = (await before.StockDocumentLines.AsNoTracking()
+            .Where(x => x.StockDocumentId == receiptId && !x.IsDeleted).ToListAsync())
+            .GroupBy(x => x.ProductVariantId).ToDictionary(x => x.Key, x => x.Sum(v => v.BaseQuantity));
+    }
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var evidence = Environment.GetEnvironmentVariable("GAO_RECEIPT_BROWSER_OUTPUT")
+        ?? Path.Combine(source, "TestResults", "receipt-approval-workspace");
+    Directory.CreateDirectory(evidence);
+    var browserStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    browserStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    browserStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "receipt-approval-workspace.browser.cjs"));
+    using var probe = Process.Start(browserStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"), terminalId = Read(store, "TerminalId"),
+        receiptId, changedLineId = Read(seed, "ChangedLineId"), secondChangedLineId = Read(seed, "SecondChangedLineId"),
+        addedLineId = Read(seed, "AddedLineId"), unchangedLineId = Read(seed, "UnchangedLineId"),
+        savedPrice = Read(seed, "SavedPrice"), taxId = Read(seed, "TaxId"), evidenceDirectory = evidence
+    }));
+    probe.StandardInput.Close();
+    using var workspaceTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    try { await probe.WaitForExitAsync(workspaceTimeout.Token); }
+    catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("Receipt approval workspace browser failed.");
+    await using var verify = ReceiptContext();
+    var receipt = await verify.StockDocuments.Include(x => x.Lines).SingleAsync(x => x.Id == receiptId);
+    var lines = receipt.Lines.Where(x => !x.IsDeleted).ToArray();
+    var merchandise = lines.Sum(x => decimal.Round(x.Quantity * x.UnitPriceBeforeVat, 2, MidpointRounding.AwayFromZero) + x.VatAmount);
+    if (receipt.Status != StockDocumentStatus.Confirmed || !receipt.HasVat || !receipt.IncludeVatInInventoryCost ||
+        !receipt.HasFreight || !receipt.CapitalizeFreightInInventoryCost || receipt.FreightTotal != 12345m ||
+        receipt.IsMerchandisePaid || receipt.IsFreightPaid || receipt.TotalAmount != merchandise)
+        throw new InvalidOperationException("Browser approval did not preserve the reviewed VAT, freight and settlement choices.");
+    var payables = await verify.PurchasePayables.Where(x => x.StockDocumentId == receiptId).ToListAsync();
+    if (payables.Count != 2 || !payables.Any(x => x.Type == PurchasePayableType.Merchandise && x.Status == PurchasePayableStatus.Outstanding && x.Amount == merchandise) ||
+        !payables.Any(x => x.Type == PurchasePayableType.Freight && x.Status == PurchasePayableStatus.Outstanding && x.Amount == 12345m))
+        throw new InvalidOperationException("Approval must record merchandise and freight payables separately and once.");
+    var transactions = await verify.InventoryTransactions.Where(x => x.ReferenceType == InventoryReferenceType.StockDocument && x.ReferenceId == receiptId.ToString()).ToListAsync();
+    var approvalAudits = await verify.PurchaseReceiptAuditEvents.Where(x => x.StockDocumentId == receiptId)
+        .Select(x => new { x.Id, x.EventType, x.IsSuccess }).ToListAsync();
+    var postingEvidence = new
+    {
+        receiptId, lineCount = lines.Length, transactionCount = transactions.Count,
+        commercialInventoryValue = merchandise + 12345m, postedInventoryValue = transactions.Sum(x => x.TotalCost),
+        lines = lines.Select(x => new { x.Id, x.LineNo, x.BaseQuantity, x.LineTotal, x.VatAmount, x.FreightAllocation }),
+        postings = transactions.Select(x => new { x.Id, x.ReferenceLineId, x.QuantityChange, x.UnitCostSnapshot, x.TotalCost, x.TransactionType }),
+        approvalAudits
+    };
+    var postingEvidenceJson = JsonSerializer.Serialize(postingEvidence);
+    File.WriteAllText(Path.Combine(evidence, "sql-posting-checks.json"), postingEvidenceJson);
+    if (transactions.Count != lines.Length)
+        throw new InvalidOperationException("Approval must post every active line exactly once. " + postingEvidenceJson);
+    foreach (var line in lines)
+    {
+        var matching = transactions.Where(x => x.ReferenceLineId == line.Id).ToArray();
+        if (matching.Length != 1 || matching[0].QuantityChange != line.BaseQuantity)
+            throw new InvalidOperationException("Each active line must have exactly one posting for its reviewed base quantity. " + postingEvidenceJson);
+        // Receipt pricing supplies a six-decimal base cost; the existing legacy
+        // valuation engine then rounds unit cost/value to four decimals. Verify
+        // that exact policy rather than equating its result with commercial cents.
+        var commercialLineValue = line.LineTotal + line.FreightAllocation;
+        var receiptBaseCost = decimal.Round(commercialLineValue / line.BaseQuantity, 6, MidpointRounding.AwayFromZero);
+        var valuationUnitCost = decimal.Round(receiptBaseCost, 4, MidpointRounding.AwayFromZero);
+        var valuationValue = decimal.Round(line.BaseQuantity * valuationUnitCost, 4, MidpointRounding.AwayFromZero);
+        if (matching[0].UnitCostSnapshot != valuationUnitCost || matching[0].TotalCost != valuationValue)
+            throw new InvalidOperationException("Posted unit/value cost must match the existing valuation precision policy including selected VAT and freight. " + postingEvidenceJson);
+    }
+    if (approvalAudits.Count(x => x.EventType == PurchaseReceiptAuditEventType.CommercialApprovalConfirmed && x.IsSuccess) != 1)
+        throw new InvalidOperationException("Approval must produce one successful commercial approval audit event. " + postingEvidenceJson);
+    var afterQuantities = (await verify.InventoryBalances.AsNoTracking().ToListAsync()).GroupBy(x => x.ProductVariantId)
+        .ToDictionary(x => x.Key, x => x.Sum(v => v.OnHandQty));
+    foreach (var pair in receivedQuantities)
+        if (afterQuantities.GetValueOrDefault(pair.Key) != beforeQuantities.GetValueOrDefault(pair.Key) + pair.Value)
+            throw new InvalidOperationException("Browser approval stock quantities were posted incorrectly or more than once.");
+    Console.WriteLine("RECEIPT APPROVAL WORKSPACE PASS — actual Razor/HTTP, exact stock and cost posting, separate payables, one approval audit; disposable SQL only.");
+    return;
+}
+if (args.Contains("--receipt-revision-ux"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceiptRevisionBrowserFixture")
+        ?? throw new InvalidOperationException("Receipt revision browser fixture is missing.");
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var evidence = Environment.GetEnvironmentVariable("GAO_RECEIPT_BROWSER_OUTPUT")
+        ?? Path.Combine(source, "TestResults", "receipt-revision-ux");
+    Directory.CreateDirectory(evidence);
+    var revisionStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    revisionStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    revisionStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "receipt-revision-ux.browser.cjs"));
+    using var probe = Process.Start(revisionStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"), terminalId = Read(store, "TerminalId"),
+        receiptId = Read(seed, "ReceiptId"), changedLineId = Read(seed, "ChangedLineId"),
+        addedLineId = Read(seed, "AddedLineId"), unchangedLineId = Read(seed, "UnchangedLineId"),
+        savedPrice = Read(seed, "SavedPrice"), evidenceDirectory = evidence
+    }));
+    probe.StandardInput.Close();
+    using var revisionTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+    try { await probe.WaitForExitAsync(revisionTimeout.Token); }
+    catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("Receipt revision UX browser failed.");
+    var revisionDatabase = Read(fixture, "Database");
+    await using var verify = (AppDbContext)revisionDatabase.GetType().GetMethod("CreateTenantContext", flags)!
+        .Invoke(revisionDatabase, new object?[] { Read(store, "StoreId"), null })!;
+    var receiptId = (int)Read(seed, "ReceiptId");
+    if ((await verify.StockDocuments.SingleAsync(x => x.Id == receiptId)).Status != StockDocumentStatus.Rejected ||
+        (await verify.InventoryBalances.SingleAsync()).OnHandQty != 100 || await verify.PurchasePayables.AnyAsync())
+        throw new InvalidOperationException("Review/return browser must preserve inventory and payables.");
+    Console.WriteLine("RECEIPT REVISION UX PASS — actual Razor, actual HTTP, disposable SQL only.");
+    return;
+}
 if (args.Contains("--delivery-trips"))
 {
     var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Delivery.DeliveryD06BrowserFixture")
@@ -189,7 +344,7 @@ if (args.Contains("--delivery-picking"))
     AppDbContext PickingContext() => (AppDbContext)pickingDatabase.GetType().GetMethod("CreateTenantContext", flags)!
         .Invoke(pickingDatabase, new object?[] { pickingStoreId, null })!;
     var picker = await Call(fixture, type, "AddAccountAsync", store, new[] { PermissionCodes.Delivery.View, PermissionCodes.Delivery.Pick });
-    int originalVariantId = (int)Read(store, "VariantId"), replacementVariantId, missingVariantId;
+    int originalVariantId = (int)Read(store, "VariantId"), replacementVariantId, missingVariantId, exactVariantId;
     await using (var seed = PickingContext())
     {
         var original = await seed.ProductVariants.SingleAsync(x => x.Id == originalVariantId);
@@ -198,8 +353,15 @@ if (args.Contains("--delivery-picking"))
             Sku = "D04-REPLACEMENT", ProductVariantName = "Gạo thay thế", Price = 120, IsActive = true };
         var missing = new ProductVariant { StoreId = pickingStoreId, ProductId = original.ProductId,
             Sku = "D04-MISSING", ProductVariantName = "Hàng hết", Price = 30, IsActive = true };
-        seed.AddRange(replacement, missing); await seed.SaveChangesAsync();
-        replacementVariantId = replacement.Id; missingVariantId = missing.Id;
+        var exactVariant = new ProductVariant { StoreId = pickingStoreId, ProductId = original.ProductId,
+            Sku = "D04-EXACT", ProductVariantName = "Hàng kiểm tra độ chính xác", Price = .01m, IsActive = true };
+        seed.AddRange(replacement, missing, exactVariant); await seed.SaveChangesAsync();
+        replacementVariantId = replacement.Id; missingVariantId = missing.Id; exactVariantId = exactVariant.Id;
+        var baseUnitId = await seed.Products.Where(x => x.Id == original.ProductId)
+            .Select(x => x.BaseUnitId).SingleAsync();
+        seed.Add(new ProductUnitConversion { StoreId = pickingStoreId, ProductVariantId = exactVariantId,
+            UnitId = baseUnitId, Factor = 1, IsBaseUnit = true });
+        await seed.SaveChangesAsync();
     }
     async Task<JsonElement> PickingPost(string path, object? body = null)
     {
@@ -227,7 +389,9 @@ if (args.Contains("--delivery-picking"))
     var mainCart = await PickingDraft(originalVariantId, "10");
     await PickingPost($"/admin/pos/{mainCart}/items?variantId={missingVariantId}&qty=1");
     var main = (await PickingTransfer()).GetProperty("delivery").Clone();
-    var exactCart = await PickingDraft(originalVariantId, "1");
+    // The maximum legal quantity needs its own SKU: other pending holds on the
+    // ordinary SKU would correctly overflow the aggregate inventory quantity limit.
+    var exactCart = await PickingDraft(exactVariantId, "1");
     await using (var seed = PickingContext())
     {
         var cart = await seed.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == exactCart);
@@ -267,6 +431,10 @@ if (args.Contains("--delivery-picking"))
         });
         seed.Add(legacy); await seed.SaveChangesAsync(); legacyId = legacy.Id;
     }
+    Dictionary<(int WarehouseId, int VariantId), decimal> pickingInitialPhysicalStock;
+    await using (var baseline = PickingContext())
+        pickingInitialPhysicalStock = (await baseline.InventoryBalances.AsNoTracking().ToListAsync())
+            .ToDictionary(x => (x.WarehouseId, x.ProductVariantId), x => x.OnHandQty);
     var pickingSource = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
     var pickingEvidence = Environment.GetEnvironmentVariable("GAO_DELIVERY_PICKING_TEST_OUTPUT") ??
         Path.Combine(pickingSource, "TestResults", "delivery-picking");
@@ -296,13 +464,33 @@ if (args.Contains("--delivery-picking"))
         await verify.DeliveryCommandReceipts.CountAsync(x => operationalIds.Contains(x.DeliveryOrderId)) != 3 + ackIds.Length ||
         await verify.DeliveryCommandReceipts.CountAsync(x => ackIds.Contains(x.ClientRequestId)) != ackIds.Length)
         throw new InvalidOperationException("D04 revisions/receipts/outbox did not match actual distinct committed intents.");
-    if (await verify.InventoryTransactions.CountAsync() != 1 || await verify.InventoryReservations.AnyAsync() ||
+    var holds = await verify.InventoryReservations.AsNoTracking().Where(x => x.Status == InventoryReservationStatus.Active).ToListAsync();
+    var pickedLines = await verify.DeliveryPickingLines.AsNoTracking().Include(x => x.Quote)
+        .Where(x => operationalIds.Contains(x.DeliveryOrderId)).ToListAsync();
+    var expectedHeldLines = pickedLines.Where(x => x.IsActive && x.ReportedQuantity is > 0).ToArray();
+    if (holds.Count != expectedHeldLines.Length || holds.Any(x => !operationalIds.Contains(x.DeliveryOrderId ?? 0)))
+        throw new InvalidOperationException("D04 active planned holds do not match reported picking lines.");
+    foreach (var line in expectedHeldLines)
+    {
+        var hold = holds.SingleOrDefault(x => x.DeliveryOrderId == line.DeliveryOrderId && x.DeliveryOrderLineId == line.DeliveryOrderLineId);
+        var owner = orders.Single(x => x.Id == line.DeliveryOrderId);
+        if (hold is null || hold.ProductVariantId != line.Quote.VariantId || hold.WarehouseId != owner.SourceWarehouseId ||
+            hold.SourceLegalEntityId != owner.SourceLegalEntityId || hold.ReservedQty != line.ReportedQuantity!.Value * line.Quote.BaseMultiplier ||
+            hold.ReportedByUserId != line.ReporterUserId || hold.ReportedAtUtc != line.ReportedAtUtc)
+            throw new InvalidOperationException("D04 planned hold quantity, source or reporter differs from saved picking evidence.");
+    }
+    var balances = await verify.InventoryBalances.AsNoTracking().ToListAsync();
+    if (balances.Any(x => x.OnHandQty != pickingInitialPhysicalStock.GetValueOrDefault((x.WarehouseId, x.ProductVariantId)) ||
+        x.ReservedQty != holds.Where(h => h.WarehouseId == x.WarehouseId && h.ProductVariantId == x.ProductVariantId).Sum(h => h.ReservedQty)) ||
+        pickingInitialPhysicalStock.Keys.Any(key => !balances.Any(x => x.WarehouseId == key.WarehouseId && x.ProductVariantId == key.VariantId)) ||
+        await verify.InventoryTransactions.CountAsync() != 1 ||
         await verify.DeliveryJournalEntries.AnyAsync() || await verify.DeliveryDispatchCostFragments.AnyAsync() ||
         await verify.OrderPayments.AnyAsync() || await verify.Orders.AnyAsync(x => x.Status == OrderStatus.Completed))
         throw new InvalidOperationException("D04 browser changed stock or finance.");
     await File.WriteAllTextAsync(Path.Combine(pickingEvidence, "sql-effects.json"), JsonSerializer.Serialize(new {
         distinctPickingIntents = ackIds.Length, expectedEvents, revisions = expectedEvents, receipts = 3 + ackIds.Length,
-        openingStockOnly = true, noReservations = true, noPayments = true, noCompletedSale = true, fixtureOnly = true
+        openingStockOnly = true, physicalStockUnchanged = true, plannedHoldsMatchReportedEvidence = true,
+        activePlannedHolds = holds.Count, noPayments = true, noCompletedSale = true, fixtureOnly = true
     }, new JsonSerializerOptions { WriteIndented = true }));
     Console.WriteLine("D04 PICKING BROWSER + EXACT SQL EFFECTS PASS — disposable fixture only."); return;
 }
@@ -984,7 +1172,7 @@ if (args.Contains("--receipt-barcode-proposals") || args.Contains("--receipt-int
         // Deterministically exercise '+' in SQL rowversion Base64. Only this
         // disposable fixture receipt is touched; no application data is used.
         var barcodeReceiptId = (int)Read(seed, "ReceiptId");
-        if (args.Contains("--receiving-mobile") && (Environment.GetEnvironmentVariable("RECEIVING_SCROLL_CHECK") == "1" || Environment.GetEnvironmentVariable("RECEIVING_INTERACTION_CHECK") == "1" || Environment.GetEnvironmentVariable("RECEIVING_FEEDBACK_RELOAD_CHECK") == "1"))
+        if (args.Contains("--receiving-mobile") && (Environment.GetEnvironmentVariable("RECEIVING_SCROLL_CHECK") == "1" || Environment.GetEnvironmentVariable("RECEIVING_INTERACTION_CHECK") == "1" || Environment.GetEnvironmentVariable("RECEIVING_FEEDBACK_RELOAD_CHECK") == "1" || Environment.GetEnvironmentVariable("RECEIVING_UI05B_CHECK") == "1"))
         {
             // A long, disposable receipt exposes scroll clamping when mobile controls are rebuilt.
             var sample = await barcodeDb.StockDocumentLines.AsNoTracking()
@@ -1059,6 +1247,18 @@ if (args.Contains("--receipt-barcode-proposals") || args.Contains("--receipt-int
             }
         }
     }
+    var ui05bSeam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceivingDetailV2BrowserFixture")!;
+    var ui05bSeed = Environment.GetEnvironmentVariable("RECEIVING_UI05B_CHECK") == "1"
+        ? await Call(null, ui05bSeam, "PrepareAsync", fixture, store, Read(seed, "ReceiptId")) : null;
+    var ui05cSeam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceivingPackingBrowserFixture")!;
+    var ui05cSeed = Environment.GetEnvironmentVariable("RECEIVING_UI05C_CHECK") == "1"
+        ? await Call(null, ui05cSeam, "PrepareAsync", fixture, store, Read(seed, "ReceiptId")) : null;
+    var ui05dSeam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceivingAcknowledgementBrowserFixture")!;
+    var ui05dSeed = Environment.GetEnvironmentVariable("RECEIVING_UI05D_CHECK") == "1"
+        ? await Call(null, ui05dSeam, "PrepareAsync", fixture, store, Read(seed, "ReceiptId")) : null;
+    var ui05eSeam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.ReceivingAcceptanceBrowserFixture")!;
+    var ui05eSeed = Environment.GetEnvironmentVariable("RECEIVING_UI05E_CHECK") == "1"
+        ? await Call(null, ui05eSeam, "PrepareAsync", fixture, store, Read(seed, "ReceiptId")) : null;
     var sourceRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
     var probeStart = new ProcessStartInfo("node") { WorkingDirectory = sourceRoot, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
     probeStart.Environment["NODE_PATH"] = Path.Combine(sourceRoot, "Logs", "pos-offline-browser-deps", "node_modules");
@@ -1069,6 +1269,13 @@ if (args.Contains("--receipt-barcode-proposals") || args.Contains("--receipt-int
         baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
         user = Read(account, "Name"), password = Read(account, "Password"), terminalId = Read(store, "TerminalId"),
         receiptId = Read(seed, "ReceiptId"), packId = Read(seed, "PackId"),
+        ui05b = ui05bSeed is null ? null : new { emptyId = Read(ui05bSeed, "EmptyId"), rejectedId = Read(ui05bSeed, "RejectedId"),
+            denied = new { user = Read(Read(ui05bSeed, "Denied"), "Name"), password = Read(Read(ui05bSeed, "Denied"), "Password") } },
+        ui05c = ui05cSeed is null ? null : new { packLineId = Read(ui05cSeed, "PackLineId"), cartonLineId = Read(ui05cSeed, "CartonLineId"),
+            otherLineId = Read(ui05cSeed, "OtherLineId"), baseUnitId = Read(ui05cSeed, "BaseUnitId"), receiveUnitId = Read(ui05cSeed, "ReceiveUnitId") },
+        ui05e = ui05eSeed is null ? null : new { packLineId = Read(ui05eSeed, "PackLineId"), otherLineId = Read(ui05eSeed, "OtherLineId"),
+            readOnlyId = Read(ui05eSeed, "ReadOnlyId"), foreignId = Read(ui05eSeed, "ForeignId"),
+            denied = new { user = Read(Read(ui05eSeed, "Denied"), "Name"), password = Read(Read(ui05eSeed, "Denied"), "Password") } },
         employee = new { user = Read(employee, "Name"), password = Read(employee, "Password") }
     }));
     probe.StandardInput.Close();
@@ -1076,7 +1283,13 @@ if (args.Contains("--receipt-barcode-proposals") || args.Contains("--receipt-int
     try { await probe.WaitForExitAsync(probeTimeout.Token); }
     catch { if (!probe.HasExited) probe.Kill(true); throw; }
     if (probe.ExitCode != 0) throw new Exception("Receipt barcode browser probe failed.");
-    Console.WriteLine(args.Contains("--receipt-history") ? "PASS: Receipt history browser checks against isolated SQL."
+    if (ui05bSeed is not null) await Call(null, ui05bSeam, "VerifyAsync", fixture, store, ui05bSeed);
+    if (ui05cSeed is not null) await Call(null, ui05cSeam, "VerifyAsync", fixture, store, ui05cSeed);
+    if (ui05dSeed is not null) await Call(null, ui05dSeam, "VerifyAsync", fixture, store, ui05dSeed);
+    if (ui05eSeed is not null) await Call(null, ui05eSeam, "VerifyAsync", fixture, store, ui05eSeed);
+    Console.WriteLine(ui05cSeed is not null ? "PASS UI-05c: exact per-unit quantities, packaging photo and completion draft; catalog, inventory and menus unchanged."
+        : ui05bSeed is not null ? "PASS UI-05b: one real receiving add, one submit, exact SQL quantity/status; protected inventory, menus and other receipts unchanged."
+        : args.Contains("--receipt-history") ? "PASS: Receipt history browser checks against isolated SQL."
         : "PASS: Chrome employee proposal, receipt-local scan and manager approval against isolated SQL.");
     return;
 }
@@ -1106,6 +1319,53 @@ if (args.Contains("--role-permissions"))
     Console.WriteLine("PASS role creation and exact grants persisted, disposable SQL only.");
     return;
 }
+if (args.Contains("--pos-order-acceptance"))
+{
+    var acceptanceType = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosOrderAcceptanceBrowserFixture")!;
+    var acceptanceSeed = await Call(null, acceptanceType, "PrepareAsync", fixture, store, account);
+    var acceptanceRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var acceptanceStart = new ProcessStartInfo("node") { WorkingDirectory=acceptanceRoot, UseShellExecute=false, CreateNoWindow=true, RedirectStandardInput=true };
+    acceptanceStart.Environment["NODE_PATH"] = Path.Combine(acceptanceRoot,"Logs","pos-offline-browser-deps","node_modules");
+    acceptanceStart.ArgumentList.Add(Path.Combine(acceptanceRoot,"GaoApp.Tests.Browser","pos-order-acceptance.browser.cjs"));
+    using var acceptanceProbe = Process.Start(acceptanceStart)!;
+    await acceptanceProbe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl=$"http://{Read(store,"Host")}:{((Uri)Read(fixture,"Address")).Port}",
+        user=Read(account,"Name"),password=Read(account,"Password"),terminalId=Read(store,"TerminalId"),
+        cases=Read(acceptanceSeed,"Cases"),writeOrderId=Read(acceptanceSeed,"WriteOrderId"),
+        viewOnly=Read(acceptanceSeed,"ViewOnly"),reconcileOnly=Read(acceptanceSeed,"ReconcileOnly")
+    }));
+    acceptanceProbe.StandardInput.Close();
+    using var acceptanceTimeout=new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    try { await acceptanceProbe.WaitForExitAsync(acceptanceTimeout.Token); }
+    catch { if(!acceptanceProbe.HasExited)acceptanceProbe.Kill(true);throw; }
+    if(acceptanceProbe.ExitCode!=0)throw new InvalidOperationException("POS order acceptance browser failed.");
+    Console.WriteLine(await Call(null,acceptanceType,"VerifyAsync",fixture,store,acceptanceSeed));return;
+}
+if (args.Contains("--pos-order-detail"))
+{
+    var detailFixture = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosOrderDetailBrowserFixture")!;
+    var detailSeed = await Call(null, detailFixture, "PrepareAsync", fixture, store, account);
+    var detailRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var detailStart = new ProcessStartInfo("node") { WorkingDirectory = detailRoot, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    detailStart.Environment["NODE_PATH"] = Path.Combine(detailRoot, "Logs", "pos-offline-browser-deps", "node_modules");
+    detailStart.ArgumentList.Add(Path.Combine(detailRoot, "GaoApp.Tests.Browser", "pos-order-detail.browser.cjs"));
+    using var detailProbe = Process.Start(detailStart)!;
+    await detailProbe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+        baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
+        user = Read(account, "Name"), password = Read(account, "Password"), terminalId = Read(store, "TerminalId"),
+        orderId = Read(detailSeed, "OrderId"), emptyOrderId = Read(detailSeed, "EmptyOrderId"),
+        deliveryOrderId = Read(detailSeed, "DeliveryOrderId"),
+        readOnlyUser = Read(detailSeed, "ReadOnlyUser"), readOnlyPassword = Read(detailSeed, "ReadOnlyPassword"),
+        capabilityAccounts = Read(detailSeed, "CapabilityAccounts")
+    }));
+    detailProbe.StandardInput.Close();
+    using var detailTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(6));
+    try { await detailProbe.WaitForExitAsync(detailTimeout.Token); }
+    catch { if (!detailProbe.HasExited) detailProbe.Kill(true); throw; }
+    if (detailProbe.ExitCode != 0) throw new InvalidOperationException("POS order detail browser probe failed.");
+    Console.WriteLine(await Call(null, detailFixture, "VerifyAsync", fixture, store, detailSeed));
+    return;
+}
 if (args.Contains("--pos-orders-page") || args.Contains("--invoice-input-stock"))
 {
     var ordersRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
@@ -1127,10 +1387,12 @@ if (args.Contains("--pos-orders-page") || args.Contains("--invoice-input-stock")
         : "PASS: POS orders Razor/auth, real empty API and controlled list/receipt UI; disposable SQL only.");
     return;
 }
-if (args.Contains("--customer-display"))
+if (args.Contains("--customer-display") || args.Contains("--customer-display-receipt") || args.Contains("--customer-payment-display"))
 {
     (await http.PostAsJsonAsync("/admin/pos/shift/open", new { openingCash = 0, warehouseId = Read(store, "WarehouseId") })).EnsureSuccessStatusCode();
     var displayDatabase = Read(fixture, "Database");
+    var displayReceiptVariantIds = new List<int>();
+    var displayCustomerIds = new List<int>();
     await using (var displayDb = (AppDbContext)displayDatabase.GetType().GetMethod("CreateTenantContext", flags)!
         .Invoke(displayDatabase, new object?[] { Read(store, "StoreId"), null })!)
     {
@@ -1140,15 +1402,55 @@ if (args.Contains("--customer-display"))
         displayStore.ReceiptAddress = "128 Nguyễn Văn Cừ · TP. Hồ Chí Minh";
         var displayUserId = (int)Read(account, "UserId");
         (await displayDb.Users.SingleAsync(x => x.Id == displayUserId)).FullName = "Nguyễn Minh An";
+        if (args.Contains("--customer-payment-display"))
+            displayDb.StoreBankAccounts.Add(new StoreBankAccount { StoreId = displayStoreId, BankCode = "ACB", BankName = "Synthetic display bank",
+                AccountNumber = "123456789", AccountName = "Synthetic recipient", VietQrBankBin = "970416", IsActive = true,
+                IsDefault = true, QrRenderMode = BankQrRenderMode.LocalEmvQr, ConfirmMode = BankQrConfirmMode.Manual });
+        if (args.Contains("--customer-display-receipt"))
+        {
+            var retailCustomer = new Customer { StoreId = displayStoreId, Name = "Khách điểm màn hình", Phone = "0901234567", PriceTier = "RETAIL" };
+            var zeroCustomer = new Customer { StoreId = displayStoreId, Name = "Khách mới chưa tích điểm", Phone = "0901234568", PriceTier = "RETAIL" };
+            var wholesaleCustomer = new Customer { StoreId = displayStoreId, Name = "Khách sỉ màn hình", Phone = "0901234569", PriceTier = "WHOLESALE" };
+            displayDb.AddRange(retailCustomer, zeroCustomer, wholesaleCustomer,
+                new RewardSettings { StoreId = displayStoreId, IsEnabled = true, MoneyPerPoint = 1000, PointsPerVoucher = 100, VoucherValue = 10000 },
+                new CustomerRewardLedger { StoreId = displayStoreId, Customer = retailCustomer, Type = CustomerRewardLedgerType.ManualAdjust, Amount = 1250000 },
+                new CustomerRewardLedger { StoreId = displayStoreId, Customer = wholesaleCustomer, Type = CustomerRewardLedgerType.ImportOldBalance, Amount = 999000 });
+            await displayDb.SaveChangesAsync();
+            displayCustomerIds.AddRange(new[] { retailCustomer.Id, zeroCustomer.Id, wholesaleCustomer.Id });
+            var originalId = (int)Read(store, "VariantId");
+            var original = await displayDb.ProductVariants.Include(x => x.Product).SingleAsync(x => x.Id == originalId);
+            var movementService = (GaoApp.Application.Services.Inventory.InventoryMovementService)
+                typeof(GaoApp.Tests.Inventory.InventoryPosPostingContractTests).GetMethod("CreateRealMovementService", flags)!
+                    .Invoke(null, new object[] { displayDb })!;
+            for (var i = 0; i < 20; i++)
+            {
+                var name = i == 0 ? "<img src=x onerror=alert(1)> Hàng kiểm thử có tên dài" : "Sản phẩm bill dài số " + i;
+                var product = new Product { StoreId = displayStoreId, Name = name, Alias = "display-bill-" + i,
+                    CategoryId = original.Product.CategoryId, SupplierId = original.Product.SupplierId,
+                    BaseUnitId = original.Product.BaseUnitId, BasePrice = 12000 + i * 1000, IsActive = true };
+                displayDb.Add(product); await displayDb.SaveChangesAsync();
+                var variant = new ProductVariant { StoreId = displayStoreId, ProductId = product.Id,
+                    Sku = "DISPLAY-BILL-" + i, ProductVariantName = name,
+                    Price = 12000 + i * 1000, CostPrice = 10, IsActive = true };
+                displayDb.Add(variant); await displayDb.SaveChangesAsync();
+                displayReceiptVariantIds.Add(variant.Id);
+                await movementService.CreateAsync(new GaoApp.Application.Services.Inventory.InventoryMovementFactory()
+                    .CreatePurchaseReceipt((int)Read(store, "WarehouseId"), variant.Id, 100, 10,
+                        "DISPLAY-BILL-STOCK", 1000 + i, "Stock for disposable receipt test", 1));
+            }
+        }
         await displayDb.SaveChangesAsync();
     }
     var displayRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
     var displayStart = new ProcessStartInfo("node") { WorkingDirectory = displayRoot, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
     displayStart.Environment["NODE_PATH"] = Path.Combine(displayRoot, "Logs", "pos-offline-browser-deps", "node_modules");
-    displayStart.ArgumentList.Add(Path.Combine(displayRoot, "GaoApp.Tests.Browser", "customer-display.browser.cjs"));
+    displayStart.ArgumentList.Add(Path.Combine(displayRoot, "GaoApp.Tests.Browser", args.Contains("--customer-display-receipt")
+        ? "customer-display-receipt.browser.cjs" : args.Contains("--customer-payment-display")
+            ? "customer-payment-display.browser.cjs" : "customer-display.browser.cjs"));
     using var probe = Process.Start(displayStart)!;
     await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { baseUrl = $"http://{Read(store, "Host")}:{((Uri)Read(fixture, "Address")).Port}",
-        user = Read(account, "Name"), password = Read(account, "Password"), storeId = Read(store, "StoreId"), terminalId = Read(store, "TerminalId") }));
+        user = Read(account, "Name"), password = Read(account, "Password"), storeId = Read(store, "StoreId"), terminalId = Read(store, "TerminalId"),
+        variantId = Read(store, "VariantId"), receiptVariantIds = displayReceiptVariantIds, customerIds = displayCustomerIds }));
     probe.StandardInput.Close();
     using var displayTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(5));
     try { await probe.WaitForExitAsync(displayTimeout.Token); }
@@ -1207,6 +1509,173 @@ if (args.Contains("--label-printing"))
     Console.WriteLine("PASS: Chrome label workflow; no physical printer used.");
     return;
 }
+if (args.Contains("--pos-after-sales-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosAfterSalesMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source,"TestResults","mobile-ui-08-20261026","browser"); Directory.CreateDirectory(output);
+    object LoginData(object value) => new {user=Read(value,"Name"),password=Read(value,"Password"),terminalId=Read(Read(value,"Store"),"TerminalId"),baseUrl=$"http://{Read(Read(value,"Store"),"Host")}:{((Uri)Read(fixture,"Address")).Port}"};
+    var afterSalesStart = new ProcessStartInfo("node") {WorkingDirectory=source,UseShellExecute=false,CreateNoWindow=true,RedirectStandardInput=true};
+    afterSalesStart.Environment["NODE_PATH"]=Path.Combine(source,"Logs","pos-offline-browser-deps","node_modules");
+    afterSalesStart.ArgumentList.Add(Path.Combine(source,"GaoApp.Tests.Browser","pos-after-sales.mobile.browser.cjs"));
+    using var probe=Process.Start(afterSalesStart)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {manager=LoginData(account),readOnly=LoginData(Read(seed,"ReadOnly")),denied=LoginData(Read(seed,"Denied")),other=LoginData(Read(seed,"Other")),
+        readyReturnId=Read(seed,"ReadyReturnId"),blockedReturnId=Read(seed,"BlockedReturnId"),phoneOrderId=Read(seed,"PhoneOrderId"),staleOrderId=Read(seed,"StaleOrderId"),shiftOrderId=Read(seed,"ShiftOrderId"),warehouseId=Read(store,"WarehouseId"),output}));
+    probe.StandardInput.Close();using var afterSalesTimeout=new CancellationTokenSource(TimeSpan.FromMinutes(12));
+    try {await probe.WaitForExitAsync(afterSalesTimeout.Token);} catch {if(!probe.HasExited)probe.Kill(true);throw;}
+    if(probe.ExitCode!=0)throw new InvalidOperationException("POS after-sales mobile browser failed.");
+    if(before!=(string)await Call(null,seam,"FingerprintAsync",fixture,store))throw new InvalidOperationException("After-sales UI changed original source payments/archive/configuration.");
+    var verified=await Call(null,seam,"VerifyAsync",fixture,store);
+    await File.WriteAllTextAsync(Path.Combine(output,"sql-checks.json"),JsonSerializer.Serialize(verified,new JsonSerializerOptions{WriteIndented=true}));
+    Console.WriteLine("POS AFTER SALES MOBILE SQL PASS: stock 96, five returns/refunds, one restock audit, one blocked fragment; stale/duplicate/shift checks and source/configuration preserved.");return;
+}
+if (args.Contains("--pos-requests-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosRequestsMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-08a-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-requests.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {cashier=LoginData(account),admin=LoginData(Read(seed,"Admin")),peer=LoginData(Read(seed,"Peer")),
+        denied=LoginData(Read(seed,"Denied")),readOnly=LoginData(Read(seed,"ReadOnly")),otherStore=LoginData(Read(seed,"OtherStore")),shiftId=Read(seed,"ShiftId"),transactionId=Read(seed,"TransactionId"),
+        orderId=Read(seed,"OrderId"),cashPaymentId=Read(seed,"CashPaymentId"),bankPaymentId=Read(seed,"BankPaymentId"),depositEntryId=Read(seed,"DepositEntryId"),output }));
+    probe.StandardInput.Close();
+    using var requestsPhoneTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(12));
+    try { await probe.WaitForExitAsync(requestsPhoneTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone requests browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Requests UI changed original amounts/counts/receipt/slip/stock/deposit balance/history/menu/store configuration.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store);
+    await File.WriteAllTextAsync(Path.Combine(output,"sql-checks.json"),JsonSerializer.Serialize(verified,new JsonSerializerOptions{WriteIndented=true}));
+    Console.WriteLine("POS REQUESTS PHONE SQL PASS: cash/payment/deposit approvals once, one withdrawal/rejection, reconciled expected 195,000; original count 259,000/receipt 258,000/closing evidence and configuration unchanged.");
+    return;
+}
+if (args.Contains("--pos-dashboard-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosDashboardMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-07d-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-dashboard.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager=LoginData(account),otherCashier=LoginData(Read(seed,"OtherCashier")),
+        denied=LoginData(Read(seed,"Denied")),noShiftView=LoginData(Read(seed,"NoShiftView")),otherStore=LoginData(Read(seed,"OtherStore")),
+        shiftId=Read(seed,"ShiftId"),historicalShiftId=Read(seed,"HistoricalShiftId"),foreignCashierShiftId=Read(seed,"ForeignCashierShiftId"),output }));
+    probe.StandardInput.Close();
+    using var dashboardPhoneTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+    try { await probe.WaitForExitAsync(dashboardPhoneTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone dashboard browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Read-only dashboard changed shifts/orders/payments/cash/stock/slips/menu/store configuration.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store);
+    await File.WriteAllTextAsync(Path.Combine(output,"sql-checks.json"),JsonSerializer.Serialize(verified,new JsonSerializerOptions{WriteIndented=true}));
+    Console.WriteLine("POS DASHBOARD PHONE SQL PASS: only current shift, completed sales 120,000 versus cash/noncash buckets 200,000, expected 340,000; all business/configuration unchanged.");
+    return;
+}
+if (args.Contains("--pos-shift-review-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosShiftReviewMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-07c-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-shift-review.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager=LoginData(account),cashier=LoginData(Read(seed,"Cashier")),
+        denied=LoginData(Read(seed,"Denied")),other=LoginData(Read(seed,"Other")),shiftId=Read(seed,"ShiftId"),secondShiftId=Read(seed,"SecondShiftId"),
+        receivedShiftId=Read(seed,"ReceivedShiftId"),openShiftId=Read(seed,"OpenShiftId"),output }));
+    probe.StandardInput.Close();
+    using var shiftReviewTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+    try { await probe.WaitForExitAsync(shiftReviewTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone reconciliation/approval browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Reconciliation/approval changed original cash, orders, payments, stock, other receipts, menu or store configuration.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store, account);
+    await File.WriteAllTextAsync(Path.Combine(output,"sql-checks.json"),JsonSerializer.Serialize(verified,new JsonSerializerOptions{WriteIndented=true}));
+    Console.WriteLine("POS SHIFT REVIEW SQL PASS: immutable approval 224,000; employee count 225,000, expected 226,000; all other business/configuration unchanged.");
+    return;
+}
+if (args.Contains("--pos-shift-records-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosShiftRecordsMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-07b-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-shift-records.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager = LoginData(account), cashier = LoginData(Read(seed,"Cashier")),
+        denied = LoginData(Read(seed,"Denied")), other = LoginData(Read(seed,"Other")), firstShiftId=Read(seed,"FirstShiftId"),
+        secondShiftId=Read(seed,"SecondShiftId"), otherCashierShiftId=Read(seed,"OtherCashierShiftId"), secondTerminalId=Read(seed,"SecondTerminalId"),
+        warehouseId = Read(store,"WarehouseId"), output }));
+    probe.StandardInput.Close();
+    using var shiftRecordsTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+    try { await probe.WaitForExitAsync(shiftRecordsTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone history/handover browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Phone records UI changed original history/orders/cash/seed slips/store/menu or another store.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store);
+    await File.WriteAllTextAsync(Path.Combine(output,"sql-checks.json"),JsonSerializer.Serialize(verified,new JsonSerializerOptions{WriteIndented=true}));
+    Console.WriteLine("POS SHIFT RECORDS SQL PASS: two intended slips, one revised/received at 350,000, one cancelled; original history/store/menu unchanged.");
+    return;
+}
+if (args.Contains("--pos-shift-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosShiftMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-07a-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-shift.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager = LoginData(account),
+        limited = LoginData(Read(seed, "Limited")), other = LoginData(Read(seed, "Other")), warehouseId = Read(store, "WarehouseId"), output }));
+    probe.StandardInput.Close();
+    using var shiftPhoneTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    try { await probe.WaitForExitAsync(shiftPhoneTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone shift browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Shift UI changed configured menu/store/prices/customer preferences or another store.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store);
+    await File.WriteAllTextAsync(Path.Combine(output, "sql-checks.json"), JsonSerializer.Serialize(verified, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("POS SHIFT PHONE SQL PASS: one opening/closing, exact cash/difference/denominations; store/menu unchanged.");
+    return;
+}
 if (args.Contains("--pos-receive-shift"))
 {
     var shiftRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
@@ -1226,7 +1695,123 @@ if (args.Contains("--pos-receive-shift"))
 var database = Read(fixture, "Database");
 await using var db = (AppDbContext)database.GetType().GetMethod("CreateTenantContext", flags)!.Invoke(database, new object?[] { Read(store, "StoreId"), null })!;
 var bank = new StoreBankAccount { StoreId = (int)Read(store, "StoreId"), AccountName = "OFFLINE TEST", AccountNumber = "123456789", BankCode = "ACB", BankName = "TEST", VietQrBankBin = "970416", IsDefault = true };
-if (args.Contains("--pos-scan-feedback"))
+if (args.Contains("--pos-editors-single-owner"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosEditorSingleOwnerBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-06f-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-editors-single-owner.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager = LoginData(account),
+        limited = LoginData(Read(seed, "Limited")), denied = LoginData(Read(seed, "Denied")), other = LoginData(Read(seed, "Other")),
+        orderId = Read(seed, "OrderId"), output }));
+    probe.StandardInput.Close();
+    using var editorsTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
+    try { await probe.WaitForExitAsync(editorsTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS single-owner editor browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Shared editor refactor changed store/menu/prices/customer preferences or another store.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store, Read(seed, "OrderId"));
+    await File.WriteAllTextAsync(Path.Combine(output, "sql-checks.json"), JsonSerializer.Serialize(verified, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("POS EDITORS SQL PASS: intended note/discounts once, one payment/completed sale, exact stock/cash; store/menu unchanged.");
+    return;
+}
+if (args.Contains("--pos-session-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosSessionMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-06e-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-session.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager = LoginData(account),
+        limited = LoginData(Read(seed, "Limited")), denied = LoginData(Read(seed, "Denied")), other = LoginData(Read(seed, "Other")),
+        orderId = Read(seed, "OrderId"), storeId = Read(store, "StoreId"), output }));
+    probe.StandardInput.Close();
+    using var sessionTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(9));
+    try { await probe.WaitForExitAsync(sessionTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone session/delivery browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Session UI changed configured menu/store/prices/customer preferences or another store.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store, Read(seed, "OrderId"));
+    await File.WriteAllTextAsync(Path.Combine(output, "sql-checks.json"), JsonSerializer.Serialize(verified, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("POS SESSION SQL PASS: one delivery/revision/audit, no payment/completed sale/stock change; store/menu unchanged.");
+    return;
+}
+if (args.Contains("--pos-transfer-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosTransferMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-06d-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-transfer.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager = LoginData(account),
+        limited = LoginData(Read(seed, "Limited")), denied = LoginData(Read(seed, "Denied")), other = LoginData(Read(seed, "Other")),
+        orderId = Read(seed, "OrderId"), qrId = Read(seed, "QrId"), output }));
+    probe.StandardInput.Close();
+    using var transferTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(7));
+    try { await probe.WaitForExitAsync(transferTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone transfer browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Transfer UI changed configured store/menu/prices/customer preferences or another store.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store, Read(seed, "OrderId"));
+    await File.WriteAllTextAsync(Path.Combine(output, "sql-checks.json"), JsonSerializer.Serialize(verified, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("POS TRANSFER SQL PASS: one confirmed installment; cancelled/pending QR collect nothing; store/menu unchanged.");
+    return;
+}
+if (args.Contains("--pos-checkout-mobile"))
+{
+    var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosCheckoutMobileBrowserFixture")!;
+    var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+    var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+    var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+    var output = Path.Combine(source, "TestResults", "mobile-ui-06c-20261026", "browser");
+    Directory.CreateDirectory(output);
+    object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+        terminalId = Read(Read(value, "Store"), "TerminalId"),
+        baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+    var startInfo = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+    startInfo.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+    startInfo.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", "pos-checkout.mobile.browser.cjs"));
+    using var probe = Process.Start(startInfo)!;
+    await probe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new { manager = LoginData(account),
+        limited = LoginData(Read(seed, "Limited")), denied = LoginData(Read(seed, "Denied")), other = LoginData(Read(seed, "Other")),
+        orderId = Read(seed, "OrderId"), output }));
+    probe.StandardInput.Close();
+    using var checkoutMobileTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(7));
+    try { await probe.WaitForExitAsync(checkoutMobileTimeout.Token); } catch { if (!probe.HasExited) probe.Kill(true); throw; }
+    if (probe.ExitCode != 0) throw new InvalidOperationException("POS phone checkout browser assertions failed.");
+    if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+        throw new InvalidOperationException("Payment UI changed configured store/menu/prices/customer preferences or another store.");
+    var verified = await Call(null, seam, "VerifyAsync", fixture, store, Read(seed, "OrderId"));
+    await File.WriteAllTextAsync(Path.Combine(output, "sql-checks.json"), JsonSerializer.Serialize(verified, new JsonSerializerOptions { WriteIndented = true }));
+    Console.WriteLine("POS CHECKOUT SQL PASS: three unique installments, one completed sale, correct stock/change/cash totals; configured store/menu unchanged.");
+    return;
+}
+if (args.Contains("--pos-scan-feedback") || args.Contains("--pos-entry") || args.Contains("--pos-camera") || args.Contains("--pos-cart"))
 {
     var scanVariantId = (int)Read(store, "VariantId");
     var variant = await db.ProductVariants.Include(x => x.Product).SingleAsync(x => x.Id == scanVariantId);
@@ -1254,6 +1839,43 @@ if (args.Contains("--pos-scan-feedback"))
     db.Add(new ProductVariantUnitBarcode { StoreId = variant.StoreId, ProductUnitConversionId = secondUnit.Id, Barcode = "2099900000003", IsActive = true });
     db.Add(new InventoryBalance { StoreId = variant.StoreId, WarehouseId = (int)Read(store, "WarehouseId"), ProductVariantId = second.Id, OnHandQty = 100 });
     await db.SaveChangesAsync();
+    if (args.Contains("--pos-entry") || args.Contains("--pos-camera") || args.Contains("--pos-cart"))
+    {
+        var seam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosEntryBrowserFixture")!;
+        var seed = await Call(null, seam, "PrepareAsync", fixture, store, account);
+        var cart = args.Contains("--pos-cart");
+        var cartSeam = typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosCartMobileBrowserFixture")!;
+        var cartSeed = cart ? await Call(null, cartSeam, "PrepareAsync", fixture, store, account, Read(seed, "OrderId"), pack.Id) : null;
+        var before = (string)await Call(null, seam, "FingerprintAsync", fixture, store);
+        var source = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
+        var camera = args.Contains("--pos-camera");
+        var output = cart ? Path.Combine(source, "TestResults", "mobile-ui-06b-20261025", "browser")
+            : camera ? Environment.GetEnvironmentVariable("GAO_POS_CAMERA_OUTPUT") ?? Path.Combine(source, "TestResults", "mobile-ui-06a-camera-20261025", "browser")
+            : Environment.GetEnvironmentVariable("GAO_POS_ENTRY_OUTPUT") ?? Path.Combine(source, "TestResults", "mobile-ui-06a-20261025", "browser");
+        Directory.CreateDirectory(output);
+        object LoginData(object value) => new { user = Read(value, "Name"), password = Read(value, "Password"),
+            terminalId = Read(Read(value, "Store"), "TerminalId"),
+            baseUrl = $"http://{Read(Read(value, "Store"), "Host")}:{((Uri)Read(fixture, "Address")).Port}" };
+        var entryStart = new ProcessStartInfo("node") { WorkingDirectory = source, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
+        entryStart.Environment["NODE_PATH"] = Path.Combine(source, "Logs", "pos-offline-browser-deps", "node_modules");
+        entryStart.ArgumentList.Add(Path.Combine(source, "GaoApp.Tests.Browser", cart ? "pos-cart.mobile.browser.cjs" : camera ? "pos-camera.mobile.browser.cjs" : "pos-entry.mobile.browser.cjs"));
+        using var entryProbe = Process.Start(entryStart)!;
+        await entryProbe.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+            manager = LoginData(account), denied = LoginData(Read(seed, "Denied")), closed = LoginData(Read(seed, "Closed")),
+            orderId = Read(seed, "OrderId"), variantId = variant.Id, packId = pack.Id, waterId = second.Id, cartSeed, output
+        }));
+        entryProbe.StandardInput.Close();
+        using var entryTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(7));
+        try { await entryProbe.WaitForExitAsync(entryTimeout.Token); } catch { if (!entryProbe.HasExited) entryProbe.Kill(true); throw; }
+        if (entryProbe.ExitCode != 0) throw new InvalidOperationException("POS entry phone browser assertions failed.");
+        if (before != (string)await Call(null, seam, "FingerprintAsync", fixture, store))
+            throw new InvalidOperationException("Phone presentation changed store menus, stock, payments, pricing, shifts or another store.");
+        var verifySeam = cart ? cartSeam : camera ? typeof(PosOfflineSqlServerTests).Assembly.GetType("GaoApp.Tests.Security.PosCameraBrowserFixture")! : seam;
+        var verification = await Call(null, verifySeam, "VerifyAsync", fixture, store, Read(seed, "OrderId"));
+        await File.WriteAllTextAsync(Path.Combine(output, "sql-checks.json"), JsonSerializer.Serialize(verification, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine("POS ENTRY SQL PASS: same draft, exact quantities; configured menu, stock, prices, payments, shifts and other store unchanged.");
+        return;
+    }
     var scanRoot = (string)type.GetMethod("SourceRoot", flags)!.Invoke(null, null)!;
     var scanStart = new ProcessStartInfo("node") { WorkingDirectory = scanRoot, UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true };
     scanStart.Environment["NODE_PATH"] = Path.Combine(scanRoot, "Logs", "pos-offline-browser-deps", "node_modules");

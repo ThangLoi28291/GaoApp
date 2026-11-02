@@ -88,6 +88,41 @@ public sealed class ProfitReportReadRepositoryTests
         ProfitReportAggregationPolicyTests.At);
 
     [Fact]
+    public async Task Budget_evidence_stays_attached_to_its_own_entry_and_broken_allocation_is_not_repaired_by_another_entry()
+    {
+        await using var db = Context(1);
+        var shift = await SeedShiftAsync(db, 1);
+        var order = new Order { StoreId = 1, OrderNumber = "BUDGET-LINKS", CompletedAtUtc = ProfitReportAggregationPolicyTests.At,
+            POSShiftId = shift.Id, POSShift = shift };
+        db.Add(order); await db.SaveChangesAsync();
+        var entries = Enumerable.Range(1, 2).Select(i => new InventoryValuationEntry { StoreId = 1,
+            WarehouseId = 999, ProductVariantId = 999, InventoryTransactionId = 999,
+            ReferenceType = InventoryReferenceType.Order, ReferenceId = order.Id.ToString(),
+            ReferenceLineId = i, EntryType = InventoryValuationEntryType.Outbound,
+            Quantity = -1, UnitCost = 10, Amount = -10, OccurredAtUtc = ProfitReportAggregationPolicyTests.At }).ToArray();
+        db.AddRange(entries); await db.SaveChangesAsync();
+        var allocation = new InventoryCostLayerAllocation { StoreId = 1, InventoryValuationEntryId = entries[0].Id,
+            Quantity = 1, UnitCost = 10, Amount = 10 };
+        db.Add(allocation); await db.SaveChangesAsync();
+        db.AddRange(entries.Select(entry => new InventoryCostBudgetDebit { StoreId = 1,
+            InventoryValuationEntryId = entry.Id, InventoryCostLayerAllocationId = allocation.Id,
+            WarehouseId = 999, ProductVariantId = 999, SourceLegalEntityId = 999,
+            InventoryTransactionId = 999, InventoryCostLayerId = 999,
+            AnchorQuantity = 2, AnchorAmount = 20, EndQuantity = 1, UnitCost = 10, Amount = 10 }));
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        var source = await new ProfitReportReadRepository(db).ReadAsync(1, Periods(), false);
+        var first = source.Entries.Single(x => x.Id == entries[0].Id);
+        var second = source.Entries.Single(x => x.Id == entries[1].Id);
+        var firstDebit = Assert.Single(first.CostBudgetDebits);
+        var secondDebit = Assert.Single(second.CostBudgetDebits);
+        Assert.Same(first, firstDebit.ValuationEntry); Assert.Same(second, secondDebit.ValuationEntry);
+        Assert.Same(Assert.Single(first.CostLayerAllocations), firstDebit.Allocation);
+        Assert.Empty(second.CostLayerAllocations); Assert.Null(secondDebit.Allocation);
+        Assert.Null(firstDebit.Layer); Assert.Null(secondDebit.Layer);
+        Assert.Empty(db.ChangeTracker.Entries());
+    }
+
+    [Fact]
     public async Task Oversized_source_fails_instead_of_returning_truncated_financial_totals()
     {
         await using var db = Context(1);
@@ -123,7 +158,7 @@ public sealed class ProfitReportReadRepositoryTests
     private static InMemoryAppDbContext Context(int? store, string? database = null)
     {
         var tenant = new TenantContext();
-        if (store.HasValue) tenant.SetStore(store.Value, "test"); else tenant.SetHostAdmin();
+        if (store.HasValue) tenant.SetStore(store.Value, "test"); else tenant.SetHostAdminForTest();
         return new(new DbContextOptionsBuilder<InMemoryAppDbContext>().UseInMemoryDatabase(database ?? Guid.NewGuid().ToString()).Options,
             tenant, new User());
     }

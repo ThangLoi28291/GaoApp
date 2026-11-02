@@ -1,0 +1,21 @@
+@model GaoApp.Application.Storefront.StorefrontBankEvidenceRead
+@using GaoApp.Domain.Entities
+@using GaoApp.Application.Storefront
+@{ ViewData["Title"]="Đối soát QR · "+Model.Code; var orderId=Context.Request.RouteValues["id"]; }
+<div class="container-fluid py-3 sf-bank-evidence">
+    <a asp-action="Details" asp-route-id="@orderId" class="sf-inbox-link">← Chi tiết đơn</a><h1 class="h3">Bằng chứng QR · @Model.Code</h1>
+    <p>Màn hình chỉ đọc. Chứng cứ ngân hàng được lưu trước khi phân bổ tiền. Nhận tiền chưa phải doanh thu đã hoàn tất, xuất kho hay đã giao hàng.</p>
+    <div class="alert alert-warning">Khoản cần đối soát không được tự xác nhận lại hoặc tự hoàn tiền. Kiểm tra chứng từ ngân hàng và tài khoản nhận; không yêu cầu khách chuyển thêm trong khi chưa rõ kết quả.</div>
+    @if(Model.Intents.Count==0){<p class="alert alert-info">Đơn không có yêu cầu QR.</p>}
+    else{<div class="table-responsive"><table class="table"><thead><tr><th>Mã chuyển khoản</th><th>Phải thu</th><th>Trạng thái</th><th>Hạn thanh toán UTC</th><th>Ghi chú đối soát</th></tr></thead><tbody>
+    @foreach(var intent in Model.Intents){<tr><td>@intent.Reference</td><td>@intent.AmountText</td><td>@(intent.State switch{StorefrontQrState.Paid=>"Đã xác minh tiền",StorefrontQrState.Review=>"Cần đối soát",StorefrontQrState.Pending=>"Chờ chuyển khoản",StorefrontQrState.Creating=>"Đang xác minh tạo QR",StorefrontQrState.Expired=>"Quá hạn",_=>"Đang xếp hàng tạo QR"})</td><td>@intent.ExpiresAtUtc.ToString("dd/MM/yyyy HH:mm")</td><td>@intent.ReviewCode</td></tr>}
+    </tbody></table></div>}
+    <h2 class="h5 mt-4">Khoản ngân hàng và độ chính xác ngày nhận</h2>
+    @if(Model.Receipts.Count==0){<p>Chưa có khoản ngân hàng đã xác minh cho yêu cầu này.</p>}
+    else{<div class="table-responsive"><table class="table"><thead><tr><th>Định danh giao dịch</th><th>Toàn bộ số tiền</th><th>Thời gian ngân hàng</th><th>Trạng thái gốc</th><th>Đối soát</th></tr></thead><tbody>
+    @foreach(var receipt in Model.Receipts){<tr><td>@receipt.ExternalId</td><td>@receipt.AmountText</td><td>@if(receipt.TimePrecision==BankTimePrecision.BankDay){<span>@receipt.BankBusinessDate?.ToString("dd/MM/yyyy") · chỉ chính xác đến ngày ngân hàng Việt Nam</span>}else if(receipt.TimePrecision==BankTimePrecision.Timestamp&&receipt.OccurredAtUtc.HasValue){<span>@receipt.OccurredAtUtc.Value.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss") · UTC+07</span>}else{<span>Chưa xác minh ngày ngân hàng</span>}</td><td>@receipt.Status</td><td>@(receipt.NeedsReview?"Cần đối soát":"Đã xác minh")<div>@receipt.ReviewCode</div>@if(receipt.AssetConfidence!=BankReceiptAssetConfidence.CertifiedDistinct){<strong>Chưa cộng khoản này thành lần thu mới.</strong>}</td></tr>}
+    </tbody></table></div>}
+    <p>@Model.ProtectedObservationCount phản hồi gốc được bảo vệ · @Model.UnattributedCount khoản chưa xác định tài khoản nhận · @Model.ConflictCount chứng cứ mâu thuẫn.</p>
+    <p>Phản hồi gốc, khóa truy cập và liên kết riêng của khách không hiển thị trên trang này. Khoản chưa xác định ngày hoặc định danh được tách trong báo cáo Dòng tiền, không gán giờ nhận tiền giả.</p>
+</div>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/storefront-orders.css" asp-append-version="true" /> }

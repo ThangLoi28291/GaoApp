@@ -9,6 +9,21 @@ namespace GaoApp.Tests.Invoices;
 
 public sealed class ViettelCustomFieldsConnectionTests
 {
+    [Fact]
+    public async Task Former_account_tax_is_used_for_all_connection_endpoints()
+    {
+        var handler = new ProbeHandler("{\"customFields\":[]}");
+        using var http = new HttpClient(handler);
+        var result = await new ViettelInvoiceAuthClient(http).TestConnectionAsync(
+            "https://provider.example", "8341099579-001", "test-password", InvoiceProviderAuthMode.BasicAuth,
+            "8341099579-001", "2", "2/002", "C26MTL");
+
+        Assert.True(result.IsSuccess, result.Error?.Message);
+        Assert.Contains("taxCode=8341099579-001", handler.Requests[0].Url);
+        Assert.EndsWith("/getInvoices/8341099579-001", handler.Requests[1].Url);
+        Assert.DoesNotContain(handler.Requests, x => x.Url.Contains("070091008655"));
+    }
+
     [Theory]
     [InlineData("{\"errorCode\":null,\"description\":null,\"customFields\":[]}")]
     [InlineData("{\"customFields\":[{\"keyTag\":\"reference\",\"valueType\":\"text\",\"keyLabel\":\"Reference\"}]}")]

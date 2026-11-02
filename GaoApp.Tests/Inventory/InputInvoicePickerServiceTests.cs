@@ -97,7 +97,7 @@ public sealed class InputInvoicePickerServiceTests
     public async Task Browse_should_apply_fixed_receipt_supplier_and_batch_link_status()
     {
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var context = new InMemoryAppDbContext(options, tenant, new UserStub());
@@ -166,7 +166,7 @@ public sealed class InputInvoicePickerServiceTests
     public async Task Pending_selection_uses_the_normal_import_and_link_pipeline()
     {
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var context = new InMemoryAppDbContext(options, tenant, new UserStub());
@@ -217,7 +217,7 @@ public sealed class InputInvoicePickerServiceTests
     public async Task Linked_preview_should_require_current_relation_and_resolve_transient_identity()
     {
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var context = new InMemoryAppDbContext(options, tenant, new UserStub());
@@ -303,7 +303,7 @@ public sealed class InputInvoicePickerServiceTests
     public async Task Unlink_should_remove_only_target_relation_maps_and_audit_once()
     {
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
         await using var context = new InMemoryAppDbContext(options, tenant, new UserStub());

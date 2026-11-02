@@ -1,9 +1,12 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.DTOs.Rewards;
+using GaoApp.Application.Common.Exceptions;
+using GaoApp.Application.Interfaces.Repositories.Customers;
 using GaoApp.Application.DTOs.Rewards.Vouchers;
 using GaoApp.Application.Interfaces.Repositories.Rewards;
 using GaoApp.Application.Interfaces.Services.Rewards;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Constants;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Rewards;
@@ -13,14 +16,17 @@ public sealed class CustomerRewardService : ICustomerRewardService
     private readonly ICustomerRewardLedgerRepository _ledgerRepository;
     private readonly IRewardSettingsRepository _settingsRepository;
     private readonly ICustomerRewardVoucherRepository _voucherRepository;
+    private readonly ICustomerRepository _customers;
     public CustomerRewardService(
      ICustomerRewardLedgerRepository ledgerRepository,
      IRewardSettingsRepository settingsRepository,
-     ICustomerRewardVoucherRepository voucherRepository)
+     ICustomerRewardVoucherRepository voucherRepository,
+     ICustomerRepository customers)
     {
         _ledgerRepository = ledgerRepository;
         _settingsRepository = settingsRepository;
         _voucherRepository = voucherRepository;
+        _customers = customers;
     }
     public async Task<bool> IsProgramEnabledAsync(
     CancellationToken ct = default)
@@ -37,6 +43,10 @@ public sealed class CustomerRewardService : ICustomerRewardService
     {
         if (customerId <= 0)
             throw new InvalidOperationException("Khách hàng không hợp lệ.");
+
+        var customer = await GetCustomerAsync(customerId, ct);
+        if (CustomerPriceTiers.IsWholesale(customer.PriceTier))
+            return new CustomerRewardBalanceDto { CustomerId = customerId, IsPointEligible = false };
 
         var settings = await _settingsRepository.GetCurrentAsync(ct)
             ?? throw new InvalidOperationException("Chưa cấu hình tích điểm cho cửa hàng.");
@@ -69,6 +79,8 @@ public sealed class CustomerRewardService : ICustomerRewardService
 
         if (request.Amount == 0)
             throw new InvalidOperationException("Số tiền điều chỉnh phải khác 0.");
+
+        await EnsurePointEligibleAsync(request.CustomerId, ct);
 
         var ledger = new CustomerRewardLedger
         {
@@ -122,6 +134,8 @@ public sealed class CustomerRewardService : ICustomerRewardService
         if (request.VoucherCount > 20)
             throw new InvalidOperationException("Không nên đổi quá 20 phiếu trong một lần.");
 
+        await EnsurePointEligibleAsync(request.CustomerId, ct);
+
         var settings = await _settingsRepository.GetCurrentAsync(ct)
             ?? throw new InvalidOperationException("Chưa cấu hình tích điểm cho cửa hàng.");
 
@@ -144,7 +158,7 @@ public sealed class CustomerRewardService : ICustomerRewardService
 
         var baseCode = await _voucherRepository.GenerateNextVoucherCodeAsync(ct);
 
-        var prefix = $"RV-{DateTime.Now:yyyyMMdd}-";
+        var prefix = $"RV-{VietnamTime.Now:yyyyMMdd}-";
 
         var startNumber = 1;
         var parts = baseCode.Split('-');
@@ -225,6 +239,7 @@ public sealed class CustomerRewardService : ICustomerRewardService
             CustomerId = customerId,
 
             BalanceAmount = balance.BalanceAmount,
+            IsPointEligible = balance.IsPointEligible,
             AvailablePoints = balance.AvailablePoints,
 
             RedeemableVoucherCount = balance.AvailableVoucherCount,
@@ -260,6 +275,17 @@ public sealed class CustomerRewardService : ICustomerRewardService
         return voucher;
     }
 
+    private async Task<Customer> GetCustomerAsync(int customerId, CancellationToken ct)
+        => await _customers.GetByIdAsync(customerId, ct)
+            ?? throw new BusinessRuleException("Không tìm thấy khách hàng.");
+
+    private async Task EnsurePointEligibleAsync(int customerId, CancellationToken ct)
+    {
+        var customer = await GetCustomerAsync(customerId, ct);
+        if (CustomerPriceTiers.IsWholesale(customer.PriceTier))
+            throw new BusinessRuleException("Khách sỉ không áp dụng tích điểm và đổi điểm.");
+    }
+
     public async Task<CustomerRewardVoucherDetailDto> CancelVoucherAsync(
         int id,
         CancelCustomerRewardVoucherRequest request,
@@ -271,6 +297,8 @@ public sealed class CustomerRewardService : ICustomerRewardService
         var voucher = await _voucherRepository.GetByIdAsync(id, ct)
             ?? throw new InvalidOperationException("Không tìm thấy voucher.");
 
+        if (voucher.Status == CustomerRewardVoucherStatus.ReservedForDelivery)
+            throw new InvalidOperationException("Voucher đang giữ cho đơn giao; hủy đơn giao trước bàn giao để nhả voucher.");
         if (voucher.Status != CustomerRewardVoucherStatus.Available)
             throw new InvalidOperationException("Chỉ được hủy voucher chưa sử dụng.");
 
@@ -278,7 +306,7 @@ public sealed class CustomerRewardService : ICustomerRewardService
 
         var reason = (request.Reason ?? "").Trim();
 
-        var nowText = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var nowText = VietnamTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
         voucher.Description = AppendDescription(
             voucher.Description,
@@ -316,7 +344,7 @@ public sealed class CustomerRewardService : ICustomerRewardService
             throw new InvalidOperationException("Chỉ được khóa voucher đang khả dụng.");
 
         var reason = (request?.Reason ?? string.Empty).Trim();
-        var nowText = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var nowText = VietnamTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
         voucher.Status = CustomerRewardVoucherStatus.Locked;
 
@@ -346,7 +374,7 @@ public sealed class CustomerRewardService : ICustomerRewardService
             throw new InvalidOperationException("Chỉ được mở khóa voucher đang bị khóa.");
 
         var reason = (request?.Reason ?? string.Empty).Trim();
-        var nowText = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var nowText = VietnamTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
         voucher.Status = CustomerRewardVoucherStatus.Available;
 

@@ -1,0 +1,12 @@
+SOURCE VERIFIED, no database connection or application startup performed by this task.
+Launch profiles http/https/IIS Express/WSL: Development, no test-DB override observed.
+Base connection: configured, host class unverified, test identity not proven.
+Development connection: local candidate, test identity not proven.
+Development Database:ApplyMigrationsOnStartup=true.
+Production template connection: blank. This does not prove other effective profiles safe.
+Development user-secrets file: exists; contents not printed; effective secrets/DB safety not verified.
+Relevant ambient DB/environment/integration overrides: none found by names checked.
+Web workers registered: AcbCallback, StorefrontBank, StorefrontInvoice, MediaCleanup, DeliveryOutbox, AuditOutbox; InvoiceNotifications setup adds another worker.
+Default-enabled gates seen in source: StorefrontFulfillment:InvoiceWorkerEnabled; DeliveryOutbox:Enabled.
+External transports: ACB; Viettel invoice issue/lookup/email/etc.; invoice notification channels. No request sent by this task.
+Decision: RUN BLOCKED, DB SAFETY UNKNOWN. No ports or business URLs probed.

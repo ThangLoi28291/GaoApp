@@ -2,7 +2,7 @@
 
 namespace GaoApp.Application.DTOs.Security.UserInStores;
 
-public class CreateEmployeeInStoreRequest
+public class CreateEmployeeInStoreRequest : GaoApp.Application.DTOs.Security.SecurityActionConfirmation
 {
     [Required(ErrorMessage = "Tên đăng nhập là bắt buộc.")]
     [StringLength(100)]

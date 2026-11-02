@@ -1,0 +1,176 @@
+/* UI-06b. Presentation of the original cart/customer/tools only. No desktop rules.
+   Original renderer, Bootstrap, edit handlers and permission/eligibility owners remain authoritative. */
+@media (max-width: 767.98px) {
+    #posShell[data-pos-phone] .pos-cart-card,
+    #posShell[data-pos-phone] .pos-cart-card > .card-body { border: 0; background: transparent; box-shadow: none; }
+    #posShell[data-pos-phone] .pos-cart-card > .card-body { padding: 0; }
+    #posShell[data-pos-phone] .pos-line-table { display: block; width: 100%; min-width: 0; table-layout: auto; margin: 0; }
+    #posShell[data-pos-phone] .pos-line-table thead {
+        position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden;
+        padding: 0; clip-path: inset(50%); white-space: nowrap;
+    }
+    #posShell[data-pos-phone] #currentDraftBody { display: block; width: 100%; padding: 4px 6px 10px; }
+    #posShell[data-pos-phone] #currentDraftBody > tr.pos-line-row {
+        display: grid; grid-template-columns: minmax(144px, 1.15fr) minmax(0, 1fr);
+        gap: 8px 10px; position: relative; height: auto; min-width: 0;
+        padding: 12px; margin: 6px 0 0; border: 1px solid #e0e7f1; border-radius: 16px;
+        background: #fff; color: #172d50; box-shadow: 0 2px 6px #17335405;
+    }
+    #posShell[data-pos-phone] #currentDraftBody > tr.is-active-line { border-color: #9dbdec; background: #f6f9ff; box-shadow: inset 3px 0 0 #2563eb; }
+    /* Legacy shared CSS forces active rows back to table layout with !important.
+       Override only on phone so selecting a row cannot squeeze it into columns. */
+    #posShell[data-pos-phone] #currentDraftBody > tr.is-active-line { display: grid !important; position: relative !important; }
+    #posShell[data-pos-phone] .pos-line-table tbody tr.is-active-line td { display: block !important; }
+    #posShell[data-pos-phone] .pos-line-table tbody tr.is-active-line .pos-line-name-cell,
+    #posShell[data-pos-phone] .pos-line-table tbody tr.is-active-line .pos-line-actions-cell { display: contents !important; }
+    #posShell[data-pos-phone] .pos-line-table tbody tr.is-active-line .pos-line-name-cell::after { content: none !important; display: none !important; }
+    #posShell[data-pos-phone] #currentDraftBody > tr.is-promotion-gift { background: #f3faf5; border-color: #d1e6d8; }
+    #posShell[data-pos-phone] .pos-line-table tbody td {
+        display: block; padding: 0; margin: 0; min-width: 0; max-width: none;
+        width: auto; border: 0; background: transparent; box-shadow: none;
+    }
+    #posShell[data-pos-phone] .pos-line-table .pos-line-name-cell { display: contents; }
+    #posShell[data-pos-phone] .pos-line-name-cell::after { content: none; }
+    #posShell[data-pos-phone] .pos-line-name-wrap { grid-column: 1 / -1; grid-row: 1; min-width: 0; padding-right: 42px; min-height: 44px; }
+    #posShell[data-pos-phone] .pos-line-product-wrap { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+    #posShell[data-pos-phone] .pos-line-name-main { min-width: 0; flex: 1; }
+    #posShell[data-pos-phone] .pos-line-name {
+        display: block; color: #172d50; font-size: 15px; font-weight: 700;
+        line-height: 1.4; white-space: normal; overflow: visible; overflow-wrap: anywhere; -webkit-line-clamp: unset;
+    }
+    #posShell[data-pos-phone] .pos-line-submeta { color: #526581; font-size: 12px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] .pos-line-thumb-wrap,
+    #posShell[data-pos-phone] .pos-line-thumb { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 10px; }
+    #posShell[data-pos-phone] .pos-line-thumb-placeholder { display: none; }
+    #posShell[data-pos-phone] .pos-line-qty-cell { grid-column: 1; grid-row: 2 / 4; align-self: end; text-align: left; }
+    #posShell[data-pos-phone] .pos-qty-inline { display: flex; justify-content: flex-start; align-items: center; gap: 0; width: 144px; }
+    #posShell[data-pos-phone] .pos-qty-inline .qty-btn {
+        flex: 0 0 44px; width: 44px; min-width: 44px; height: 44px; padding: 0;
+        border: 1px solid #d6e1ef; border-radius: 12px; color: #264974; background: #f0f5fc; font-size: 20px;
+    }
+    #posShell[data-pos-phone] .pos-qty-inline .qty-input {
+        flex: 0 0 56px; width: 56px; min-width: 0; height: 44px; padding: 4px 2px;
+        border: 0; border-radius: 8px; color: #172d50; background: transparent;
+        text-align: center; font-size: 16px; font-weight: 750; appearance: textfield;
+    }
+    #posShell[data-pos-phone] .qty-input::-webkit-inner-spin-button,
+    #posShell[data-pos-phone] .qty-input::-webkit-outer-spin-button { appearance: none; margin: 0; }
+    #posShell[data-pos-phone] .pos-qty-inline :disabled { opacity: .5; }
+    #posShell[data-pos-phone] .pos-qty-summary { display: flex; flex-wrap: wrap; gap: 2px 4px; justify-content: flex-start; margin-top: 6px; color: #526581; font-size: 12px; line-height: 1.4; }
+    #posShell[data-pos-phone] .pos-qty-base { color: #315b9b; font-weight: 650; }
+    #posShell[data-pos-phone] .pos-line-money-cell { grid-column: 2; grid-row: 2; align-self: end; text-align: right; }
+    #posShell[data-pos-phone] .pos-line-total-cell { grid-column: 2; grid-row: 3; align-self: end; text-align: right; }
+    #posShell[data-pos-phone] .pos-line-money-cell::before,
+    #posShell[data-pos-phone] .pos-line-total-cell::before { display: block; color: #526581; font-size: 11px; font-weight: 500; line-height: 1.4; }
+    #posShell[data-pos-phone] .pos-line-money-cell::before { content: "Đơn giá"; }
+    #posShell[data-pos-phone] .pos-line-total-cell::before { content: "Thành tiền"; }
+    #posShell[data-pos-phone] .pos-line-money { color: #526581; font-size: 14px; font-weight: 600; }
+    #posShell[data-pos-phone] .pos-line-total { color: #172d50; font-size: 19px; font-weight: 800; letter-spacing: -.3px; }
+    #posShell[data-pos-phone] :is(.pos-line-money, .pos-line-total, .pos-line-promo-price, .pos-line-original-price) { white-space: normal; overflow: visible; overflow-wrap: anywhere; line-height: 1.3; }
+    #posShell[data-pos-phone] .pos-line-price-stack { justify-items: end; min-width: 0; }
+    #posShell[data-pos-phone] :is(.pos-line-promo-badge, .pos-line-combo-badge, .pos-line-adjustment-note, .pos-line-gift-badge) { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+    /* Keep the original Bootstrap dropdown in the card's flow when open.
+       This avoids clipping in the cart scrollport; it does not add another action handler. */
+    #posShell[data-pos-phone] .pos-line-table .pos-line-actions-cell,
+    #posShell[data-pos-phone] .pos-line-actions { display: contents; }
+    #posShell[data-pos-phone] .pos-line-actions-toggle { position: absolute; top: 8px; right: 8px; width: 44px; min-width: 44px; height: 44px; border-radius: 12px; background: #f1f5fb; color: #315b9b; }
+    #posShell[data-pos-phone] .pos-line-actions-menu {
+        grid-column: 1 / -1; grid-row: 4; position: static !important; transform: none !important;
+        inset: auto !important; float: none; width: 100%; min-width: 0;
+        margin: 2px 0 0; padding: 4px; border: 1px solid #dce5f1; border-radius: 12px; box-shadow: none; background: #f5f8fd;
+    }
+    #posShell[data-pos-phone] .pos-line-actions-menu .dropdown-item { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 10px; font-size: 14px; white-space: normal; border-radius: 8px; }
+    #posShell[data-pos-phone] .pos-line-actions-menu .dropdown-divider { margin: 3px 0; }
+    #posShell[data-pos-phone] .pos-prime-context-strip { border-radius: 14px; background: #edf4ff; border-color: #d5e4fb; }
+    #posShell[data-pos-phone] #posPrimeContextContent { background: #f4f7fc; padding: 12px; }
+    #posShell[data-pos-phone] #posPrimeContextSheet .offcanvas-title { flex: 1; min-width: 0; }
+    #posShell[data-pos-phone] :is(.pos-cockpit-customer-section, .pos-cockpit-order-tools) { padding: 14px; margin: 0 0 12px; border: 1px solid #dce5f1; border-radius: 16px; background: #fff; }
+    #posShell[data-pos-phone] .pos-cockpit-section__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    #posShell[data-pos-phone] .pos-cockpit-section__eyebrow { color: #526581; font-size: 11px; letter-spacing: .7px; font-weight: 750; }
+    #posShell[data-pos-phone] .pos-cockpit-section__icon-action { min-width: 44px; min-height: 44px; color: #2563eb; background: #edf4ff; border: 1px solid #d5e4fb; border-radius: 12px; }
+    #posShell[data-pos-phone] .pos-customer-box { min-width: 0; padding: 0; border: 0; box-shadow: none; background: transparent; }
+    #posShell[data-pos-phone] .pos-customer-empty { padding: 8px 0; }
+    #posShell[data-pos-phone] .pos-customer-empty__name { color: #172d50; font-size: 17px; font-weight: 750; }
+    #posShell[data-pos-phone] .pos-customer-empty__hint { white-space: normal; color: #526581; font-size: 13px; line-height: 1.5; }
+    #posShell[data-pos-phone] .pos-customer-compact { gap: 12px; }
+    #posShell[data-pos-phone] .pos-customer-identity__main { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+    #posShell[data-pos-phone] .pos-customer-identity__name { color: #172d50; font-size: 17px; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+    #posShell[data-pos-phone] .pos-customer-identity__phone { color: #526581; font-size: 13px; }
+    #posShell[data-pos-phone] .pos-customer-benefit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    #posShell[data-pos-phone] .pos-customer-benefit-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; min-height: 44px; padding: 12px; border: 1px solid #dce5f1; border-radius: 14px; background: #f5f8fd; text-align: left; }
+    #posShell[data-pos-phone] .pos-customer-benefit-card:only-child { grid-column: 1 / -1; }
+    #posShell[data-pos-phone] .pos-customer-benefit-card__icon { width: 32px; height: 32px; border-radius: 10px; color: #2563eb; background: #e6efff; }
+    #posShell[data-pos-phone] .pos-customer-benefit-card__value { color: #172d50; font-size: 22px; line-height: 1.2; }
+    #posShell[data-pos-phone] :is(.pos-customer-benefit-card__meta, .pos-customer-benefit-card__amount) { white-space: normal; overflow-wrap: anywhere; font-size: 12px; color: #526581; line-height: 1.4; }
+    #posShell[data-pos-phone] .pos-customer-compact__footer { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+    #posShell[data-pos-phone] .pos-customer-compact__hint { flex: 1 1 140px; font-size: 12px; color: #526581; }
+    #posShell[data-pos-phone] :is(.pos-customer-clear-link, .pos-customer-profile-link) { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px; white-space: normal; font-size: 13px; }
+    #posShell[data-pos-phone] .pos-order-tools-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-top: 12px; }
+    #posShell[data-pos-phone] .pos-meta-section { padding: 12px; border: 1px solid #dce5f1; border-radius: 14px; background: #f8fafd; min-width: 0; }
+    #posShell[data-pos-phone] .pos-meta-section.is-active { border-color: #aac5f1; background: #f3f7ff; }
+    #posShell[data-pos-phone] .pos-meta-section__header { display: flex; align-items: center; gap: 8px; }
+    #posShell[data-pos-phone] .pos-meta-section__header > div { flex: 1; min-width: 0; }
+    #posShell[data-pos-phone] .pos-meta-section__title { color: #172d50; font-size: 14px; font-weight: 750; }
+    #posShell[data-pos-phone] .pos-meta-summary { color: #526581; white-space: normal; overflow-wrap: anywhere; line-height: 1.5; font-size: 13px; }
+    #posShell[data-pos-phone] .pos-meta-toggle { flex: 0 0 44px; min-width: 44px; min-height: 44px; border: 1px solid #d5e4fb; border-radius: 10px; color: #2563eb; background: #edf4ff; }
+    #posShell[data-pos-phone] .pos-note-box { padding-top: 12px; }
+    #posShell[data-pos-phone] .pos-note-box :is(input, textarea) { min-height: 48px; font-size: 16px; border-radius: 12px; }
+    #posShell[data-pos-phone] .pos-note-box textarea { min-height: 100px; resize: vertical; }
+    #posShell[data-pos-phone] .pos-note-box .d-flex { flex-wrap: wrap; }
+    #posShell[data-pos-phone] .pos-note-box .btn { min-height: 44px; border-radius: 10px; font-size: 14px; }
+    #posShell[data-pos-phone] .pos-note-box .btn-primary { background: #2563eb; border-color: #2563eb; }
+    #posShell[data-pos-phone] .pos-applied-voucher-box { padding: 12px; border: 1px solid #cce3d5; border-radius: 14px; background: #f1f9f4; color: #225e3d; font-size: 13px; }
+    #posShell[data-pos-phone] .pos-applied-voucher-row { gap: 8px; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] :is(button, input, textarea, a):focus-visible { outline: 3px solid #78a6ed; outline-offset: 2px; }
+
+    /* These original editors live both inside the cart and as siblings of the shell. */
+    #posShell[data-pos-phone] #linePriceTableModal .modal-dialog,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-dialog { width: auto; max-width: 520px; margin: 12px auto; padding: 0 8px; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-content,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-content { max-height: calc(100dvh - 24px); overflow: hidden; border: 1px solid #dce5f1; border-radius: 20px; box-shadow: 0 12px 48px #172d5026; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-header,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-header { gap: 8px; padding: 12px 14px; border-bottom: 1px solid #e5ebf4; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-header > div,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-header > div { min-width: 0; flex: 1; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-title,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) :is(.modal-title, .pos-modal-subtitle) { white-space: normal; overflow-wrap: anywhere; color: #172d50; }
+    #posShell[data-pos-phone] #linePriceTableModal .btn-close,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .btn-close { flex: 0 0 44px; width: 44px; min-width: 44px; height: 44px; margin: 0; padding: 0; background-size: 14px; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-body,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-current-box { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-current-box > div { min-width: 0; padding: 10px 8px; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-current-box span { font-size: 11px; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-current-box strong { font-size: 15px; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table { display: block; margin: 0; min-width: 0; border: 0; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table thead { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table tbody { display: grid; gap: 10px; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 8px; padding: 12px; border: 1px solid #dce5f1; border-radius: 14px; background: #f5f8fd; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table tr.is-current { border-color: #bfddcc; background: #eff8f3; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: 13px; background: transparent !important; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td:first-child { grid-column: 1 / 3; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td:nth-child(2) { grid-column: 3; text-align: right; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td:nth-child(n+3)::before { display: block; margin-bottom: 4px; color: #526581; font-size: 11px; font-weight: 500; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td:nth-child(3)::before { content: "Giá lẻ"; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td:nth-child(4)::before { content: "Giá sỉ"; }
+    #posShell[data-pos-phone] #linePriceTableModal .pos-price-modal-table td:nth-child(5)::before { content: "Giá áp dụng"; }
+    #posShell[data-pos-phone] #linePriceTableModal .badge { max-width: 100%; margin-left: 0 !important; white-space: normal; text-align: left; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-footer,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-footer { flex-wrap: wrap; gap: 8px; padding: 12px 14px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid #e5ebf4; }
+    #posShell[data-pos-phone] #linePriceTableModal .modal-footer .btn,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) .modal-footer .btn { min-height: 44px; margin: 0; flex: 1 1 auto; border-radius: 12px; font-size: 14px; white-space: normal; }
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #qtyEditModal) .modal-footer .btn-primary,
+    #posShell[data-pos-phone] ~ #lineDiscountModal #btnSaveLineDiscount { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #useRewardVoucherModal, #lineDiscountModal, #qtyEditModal) input { min-height: 48px; font-size: 16px; border-radius: 12px; }
+    #posShell[data-pos-phone] .pos-note-box :is(input, textarea):focus,
+    #posShell[data-pos-phone] ~ :is(#customerRewardModal, #lineDiscountModal, #qtyEditModal) input:focus { border-color: #78a6ed; box-shadow: 0 0 0 3px #2563eb24; }
+    #posShell[data-pos-phone] ~ #useRewardVoucherModal .pos-use-voucher-item { display: flex; gap: 10px; min-height: 64px; padding: 12px; border-radius: 14px; border: 1px solid #dce5f1; background: #f5f8fd; }
+    #posShell[data-pos-phone] ~ #useRewardVoucherModal .pos-use-voucher-left { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+    #posShell[data-pos-phone] ~ #useRewardVoucherModal .use-voucher-check { flex: 0 0 24px; width: 24px; height: 24px; min-height: 24px; margin-top: 4px; }
+    #posShell[data-pos-phone] ~ #useRewardVoucherModal :is(.pos-use-voucher-code, .pos-use-voucher-desc, .pos-use-voucher-value) { white-space: normal; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #useRewardVoucherModal .pos-use-voucher-value { flex-shrink: 0; color: #2563eb; }
+    #posShell[data-pos-phone] ~ #customerRewardModal .pos-reward-modal-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    #posShell[data-pos-phone] ~ #customerRewardModal .pos-reward-modal-grid > div { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 6px; padding: 12px; min-width: 0; border-radius: 14px; background: #f5f8fd; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #customerRewardModal .pos-reward-modal-grid span { font-size: 11px; line-height: 1.4; }
+    #posShell[data-pos-phone] ~ #customerRewardModal .pos-reward-modal-grid strong { margin: 0; font-size: 18px; line-height: 1.25; }
+}

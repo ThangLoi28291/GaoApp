@@ -5,7 +5,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $releaseRoot = (Resolve-Path -LiteralPath $ReleasePath).Path
 # Scope all synthetic environment changes to this invocation and restore on exit.
-$environmentPattern = '^(DOTNET_ENVIRONMENT|ASPNETCORE_|ConnectionStrings|AppUrl|Tenant|AllowedHosts|Storage|DataProtection|SeedData|ProductionBootstrap|Proxy|Serilog)'
+$environmentPattern = '^(DOTNET_ENVIRONMENT|ASPNETCORE_|ConnectionStrings|AppUrl|Tenant|AllowedHosts|Storage|Assistant|CustomerService|CustomerChannels|DataProtection|SeedData|ProductionBootstrap|Proxy|Serilog)'
 $originalEnvironment = @{}
 foreach ($entry in Get-ChildItem Env: | Where-Object Name -match $environmentPattern) { $originalEnvironment[$entry.Name] = $entry.Value }
 $workRoot = Join-Path $repoRoot ('Logs/security-phase6-tool-runtime/' + [Guid]::NewGuid().ToString('N'))
@@ -22,7 +22,7 @@ function Expected-Rejection([string]$name, [scriptblock]$action, [string]$messag
 }
 try {
     foreach ($dir in @('uploads', 'keys', 'logs')) { New-Item -ItemType Directory -Path (Join-Path $workRoot $dir) -Force | Out-Null }
-    foreach ($entry in @(Get-ChildItem Env: | Where-Object Name -match '^(DOTNET_ENVIRONMENT|ASPNETCORE_|ConnectionStrings|AppUrl|Tenant|AllowedHosts|Storage|DataProtection|SeedData|ProductionBootstrap|Proxy|Serilog)')) {
+    foreach ($entry in @(Get-ChildItem Env: | Where-Object Name -match $environmentPattern)) {
         [Environment]::SetEnvironmentVariable($entry.Name, $null, 'Process')
     }
     $rsa = [Security.Cryptography.RSA]::Create(2048)
@@ -33,7 +33,10 @@ try {
     [IO.File]::WriteAllBytes($pfxPath, $certificate.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $password))
     $certificate.Dispose()
     $rsa.Dispose()
+    . (Join-Path $repoRoot 'eng/deployment/AssistantStorage.ps1')
+    $assistantStorage = Invoke-GaoAssistantStorage (Join-Path $releaseRoot 'web') @{operation='initialize';destinationDirectory=(Join-Path $workRoot 'assistant-storage');writersQuiesced=$true}
     $environmentValues = @{
+        Assistant__StorageId=$assistantStorage.storageId;Assistant__StoreSettingsDirectory=$assistantStorage.settingsDirectory;CustomerService__DatabasePath=$assistantStorage.databasePath;
         DOTNET_ENVIRONMENT='Production'; ASPNETCORE_ENVIRONMENT='Production';
         ConnectionStrings__DefaultConnection='Server=preflight-sql.example.test;Database=GaoAppStaging;Integrated Security=True;Encrypt=True;TrustServerCertificate=False';
         DataProtection__KeysPath=(Join-Path $workRoot 'keys'); DataProtection__CertificatePath=$pfxPath; DataProtection__CertificatePassword=$password;
@@ -72,6 +75,7 @@ try {
         foreach ($name in @("GaoApp.$component.dll", "GaoApp.$component.deps.json", "GaoApp.$component.runtimeconfig.json", 'GaoApp.Domain.dll', 'GaoApp.Application.dll', 'GaoApp.Infrastructure.dll')) {
             [IO.File]::WriteAllText((Join-Path $dir $name), 'synthetic test bytes')
         }
+        Copy-Item -LiteralPath (Join-Path $releaseRoot "$($component.ToLowerInvariant())/GaoApp.$component.runtimeconfig.json") -Destination (Join-Path $dir "GaoApp.$component.runtimeconfig.json") -Force
     }
     Copy-Item -LiteralPath (Join-Path $releaseRoot 'web/web.config') -Destination (Join-Path $fakeRoot 'web/web.config')
     $manifest = @{ files = @(Get-ChildItem -LiteralPath $fakeRoot -Recurse -File | ForEach-Object {
@@ -82,6 +86,22 @@ try {
     Write-Output 'PASS synthetic manifest integrity baseline'
     $checks++
     $fakeIisPath = Join-Path $fakeRoot 'web/web.config'
+    $credentialTree=Join-Path $fakeRoot 'web/wwwroot/ChannelCredentials'
+    New-Item -ItemType Directory -Path $credentialTree -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $credentialTree 'arbitrary.txt'),'SYNTHETIC_C2_TOKEN_ONLY')
+    Expected-Rejection 'C2 reject bundled credential directory with arbitrary extension' { & $checker -ReleasePath $fakeRoot -SkipManifest } 'Forbidden publish path'
+    Remove-Item -LiteralPath $credentialTree -Recurse -Force
+    $configPath=Join-Path $fakeRoot 'web/appsettings.json';$configBytes=[IO.File]::ReadAllBytes($configPath)
+    $withChannels=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    $withChannels | Add-Member CustomerChannels @{Connections=@(@{Enabled=$false;AccessTokenFile='wwwroot/arbitrary.txt'})}
+    [IO.File]::WriteAllText($configPath,($withChannels | ConvertTo-Json -Depth 10))
+    Expected-Rejection 'C2 reject configured credentials in release even for disabled channel' { & $checker -ReleasePath $fakeRoot -SkipManifest } 'must be supplied outside'
+    [IO.File]::WriteAllBytes($configPath,$configBytes)
+    [xml]$withoutBlock=Get-Content -LiteralPath $fakeIisPath -Raw
+    $node=$withoutBlock.SelectSingleNode("//hiddenSegments/add[@segment='ChannelCredentials']")
+    [void]$node.ParentNode.RemoveChild($node);$withoutBlock.Save($fakeIisPath)
+    Expected-Rejection 'C2 reject IIS without credential directory protection' { & $checker -ReleasePath $fakeRoot -SkipManifest } 'reserved ChannelCredentials'
+    Copy-Item -LiteralPath (Join-Path $releaseRoot 'web/web.config') -Destination $fakeIisPath -Force
     [xml]$unsafeIis = Get-Content -LiteralPath $fakeIisPath -Raw
     $unsafeIis.SelectSingleNode("//fileExtensions/add[@fileExtension='.pfx']").SetAttribute('allowed', 'true')
     $unsafeIis.Save($fakeIisPath)

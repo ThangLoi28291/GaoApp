@@ -1,6 +1,7 @@
 using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.POSShifts;
+using GaoApp.Application.DTOs.POSShiftDashboards;
 using GaoApp.Application.Interfaces.Services.POSShifts;
 using GaoApp.Application.Interfaces.Services.Security;
 using GaoApp.Domain.Entities;
@@ -34,6 +35,23 @@ public sealed class POSShiftReconciliationService(AppDbContext db, ICurrentStore
             .Include(x => x.Payments.Where(p => p.StoreId == storeId))
             .Include(x => x.Lines.Where(l => l.StoreId == storeId && !l.IsDeleted))
             .AsSplitQuery().OrderByDescending(x => x.Id).ToListAsync(ct);
+        var orderIds = orders.Select(x => x.Id).ToList();
+        var nativeIds = (await db.Set<GaoApp.Domain.Storefront.StorefrontSaleBinding>().AsNoTracking()
+            .Where(x => x.StoreId == storeId && orderIds.Contains(x.SaleOrderId)).Select(x => x.SaleOrderId).ToListAsync(ct)).ToHashSet();
+        var nativePayments = orders.Where(x => nativeIds.Contains(x.Id)).SelectMany(x => x.Payments).ToList();
+        var codIds = nativePayments.Where(x => x.StorefrontCodReceiptId.HasValue).Select(x => x.StorefrontCodReceiptId!.Value).ToList();
+        var codBanks = await db.Set<GaoApp.Domain.Storefront.StorefrontCodReceipt>().AsNoTracking().Where(x => x.StoreId == storeId && codIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, x => x.GlobalBankReceiptId, ct);
+        var bankIds = nativePayments.Select(x => x.BankVerifiedReceiptId).Concat(codBanks.Values).OfType<int>().Distinct().ToList();
+        var nativeBanks = await db.Set<BankVerifiedReceipt>().AsNoTracking().Where(x => x.OriginStoreId == storeId && bankIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, ct);
+        string? NativeTime(OrderPayment payment)
+        {
+            if (!nativeIds.Contains(payment.OrderId)) return null;
+            var id = payment.BankVerifiedReceiptId ?? (payment.StorefrontCodReceiptId is int cod ? codBanks.GetValueOrDefault(cod) : null);
+            if (id is int bank && nativeBanks.TryGetValue(bank, out var original))
+                return original.TimePrecision == BankTimePrecision.BankDay ? original.BankBusinessDate?.ToString("dd/MM/yyyy") + " (ngày ngân hàng)" :
+                    original.TimePrecision == BankTimePrecision.Timestamp ? DateTime.SpecifyKind(original.OccurredAtUtc!.Value, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm:ss") + " (giờ Việt Nam)" : "Chưa xác minh ngày ngân hàng";
+            return DateTime.SpecifyKind(payment.PaidAtUtc, DateTimeKind.Utc).AddHours(7).ToString("dd/MM/yyyy HH:mm:ss") + " (ngày chứng từ nguồn, không thu mới tại ca)";
+        }
         var cash = await db.POSShiftCashTransactions.IgnoreQueryFilters().AsNoTracking()
             .Where(x => x.StoreId == storeId && x.POSShiftId == shift.Id).OrderByDescending(x => x.Id).ToListAsync(ct);
         // A refund belongs to the shift that paid it out, even when its original sale was in another shift.
@@ -93,11 +111,14 @@ public sealed class POSShiftReconciliationService(AppDbContext db, ICurrentStore
             var protectedBank = sessions.Any(x => x.PaymentId == p.Id && x.ConfirmationSource != AcbConfirmationSource.OfflineManual)
                 || qrs.Any(x => x.PaymentId == p.Id && x.ConfirmMode != BankQrConfirmMode.Manual);
             var canRequest = shift.OpenedByUserId == user.UserId && !order.IsDeleted && order.Status is OrderStatus.Completed or OrderStatus.Refunded
-                && !p.IsDeleted && !p.IsDebtCollection && p.Amount > 0 && !protectedBank && pending == null;
+                && !p.IsDeleted && !p.IsDebtCollection && p.Amount > 0 && !protectedBank && pending == null && !nativeIds.Contains(p.OrderId);
             var verified = !p.IsDeleted && p.Method == PaymentMethod.BankTransfer && session != null &&
                 session.ConfirmationSource.HasValue && session.ConfirmationSource != AcbConfirmationSource.OfflineManual &&
                 session.Status is AcbSessionStatus.Received or AcbSessionStatus.Completed &&
                 session.OrderId == p.OrderId && session.Amount == p.Amount && session.ProviderOrderId == p.ReferenceCode;
+            var offlineManual = session?.ConfirmationSource == AcbConfirmationSource.OfflineManual
+                && session.OrderId == p.OrderId && session.Amount == p.Amount && session.ProviderOrderId == p.ReferenceCode;
+            var channel = POSShiftPaymentChannels.Resolve(p.Method, verified, session != null || qr?.ConfirmMode is BankQrConfirmMode.Callback or BankQrConfirmMode.Polling, offlineManual);
             var confirmation = p.IsDeleted ? "Khoản thanh toán đã hủy" : p.Method != PaymentMethod.BankTransfer ? "Đã ghi nhận" : verified ? "ACB đã xác nhận" :
                 session?.Status == AcbSessionStatus.ReviewRequired ? "ACB cần kiểm tra" :
                 session?.ConfirmationSource == AcbConfirmationSource.OfflineManual ? "Xác nhận thủ công khi mất kết nối" :
@@ -106,15 +127,15 @@ public sealed class POSShiftReconciliationService(AppDbContext db, ICurrentStore
                 qr?.ConfirmMode == BankQrConfirmMode.Manual ? "Nhân viên xác nhận QR thủ công" :
                 qr != null ? "Chưa có xác nhận ACB liên kết khoản thanh toán" : "Nhân viên ghi nhận chuyển khoản";
             return new(p.Id, p.Method.ToString(), p.Amount, p.ReferenceCode, p.Provider, p.PaidAtUtc,
-                Actor(p.CreatedBy), p.IsDeleted, p.IsDebtCollection, confirmation, verified, canRequest,
-                shift.OpenedByUserId == user.UserId ? pending?.Id : null);
+                Actor(p.CreatedBy), p.IsDeleted, p.IsDebtCollection, nativeIds.Contains(p.OrderId) ? "Nguồn tiền website riêng; không phát sinh thu mới tại ca ghi bán." : confirmation, verified, canRequest,
+                shift.OpenedByUserId == user.UserId ? pending?.Id : null, channel, NativeTime(p));
         }
         var orderRows = orders.Where(x => x.Lines.Count > 0 || x.Payments.Count > 0 || x.Status != OrderStatus.Draft)
             .Select(o =>
             {
                 var active = o.Payments.Where(p => !p.IsDeleted && !p.IsDebtCollection).ToList();
                 var appliedCash = 0m; var appliedNonCash = 0m;
-                if (!o.IsDeleted && o.Status is OrderStatus.Completed or OrderStatus.Refunded)
+                if (!nativeIds.Contains(o.Id) && !o.IsDeleted && o.Status is OrderStatus.Completed or OrderStatus.Refunded)
                 {
                     var remaining = Math.Max(0, o.GrandTotal - o.DepositAmount);
                     foreach (var p in active.Where(p => p.Amount > 0).OrderBy(p => p.Method == PaymentMethod.Cash ? 2 : 1).ThenBy(p => p.Id))
@@ -129,7 +150,7 @@ public sealed class POSShiftReconciliationService(AppDbContext db, ICurrentStore
                 {
                     Id = o.Id, Number = o.OrderNumber ?? $"Đơn #{o.Id}", Status = o.Status.ToString(),
                     Customer = o.Customer?.StoreId == storeId ? o.Customer.Name : "Khách lẻ", Actor = Actor(o.CreatedBy),
-                    CreatedAtUtc = o.CreatedAtUtc, CompletedAtUtc = o.CompletedAtUtc, Cancelled = o.IsDeleted,
+                    NativeStorefrontSource = nativeIds.Contains(o.Id), CreatedAtUtc = o.CreatedAtUtc, CompletedAtUtc = o.CompletedAtUtc, Cancelled = o.IsDeleted,
                     GrandTotal = o.GrandTotal, Deposit = o.DepositAmount, Note = o.Note, IsCreditSale = o.IsCreditSale,
                     CashReceived = active.Where(p => p.Method == PaymentMethod.Cash).Sum(p => p.Amount),
                     BankReceived = active.Where(p => p.Method == PaymentMethod.BankTransfer).Sum(p => p.Amount),
@@ -141,12 +162,25 @@ public sealed class POSShiftReconciliationService(AppDbContext db, ICurrentStore
                 };
             }).ToList();
         var expected = shift.OpeningCash + shift.CashSalesTotal + shift.CashInTotal - shift.CashOutTotal - shift.CashRefundTotal;
+        var breakdown = new POSShiftPaymentBreakdownDto { ShiftNonCashSalesTotal = shift.NonCashSalesTotal };
+        foreach (var order in orderRows.Where(o => !o.NativeStorefrontSource && !o.Cancelled && o.Status is "Completed" or "Refunded"))
+        {
+            var remaining = Math.Max(0, order.GrandTotal - order.Deposit);
+            foreach (var payment in order.Payments.Where(p => !p.Cancelled && !p.IsDebtCollection && p.Amount > 0 && p.Method != "Cash").OrderBy(p => p.Id))
+            {
+                var total = breakdown.Channels.Single(x => x.Channel == payment.Channel);
+                var applied = Math.Min(payment.Amount, remaining);
+                total.PaymentCount++; total.RecordedAmount += payment.Amount; total.SalesAmount += applied;
+                remaining -= applied;
+            }
+        }
         var cashRefund = refunds.Where(r => r.Status == SalesReturnStatus.Completed)
             .SelectMany(r => r.Payments).Where(p => !p.IsDeleted && p.Method == PaymentMethod.Cash).Sum(p => p.Amount);
         var detailExpected = shift.OpeningCash + orderRows.Sum(o => o.CashApplied) +
             cash.Where(x => !x.IsDeleted).Sum(x => x.Type == POSShiftCashTransactionType.CashIn ? x.Amount : -x.Amount) - cashRefund;
         return new()
         {
+            PaymentBreakdown = breakdown,
             StoreId = storeId, ShiftId = shift.Id, ShiftCode = shift.ShiftCode ?? $"Ca #{shift.Id}",
             OwnerId = shift.OpenedByUserId, OwnerName = Actor(shift.OpenedByUserId), TerminalId = shift.TerminalId,
             TerminalName = await db.POSTerminals.Where(x => x.StoreId == storeId && x.Id == shift.TerminalId).Select(x => x.Name).SingleOrDefaultAsync(ct) ?? $"Quầy #{shift.TerminalId}",

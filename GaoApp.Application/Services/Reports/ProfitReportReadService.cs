@@ -21,7 +21,7 @@ public sealed class ProfitReportReadService(IProfitReportReadRepository reposito
         if (query.TerminalId is <= 0 || query.CustomerState is not (null or "all" or "linked" or "guest") ||
             query.Compare is not (null or "none" or "previous"))
             throw new ArgumentException("Bộ lọc báo cáo không hợp lệ.");
-        if (query.Segment is not (null or "profit" or "cogs" or "provisional") ||
+        if (query.Segment is not (null or "profit" or "cogs" or "provisional" or "issues") ||
             query.Sort is not (null or "newest" or "oldest") || query.Page < 1 ||
             query.PageSize is < 1 or > 100 || query.Search?.Length > 100)
             throw new ArgumentException("Bộ lọc chi tiết không hợp lệ.");
@@ -34,10 +34,18 @@ public sealed class ProfitReportReadService(IProfitReportReadRepository reposito
         ct.ThrowIfCancellationRequested();
         if (snapshot.StoreId != store.StoreId) throw new InvalidOperationException("Reporting Store changed.");
         var lineCosts = new Dictionary<int, ProfitReportAggregationPolicy.CostResult>();
-        var costs = aggregation.EvaluateCosts(snapshot, lineCosts, ct);
+        var issues = new List<ProfitCostIssueDto>();
+        var costs = aggregation.EvaluateCosts(snapshot, lineCosts, ct, issues);
         var current = aggregation.Aggregate(snapshot, resolved.Current, costs, ct);
         var comparison = resolved.Comparison is null ? null : aggregation.Aggregate(snapshot, resolved.Comparison, costs, ct);
         var rows = current.Details.AsEnumerable();
+        var reasons = issues.ToLookup(x => x.OrderId);
+        foreach (var row in current.Details.Where(x => !x.Summary.Cogs.Available))
+        {
+            var messages = reasons[row.OrderId].Select(x => (x.ItemName is null ? "" : x.ItemName + ": ") + x.Message).Distinct().ToList();
+            if (messages.Count > 0) row.Summary.Message = string.Join("; ", messages.Take(5));
+        }
+        if (query.Segment == "issues") rows = rows.Where(x => !x.Summary.Cogs.Available);
         if (query.Segment == "provisional")
         {
             var origins = current.Details.Where(x => x.EventKind != "Trả hàng").ToDictionary(x => x.OrderId);
@@ -62,6 +70,7 @@ public sealed class ProfitReportReadService(IProfitReportReadRepository reposito
                 .ThenByDescending(x => x.SalesReturnId).ThenByDescending(x => x.OrderLineId);
         var filtered = rows.ToList();
         var response = new ProfitReportResponseDto {
+            CostDiagnostics = ProfitCostDiagnosticsPolicy.ForPeriod(issues, current.Details),
             GeneratedAtUtc = snapshot.ReadAtUtc,
             Query = new ProfitReportQueryDto {
                 FromDate = resolved.Current.Period.FromDate, ToDate = resolved.Current.Period.ToDate,

@@ -1,0 +1,25 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="vi" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    @await Html.PartialAsync("Sections/_Styles")
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.ui.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.design-system.css" />
+    @if (Context.Request.Query["commerce"] == "1")
+    {
+        <link rel="stylesheet" href="~/Admin/css/gaoapp.commerce.css" />
+    }
+    <title>UI-01 CSS isolation check</title>
+</head>
+<body>
+    <main class="container py-4">
+        <h1>Đối chiếu phạm vi CSS</h1>
+        <div id="isolation-bootstrap" class="card p-3 mb-3"><p>Bootstrap hiện tại</p><button class="btn btn-primary" type="button">Lưu hiện tại</button><input class="form-control mt-2" aria-label="Trường Bootstrap" value="Nội dung" /></div>
+        <div id="isolation-modern" data-gao-ui="modern"><div class="gds-card"><h2 class="gds-page-header__title">Modern hiện tại</h2><span class="gds-status is-success">Hoàn tất</span><button class="gds-icon-button" type="button" aria-label="Thao tác hiện tại">+</button></div></div>
+    </main>
+</body>
+</html>

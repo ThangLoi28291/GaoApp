@@ -384,6 +384,8 @@ public sealed class AccountControllerObservabilityTests
 
     private sealed class FakeTerminalRepository : IPOSTerminalRepository
     {
+        public Task<POSTerminalDevice?> GetActiveDeviceByKeyAsync(int storeId, string deviceKey, CancellationToken ct = default)
+            => Task.FromResult<POSTerminalDevice?>(null);
         public Task<POSTerminal?> GetByIdAsync(
             int id,
             CancellationToken ct = default) =>

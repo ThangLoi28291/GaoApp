@@ -1,0 +1,30 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceNavigation
+@{
+    var items = Model.Items.Take(4).ToArray();
+}
+<nav class="gds-bottom-nav" aria-label="Điều hướng điện thoại mẫu" style="--gds-nav-count:@(items.Length + 1)">
+    @foreach (var item in items)
+    {
+        if (item.OpensDialog)
+        {
+            <button type="button" class="gds-bottom-nav__item" data-preview-nav="@item.Key"
+                    data-gao-dialog-open="@item.TargetId" aria-haspopup="dialog" aria-controls="@item.TargetId" aria-label="@item.Label" title="@item.Label">
+                <svg class="gds-icon" aria-hidden="true"><use href="#@item.IconId" /></svg>
+                <span class="gds-bottom-nav__label">@item.Label</span>
+            </button>
+        }
+        else
+        {
+            <a class="gds-bottom-nav__item" href="#@item.TargetId" data-preview-nav="@item.Key"
+               aria-current="@(item.Key == Model.ActiveKey ? "location" : null)" aria-label="@item.Label" title="@item.Label">
+                <svg class="gds-icon" aria-hidden="true"><use href="#@item.IconId" /></svg>
+                <span class="gds-bottom-nav__label">@item.Label</span>
+            </a>
+        }
+    }
+    <button type="button" class="gds-bottom-nav__item" data-gao-dialog-open="@Model.MenuDialogId"
+            data-preview-nav-menu aria-label="Mở menu mẫu" aria-haspopup="dialog" aria-controls="@Model.MenuDialogId" aria-expanded="false">
+        <svg class="gds-icon" aria-hidden="true"><use href="#ui-menu" /></svg>
+        <span class="gds-bottom-nav__label">Menu</span>
+    </button>
+</nav>

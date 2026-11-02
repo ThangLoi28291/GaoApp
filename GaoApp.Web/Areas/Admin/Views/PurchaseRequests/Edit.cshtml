@@ -41,11 +41,13 @@
 }
 
 @section VendorStyles {
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="~/lib/select2/select2.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/lib/select2/select2-bootstrap-5-theme.min.css" rel="stylesheet"  asp-append-version="true" />
 }
 @section PageStyles {
     <link rel="stylesheet" href="~/Admin/css/purchase-request-edit.css" asp-append-version="true" />
+
+    <link rel="stylesheet" href="~/Admin/css/purchasing.mobile.css" asp-append-version="true" />
 }
 
 <div class="pr-page gds-page" data-gao-ui="modern" id="purchaseRequestPage"
@@ -169,6 +171,7 @@
                                 @if (isFreeText) { <small class="text-warning pr-free-text-badge"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small> }
                                 else { <small class="text-muted pr-product-sku">@(string.IsNullOrWhiteSpace(product?.Sku) ? string.Empty : $"SKU: {product.Sku}")</small> }
                                 <span class="badge bg-label-warning ms-2 d-none pr-open-request-badge">Đã có yêu cầu mở</span></div></div>
+                                <label class="pr-product-note-field"><span>Ghi chú gửi nhà cung cấp</span><textarea class="form-control line-note" name="Lines[@i].Note" rows="2" maxlength="1000" aria-label="Ghi chú sản phẩm @productName" placeholder="Ví dụ: Hạn dùng từ 6 tháng, giao đúng quy cách...">@line.Note</textarea></label>
                             </td>
                             <td data-label="Tồn / đang về"><div class="pr-inventory"><strong>@PurchaseQuantityFormatter.Display(stock) @unitName</strong><small>Đang về: @PurchaseQuantityFormatter.Display(incoming) @unitName</small></div></td>
                             <td data-label="Đơn vị mua"><span class="badge bg-label-primary pr-unit-name">@unitName</span>@if(!isFreeText){<small class="text-muted d-block mt-1">Quy đổi ×<span class="pr-factor">@PurchaseQuantityFormatter.Display(factor)</span></small>}</td>
@@ -248,12 +251,13 @@
 </div>
 
 <template id="lineTemplate">
-    <tr class="request-line"><td class="pr-line-number" data-label="#"></td><td data-label="Sản phẩm"><input type="hidden" class="line-id" /><input type="hidden" class="item-kind" /><input type="hidden" class="variant-id" /><input type="hidden" class="conversion-id" /><input type="hidden" class="product-name-input" /><input type="hidden" class="unit-name-input" /><div class="pr-product-cell"><span class="pr-product-thumb"><i class="bx bx-package"></i></span><div><div class="fw-semibold pr-product-name"></div><small class="text-muted pr-product-sku"></small><small class="text-warning d-none pr-free-text-badge"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small><span class="badge bg-label-warning ms-2 d-none pr-open-request-badge">Đã có yêu cầu mở</span></div></div></td><td data-label="Tồn / đang về"><div class="pr-inventory"><strong class="pr-stock"></strong><small class="pr-incoming"></small></div></td><td data-label="Đơn vị mua"><span class="badge bg-label-primary pr-unit-name"></span><small class="text-muted d-block mt-1 pr-factor-wrap">Quy đổi ×<span class="pr-factor"></span></small></td><td data-label="Số lượng"><input class="form-control text-end quantity" type="number" min="0.001" step="0.001" required /></td><td class="text-end"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line" title="Xóa sản phẩm"><i class="bx bx-trash"></i></button></td></tr>
+    <tr class="request-line"><td class="pr-line-number" data-label="#"></td><td data-label="Sản phẩm"><input type="hidden" class="line-id" /><input type="hidden" class="item-kind" /><input type="hidden" class="variant-id" /><input type="hidden" class="conversion-id" /><input type="hidden" class="product-name-input" /><input type="hidden" class="unit-name-input" /><div class="pr-product-cell"><span class="pr-product-thumb"><i class="bx bx-package"></i></span><div><div class="fw-semibold pr-product-name"></div><small class="text-muted pr-product-sku"></small><small class="text-warning d-none pr-free-text-badge"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small><span class="badge bg-label-warning ms-2 d-none pr-open-request-badge">Đã có yêu cầu mở</span></div></div><label class="pr-product-note-field"><span>Ghi chú gửi nhà cung cấp</span><textarea class="form-control line-note" rows="2" maxlength="1000" placeholder="Ví dụ: Hạn dùng từ 6 tháng, giao đúng quy cách..."></textarea></label></td><td data-label="Tồn / đang về"><div class="pr-inventory"><strong class="pr-stock"></strong><small class="pr-incoming"></small></div></td><td data-label="Đơn vị mua"><span class="badge bg-label-primary pr-unit-name"></span><small class="text-muted d-block mt-1 pr-factor-wrap">Quy đổi ×<span class="pr-factor"></span></small></td><td data-label="Số lượng"><input class="form-control text-end quantity" type="number" min="0.001" step="0.001" required /></td><td class="text-end"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line" title="Xóa sản phẩm"><i class="bx bx-trash"></i></button></td></tr>
 </template>
 
 @section VendorScripts {
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="~/lib/select2/select2.min.js" asp-append-version="true"></script>
 }
 @section PageScripts {
     <script src="~/Admin/js/purchase-request-edit.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/purchasing.mobile.js" asp-append-version="true"></script>
 }

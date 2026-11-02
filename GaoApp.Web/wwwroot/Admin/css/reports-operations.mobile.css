@@ -1,0 +1,184 @@
+/* UI-18 operations: phone presentation; the existing report owns every value and command. */
+@media screen and (max-width: 767.98px) {
+  body[data-reports-operations-phone] [data-reports-operations-phone-root] {
+    --mr-bg: #f3f6fb;
+    --mr-panel: #fff;
+    --mr-text: #172d4d;
+    --mr-muted: #61738d;
+    --mr-border: #dce5f0;
+    --mr-green: #2463eb;
+    --mr-soft: #edf3ff;
+    min-width: 0;
+    color: var(--mr-text);
+    padding: 4px 0 18px;
+    overflow-wrap: anywhere;
+  }
+  body[data-reports-operations-phone] .mr-heading {
+    display: grid;
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  body[data-reports-operations-phone] .mr-heading h1 { font-size: 26px; line-height: 1.25; letter-spacing: -.6px; }
+  body[data-reports-operations-phone] .mr-heading p { font-size: 14px; line-height: 1.6; }
+  body[data-reports-operations-phone] .mr-heading .mr-eyebrow { color: #2463eb; font-size: 11px; letter-spacing: 1.1px; }
+  body[data-reports-operations-phone] .mr-actions { width: 100%; gap: 8px; flex-wrap: wrap; }
+  body[data-reports-operations-phone] .mr-actions .mr-button { flex: 1 1 auto; }
+  body[data-reports-operations-phone] .mr-button {
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--mr-border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--mr-text);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    justify-content: center;
+    touch-action: manipulation;
+  }
+  body[data-reports-operations-phone] .mr-button:disabled { opacity: .5; }
+  body[data-reports-operations-phone] .mr-primary { color: #fff; background: #2463eb; border-color: #2463eb; }
+  body[data-reports-operations-phone] .mr-button:focus-visible,
+  body[data-reports-operations-phone] .mr-nav a:focus-visible,
+  body[data-reports-operations-phone] summary:focus-visible { outline: 3px solid #83aaff; outline-offset: 3px; }
+  body[data-reports-operations-phone] .mr-nav {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 7px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 3px 2px 12px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    border-color: var(--mr-border);
+  }
+  body[data-reports-operations-phone] .mr-nav a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 10px 13px;
+    flex: 0 0 auto;
+    border: 1px solid var(--mr-border);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--mr-muted);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  body[data-reports-operations-phone] .mr-nav a[aria-current="page"] { background: #172d4d; color: #fff; border-color: #172d4d; }
+  body[data-reports-operations-phone] .mr-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 12px;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid var(--mr-border);
+    border-radius: 18px;
+    box-shadow: 0 4px 18px #172d4d05;
+  }
+  body[data-reports-operations-phone] .mr-filters > label:first-child,
+  body[data-reports-operations-phone] .mr-filters > .mr-button { grid-column: 1 / -1; }
+  body[data-reports-operations-phone] .mr-filters label,
+  body[data-reports-operations-phone] .mr-tools label,
+  body[data-reports-operations-phone] [data-rmo-dialog] label {
+    min-width: 0;
+    color: var(--mr-muted);
+    font-size: 13px;
+    line-height: 1.5;
+    font-weight: 600;
+  }
+  body[data-reports-operations-phone] .mr-filters input,
+  body[data-reports-operations-phone] .mr-filters select,
+  body[data-reports-operations-phone] .mr-tools input,
+  body[data-reports-operations-phone] .mr-tools select,
+  body[data-reports-operations-phone] [data-rmo-dialog] input,
+  body[data-reports-operations-phone] [data-rmo-dialog] select,
+  body[data-reports-operations-phone] [data-rmo-dialog] textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 46px;
+    padding: 10px 11px;
+    border: 1px solid var(--mr-border);
+    border-radius: 10px;
+    background: #fff;
+    color: var(--mr-text);
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  body[data-reports-operations-phone] input:focus-visible,
+  body[data-reports-operations-phone] select:focus-visible,
+  body[data-reports-operations-phone] textarea:focus-visible { outline: 3px solid #83aaff; outline-offset: 1px; }
+  body[data-reports-operations-phone] .mr-context { margin: 13px 2px; font-size: 12px; line-height: 1.65; }
+  body[data-reports-operations-phone] .mr-live:not([hidden]):not(.d-none),
+  body[data-reports-operations-phone] .mr-error:not([hidden]):not(.d-none) {
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 14px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+  /* Author styles must never reveal native hidden loading/error/permission states. */
+  body[data-reports-operations-phone] [data-reports-operations-phone-root] [hidden] { display: none !important; }
+  body[data-reports-operations-phone] .or-quality { gap: 9px; margin-bottom: 14px; }
+  body[data-reports-operations-phone] .or-quality p { padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.65; }
+  body[data-reports-operations-phone] .mr-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+  body[data-reports-operations-phone] .mr-kpi { min-width: 0; padding: 15px 12px; border: 1px solid var(--mr-border); border-radius: 16px; box-shadow: 0 4px 18px #172d4d04; }
+  body[data-reports-operations-phone] .mr-kpi-title { min-height: 38px; align-items: flex-start; gap: 6px; color: var(--mr-muted); font-size: 12px; line-height: 1.5; }
+  body[data-reports-operations-phone] .mr-kpi strong { display: block; margin: 9px 0; color: var(--mr-text); font-size: 25px; line-height: 1.15; letter-spacing: -.6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  body[data-reports-operations-phone] .mr-kpi small { color: var(--mr-muted); font-size: 11px; line-height: 1.55; }
+  body[data-reports-operations-phone] .mr-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  body[data-reports-operations-phone] .mr-panel { min-width: 0; padding: 16px 13px; margin-bottom: 16px; border: 1px solid var(--mr-border); border-radius: 18px; box-shadow: 0 4px 18px #172d4d04; }
+  body[data-reports-operations-phone] .mr-panel h2 { color: var(--mr-text); font-size: 17px; line-height: 1.4; }
+  body[data-reports-operations-phone] .mr-caption { color: var(--mr-muted); font-size: 12px; line-height: 1.6; }
+  body[data-reports-operations-phone] .mr-panel-heading,
+  body[data-reports-operations-phone] .or-fund-actions { align-items: flex-start; flex-direction: column; gap: 12px; }
+  body[data-reports-operations-phone] .mr-panel-heading > a,
+  body[data-reports-operations-phone] .or-fund-actions > .mr-button { width: 100%; }
+  body[data-reports-operations-phone] .mr-chart { min-width: 0; max-width: 100%; overflow: hidden; }
+  body[data-reports-operations-phone] .or-chart-empty { min-height: 180px; padding: 20px; line-height: 1.6; text-align: center; }
+  body[data-reports-operations-phone] .or-summary-table { margin-top: 12px; }
+  body[data-reports-operations-phone] .or-summary-table > summary,
+  body[data-reports-operations-phone] .mr-help > summary { min-height: 44px; padding: 12px 3px; color: #2463eb; font-size: 14px; font-weight: 600; line-height: 1.5; cursor: pointer; }
+  body[data-reports-operations-phone] .mr-help { padding: 3px 14px 10px; border: 1px solid var(--mr-border); border-radius: 16px; background: #fff; font-size: 13px; line-height: 1.7; }
+  body[data-reports-operations-phone] .mr-tools { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 16px 0; }
+  body[data-reports-operations-phone] .mr-table-wrap { min-width: 0; max-width: 100%; }
+  body[data-reports-operations-phone] .mr-table[data-rmo-table]:not([hidden]):not(.d-none) { display: block; width: 100%; min-width: 0; table-layout: auto; border: 0; font-size: 14px; }
+  body[data-reports-operations-phone] .mr-table[data-rmo-table] > thead:not([hidden]):not(.d-none) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+  body[data-reports-operations-phone] .mr-table[data-rmo-table] > tbody:not([hidden]):not(.d-none) { display: grid; gap: 12px; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-row]:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; padding: 3px 13px 12px; border: 1px solid var(--mr-border); border-radius: 14px; background: #fff; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-cell]:not([hidden]):not(.d-none) { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: auto; min-width: 0; padding: 12px 0 0; border: 0; font-size: 14px; line-height: 1.5; text-align: left; white-space: normal; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-label]::before { content: attr(data-rmo-label); display: block; color: var(--mr-muted); font-size: 11px; line-height: 1.5; font-weight: 500; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-wide] { grid-column: 1 / -1; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-identity] { padding: 12px 0; margin-bottom: 1px; border-bottom: 1px solid #edf1f7; font-weight: 650; font-size: 15px; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-identity] small { display: block; max-width: 100%; color: var(--mr-muted); font-size: 12px; line-height: 1.55; font-weight: 400; white-space: normal; }
+  body[data-reports-operations-phone] .mr-table [data-rmo-cell] .mr-button { max-width: 100%; min-height: 44px; padding: 10px 13px; font-size: 13px; white-space: normal; }
+  body[data-reports-operations-phone] .or-detail-actions { gap: 8px; width: 100%; }
+  body[data-reports-operations-phone] .or-detail-actions .mr-button { flex: 1 1 auto; }
+  body[data-reports-operations-phone] .or-status { max-width: 100%; padding: 5px 8px; border-radius: 7px; white-space: normal; font-size: 12px; line-height: 1.5; }
+  body[data-reports-operations-phone] .mr-pagination { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; margin-top: 16px; font-size: 12px; }
+  body[data-reports-operations-phone] [data-rmo-dialog] { --mr-text: #172d4d; --mr-muted: #61738d; --mr-border: #dce5f0; color: var(--mr-text); width: calc(100vw - 24px); max-width: 560px; max-height: calc(100dvh - 24px); padding: 0; border: 1px solid var(--mr-border); border-radius: 20px; background: #fff; overflow: hidden; }
+  body[data-reports-operations-phone] [data-rmo-dialog][open]:not([hidden]):not(.d-none) { display: flex; flex-direction: column; }
+  body[data-reports-operations-phone] [data-rmo-dialog]::backdrop { background: #10234080; backdrop-filter: blur(3px); }
+  body[data-reports-operations-phone] [data-rmo-dialog] > form { display: flex; flex-direction: column; min-height: 0; max-height: calc(100dvh - 26px); margin: 0; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-dialog-heading { flex: 0 0 auto; gap: 12px; padding: 14px 16px; margin: 0; border-bottom: 1px solid var(--mr-border); }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-dialog-heading h2 { margin: 0; font-size: 19px; line-height: 1.4; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-dialog-heading [data-close] { width: 44px; height: 44px; flex: 0 0 44px; padding: 0; font-size: 24px; }
+  body[data-reports-operations-phone] .rmo-dialog-scroll { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 16px; scroll-padding-block: 16px; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-form-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-form-grid .mr-span { grid-column: auto; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .rmo-dialog-scroll > label { display: block; margin: 14px 0; }
+  body[data-reports-operations-phone] [data-rmo-dialog] textarea { resize: vertical; }
+  body[data-reports-operations-phone] [data-rmo-dialog] input:read-only { background: #f3f6fb; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-dialog-actions { flex: 0 0 auto; display: flex; gap: 10px; margin: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); border-top: 1px solid var(--mr-border); background: #fff; }
+  body[data-reports-operations-phone] [data-rmo-dialog] .mr-dialog-actions .mr-button { flex: 1 1 0; min-height: 48px; }
+}
+
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: no-preference) {
+  body[data-reports-operations-phone] .mr-button { transition: background-color 140ms ease, border-color 140ms ease; }
+}

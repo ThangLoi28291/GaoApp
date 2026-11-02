@@ -1,0 +1,23 @@
+@model GaoApp.Web.Models.ErrorViewModel
+
+<section class="gao-mobile-shared-error" data-mobile-state-page="shared-error" lang="vi" aria-labelledby="shared-error-title">
+    <div data-mobile-state-card>
+        <div data-mobile-state-body>
+            <span class="badge mb-3">Yêu cầu chưa hoàn tất</span>
+            <h1 id="shared-error-title">Có lỗi xảy ra</h1>
+            <p data-mobile-state-message>Trang chưa thể hoàn tất yêu cầu. Bạn có thể quay lại trang trước để tiếp tục.</p>
+            @if (Model.ShowRequestId)
+            {
+                <p data-mobile-state-detail>
+                    <strong>Mã hỗ trợ</strong>
+                    <code>@Model.RequestId</code>
+                </p>
+                <p class="gao-mobile-state-help">Nếu lỗi vẫn còn, gửi mã hỗ trợ ở trên cho người hỗ trợ để kiểm tra.</p>
+            }
+            <div class="d-flex" data-mobile-state-actions>
+                <a href="#" data-csp-action="back" class="btn btn-primary">Quay lại trang trước</a>
+                <a asp-area="@(ViewContext.RouteData.Values["area"]?.ToString() ?? "")" asp-controller="Home" asp-action="Index" class="btn btn-outline-secondary">Về trang chủ</a>
+            </div>
+        </div>
+    </div>
+</section>

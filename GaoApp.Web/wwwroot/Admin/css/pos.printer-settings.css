@@ -1,0 +1,11 @@
+.pos-printer-settings{max-width:920px;margin:0 auto;padding:8px 0 24px;color:#253d34}
+.pps-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:22px}
+.pps-heading h1{font-size:28px;margin:5px 0 8px}.pps-heading p{margin:0;color:#64766d}.pps-eyebrow{font-size:10px;font-weight:700;letter-spacing:1.2px}
+.pps-card{padding:26px;margin:16px 0;background:#fff;border:1px solid #dce5df;border-radius:18px}
+.pps-card h2{font-size:18px;margin:0 0 12px}.pps-card>p{color:#65756e;line-height:1.65}
+.pps-card label{display:block;font-size:13px;font-weight:650;margin:14px 0 7px}
+.pps-card select,.pps-card input{min-height:46px}.pps-section{margin-top:16px}.pps-connect{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}.pps-connect label{margin:0}
+.pps-help{font-size:12px;color:#6b7b72;margin:12px 0 0;line-height:1.6}.pps-profile{padding:12px 14px;border-left:3px solid #4d8566;background:#eef5ee;margin:20px 0;color:#345944!important;overflow-wrap:anywhere}
+.pps-actions{display:flex;flex-wrap:wrap;gap:10px}.pps-actions .btn{min-height:44px}.pps-default strong{display:block;margin:6px 0}.pps-default p{margin-bottom:0}
+#printCopies{max-width:140px}#printerSettingsMessage{overflow-wrap:anywhere}
+@media(max-width:767.98px){.pos-printer-settings{padding:0 0 24px}.pps-heading{align-items:flex-start;gap:12px}.pps-heading h1{font-size:23px}.pps-heading .btn{flex-shrink:0;padding:10px;font-size:12px;white-space:nowrap}.pps-heading p{font-size:12px}.pps-card{padding:18px;border-radius:14px}.pps-card select,.pps-card input{font-size:16px;min-height:48px}.pps-connect{align-items:flex-start;flex-direction:column}.pos-printer-settings .pps-actions{display:grid;width:100%;grid-template-columns:minmax(0,1fr)}.pos-printer-settings .pps-actions>.btn{width:100%;max-width:none;min-width:0;min-height:48px;white-space:normal}.pps-card>p{font-size:13px}}

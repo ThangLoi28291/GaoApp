@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -6,7 +6,7 @@ using GaoApp.Domain.Enums;
 namespace GaoApp.Domain.Entities;
 
 [Table("StoreBankAccounts")]
-public class StoreBankAccount : BaseStoreEntity
+public class StoreBankAccount : BaseStoreEntity, IAuditTrackedEntity
 {
     [StringLength(30)]
     public string BankCode { get; set; } = string.Empty;

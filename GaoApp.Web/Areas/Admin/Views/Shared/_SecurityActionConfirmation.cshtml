@@ -1,0 +1,19 @@
+@{
+    var suffix = Guid.NewGuid().ToString("N");
+    var showPassword = ViewData["ConfirmationPassword"] as bool? != false;
+    var required = ViewData["ConfirmationRequired"] as bool? == true;
+}
+<div class="border rounded p-3 my-3" data-security-confirmation>
+    <p class="small text-muted mb-2">@((string?)ViewData["ConfirmationHelp"] ?? "Thay đổi quyền hoặc mật khẩu cần lý do và mật khẩu của quản trị viên đang thao tác. Khóa/xóa cần lý do.")</p>
+    @if (showPassword)
+    {
+        <div class="mb-3">
+            <label for="administratorPassword-@suffix" class="form-label">Mật khẩu xác minh của bạn</label>
+            <input id="administratorPassword-@suffix" name="AdministratorPassword" type="password" class="form-control" maxlength="128" autocomplete="off" required="@required" />
+        </div>
+    }
+    <div>
+        <label for="securityReason-@suffix" class="form-label">Lý do thao tác</label>
+        <textarea id="securityReason-@suffix" name="Reason" class="form-control" rows="2" maxlength="500" required="@required"></textarea>
+    </div>
+</div>

@@ -18,7 +18,7 @@ public sealed partial class ProductRepository
             .ToListAsync(ct);
         var ids = variants.Select(x => x.Id).ToArray();
         var conversions = await _db.ProductUnitConversions.IgnoreQueryFilters()
-            .Where(x => x.StoreId == storeId && ids.Contains(x.ProductVariantId)).ToListAsync(ct);
+            .AsNoTracking().Where(x => x.StoreId == storeId && ids.Contains(x.ProductVariantId)).ToListAsync(ct);
         var changes = new List<(ProductVariant Variant, ProductUnitConversion? Base)>();
         foreach (var variant in variants)
         {
@@ -38,6 +38,7 @@ public sealed partial class ProductRepository
         // Old documents retain their unit IDs and conversion snapshots. Changing the
         // stock base after use would give those quantities a different meaning.
         var used = await _db.OrderLines.IgnoreQueryFilters().AnyAsync(x => x.StoreId == storeId && changedIds.Contains(x.VariantId), ct)
+            || await _db.DeliveryOrderLines.IgnoreQueryFilters().AnyAsync(x => x.StoreId == storeId && changedIds.Contains(x.VariantId), ct)
             || await _db.StockDocumentLines.IgnoreQueryFilters().AnyAsync(x => changedIds.Contains(x.ProductVariantId), ct)
             || await _db.PurchaseOrderLines.IgnoreQueryFilters().AnyAsync(x => x.StoreId == storeId && x.ProductVariantId.HasValue && changedIds.Contains(x.ProductVariantId.Value), ct)
             || await _db.InventoryTransactions.IgnoreQueryFilters().AnyAsync(x => x.StoreId == storeId && changedIds.Contains(x.ProductVariantId), ct)
@@ -50,7 +51,21 @@ public sealed partial class ProductRepository
         foreach (var change in changes)
         {
             if (change.Base is not null)
-                change.Base.UnitId = unitId;
+            {
+                // UnitId participates in the delivery composite alternate key. EF cannot
+                // mutate tracked keys. Update the existing, unused row in the caller's
+                // transaction, keeping its identity, prices and barcode references.
+                if (_db.Database.CurrentTransaction is null)
+                    throw new InvalidOperationException("Base unit synchronization requires a transaction.");
+                var current = change.Base;
+                var updated = await _db.ProductUnitConversions
+                    .Where(x => x.StoreId == storeId && x.Id == current.Id && x.RowVersion == current.RowVersion)
+                    .ExecuteUpdateAsync(s => s.SetProperty(x => x.UnitId, unitId)
+                        .SetProperty(x => x.UpdatedAtUtc, DateTime.UtcNow)
+                        .SetProperty(x => x.UpdatedBy, _db.CurrentUserId), ct);
+                if (updated != 1)
+                    throw new GaoApp.Application.Common.ConcurrencyException("Đơn vị sản phẩm đã thay đổi. Vui lòng tải lại trước khi lưu.");
+            }
             else
                 _db.ProductUnitConversions.Add(new ProductUnitConversion
                 {

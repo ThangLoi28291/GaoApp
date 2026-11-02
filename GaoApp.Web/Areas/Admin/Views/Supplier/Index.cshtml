@@ -16,6 +16,10 @@
         PermissionCodes.Catalog.Supplier.Create)).Succeeded;
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/customer-directory.mobile.css" asp-append-version="true" />
+}
+
 @section header {
     <div data-gao-ui="modern" class="w-100">
         <div class="gds-page-header gds-page-header--compact">
@@ -137,4 +141,5 @@
 
 @section PageScripts {
     <script src="~/admin/js/suppliers.index.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/customer-directory.mobile.js" asp-append-version="true"></script>
 }

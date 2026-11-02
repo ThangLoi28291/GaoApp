@@ -1,0 +1,17 @@
+@model GaoApp.Application.Storefront.StorefrontOrderInboxPage
+@using GaoApp.Domain.Storefront
+@{ ViewData["Title"] = "Đơn đặt website"; }
+<div class="container-fluid py-3" data-storefront-inbox data-after-id="@Model.NewestId">
+    <h1 class="h3">Đơn đặt website</h1><p>COD hợp lệ vào chờ chuẩn bị; QR chờ máy chủ xác minh tiền trước khi chuẩn bị. Màn hình này đọc đơn và thông báo, chưa thay đổi trạng thái giao/thu tiền.</p>
+    <div class="alert alert-info" role="status"><strong id="storefront-awaiting-count">@Model.AwaitingPreparationCount</strong> đơn đang chờ chuẩn bị.</div>
+    <div id="storefront-new-orders" class="alert alert-success" role="status" hidden><span id="storefront-new-count"></span> đơn mới vừa được tiếp nhận. <a asp-action="Index" class="btn btn-success sf-inbox-action">Tải lại danh sách</a></div>
+    <p id="storefront-poll-state" class="small text-muted" role="status">Tự kiểm tra đơn mới mỗi 30 giây khi trang đang mở.</p>
+    <p>@Model.TotalCount đơn · Trang @Model.Page</p>
+    @if (Model.Items.Count == 0) { <div class="alert alert-secondary">Chưa có đơn website đã tiếp nhận.</div> }
+    else { <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Mã đơn</th><th>Thời điểm UTC</th><th>Người nhận</th><th>Trạng thái</th><th>Thanh toán / tổng phải thu</th><th>Chuẩn bị hàng</th></tr></thead><tbody>
+        @foreach (var order in Model.Items) { <tr><td><a asp-action="Details" asp-route-id="@order.Id" class="sf-inbox-link">@order.Code</a></td><td>@order.CreatedAtUtc.ToString("dd/MM/yyyy HH:mm")</td><td>@order.RecipientName</td><td>@(order.Phase switch { StorefrontOrderPhase.AwaitingPreparation => "Chờ chuẩn bị", StorefrontOrderPhase.Preparing => "Đang chuẩn bị", StorefrontOrderPhase.Shipping => "Đang giao", StorefrontOrderPhase.Delivered => "Đã giao", StorefrontOrderPhase.Completed => "Hoàn tất", StorefrontOrderPhase.Cancelled => "Đã hủy", _ => "Chờ thanh toán" })</td><td>@(order.PaymentMethod == StorefrontPaymentMethod.Qr ? "QR" : "COD") · @order.PaymentState<div>@order.TotalDue.ToString("N0") đ</div></td><td>@(order.HasInventoryShortage ? "Cần chuẩn bị thêm hàng theo chính sách bán âm" : "Đã ghi nhận nhu cầu giữ hàng")</td></tr> }
+    </tbody></table></div> }
+    <nav class="d-flex flex-wrap gap-3" aria-label="Trang đơn website">@if (Model.Page > 1) { <a asp-action="Index" asp-route-page="@(Model.Page - 1)" asp-route-pageSize="@Model.PageSize" class="btn btn-outline-secondary sf-inbox-action">Trang trước</a> }@if ((long)Model.Page * Model.PageSize < Model.TotalCount) { <a asp-action="Index" asp-route-page="@(Model.Page + 1)" asp-route-pageSize="@Model.PageSize" class="btn btn-outline-secondary sf-inbox-action">Trang sau</a> }</nav>
+</div>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/storefront-orders.css" asp-append-version="true" /> }
+@section Scripts { <script src="~/Admin/js/storefront-orders.js" asp-append-version="true" defer></script> }

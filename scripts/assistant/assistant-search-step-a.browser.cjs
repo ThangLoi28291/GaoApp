@@ -1,0 +1,62 @@
+const fs=require('node:fs'),path=require('node:path'),http=require('node:http'),assert=require('node:assert/strict');
+const {createRequire}=require('node:module');
+let chromium;
+try{({chromium}=require('playwright'));}catch{
+ const runtimeRequire=process.env.ASSISTANT_PLAYWRIGHT_REQUIRE||path.join(require('node:os').homedir(),'.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/assistant-test.cjs');
+ ({chromium}=createRequire(runtimeRequire)('playwright'));
+}
+const root=path.resolve(__dirname,'../..'),out=path.join(root,'Logs/assistant-search-step-a');fs.mkdirSync(out,{recursive:true});
+const conversation='11111111-1111-4111-a111-111111111111',product={productId:'101',variantId:'1001',name:'Sữa tươi TH có đường hộp 180ml'};
+let who,requests,failSave,wrongScope,delaySearch,expiry,origin,browser,saveStatus;const cases=[];
+function reset(){who={contractVersion:'1.0',identity:'1',displayName:'Nhân viên TEST',storeName:'GaoMart TEST',scope:{storeId:'1',warehouseId:null,legalEntityId:null},permissions:['assistant.use','assistant.chat','catalog.read','quotes.retail.read']};requests=[];failSave=false;wrongScope=false;delaySearch=0;expiry=Date.now()+60000;saveStatus='pending';}
+const markup=fs.readFileSync(path.join(root,'GaoApp.Web/Areas/Admin/Views/Shared/Components/Assistant/Default.cshtml'),'utf8').replace(/@Url.Content\("([^"]+)"\)/g,(_,value)=>value.replace('~','')).replace('@Html.AntiForgeryToken()','<input name="__RequestVerificationToken" value="TEST-CSRF">').replace(/ asp-append-version="true"/g,'').replace(/(src|href)="~\//g,'$1="/').replace(/<script[^>]+assistant-(?:forms|screen).js[^>]+><\/script>/g,'');
+const server=http.createServer(async(req,res)=>{
+ const url=new URL(req.url,'http://localhost');const json=(value,status=200)=>{res.statusCode=status;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));};
+ if(url.pathname==='/'){res.setHeader('Content-Type','text/html;charset=utf-8');return res.end('<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Trợ lý — kiểm thử tìm hàng</title><body style="font-family:system-ui;background:#f0f4f1"><h1>GaoApp · dữ liệu TEST</h1>'+markup+'</body></html>');}
+ if(url.pathname==='/admin-preview'){res.setHeader('Content-Type','text/html;charset=utf-8');return res.end(fs.readFileSync(path.join(out,'search-page.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link[^>]+(?:https:)?\/\/[^>]+>/gi,''));}
+ if(url.pathname==='/admin/api/assistant/context')return json(who);
+ if(url.pathname==='/admin/api/assistant/search/products'){
+    requests.push({operation:'products',query:url.searchParams.get('query')});const scope={...who.scope};if(delaySearch)await new Promise(r=>setTimeout(r,delaySearch));
+    return json({contractVersion:'1.0',scope:wrongScope?{...scope,storeId:'999'}:scope,items:[product],hasMore:false});
+ }
+ if(url.pathname==='/admin/api/assistant/search/corrections'){
+    let text='';for await(const chunk of req)text+=chunk;const body=JSON.parse(text);requests.push({operation:'correction',body,csrf:req.headers.requestverificationtoken});
+    if(failSave){failSave=false;return json({contractVersion:'1.0',code:'search_unavailable',message:'Chưa xác nhận được thao tác. Thử lại cùng đề xuất.'},503);}
+    return json({contractVersion:'1.0',requestId:body.requestId,scope:who.scope,correction:{id:crypto.randomUUID(),status:saveStatus}});
+ }
+ if(url.pathname.startsWith('/admin/api/assistant/call/')){
+    let text='';for await(const chunk of req)text+=chunk;const input=JSON.parse(text),operation=url.pathname.split('/').at(-1);requests.push({operation,input});
+    const envelope={contractVersion:'1.0',requestId:input.requestId||crypto.randomUUID(),scope:who.scope},body={...envelope,conversationId:conversation,title:'Tra hàng TEST',expiresAt:new Date(Date.now()+60000).toISOString()};
+    if(operation==='Capabilities')return json({...envelope,chat:{available:true}});
+    if(operation==='ResumeConversation'||operation==='GetConversation')return json(body);
+    if(operation==='ListConversations')return json({...envelope,items:[body],nextCursor:null});
+    if(operation==='History')return json({...body,items:[{messageId:'11',role:'user',content:'giá sữa TH có đường 180ml',scope:who.scope,expiresAt:new Date(expiry).toISOString()},{messageId:'12',role:'assistant',content:product.name+' — Hộp: giá lẻ 9.000 đ/Hộp',scope:who.scope,expiresAt:new Date(expiry).toISOString()}],nextCursor:null,feedback:[],productDisplay:null});
+    return json(body);
+ }
+ const assetRoot=path.join(root,'GaoApp.Web/wwwroot'),file=path.resolve(assetRoot,url.pathname.slice(1));
+ if(file.startsWith(assetRoot+path.sep)&&fs.existsSync(file)&&fs.statSync(file).isFile()){res.setHeader('Content-Type',file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':'application/octet-stream');return fs.createReadStream(file).pipe(res);}
+ res.statusCode=404;res.end();
+});
+async function open(page){await page.locator('#gaOpen').click();await page.waitForFunction(()=>!document.querySelector('#gaSend').disabled);}
+async function correction(page){await page.getByRole('button',{name:'Sửa đúng sản phẩm',exact:true}).click();await page.locator('.ga-correction[open]').waitFor();}
+async function choose(page){await page.getByRole('button',{name:'Tìm sản phẩm',exact:true}).click();await page.getByRole('button',{name:'Đúng sản phẩm này',exact:true}).click();}
+async function test(name,run){reset();const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/*',route=>route.request().url().startsWith(origin)?route.continue():route.abort());try{await page.goto(origin);await run(page);assert.deepEqual(errors,[]);cases.push({name,passed:true});console.log('PASS '+name);}catch(error){cases.push({name,passed:false,error:error.message});console.error('FAIL '+name+' '+error.message);}finally{await page.close();}}
+(async()=>{await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin='http://127.0.0.1:'+server.address().port;browser=await chromium.launch({headless:true,channel:'msedge'});try{
+ await test('confirmed correction refers to the assistant message and does not send another AI question',async page=>{
+    await open(page);assert.equal(await page.locator('[data-role="user"] .ga-correction-choice').count(),0);await correction(page);await choose(page);
+    await page.locator('.ga-correction').screenshot({path:path.join(out,'correction-desktop.png')});await page.getByRole('button',{name:'Gửi để duyệt',exact:true}).click();await page.locator('.ga-correction').waitFor({state:'detached'});
+    const sent=requests.find(r=>r.operation==='correction');assert.equal(sent.csrf,'TEST-CSRF');assert.deepEqual({...sent.body,requestId:null},{requestId:null,conversationId:conversation,messageId:'12',query:'giá sữa TH có đường 180ml',productId:101,variantId:1001});assert.equal(await page.locator('#gaInput').inputValue(),product.name);assert.equal(requests.filter(r=>r.operation==='Chat').length,0);
+ });
+ for(const state of ['approved','rejected'])await test('a replay after review shows its actual '+state+' status',async page=>{await open(page);await correction(page);await choose(page);saveStatus=state;await page.getByRole('button',{name:'Gửi để duyệt',exact:true}).click();await page.locator('.ga-correction').waitFor({state:'detached'});assert.match(await page.locator('#gaStatus').textContent(),state==='approved'?/đã được quản trị duyệt/:/đã bị từ chối/);});
+ await test('a product must be selected and an explicit teaching phrase must be present',async page=>{await open(page);await correction(page);assert.equal(await page.getByRole('button',{name:'Gửi để duyệt',exact:true}).isDisabled(),true);await choose(page);await page.locator('#gaTeachQuery').fill('');assert.equal(await page.getByRole('button',{name:'Gửi để duyệt',exact:true}).isDisabled(),true);});
+ await test('Escape closes the correction and keeps the existing chat open',async page=>{await open(page);await page.locator('#gaInput').fill('Bản nháp');await correction(page);await page.keyboard.press('Escape');assert.equal(await page.locator('.ga-correction').count(),0);assert.equal(await page.locator('#gaPanel').isVisible(),true);assert.equal(await page.locator('#gaInput').inputValue(),'Bản nháp');});
+ await test('barcode search preserves leading zeroes',async page=>{await open(page);await correction(page);await page.locator('#gaCorrectionSearch').fill('0008935217400157');await choose(page);assert.equal(requests.find(r=>r.operation==='products').query,'barcode:0008935217400157');});
+ await test('retry reuses the same correction id without resending chat',async page=>{await open(page);await correction(page);await choose(page);failSave=true;await page.getByRole('button',{name:'Gửi để duyệt',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.ga-correction-send').disabled);await page.getByRole('button',{name:'Gửi để duyệt',exact:true}).click();await page.locator('.ga-correction').waitFor({state:'detached'});const posts=requests.filter(r=>r.operation==='correction');assert.equal(posts.length,2);assert.equal(posts[0].body.requestId,posts[1].body.requestId);});
+ await test('a search result from another store is rejected',async page=>{await open(page);await correction(page);wrongScope=true;await page.getByRole('button',{name:'Tìm sản phẩm',exact:true}).click();await page.waitForFunction(()=>!document.querySelector('.ga-correction-search button').disabled);assert.equal(await page.getByRole('button',{name:'Đúng sản phẩm này',exact:true}).count(),0);assert.equal(requests.filter(r=>r.operation==='correction').length,0);});
+ await test('switching store during search discards the old correction dialog',async page=>{await open(page);await correction(page);delaySearch=500;await page.getByRole('button',{name:'Tìm sản phẩm',exact:true}).click();await page.waitForTimeout(100);who={...who,scope:{...who.scope,storeId:'2'}};await page.locator('.ga-correction').waitFor({state:'detached'});assert.equal(requests.filter(r=>r.operation==='correction').length,0);});
+ await test('closing chat aborts a pending correction lookup',async page=>{await open(page);await correction(page);delaySearch=500;await page.getByRole('button',{name:'Tìm sản phẩm',exact:true}).click();await page.evaluate(()=>GaoAssistant.panel.close());await page.waitForTimeout(650);assert.equal(await page.locator('.ga-correction').count(),0);assert.equal(await page.locator('#gaPanel').isVisible(),false);assert.equal(requests.filter(r=>r.operation==='correction').length,0);});
+ await test('expired messages cannot be taught',async page=>{expiry=Date.now()-1000;await open(page);assert.equal(await page.getByRole('button',{name:'Sửa đúng sản phẩm',exact:true}).isDisabled(),true);});
+ await test('correction fits a narrow phone and has accessible touch targets',async page=>{await page.setViewportSize({width:320,height:844});await open(page);await correction(page);await choose(page);const rect=await page.locator('.ga-correction').boundingBox();assert.ok(rect.x>=0&&rect.x+rect.width<=320);for(const button of await page.locator('.ga-correction button').all()){assert.ok((await button.boundingBox()).height>=44);}await page.locator('.ga-correction').screenshot({path:path.join(out,'correction-mobile.png')});});
+ await test('real server-rendered search management page is readable',async page=>{assert.ok(fs.existsSync(path.join(out,'search-page.html')),'Run AssistantSearchHttpTests first');await page.goto(origin+'/admin-preview');await page.locator('#assistantSearchAdmin').waitFor();await page.locator('#assistantSearchAdmin').screenshot({path:path.join(out,'search-admin-desktop.png')});await page.setViewportSize({width:390,height:844});await page.locator('#assistantSearchAdmin').screenshot({path:path.join(out,'search-admin-mobile.png')});});
+ fs.writeFileSync(path.join(out,'browser-results.json'),JSON.stringify({transport:'local mock HTTP',geminiCalls:0,cases},null,2));process.exitCode=cases.some(c=>!c.passed)?1:0;
+}finally{await browser.close();server.close();}})().catch(e=>{console.error(e);server.close();process.exitCode=1;});

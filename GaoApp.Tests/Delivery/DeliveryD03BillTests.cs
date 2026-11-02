@@ -19,7 +19,8 @@ public sealed class DeliveryD03BillTests(DeliveryD02Fixture fixture)
     [Theory]
     [InlineData("1.2345", "1000.25", "1,2345", "1.000,25", "1.235", 1235)]
     [InlineData("0.0001", "10000.25", "0,0001", "10.000,25", "1", 1)]
-    public async Task Bill_preserves_four_decimal_quantity_and_two_decimal_unit_price_with_whole_dong_totals(
+    [InlineData("2", "9500.00", "2", "9.500", "19.000", 19000)]
+    public async Task Bill_preserves_exact_quantity_and_price_without_forced_zero_cents(
         string quantityText, string priceText, string expectedQuantity, string expectedPrice, string expectedMoney, int total)
     {
         using var c = await fixture.CaseAsync(false);
@@ -40,9 +41,9 @@ public sealed class DeliveryD03BillTests(DeliveryD02Fixture fixture)
         Assert.Equal(quantity, savedLine.OrderedQuantity); Assert.Equal(unitPrice, savedLine.UnitPrice);
         Assert.Equal(total, result.Delivery.QuotedTotal); Assert.Equal(total, savedLine.Net);
         var html = await c.Client.Http.GetStringAsync(result.BillUrl);
-        Assert.Equal(html, await c.Client.Http.GetStringAsync(result.BillUrl));
+        GaoApp.Tests.Security.CspHtmlAssert.Equivalent(html, await c.Client.Http.GetStringAsync(result.BillUrl));
         var text = WebUtility.HtmlDecode(html);
-        Assert.Contains($"<td>{expectedQuantity}</td><td>{expectedPrice}</td><td>{expectedMoney}</td>", text);
+        Assert.Contains($"<td>{expectedQuantity}</td><td>{expectedPrice}</td><td><strong>{expectedMoney}</strong></td>", text);
         Assert.Contains($"<strong>{expectedMoney} đ</strong>", text);
         Assert.DoesNotContain("<script>alert('line')</script>", html); Assert.Contains("&lt;script&gt;", html);
         Assert.Contains("data:image/png;base64,", html); Assert.Contains(result.Delivery.Code, text);
@@ -58,7 +59,7 @@ public sealed class DeliveryD03BillTests(DeliveryD02Fixture fixture)
         using var c=await fixture.CaseAsync(false); var request=await Request(c);
         var result=await Create(c,request with {RecipientName="<script>alert('recipient')</script>",Note="<img src=x onerror=alert(1)>"});
         var html=await c.Client.Http.GetStringAsync(result.BillUrl); var reprint=await c.Client.Http.GetStringAsync(result.BillUrl);
-        Assert.Equal(html,reprint); var text=WebUtility.HtmlDecode(html); Assert.Contains("CHỜ SOẠN",text); Assert.Contains("CHƯA THU TIỀN",text); Assert.Contains("148 × 210",text);
+        GaoApp.Tests.Security.CspHtmlAssert.Equivalent(html,reprint); var text=WebUtility.HtmlDecode(html); Assert.Contains("CHỜ SOẠN",text); Assert.Contains("CHƯA THU TIỀN",text); Assert.Contains("148 × 210",text);
         Assert.DoesNotContain("<script>alert('recipient')</script>",html); Assert.DoesNotContain("<img src=x onerror",html);
         Assert.Contains("&lt;script&gt;",html); Assert.DoesNotContain("pos.printing",html); Assert.DoesNotContain("qz-tray",html);
         var encoded=Regex.Match(text,"data:image/png;base64,([A-Za-z0-9+/=]+)").Groups[1].Value;
@@ -85,6 +86,6 @@ public sealed class DeliveryD03BillTests(DeliveryD02Fixture fixture)
         var viewer=await fixture.Web.AddAccountAsync(c.Account.Store with {TerminalId=fixture.Web.Stores[0].TerminalId},PermissionCodes.Delivery.View);
         using var other=await fixture.Web.LoginAsync(viewer);
         await fixture.Web.Database.ExecuteAsync($"UPDATE Users SET IsDeleted=1,IsActive=0 WHERE Id={c.Account.UserId}; UPDATE POSTerminals SET IsDeleted=1,IsActive=0 WHERE Id={c.Account.Store.TerminalId};");
-        using var bill=await other.Http.GetAsync(result.BillUrl);Assert.Equal(HttpStatusCode.OK,bill.StatusCode);Assert.Contains(result.Delivery.Code,await bill.Content.ReadAsStringAsync());
+        using var bill=await other.Http.GetAsync(result.BillUrl);Assert.True(bill.StatusCode == HttpStatusCode.OK,await bill.Content.ReadAsStringAsync());Assert.Contains(result.Delivery.Code,await bill.Content.ReadAsStringAsync());
     }
 }

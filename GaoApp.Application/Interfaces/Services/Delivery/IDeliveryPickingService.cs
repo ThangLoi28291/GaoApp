@@ -4,6 +4,7 @@ namespace GaoApp.Application.Interfaces.Services.Delivery;
 
 public interface IDeliveryPickingService
 {
+    Task<DeliveryPickingCommandAck> CompleteAsync(int id, DeliveryPickingReportRequest request, CancellationToken ct = default);
     Task<DeliveryPickingDetailDto> GetAsync(int id, CancellationToken ct = default);
     Task<IReadOnlyList<DeliveryPickingReplacementOptionDto>> ReplacementOptionsAsync(int id, string? query, int take = 25, CancellationToken ct = default);
     Task<DeliveryPickingCommandAck> ClaimAsync(int id, DeliveryPickingEnvelope request, CancellationToken ct = default);

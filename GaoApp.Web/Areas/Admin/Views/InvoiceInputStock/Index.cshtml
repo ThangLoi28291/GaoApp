@@ -55,7 +55,21 @@
     <section class="card xs-results" aria-busy="true" id="xsResults">
         <div class="xs-results-title"><div><h5 id="xsHeading">Tồn XML theo sản phẩm</h5><p id="xsHint">Nhấp đúp một dòng để xem nhanh và truy vết chứng từ.</p></div><span class="xs-count" id="xsCount">Đang tải…</span></div>
         <div class="xs-table-wrap"><table class="table xs-table"><thead id="xsHead"></thead><tbody id="xsBody"><tr><td>Đang tải dữ liệu…</td></tr></tbody></table></div>
-        <div class="xs-footer"><span id="xsSummary" role="status"></span><div><button type="button" class="btn btn-sm btn-label-secondary" id="xsPrevious">Trang trước</button><button type="button" class="btn btn-sm btn-label-secondary" id="xsNext">Trang sau</button></div></div>
+        <div class="xs-footer">
+            <span id="xsSummary" role="status"></span>
+            <div class="xs-pagination">
+                <nav class="xs-pagination-nav" aria-label="Phân trang tồn XML">
+                    <button type="button" class="btn btn-sm btn-label-secondary" id="xsPrevious" aria-label="Trang trước">‹ Trước</button>
+                    <span class="xs-page-buttons" id="xsPages"></span>
+                    <button type="button" class="btn btn-sm btn-label-secondary" id="xsNext" aria-label="Trang sau">Sau ›</button>
+                </nav>
+                <form id="xsPageJump" class="xs-page-jump" novalidate>
+                    <label for="xsPageNumber">Đến trang</label>
+                    <input id="xsPageNumber" type="number" class="form-control form-control-sm" min="1" max="1" step="1" inputmode="numeric" required disabled />
+                    <button type="submit" class="btn btn-sm btn-label-primary" disabled>Đi</button>
+                </form>
+            </div>
+        </div>
     </section>
     <p class="xs-explanation"><i class="bx bx-info-circle" aria-hidden="true"></i> Tồn đầu vào = tồn đầu chuyển sang + các dòng nhập đã được quản lý xác nhận − xuất / giảm. Số lượng và giá vốn lấy theo giao dịch nhập kho đơn vị gốc; XML chỉ lưu kết quả đối chiếu và hỗ trợ nhận diện lần sau.</p>
     <dialog class="xs-dialog" id="xsDialog" aria-labelledby="xsDialogTitle">
@@ -89,4 +103,9 @@
     {
         <script src="~/Admin/js/receipt-invoice-backfill.js" asp-append-version="true"></script>
     }
+    <script src="~/Admin/js/invoice-operations.mobile.js" asp-append-version="true"></script>
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-operations.mobile.css" asp-append-version="true" />
 }

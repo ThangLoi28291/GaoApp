@@ -234,3 +234,4 @@
 @media (prefers-reduced-motion: reduce) {
     .pr-lines-table td, .pr-unit-option, .pr-scan-frame::after { transition: none; animation: none; }
 }
+.pr-product-note-field{display:block;margin-top:10px}.pr-product-note-field>span{display:block;font-size:12px;color:var(--bs-secondary-color);margin-bottom:5px}.pr-product-note-field textarea{font-size:13px;min-height:62px;resize:vertical}

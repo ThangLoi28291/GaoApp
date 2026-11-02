@@ -6,6 +6,7 @@
     ViewData["Title"] = "Thêm nhân viên";
     var roleOptions = ViewBag.RoleOptions as List<SelectListItem> ?? new();
     var userOptions = ViewBag.UserOptions as List<SelectListItem> ?? new();
+    var canAssignExistingUsers = (bool?)ViewBag.CanAssignExistingUsers == true;
 }
 
 <div class="container-fluid create-userinstore-page">
@@ -97,6 +98,10 @@
                           method="post"
                           autocomplete="off">
                         @Html.AntiForgeryToken()
+                        @if (canAssignExistingUsers)
+                        {
+                            <partial name="_SecurityActionConfirmation" view-data='new ViewDataDictionary(ViewData) { ["ConfirmationHelp"] = "Cấp vai trò ADMIN cần lý do và mật khẩu xác minh của Host Admin." }' />
+                        }
 
                         <div class="row g-4">
                             <div class="col-lg-4">
@@ -236,6 +241,7 @@
                           asp-action="Create"
                           method="post">
                         @Html.AntiForgeryToken()
+                        <partial name="_SecurityActionConfirmation" view-data='new ViewDataDictionary(ViewData) { ["ConfirmationHelp"] = "Cấp vai trò ADMIN cần lý do và mật khẩu xác minh của Host Admin." }' />
 
                         <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
 
@@ -462,3 +468,11 @@
         })();
     </script>
 }
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
+}
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="UserInStores/Create"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

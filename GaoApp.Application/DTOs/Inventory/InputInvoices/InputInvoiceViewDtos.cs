@@ -1,5 +1,7 @@
 ﻿namespace GaoApp.Application.DTOs.Inventory.InputInvoices;
 
+using GaoApp.Application.Services.Inventory;
+
 public sealed class InputInvoiceHeadDto
 {
     public int Id { get; set; }
@@ -45,5 +47,12 @@ public sealed class InputInvoiceDetailDto
 
     public string? VatRate { get; set; }
     public decimal VatAmount { get; set; }
+    public decimal? EffectiveVatAmount =>
+        InputInvoiceVatAmounts.CanDetermineVat(VatRate, VatAmount, LineAmount)
+            ? InputInvoiceVatAmounts.VatAmount(LineAmount, VatRate, VatAmount) : null;
+    public decimal? LineAmountAfterVat => EffectiveVatAmount.HasValue
+        ? LineAmount + EffectiveVatAmount.Value : null;
+    public decimal? UnitPriceAfterVat => Quantity > 0m && LineAmountAfterVat.HasValue
+        ? LineAmountAfterVat.Value / Quantity : null;
     public InputInvoiceItemCatalogResolutionDto? ItemCatalogMapping { get; set; }
 }

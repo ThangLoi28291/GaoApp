@@ -85,6 +85,19 @@ public sealed class InventoryLedgerIndexReadService : IInventoryLedgerIndexReadS
         return result;
     }
 
+    public Task<InventoryLedgerPeriodDto?> GetPeriodAsync(int warehouseId, int productVariantId,
+        DateTime? fromDate, DateTime? toDate, CancellationToken ct = default)
+    {
+        if (warehouseId <= 0 || productVariantId <= 0)
+            return Task.FromResult<InventoryLedgerPeriodDto?>(null);
+        fromDate = fromDate?.Date;
+        toDate = toDate?.Date;
+        if (fromDate.HasValue && toDate.HasValue && fromDate > toDate)
+            (fromDate, toDate) = (toDate, fromDate);
+        return _repository.GetPeriodAsync(_currentStore.StoreId, warehouseId, productVariantId,
+            fromDate, toDate, ct);
+    }
+
     public async Task<InventoryLedgerIndexQuickViewDto?> GetQuickViewAsync(
         int transactionId,
         CancellationToken ct = default)

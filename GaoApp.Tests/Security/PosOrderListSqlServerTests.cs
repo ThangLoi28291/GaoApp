@@ -199,7 +199,8 @@ public sealed class PosOrderListSqlServerTests(ITestOutputHelper output)
                 var result = await repo.QueryOrdersAsync(null, null, null, null, page, 20);
                 output.WriteLine($"8,000 orders, page {page}: old full-entity query {oldMs:F1} ms; indexed headers + vouchers {watch.Elapsed.TotalMilliseconds:F1} ms.");
                 Assert.Equal(expected.Skip((page - 1) * 20).Take(20), result.Items.Select(x => x.OrderId));
-                Assert.Equal(expected.Count, result.Total); Assert.Equal(5, capture.Sql.Count);
+                // Includes the bounded page financial-evidence query used by reconciliation.
+                Assert.Equal(expected.Count, result.Total); Assert.Equal(6, capture.Sql.Count);
                 var sql = Assert.Single(capture.Sql, s => s.Contains("page headers only"));
                 Assert.Contains("ListSortAtUtc", sql); Assert.DoesNotContain("InvoiceIssuanceRoute", sql); Assert.DoesNotContain("HoldNote", sql);
                 Assert.DoesNotContain("SELECT [o].*", sql); Assert.Empty(db.ChangeTracker.Entries());

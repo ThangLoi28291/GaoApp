@@ -7,6 +7,8 @@
 }
 
 @section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-reconciliation.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-manager-detail.css" asp-append-version="true" />
     <style>
         .manager-dashboard {
             padding-bottom: 28px;
@@ -329,6 +331,7 @@
             }
         }
     </style>
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-review.mobile.css" asp-append-version="true" />
 }
 
 @section header {
@@ -478,12 +481,17 @@
         </div>
     </div>
 
+    <div class="manager-card">
+        <div class="manager-card-head"><div><h5 class="manager-card-title">Chi tiết không tiền mặt</h5><div class="manager-card-sub">Phân theo nguồn xác nhận và phương thức · Theo bộ lọc báo cáo</div></div></div>
+        <div class="manager-card-body"><div id="dashboardPaymentBreakdown" aria-live="polite"></div><p class="small text-muted mt-3 mb-0">Số lớn là tiền tính doanh thu. Tiền nhận dư, cọc và công nợ thu riêng được xem trong đối soát từng ca.</p></div>
+    </div>
+
     <div class="manager-grid">
         <div class="manager-card">
             <div class="manager-card-head">
                 <div>
                     <h5 class="manager-card-title">Thống kê theo nhân viên</h5>
-                    <div class="manager-card-sub">Xếp theo tổng doanh thu cao nhất</div>
+                    <div class="manager-card-sub">Bấm tên để xem các ca · Bấm phương thức để xem chi tiết thanh toán</div>
                 </div>
             </div>
 
@@ -607,6 +615,8 @@
             </div>
 
             <div class="modal-body">
+                <div id="detailReconciliation"></div>
+                <details class="mt-4 border rounded-3 p-3"><summary class="fw-bold">Thông tin ca và bàn giao</summary><div id="detailContent" class="mt-3"></div></details>
                 <form id="cashReceiptForm" class="border rounded-3 p-3 mt-3" hidden>
                     <h6 class="fw-bold">Admin nhận tiền và duyệt chốt ca</h6>
                     <p class="small text-muted">Kiểm đếm tiền nhân viên bàn giao trước khi xác nhận. Số tiền đã xác nhận được lưu cố định.</p>
@@ -619,7 +629,6 @@
                     <div id="cashReceiptError" class="text-danger mt-2" role="alert"></div>
                     <button id="btnConfirmCashReceipt" type="submit" class="btn btn-success mt-3">Xác nhận đã nhận tiền / Duyệt ca</button>
                 </form>
-                <div id="detailContent" class="mt-3"></div>
             </div>
 
             <div class="modal-footer">
@@ -636,5 +645,8 @@
 
 @section PageScripts {
     <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift.reconciliation.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos-shift-manager-detail.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos-shift-manager-dashboard.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift-review.mobile.js" asp-append-version="true"></script>
 }

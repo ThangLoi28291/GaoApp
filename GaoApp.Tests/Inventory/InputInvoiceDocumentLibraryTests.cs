@@ -37,6 +37,9 @@ public sealed class InputInvoiceDocumentLibraryTests
     [InlineData("../outside")]
     [InlineData("2026:07:../outside")]
     [InlineData("C:\\outside.xml")]
+    [InlineData("2026:07:../3700723994-042:invoice")]
+    [InlineData("2026:07:3700723994-042:../outside")]
+    [InlineData("2026:07:3700723994-042:invoice:extra")]
     public async Task Logical_key_traversal_or_rooted_path_should_be_rejected(string key)
     {
         using var fixture = new LibraryFixture();
@@ -129,6 +132,107 @@ public sealed class InputInvoiceDocumentLibraryTests
         Assert.True(candidate.HasPdf);
     }
 
+    [Theory]
+    [InlineData("3700723994-042", "3700723994-042", "3700723994-042")]
+    [InlineData("3700723994042", "3700723994-042", "3700723994042")]
+    [InlineData("3700723994-042", "3700723994042", "3700723994-042")]
+    [InlineData("3700723994042", "3700723994042", "3700723994042")]
+    public async Task Branch_tax_code_should_browse_and_preview_both_folder_spellings(
+        string supplierTaxCode, string folderTaxCode, string xmlTaxCode)
+    {
+        using var fixture = new LibraryFixture();
+        var xml = Xml(xmlTaxCode, "0042");
+        fixture.Write($"2026/{folderTaxCode}/07/branch.xml", xml);
+        fixture.Write($"2026/{folderTaxCode}/07/branch.pdf", "%PDF-branch");
+
+        var candidate = Assert.Single(await fixture.Library.BrowseAsync(
+            supplierTaxCode, new InputInvoicePickerBrowseRequest { Year = 2026, Month = 7 }));
+
+        Assert.True(candidate.SelectionAllowed);
+        Assert.True(candidate.FolderTaxCodeMatches);
+        Assert.Equal(folderTaxCode, candidate.SourceSupplierTaxCode);
+        Assert.Equal(xmlTaxCode, candidate.SellerTaxCode);
+        Assert.Equal("0042", (await fixture.Library.ResolveAsync(supplierTaxCode, candidate.DocumentKey)).InvoiceNumber);
+        Assert.Contains(xml, Encoding.UTF8.GetString(await fixture.Library.GetXmlBytesAsync(supplierTaxCode, candidate.DocumentKey)), StringComparison.Ordinal);
+        Assert.Equal("%PDF-branch", Encoding.UTF8.GetString((await fixture.Library.GetPdfAsync(supplierTaxCode, candidate.DocumentKey)).Content).TrimStart('\uFEFF'));
+        // Existing keys continue to resolve when only the hyphenated folder exists.
+        Assert.Equal("0042", (await fixture.Library.ResolveAsync(supplierTaxCode, "2026:07:branch")).InvoiceNumber);
+    }
+
+    [Fact]
+    public async Task Both_branch_folders_with_same_file_name_should_preview_their_own_source()
+    {
+        using var fixture = new LibraryFixture();
+        fixture.Write("2026/3700723994042/07/same.xml", Xml("3700723994-042", "0042"));
+        fixture.Write("2026/3700723994-042/07/same.xml", Xml("3700723994-042", "0043"));
+
+        var candidates = await fixture.Library.BrowseAsync("3700723994-042",
+            new InputInvoicePickerBrowseRequest { Year = 2026, Month = 7 });
+
+        Assert.Equal(2, candidates.Count);
+        Assert.Equal(2, candidates.Select(x => x.DocumentKey).Distinct().Count());
+        foreach (var candidate in candidates)
+            Assert.Equal(candidate.InvoiceNumber,
+                (await fixture.Library.ResolveAsync("3700723994042", candidate.DocumentKey)).InvoiceNumber);
+    }
+
+    [Fact]
+    public async Task Alias_copies_should_deduplicate_without_including_parent_or_other_branches()
+    {
+        using var fixture = new LibraryFixture();
+        fixture.Write("2026/3700723994042/07/copy.xml", Xml("3700723994042", "0042"));
+        fixture.Write("2026/3700723994-042/07/copy.xml", Xml("3700723994-042", "0042"));
+        fixture.Write("2026/3700723994-042/07/copy.pdf", "%PDF-branch");
+        fixture.Write("2026/3700723994/07/parent.xml", Xml("3700723994", "0042"));
+        fixture.Write("2026/3700723994-043/07/other.xml", Xml("3700723994-043", "0042"));
+
+        var candidate = Assert.Single(await fixture.Library.BrowseAsync("3700723994-042",
+            new InputInvoicePickerBrowseRequest { Year = 2026, Month = 7 }));
+
+        Assert.True(candidate.HasPdf);
+        Assert.True(candidate.SelectionAllowed);
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            fixture.Library.ResolveAsync("3700723994-043", candidate.DocumentKey));
+        await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            fixture.Library.ResolveAsync("3700723994", candidate.DocumentKey));
+    }
+
+    [Fact]
+    public async Task Branch_folder_must_still_block_xml_for_a_different_branch()
+    {
+        using var fixture = new LibraryFixture();
+        fixture.Write("2026/3700723994-042/07/wrong.xml", Xml("3700723994-043", "0042"));
+
+        var candidate = Assert.Single(await fixture.Library.BrowseAsync("3700723994-042",
+            new InputInvoicePickerBrowseRequest { Year = 2026, Month = 7 }));
+
+        Assert.True(candidate.XmlValid);
+        Assert.False(candidate.FolderTaxCodeMatches);
+        Assert.False(candidate.SelectionAllowed);
+        Assert.Equal("SellerTaxCodeMismatch", candidate.SelectionBlockReasonCode);
+    }
+
+    [Fact]
+    public async Task Catalog_should_include_hyphenated_branch_folders_and_keep_readable_source_keys()
+    {
+        using var fixture = new LibraryFixture(maxCandidates: 1);
+        fixture.Write("2026/3700723994-042/07/branch.xml", Xml("3700723994-042", "0042"));
+        fixture.Write("2026/3700723994-042/07/second.xml", Xml("3700723994042", "0043"));
+        fixture.Write("2026/not-a-tax-folder/07/ignore.xml", Xml("3700723994-042", "0044"));
+        var candidates = new List<InputInvoicePickerCandidateDto>();
+
+        await foreach (var candidate in fixture.Library.EnumerateCatalogAsync(2026, 7, default))
+            candidates.Add(candidate);
+
+        Assert.Equal(2, candidates.Count);
+        foreach (var candidate in candidates)
+        {
+            Assert.True(candidate.FolderTaxCodeMatches);
+            Assert.Equal("3700723994-042", candidate.SourceSupplierTaxCode);
+            Assert.NotEmpty(await fixture.Library.GetXmlBytesAsync(candidate.SourceSupplierTaxCode!, candidate.DocumentKey));
+        }
+    }
+
     [Fact]
     public async Task Browse_should_enforce_partition_and_candidate_bounds()
     {
@@ -149,13 +253,15 @@ public sealed class InputInvoiceDocumentLibraryTests
             }));
     }
 
-    [Fact]
-    public async Task Reparse_month_partition_should_be_rejected_when_platform_allows_creation()
+    [Theory]
+    [InlineData("0312770607")]
+    [InlineData("3700723994-042")]
+    public async Task Reparse_month_partition_should_be_rejected_when_platform_allows_creation(string supplierTaxCode)
     {
         using var fixture = new LibraryFixture();
         var outside = Path.Combine(Path.GetTempPath(), $"gaoapp-picker-outside-{Guid.NewGuid():N}");
         Directory.CreateDirectory(outside);
-        var link = Path.Combine(fixture.Root, "2026", "0312770607", "07");
+        var link = Path.Combine(fixture.Root, "2026", supplierTaxCode, "07");
         Directory.CreateDirectory(Path.GetDirectoryName(link)!);
         try
         {
@@ -180,7 +286,7 @@ public sealed class InputInvoiceDocumentLibraryTests
         try
         {
             await Assert.ThrowsAsync<BusinessRuleException>(() => fixture.Library.BrowseAsync(
-                "0312770607", new InputInvoicePickerBrowseRequest { Year = 2026, Month = 7 }));
+                supplierTaxCode, new InputInvoicePickerBrowseRequest { Year = 2026, Month = 7 }));
         }
         finally
         {

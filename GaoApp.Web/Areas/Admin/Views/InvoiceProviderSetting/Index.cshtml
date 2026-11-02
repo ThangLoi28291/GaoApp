@@ -5,6 +5,10 @@
     ViewData["Title"] = "Cấu hình hóa đơn điện tử";
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-integration.mobile.css" asp-append-version="true" />
+}
+
 <style>
     .invoice-provider-page .page-title {
         font-weight: 700;
@@ -134,7 +138,7 @@
             <div>
                 <div class="fw-semibold">Danh sách cấu hình</div>
                 <small class="text-muted">
-                    Nên để 1 cấu hình Viettel đang dùng cho mỗi bộ MST + mẫu + ký hiệu.
+                    Nên để 1 cấu hình Viettel đang dùng cho mỗi bộ MST kết nối + mẫu + ký hiệu.
                 </small>
             </div>
 
@@ -151,7 +155,7 @@
                         <th>Nhà cung cấp</th>
                         <th>Xác thực</th>
                         <th>Môi trường</th>
-                        <th>MST</th>
+                        <th>MST kết nối</th>
                         <th>Mẫu / Ký hiệu</th>
                         <th>Tài khoản</th>
                         <th>Thanh toán</th>
@@ -328,7 +332,7 @@
 
                                         <button type="submit"
                                                 class="btn btn-sm @(item.IsActive ? "btn-outline-warning" : "btn-outline-secondary")"
-                                                onclick="return confirm('@(item.IsActive ? "Tắt cấu hình này?" : "Bật cấu hình này?")');">
+                                                data-csp-confirm="@(item.IsActive ? "Tắt cấu hình này?" : "Bật cấu hình này?")">
                                             @if (item.IsActive)
                                             {
                                                 <text><i class="bx bx-pause-circle"></i> Tắt</text>
@@ -349,3 +353,7 @@
     </div>
 
 </div>
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-integration.mobile.js" asp-append-version="true"></script>
+}

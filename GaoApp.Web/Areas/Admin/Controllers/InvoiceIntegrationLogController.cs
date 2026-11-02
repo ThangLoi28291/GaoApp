@@ -9,6 +9,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Authorize(Policy = PermissionCodes.System.Integration.View)]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class InvoiceIntegrationLogController : Controller
 {
     private readonly IInvoiceIntegrationLogService _logService;
@@ -26,11 +27,9 @@ public class InvoiceIntegrationLogController : Controller
         [FromQuery] InvoiceIntegrationLogQueryDto query,
         CancellationToken ct)
     {
-        if (query.Page <= 0)
-            query.Page = 1;
-
-        if (query.PageSize <= 0)
-            query.PageSize = 20;
+        if (!ModelState.IsValid)
+            return ValidationProblem(ModelState);
+        query.NormalizeAndValidate();
 
         var result = await _logService.GetLogsAsync(query, ct);
 

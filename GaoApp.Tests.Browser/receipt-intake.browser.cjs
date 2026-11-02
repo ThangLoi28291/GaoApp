@@ -3,12 +3,15 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {chromium} = require('playwright');
+const ui11 = require('./receipt-mobile-review.cjs'); // UI-11 review hook
 (async () => {
     const info = JSON.parse(await new Promise(resolve => {let data='';process.stdin.on('data',x=>data+=x);process.stdin.on('end',()=>resolve(data));}));
     const output=path.resolve('TestResults/receipt-intake/browser');fs.mkdirSync(output,{recursive:true});
     const browser=await chromium.launch({channel:'chrome',headless:true});
     const employeeContext=await browser.newContext({viewport:{width:1440,height:1000}});
+    await ui11.protect(employeeContext,info.baseUrl); // UI-11 review hook
     const page=await employeeContext.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    page.setDefaultTimeout(20000);page.setDefaultNavigationTimeout(30000); // UI-11 review hook
     const base=`/admin/api/stock-documents/${info.receiptId}`;
     async function login(target,credentials) {
         await target.goto(info.baseUrl+'/admin/account/login');
@@ -96,6 +99,7 @@ const {chromium} = require('playwright');
         await scan('NEW-CASE-0001');await product(page);await page.locator('[data-ri-unit="new"]').click();
         await autocomplete(page,'riReceiveUnit','Kiện');
         await page.locator('#riFactor').fill('48');await page.locator('#riQuantity').fill('2');
+        await ui11.dialog(page,'#receiptIntakeModal','new-unit-intake',ui11.output('intake')); // UI-11 review hook
         assert.match(await page.locator('#riEquivalent').innerText(),/96/);
         await page.screenshot({path:path.join(output,'new-packing-desktop.png')});
         await page.setViewportSize({width:390,height:844});
@@ -133,9 +137,14 @@ const {chromium} = require('playwright');
         assert.equal(await page.locator('#wrdLinesContainer .ri-received-row').count(),2);
         await quantityControls(page,'#wrdLinesContainer');
         const managerContext=await browser.newContext({viewport:{width:1440,height:1000}});
+        if(ui11.enabled())console.log('[UI-11 intake] manager context created'); // UI-11 review hook
+        await ui11.protect(managerContext,info.baseUrl); // UI-11 review hook
         const manager=await managerContext.newPage();manager.on('pageerror',error=>errors.push(error.message));
+        manager.setDefaultTimeout(20000);manager.setDefaultNavigationTimeout(30000);if(ui11.enabled())console.log('[UI-11 intake] manager page created; login next'); // UI-11 review hook
         await login(manager,info);await manager.goto(info.baseUrl+`/admin/stock-documents/${info.receiptId}`);
+        if(ui11.enabled())console.log('[UI-11 intake] manager receipt loaded'); // UI-11 review hook
         assert.equal(await manager.locator('#stockDocumentLinesContainer .ri-received-row').count(),2);
+        await ui11.review(manager,'manager-draft-intake',ui11.output('intake')); // UI-11 review hook
         assert.equal(await manager.locator('#stockDocumentLinesContainer .ri-received-quantity[readonly]').count(),0);
         await quantityControls(manager,'#stockDocumentLinesContainer');
         await page.reload();await page.waitForFunction(()=>window.ReceiptIntake && document.querySelector('#riBaseUnit').options.length>1);
@@ -145,12 +154,14 @@ const {chromium} = require('playwright');
         await manager.locator('#receiptIntakePending:not([hidden])').waitFor();await manager.locator('#receiptIntakePending > summary').click();
         await manager.locator('#riPendingItems .ri-pending-item').nth(1).waitFor();
         assert.equal(await manager.locator('#riPendingItems .ri-pending-item').count(),2);
+        await ui11.review(manager,'manager-pending-intake',ui11.output('intake')); // UI-11 review hook
         assert.equal(await manager.locator('.rq-toolbar:visible').count(),0);
         await manager.screenshot({path:path.join(output,'manager-pending-review.png'),fullPage:true});
         await manager.locator('.commercial-unit-price').first().fill('11');
         for(let n=0;n<2;n++) {
             await manager.locator('[data-ri-review]').first().click();
             await manager.locator('#receiptIntakeReviewModal.show').waitFor();
+            if(n===0)await ui11.dialog(manager,'#receiptIntakeReviewModal','manager-intake-review',ui11.output('intake')); // UI-11 review hook
             await manager.locator('#riApprove').click();await manager.locator('#receiptIntakeReviewModal').waitFor({state:'hidden'});
             await manager.waitForFunction(()=>!window.ReceiptIntake.isSaving());
         }

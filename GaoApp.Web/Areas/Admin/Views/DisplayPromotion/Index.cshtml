@@ -4,6 +4,7 @@
 }
 @section PageStyles {
     <link rel="stylesheet" href="~/Admin/css/display-promotion.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/display-promotion.mobile.css" asp-append-version="true" />
 }
 @section header {
     <div class="dp-heading">
@@ -49,7 +50,7 @@
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label">Loại nội dung</label>
-                                <select id="mediaType" name="MediaType" class="form-select" onchange="syncPreview()">
+                                <select id="mediaType" name="MediaType" class="form-select" data-csp-action="promotion-preview" data-csp-event="change">
                                     <option value="text">Văn bản</option>
                                     <option value="image">Hình ảnh</option>
                                     <option value="video">Video</option>
@@ -110,7 +111,7 @@
                         </div>
                         <div class="mt-3">
                             <label class="form-label">File ảnh/video</label>
-                            <input id="mediaFile" name="mediaFile" type="file" class="form-control" accept="image/*,video/*" onchange="previewFile(this)" />
+                            <input id="mediaFile" name="mediaFile" type="file" class="form-control" accept="image/*,video/*" data-csp-action="promotion-file" data-csp-event="change" />
                             <div class="form-text">
                                 Để trống để giữ hình ảnh hoặc video hiện tại.
                             </div>
@@ -185,4 +186,5 @@
 
 @section Scripts {
     <script src="~/Admin/js/display-promotion.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/display-promotion.mobile.js" asp-append-version="true"></script>
 }

@@ -55,7 +55,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         assert.equal(await page.locator('.g-unit-price').count(), 4);
         assert.ok(await page.locator('.g-unit-price').last().isVisible());
         await page.unroute('**/kiosk/api/products?*', sampleRoute);
-        await action('home').click(); await ready(); await action('login').click(); await ready();
+        await action('menu').click(); await ready(); await action('login').click(); await ready();
         for (const digit of info.customerPhone) await action('key-' + digit).click();
         await action('lookup').click(); await page.locator('.g-stats').waitFor(); await ready();
         assert.match(await page.locator('.g-stat').first().innerText(), /11/); await shot('customer');
@@ -103,7 +103,13 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         await page.setViewportSize({ width: 1024, height: 768 });
         await page.unroute('**/kiosk/api/state', cartImageRoute);
         await page.unroute('**/kiosk/api/poll', cartImageRoute);
-        await action('help').click(); await page.locator('#g-dialog[open]').waitFor(); await ready(); await action('close-dialog').click();
+        // The current cart view has no help button; exercise the device help command for the admin monitor.
+        assert.equal(await page.evaluate(async () => {
+            const state = await (await fetch('/kiosk/api/state')).json();
+            return (await fetch('/kiosk/api/command', { method: 'POST', headers: {
+                'Content-Type': 'application/json', RequestVerificationToken: document.querySelector('[name=__RequestVerificationToken]').value
+            }, body: JSON.stringify({ sessionKey: state.sessionKey, revision: state.revision, commandId: crypto.randomUUID(), action: 'help' }) })).status;
+        }), 200);
         const adminContext = await browser.newContext({ viewport: { width: 1366, height: 900 } }), admin = await adminContext.newPage();
         admin.on('pageerror', e => errors.push(e.message));
         await admin.goto(info.baseUrl + '/admin/account/login'); await admin.locator('[name=UserName]').fill(info.user); await admin.locator('[name=Password]').fill(info.password);
@@ -116,7 +122,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         await admin.waitForFunction(() => document.querySelector('[data-help]').hidden);
         await adminContext.close();
         // Only the browser payment presentation is simulated; server bank evidence/idempotency has separate tests.
-        await page.addScriptTag({ path: path.resolve('GaoApp.Web/wwwroot/Admin/js/pos/qrcodegen.js') });
+        await require('./browser-contract.cjs').addNoncedScript(page, { path: path.resolve('GaoApp.Web/wwwroot/Admin/js/pos/qrcodegen.js') });
         const testQr = await page.evaluate(() => {
             const code = qrcodegen.QrCode.encodeText('KIOSK UI TEST - NOT A PAYMENT', qrcodegen.QrCode.Ecc.MEDIUM);
             const canvas = document.createElement('canvas'), scale = 7, border = 4;
@@ -151,7 +157,10 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         await page.route('**/kiosk/api/poll', route => { paymentPolls.push(route.request().postDataJSON()); return route.fulfill({ json: paymentState }); });
         await page.route('**/kiosk/api/state', route => route.fulfill({ json: paymentState }));
         await action('checkout').click(); await action('pay').click(); await page.locator('.g-payment').waitFor(); await ready(); await shot('payment-ui-only');
-        assert.ok(await fits(), 'QR, countdown and cancellation controls fit 1024×768');
+        assert.ok(await fits(), 'QR, payment status and cancellation controls fit 1024×768');
+        assert.equal(await page.locator('#g-bank-countdown, #g-bank-countdown-label').count(), 0, 'Payment view has no bank countdown');
+        assert.match(await page.locator('.g-payment-status').innerText(), /Tự động xác nhận/);
+        assert.ok(await action('check-payment').isVisible());
         assert.equal(await action('finish').count(), 0);
         await action('cancel-payment').click(); assert.match(await page.locator('#g-dialog').innerText(), /ngân hàng xác nhận chưa nhận tiền/);
         await action('confirm-cancel-payment').click(); await ready();
@@ -167,7 +176,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         paymentPolls.length = 0;
         let polled = page.waitForResponse(r => r.url().endsWith('/kiosk/api/poll'));
         await page.clock.fastForward(10000); await polled;
-        assert.ok(paymentPolls.length > 0); assert.ok(paymentPolls.every(p => !p.checkPayment), 'Callback state is checked without waiting for the bank countdown');
+        assert.ok(paymentPolls.length > 0); assert.ok(paymentPolls.every(p => !p.checkPayment), 'Callback state is checked independently of the fallback bank lookup');
         paymentState = { ...paymentState, mode: 'success', paymentStatus: 'Completed', completedAtUtc: await page.evaluate(() => new Date().toISOString()) };
         await page.clock.fastForward(3000); await page.locator('.g-success').waitFor();
         assert.ok(paymentPolls.every(p => !p.checkPayment), 'Callback confirmation completes before the 30-second deadline');
@@ -175,8 +184,13 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         await page.reload(); await page.locator('.g-payment').waitFor(); paymentPolls.length = 0;
         polled = page.waitForResponse(r => r.url().endsWith('/kiosk/api/poll'));
         await page.clock.fastForward(31000); await polled;
-        await page.waitForFunction(() => document.querySelector('#g-bank-countdown')?.textContent === '00:08');
-        assert.ok(paymentPolls.some(p => p.checkPayment), 'Countdown triggers a direct bank lookup');
+        await page.waitForFunction(() => document.querySelector('#g-bank-status')?.textContent === 'Đã chuyển khoản? Bạn có thể kiểm tra ngay.');
+        assert.equal(await page.locator('#g-bank-countdown, #g-bank-countdown-label').count(), 0);
+        assert.ok(paymentPolls.some(p => p.checkPayment), 'Background fallback still triggers a direct bank lookup');
+        paymentPolls.length = 0;
+        await action('check-payment').click();
+        await page.waitForFunction(() => !document.querySelector('[data-action="check-payment"]')?.disabled);
+        assert.ok(paymentPolls.some(p => p.checkPayment), 'Manual check bypasses the background bank lookup deadline');
         await page.clock.fastForward(100000); await page.locator('.g-payment').waitFor(); assert.equal(await page.locator('.g-idle').count(), 0, 'Pending QR must not reset on idle timeout');
         paymentState = { ...paymentState, mode: 'success', paymentStatus: 'Completed', completedAtUtc: await page.evaluate(() => new Date().toISOString()) };
         await page.clock.fastForward(4000); await page.locator('.g-success').waitFor(); await shot('success'); assert.ok(await action('finish').isVisible()); assert.ok(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight + 1), 'Success action must fit the screen');
@@ -209,6 +223,6 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
         await page.reload(); await page.locator('.g-idle').waitFor();
         await page.setViewportSize({ width: 800, height: 1280 }); await action('menu').click(); await ready(); await shot('portrait');
         assert.deepEqual(errors, []);
-        console.log('PASS: activation, promotions, three touch actions, accentless product search, unit prices, read-only customer history, private session end, burst scanner, pack price, help request, pending QR reload/idle guard, success reset after 15 seconds, bank countdown/callback priority, safe cancellation UI, cart photos, 1024/1280/portrait layouts.');
+        console.log('PASS: activation, promotions, three touch actions, accentless product search, unit prices, read-only customer history, private session end, burst scanner, pack price, help request, pending QR reload/idle guard, success reset after 15 seconds, payment status without countdown, callback priority, background/manual bank checks, safe cancellation UI, cart photos, 1024/1280/portrait layouts.');
     } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

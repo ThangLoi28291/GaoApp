@@ -1,5 +1,6 @@
 (() => {
     'use strict';
+    const cspScriptNonce = document.currentScript?.nonce || '';
     const byId = id => document.getElementById(id), root = byId('wrdCaptureModal');
     if (!root) return;
     const esc = text => String(text ?? '').replace(/[&<>"']/g, x => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));
@@ -15,7 +16,7 @@
         byId('wrdTorch').textContent = 'Bật đèn'; byId('wrdTorch').setAttribute('aria-pressed','false');
         root.querySelector('.wrd-voice-orb').dataset.listening = 'false';
     }
-    function invalidate() { generation++; query++; clearTimeout(timer); stopMedia(); }
+    function invalidate(assistant = true) { generation++; query++; clearTimeout(timer); stopMedia(); if (assistant) window.AssistantReceiving?.invalidate(); }
     function canReceive() { return !saving && !window.ReceiptIntake?.isSaving() && !window.ReceiptQuantityControls?.isBusy() && !window.receivingHasPendingChanges?.(); }
     function show(mode) {
         if (!canReceive()) { setStatus('Hãy lưu xong thay đổi hiện tại trước khi nhận tiếp.', 'error'); return; }
@@ -31,7 +32,7 @@
     function loadDecoder() {
         if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
         if (!decoderPromise) decoderPromise = new Promise((resolve,reject) => {
-            const script = document.createElement('script'); script.src = root.dataset.decoderUrl; script.async = true;
+            const script = document.createElement('script'); script.src = root.dataset.decoderUrl; const decoderSource = new URL(script.src, location.href); if (decoderSource.origin !== location.origin || !decoderSource.pathname.endsWith('/lib/zxing-browser/0.1.5/zxing-browser.min.js')) throw new Error('Invalid local decoder source'); script.nonce = cspScriptNonce; script.async = true;
             script.onload = () => window.ZXingBrowser ? resolve(window.ZXingBrowser) : reject(new Error('Không khởi tạo được bộ quét.'));
             script.onerror = () => { script.remove(); decoderPromise = null; reject(new Error('Không tải được bộ quét. Hãy kiểm tra mạng và bấm Quét lại.')); };
             document.head.append(script);
@@ -77,8 +78,9 @@
                 if (!active || turn !== generation || recognition !== speech) return;
                 let final = '', interim = '';
                 for (let i = 0; i < event.results.length; i++) { if (event.results[i].isFinal) final += event.results[i][0].transcript; else interim += event.results[i][0].transcript; }
-                byId('wrdCaptureTerm').value = (final || interim).trim().slice(0,100);
-                if (final.trim()) { speech.stop(); search(final.trim(), false); }
+                byId('wrdCaptureTerm').value = (final || interim).trim().slice(0,byId('wrdCaptureTerm').maxLength > 0 ? byId('wrdCaptureTerm').maxLength : 100);
+                byId('wrdCaptureTerm').dispatchEvent(new Event('assistant:speech-input'));
+                if (final.trim()) { speech.stop(); void findProduct(final.trim(), 'speech'); }
             };
             speech.onerror = event => {
                 if (!active || turn !== generation) return;
@@ -111,6 +113,18 @@
             byId('wrdCaptureUnknown').hidden = items.length > 0;
         } catch (error) { if (active && request === query) message(error.message, true); }
     }
+    async function findProduct(term, source = 'typed') {
+        clearTimeout(timer); const request = ++query;
+        byId('wrdCaptureResults').replaceChildren(); byId('wrdCaptureUnknown').hidden = true;
+        // Barcodes keep their exact lookup; names and spoken receiving sentences use the assistant.
+        if (!/^\d{8,}$/.test(term.trim()) && window.AssistantReceiving) {
+            message('Đang dùng AI tìm hàng…');
+            const handled = await window.AssistantReceiving.search(source);
+            if (!active || request !== query) return;
+            if (handled) { message('Kết quả AI ở bên dưới. Chọn hàng để kiểm tra trước khi nhận.'); return; }
+        }
+        if (active && request === query) await search(term);
+    }
     function select(item) {
         if (!canReceive()) { message('Hãy chờ lưu xong hàng nhập hiện tại.', true); return; }
         handoff = () => item.isGroupedVariant ? window.openGroupedProductPopup(item) : window.openQtyPopup(item);
@@ -135,14 +149,15 @@
             catch { message('Camera này không bật được đèn. Thử di chuyển đến chỗ sáng hơn.', true); }
         });
         byId('wrdCaptureTerm').addEventListener('input',()=>{ invalidate(); const term=byId('wrdCaptureTerm').value; byId('wrdCaptureResults').replaceChildren(); timer=setTimeout(()=>search(term),220); });
-        byId('wrdCaptureSearch').addEventListener('submit',event=>{event.preventDefault(); invalidate(); search(byId('wrdCaptureTerm').value);});
+        byId('wrdCaptureSearch').addEventListener('submit',event=>{event.preventDefault(); invalidate(false); void findProduct(byId('wrdCaptureTerm').value);});
         byId('wrdCaptureResults').addEventListener('click',event=>{const button=event.target.closest('[data-capture-result]');if(button)select(resultItems[Number(button.dataset.captureResult)]);});
         byId('wrdCaptureUnknown').addEventListener('click',()=>{
             const term=byId('wrdCaptureTerm').value.trim(), code=/^[!-~]+$/.test(term)&&/\d/.test(term);
             handoff=()=>{ if (!window.ReceiptIntake.open(code?term:'',{tab:'new',name:code?'':term})) setStatus('Chưa mở được hàng mới. Hãy chờ tải phiếu xong rồi thử lại.', 'error'); }; modal.hide();
         });
         document.querySelectorAll('[data-popup-step]').forEach(button=>button.addEventListener('click',()=>{
-            if (saving) return; const input=byId('popupQuickQty'); input.value=String(Math.max(1,Number(input.value||0)+Number(button.dataset.popupStep))); input.dispatchEvent(new Event('input',{bubbles:true}));
+            if (saving) return; const input=byId('popupQuickQty'),next=Number(input.value||0)+Number(button.dataset.popupStep);
+            input.value=String(matchMedia('(max-width: 767.98px)').matches ? Math.max(.001,Math.round(next*1000)/1000) : Math.max(1,next)); input.dispatchEvent(new Event('input',{bubbles:true}));
         }));
         byId('wrdAddAndScan')?.addEventListener('click',async()=>{if(saving)return;scanNext=true;const saved=await window.addReceivingLine();if(!saved)scanNext=false;});
         document.addEventListener('receiving:save',event=>{
@@ -163,6 +178,6 @@
         window.addEventListener('pagehide',invalidate);
         window.addEventListener('beforeunload',event=>{if(saving || failed || window.receivingHasPendingChanges?.() || window.ReceiptIntake?.hasDraft?.()){event.preventDefault();event.returnValue='';}});
     }
-    window.WarehouseReceivingMobile = {openCamera:()=>show('camera')};
+    window.WarehouseReceivingMobile = {openCamera:()=>show('camera'), searchManually:()=>search(byId('wrdCaptureTerm').value), applyAssistant:next=>{if(!active||!canReceive())return false;handoff=next;modal.hide();return true;}};
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

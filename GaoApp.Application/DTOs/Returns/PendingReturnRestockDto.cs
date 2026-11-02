@@ -14,6 +14,11 @@ public sealed class PendingReturnRestockDto
 
 public sealed class PendingReturnRestockItemDto
 {
+    public int ReturnLineId { get; set; }
+    public decimal ReceivedQuantity { get; set; }
+    public string? ReceivedUnitName { get; set; }
+    public decimal ReceivedBaseQuantity { get; set; }
+    public decimal RestockedBaseQuantity { get; set; }
     public string ItemName { get; set; } = "";
     public string WarehouseName { get; set; } = "";
     public decimal BaseQuantity { get; set; }

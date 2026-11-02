@@ -2,20 +2,46 @@
     'use strict';
 
     const app = document.getElementById('customerDisplayApp');
+    const receiptDisplay = window.CustomerDisplayReceipt.create({
+        app,
+        onShow() {
+            clearTimeout(successTimer);
+            hidePaymentOverlay();
+            document.getElementById('cdSuccessOverlay').classList.add('d-none');
+            app.classList.add('is-thanking');
+        },
+        onClose() {
+            app.classList.remove('is-thanking');
+            scheduleRefresh('receipt-closed');
+        }
+    });
 
     let connection = null;
 
     let refreshTimer = null;
     let pollingTimer = null;
     let backupPollingTimer = null;
-    let depositQrPollingTimer = null;
-    let activeDepositQr = false;
+    let paymentStatePollingTimer = null;
 
     let lastLoadAt = 0;
     let isLoading = false;
     let pendingReason = null;
+    let screenVersion = 0;
 
     let successTimer = null;
+
+    const paymentDisplay = window.CustomerDisplayPayment.create({
+        storeId: getStoreId, terminalId: getTerminalId,
+        qr: showPaymentQr, preview: showPaymentPreview, recorded: showPaymentSuccess, hide: hidePaymentOverlay,
+        clear() {
+            hidePaymentOverlay();
+            clearTimeout(successTimer);
+            document.getElementById('cdSuccessOverlay').classList.add('d-none');
+            if (!receiptDisplay.isActive()) app.classList.remove('is-thanking');
+        },
+        unavailable() { setConnectionState('Mất kết nối · Chờ xác nhận từ quầy', false); },
+        available() { setConnectionState('Sẵn sàng phục vụ', true); }
+    });
 
     let lastLineSignatureMap = {};
     let lastChangedLineKey = null;
@@ -318,6 +344,7 @@
         }
 
         app.classList.add('has-promotions');
+        app.classList.remove('has-festival-idle');
 
         const type = String(item.mediaType || 'text').toLowerCase();
         const title = escapeHtml(item.title || app.dataset.storeName || 'Cửa hàng');
@@ -421,6 +448,7 @@
         stage.classList.remove('is-fullscreen-media');
         idle?.classList.remove('has-fullscreen-media');
         app.classList.remove('has-promotions');
+        app.classList.add('has-festival-idle');
 
         stage.replaceChildren(document.getElementById('cdIdleFallbackTemplate').content.cloneNode(true));
     }
@@ -556,7 +584,7 @@
 
             if (timeEl) {
                 timeEl.textContent =
-                    now.toLocaleTimeString('vi-VN', {
+                    now.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
                         hour: '2-digit',
                         minute: '2-digit'
                     });
@@ -564,7 +592,7 @@
 
             if (dateEl) {
                 dateEl.textContent =
-                    now.toLocaleDateString('vi-VN', {
+                    now.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
                         weekday: 'long',
                         day: '2-digit',
                         month: '2-digit',
@@ -654,10 +682,13 @@
             lastHeroLineKey = signature;
         }
     }
+    function renderCustomer(order) {
+        window.CustomerDisplayCustomer.render(order, ['cdCustomer', 'cdPaymentCustomer', 'cdIdleCustomer']);
+        document.getElementById('cdIdleCustomerSection').hidden = !(Number(order?.customerId ?? order?.customer?.id) > 0);
+    }
     function renderEmpty(message) {
         cartSignature = '';
-        setText('cdCustomerName', 'Quý khách');
-        setText('cdCustomerPhone', '');
+        renderCustomer(null);
         document.getElementById('cdSettlement').hidden = true;
         const box = document.getElementById('cdCartLines');
 
@@ -675,7 +706,6 @@
         setText('cdPaid', '0');
         setText('cdBalance', '0');
         setText('cdChange', '0');
-        setText('cdItemCount', '0');
         setText('cdQtyCount', '0');
 
         renderHeroProduct(null);
@@ -711,12 +741,12 @@
         }).join('');
         box.querySelectorAll('img').forEach(img => { img.onerror = () => img.remove(); });
         box.scrollTop = 0;
-        setText('cdItemCount', formatMoney(lines.length));
         setText('cdQtyCount', formatMoney(lines.reduce((sum, line) => sum + Number(line.quantity || 0), 0)));
         lastLineSignatureMap = Object.fromEntries(lines.map(line => [buildLineKey(line), buildLineSignature(line)]));
         startCartScroll();
     }
     function renderDraft(draft) {
+        receiptDisplay.onDraft(draft);
         if (!draft) {
             renderEmpty('Chưa có giỏ hiện tại');
             return;
@@ -724,20 +754,7 @@
 
         renderLines(draft.lines || []);
 
-        setText(
-            'cdCustomerName',
-            draft?.customerName ||
-            draft?.customer?.name ||
-            'Quý khách'
-        );
-
-        setText(
-            'cdCustomerPhone',
-            draft?.customerPhone ||
-            draft?.customer?.phone ||
-            draft?.customer?.phoneNumber ||
-            ''
-        );
+        renderCustomer(draft);
 
         setText('cdGrandTotal', formatMoney(draft.grandTotal));
         setText('cdSubtotal', formatMoney(draft.subtotal));
@@ -770,6 +787,7 @@
 
         isLoading = true;
         lastLoadAt = now;
+        const version = screenVersion;
 
         try {
             const res = await fetch('/admin/pos/screen', {
@@ -786,7 +804,11 @@
             }
 
             const screen = await res.json();
-            setConnectionState('Sẵn sàng phục vụ', true);
+            if (version !== screenVersion) {
+                pendingReason = 'screen-after-finalize';
+                return;
+            }
+            setConnectionState(paymentDisplay.isAvailable() ? 'Sẵn sàng phục vụ' : 'Đang kiểm tra trạng thái thanh toán', paymentDisplay.isAvailable());
 
             renderDraft(screen?.currentDraft || null);
         }
@@ -815,6 +837,7 @@
     // =========================================================
 
     function showPaymentPreview(payload) {
+        if (receiptDisplay.isActive()) receiptDisplay.close();
         const overlay = document.getElementById('cdPaymentOverlay');
         const title = document.getElementById('cdPaymentTitle');
         const message = document.getElementById('cdPaymentMessage');
@@ -850,6 +873,7 @@
     }
 
     function showPaymentQr(payload) {
+        if (receiptDisplay.isActive()) receiptDisplay.close();
         const overlay = document.getElementById('cdPaymentOverlay');
         const title = document.getElementById('cdPaymentTitle');
         const message = document.getElementById('cdPaymentMessage');
@@ -857,8 +881,6 @@
         const qrImg = document.getElementById('cdQrImage');
 
         if (!overlay) return;
-
-        activeDepositQr = payload?.kind === 'deposit';
 
         overlay.classList.remove('d-none');
         overlay.classList.add('is-qr-fullscreen');
@@ -891,7 +913,6 @@
     }
 
     function hidePaymentOverlay() {
-        activeDepositQr = false;
         app.classList.remove('is-paying');
         const overlay = document.getElementById('cdPaymentOverlay');
         const qrBox = document.getElementById('cdQrBox');
@@ -912,6 +933,9 @@
     }
 
     function showPaymentSuccess(payload) {
+        // A committed bill takes priority over late payment notifications for that bill.
+        if (payload?.kind !== 'deposit' && receiptDisplay.isActive()) return;
+        if (receiptDisplay.isActive()) receiptDisplay.close();
         hidePaymentOverlay();
         app.classList.add('is-thanking');
 
@@ -956,7 +980,7 @@
             }
 
             if (message) {
-                message.textContent = 'Vui lòng thanh toán phần còn lại';
+                message.textContent = balance > 0 ? 'Vui lòng thanh toán phần còn lại' : 'Đã ghi nhận đủ tiền. Chờ hoàn tất đơn hàng.';
             }
 
             if (amountBox) {
@@ -967,6 +991,8 @@
             }
         }
 
+        if (message && payload?.confirmationSource) message.textContent += ' ' + payload.confirmationSource;
+
         scheduleRefresh('payment-success');
 
         successTimer = setTimeout(function () {
@@ -976,6 +1002,10 @@
     }
 
     function resetCustomerDisplayAfterFinalize() {
+        if (receiptDisplay.isActive()) {
+            scheduleRefresh('receipt-reset');
+            return;
+        }
         clearTimeout(successTimer);
         app.classList.remove('is-thanking');
 
@@ -997,8 +1027,6 @@
     // =========================================================
 
     function handlePosEvent(eventData) {
-        console.log('Customer display SignalR event:', eventData);
-
         const eventType = String(
             eventData?.eventType ||
             eventData?.type ||
@@ -1006,37 +1034,36 @@
             ''
         ).toLowerCase();
 
-        const payload = eventData?.payload || {};
+        // Store groups also receive other terminals' events. Never let them alter this payment display.
+        const ownTerminal = String(eventData?.storeId) === String(getStoreId()) &&
+            String(eventData?.terminalId) === String(getTerminalId());
+        if (ownTerminal && (eventType.includes('payment') || eventType.includes('qr') || eventType.includes('cart') ||
+            eventType.includes('draft') || eventType.includes('customer') || eventType.includes('order')))
+            void paymentDisplay.invalidate();
 
-        if (eventType === 'customer_payment_preview') {
-            showPaymentPreview(payload);
+        if (eventType === 'customer_changed' || eventData?.customerChanged === true) {
+            if (String(eventData.storeId) !== String(getStoreId()) || String(eventData.terminalId) !== String(getTerminalId())) return;
+            ++screenVersion;
+            // Selecting the next customer takes priority over the previous customer's bill.
+            if (receiptDisplay.isActive()) receiptDisplay.close();
+            clearTimeout(successTimer);
+            document.getElementById('cdSuccessOverlay').classList.add('d-none');
+            app.classList.remove('is-thanking');
+            renderCustomer(null);
+            scheduleRefresh('customer-changed');
             return;
         }
 
-        if (eventType === 'customer_payment_qr_created') {
-            showPaymentQr(payload);
+        if (eventType === 'order_finalized') {
+            if (String(eventData.storeId) === String(getStoreId()) && String(eventData.terminalId) === String(getTerminalId())) screenVersion++;
+            receiptDisplay.onFinalized(eventData);
+            scheduleRefresh('order-finalized');
             return;
         }
 
-        if (eventType === 'customer_payment_hide') {
-            hidePaymentOverlay();
-            scheduleRefresh('customer-payment-hide');
-            return;
-        }
-
-        if (eventType === 'customer_payment_changed') {
-            hidePaymentOverlay();
-            scheduleRefresh('customer-payment-changed');
-            return;
-        }
-
-        if (eventType === 'customer_payment_success') {
-            showPaymentSuccess(payload);
-            return;
-        }
-
-        if (eventType === 'customer_display_reset') {
-            resetCustomerDisplayAfterFinalize();
+        // Legacy financial payloads are hints only; render exclusively from the authenticated state API.
+        if (eventType.startsWith('customer_payment_') || eventType === 'customer_display_reset') {
+            if (ownTerminal) scheduleRefresh('customer-payment-state');
             return;
         }
 
@@ -1109,6 +1136,7 @@
             stopFallbackPolling();
 
             await joinGroupsSafe();
+            void paymentDisplay.refresh();
 
             scheduleRefresh('signalr-reconnected');
         });
@@ -1193,30 +1221,10 @@
         }, 15000);
     }
 
-    async function loadActiveDepositQr() {
-        try {
-            const response = await fetch('/admin/customer-deposit/active-qr', {
-                credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' }
-            });
-            if (response.status === 204) {
-                if (activeDepositQr) hidePaymentOverlay();
-                return;
-            }
-            if (!response.ok) return;
-            const qr = await response.json();
-            showPaymentQr({
-                ...qr,
-                kind: 'deposit',
-                title: 'Quét mã để đặt cọc',
-                intro: 'Chuyển tiền đặt cọc đến'
-            });
-        } catch { /* SignalR remains the primary real-time path. */ }
-    }
-
-    function startDepositQrPolling() {
-        if (depositQrPollingTimer) return;
-        void loadActiveDepositQr();
-        depositQrPollingTimer = setInterval(loadActiveDepositQr, 3000);
+    function startPaymentStatePolling() {
+        if (paymentStatePollingTimer) return;
+        void paymentDisplay.refresh();
+        paymentStatePollingTimer = setInterval(() => paymentDisplay.refresh(), 2000);
     }
 
     // =========================================================
@@ -1226,7 +1234,9 @@
     document.addEventListener('DOMContentLoaded', async function () {
         startIdleClock();
         loadDisplayInfo();
-        startDepositQrPolling();
+        startPaymentStatePolling();
+        window.addEventListener('offline', () => paymentDisplay.invalidate());
+        window.addEventListener('online', () => paymentDisplay.refresh());
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) loadDisplayInfo();
         });

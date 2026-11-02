@@ -92,6 +92,8 @@ window.PosPayment = (function () {
             renderPayments,
             openConfirmModal,
             openReceiptPrint,
+            prepareReceiptPrint,
+            discardReceiptPrint,
             requestScreenRefresh,
             applyDraftActionSuccess,
             applyScreenActionSuccess
@@ -105,6 +107,8 @@ window.PosPayment = (function () {
         } = window.PosCommon;
 
         let currentPaymentQr = null;
+        let paymentCollectionInFlight = false;
+        const finalizationJobs = new Map();
         let qrPopupHiding = false, queuedQrPopup = null;
         const qrModalElement = document.getElementById('paymentQrModal');
         qrModalElement?.addEventListener('hide.bs.modal', () => { qrPopupHiding = true; });
@@ -119,6 +123,8 @@ window.PosPayment = (function () {
             getOrderId: () => getCurrentDraft()?.orderId,
             onOpen: qr => {
                 // Opening a saved QR does not change the amount entered for another payment.
+                creditModeActive = false;
+                syncCreditModePresentation();
                 if (payMethod) payMethod.value = '1';
                 syncPaymentMethodButtons();
                 updateAddPaymentButtonText();
@@ -148,6 +154,27 @@ window.PosPayment = (function () {
             qrHistory?.refresh();
         }
         window.addEventListener('acb:completed', event => applyQrPaymentResult(event.detail));
+        window.addEventListener('bank-notification:completed', async event => {
+            const data = event.detail;
+            if (data.printUrl) openReceiptPrint(data.orderId, '80', true, data.finalized === true, null,
+                Number(getCurrentDraft()?.orderId) === Number(data.orderId) && getCurrentDraft()?.askBeforePrintingReceipt === true);
+            await applyQrPaymentResult(data);
+        });
+        window.addEventListener('bank-notification:tracking', event => {
+            if (Number(currentPaymentQr?.id) === Number(event.detail.qrId)) {
+                if (event.detail.ended) { clearPaymentQrUi(); void requestScreenRefresh({ reason: 'qr-wait-ended', force: true, scope: 'full' }); }
+                else renderQrConfirmationState(currentPaymentQr);
+            }
+        });
+        window.addEventListener('bank-notification:manual-fallback', async event => {
+            const item = event.detail;
+            if (Number(getCurrentDraft()?.orderId) !== Number(item.orderId)) {
+                showSuccess?.(`Đã bỏ qua gợi ý. Mở đơn #${item.orderId} để kiểm tra chuyển khoản thủ công.`);
+                return;
+            }
+            if (Number(currentPaymentQr?.id) === Number(item.qrId)) enterManualQrMode();
+            else { await qrHistory?.refresh(); await qrHistory?.open(item.qrId); }
+        });
         window.addEventListener('acb:payment-changed', () => {
             if (paymentModalEl?.classList.contains('show')) qrHistory?.refresh();
         });
@@ -171,8 +198,8 @@ window.PosPayment = (function () {
             }
 
             let box =
-                paymentModalEl.querySelector(
-                    '#paymentInlineErrorBox'
+                document.getElementById(
+                    'paymentInlineErrorBox'
                 );
 
             if (box) {
@@ -417,7 +444,9 @@ window.PosPayment = (function () {
                     return 'Ghi nhận tiền mặt';
 
                 case 1:
-                    return 'Ghi nhận chuyển khoản';
+                    return currentPaymentQr && !currentPaymentQr.readOnly
+                        ? currentPaymentQr.automaticConfirmation ? 'Kiểm tra ACB' : isManualQrMode(currentPaymentQr) ? 'Đã nhận chuyển khoản' : 'Xem QR đang chờ'
+                        : 'Ghi nhận chuyển khoản';
 
                 case 2:
                     return 'Ghi nhận thẻ';
@@ -455,7 +484,7 @@ window.PosPayment = (function () {
 
             paymentModalEl?.setAttribute(
                 'data-payment-method',
-                String(method)
+                creditModeActive ? 'credit' : String(method)
             );
 
             getPaymentMethodButtons()
@@ -469,7 +498,7 @@ window.PosPayment = (function () {
                         );
 
                     const active =
-                        buttonMethod === method;
+                        !creditModeActive && buttonMethod === method;
 
                     button.classList.toggle(
                         'is-active',
@@ -716,15 +745,29 @@ window.PosPayment = (function () {
         const creditPanel = document.getElementById('posCreditPanel');
         let creditModeActive = false;
         function syncCreditModePresentation() {
+            syncPaymentMethodButtons();
             creditToggle?.classList.toggle('is-active', creditModeActive);
             creditToggle?.setAttribute('aria-pressed', String(creditModeActive));
             creditToggle?.setAttribute('aria-expanded', String(creditModeActive));
             if (creditPanel) creditPanel.hidden = !creditModeActive;
+            paymentModalEl?.querySelectorAll('[data-payment-collection]').forEach(section => {
+                section.hidden = creditModeActive;
+            });
             if (btnFinalizeFromPaymentModal) {
                 btnFinalizeFromPaymentModal.textContent = creditModeActive ? 'Chốt đơn và ghi công nợ' : 'Chốt đơn';
                 btnFinalizeFromPaymentModal.classList.toggle('btn-warning', creditModeActive);
                 btnFinalizeFromPaymentModal.classList.toggle('btn-success', !creditModeActive);
             }
+        }
+        function selectCreditMode() {
+            syncCreditPresentation();
+            if (!creditToggle || creditToggle.hidden || isBusyPaymentAction()) return;
+            creditModeActive = true;
+            clearPaymentInlineError();
+            syncCreditModePresentation();
+            hidePaymentPreviewOnCustomerDisplay();
+            refreshLocksSafe();
+            btnFinalizeFromPaymentModal?.focus();
         }
         function syncCreditPresentation() {
             syncDepositPresentation();
@@ -744,12 +787,7 @@ window.PosPayment = (function () {
             if (balanceBefore) balanceBefore.textContent = formatMoneyLocal(existing);
             if (balanceAfter) balanceAfter.textContent = formatMoneyLocal(existing + getDraftBalance(draft));
         }
-        creditToggle?.addEventListener('click', () => {
-            syncCreditPresentation();
-            if (!creditToggle.hidden) creditModeActive = true;
-            syncCreditModePresentation();
-            refreshLocksSafe();
-        });
+        creditToggle?.addEventListener('click', selectCreditMode);
         async function finalizeCreditFromModal() {
             const draft = getCurrentDraft();
             if (!draft?.customerCanBuyOnCredit || navigator.onLine === false) return;
@@ -1058,6 +1096,8 @@ window.PosPayment = (function () {
             eventType,
             payload
         ) {
+            // Local receipts remain pending synchronization; they cannot assert server confirmation.
+            if (window.PosOffline?.localMode?.()) return;
             try {
                 const connection =
                     await ensureCustomerDisplayConnection();
@@ -1098,6 +1138,10 @@ window.PosPayment = (function () {
         }
 
         function sendPaymentPreviewToCustomerDisplay() {
+            if (creditModeActive) {
+                hidePaymentPreviewOnCustomerDisplay();
+                return;
+            }
             const draft =
                 getCurrentDraft();
 
@@ -1113,61 +1157,25 @@ window.PosPayment = (function () {
                     payAmount?.value || 0
                 );
 
-            const balance =
-                getDraftBalance(
-                    draft
-                );
-
-            const expectedChange =
-                Math.max(
-                    0,
-                    amount - balance
-                );
-
-            const expectedBalance =
-                Math.max(
-                    0,
-                    balance - amount
-                );
-
             sendCustomerDisplayEvent(
                 'customer_payment_preview',
                 {
+                    orderId: draft.orderId,
                     method: method,
 
                     amount:
                         Number.isFinite(amount)
                             ? amount
-                            : 0,
-
-                    balance: balance,
-
-                    expectedBalance:
-                        expectedBalance,
-
-                    expectedChange:
-                        expectedChange,
-
-                    grandTotal:
-                        Number(
-                            draft.grandTotal ||
-                            0
-                        ),
-
-                    paidTotal:
-                        Number(
-                            draft.paidTotal ||
-                            draft.paidAmount ||
-                            0
-                        )
+                            : 0
                 }
             );
         }
 
         function hidePaymentPreviewOnCustomerDisplay() {
+            const orderId = getCurrentDraft()?.orderId;
             sendCustomerDisplayEvent(
-                'customer_payment_hide',
-                {}
+                orderId ? 'customer_payment_hide' : 'customer_payment_refresh',
+                { orderId }
             );
         }
 
@@ -1175,10 +1183,8 @@ window.PosPayment = (function () {
             payload
         ) {
             sendCustomerDisplayEvent(
-                'customer_payment_success',
-                payload || {
-                    durationMs: 1800
-                }
+                'customer_payment_refresh',
+                {}
             );
         }
 
@@ -1186,8 +1192,8 @@ window.PosPayment = (function () {
             payload
         ) {
             sendCustomerDisplayEvent(
-                'customer_display_reset',
-                payload || {}
+                'customer_payment_refresh',
+                {}
             );
         }
 
@@ -1228,6 +1234,10 @@ window.PosPayment = (function () {
         function focusPayAmountInput() {
             setTimeout(
                 function () {
+                    if (creditModeActive) {
+                        btnFinalizeFromPaymentModal?.focus();
+                        return;
+                    }
                     payAmount?.focus();
                     payAmount?.select?.();
                 },
@@ -1408,6 +1418,7 @@ window.PosPayment = (function () {
             if (payProvider) payProvider.value = pending.provider || '';
             updateAddPaymentButtonText();
             toggleReferenceFieldsByMethod();
+            renderPaymentPreviewSafe();
             showPaymentInlineError('Có lần thu trước chưa xác định kết quả. Bấm ghi nhận để đối chiếu lại, hệ thống sẽ không thu trùng.', 'warning');
             return true;
         }
@@ -1528,9 +1539,24 @@ window.PosPayment = (function () {
          * ===================================================== */
 
         async function addPayment(options) {
+            if (creditModeActive) return;
+            if (isBusyPaymentAction()) return;
+            const orderId = Number(getCurrentDraft()?.orderId);
+            paymentCollectionInFlight = true;
+            refreshLocksSafe();
+            try { return await addPaymentCore(options); }
+            catch (error) { discardReceiptPrint?.(orderId); throw error; }
+            finally { paymentCollectionInFlight = false; refreshLocksSafe(); }
+        }
+
+        async function addPaymentCore(options) {
             let hasPendingCollection = false;
             try { hasPendingCollection = restorePendingCollectionInputs(); } catch (error) { showPaymentInlineError('Không đọc được lần thu đang chờ.', 'warning'); return; }
-            if (!hasPendingCollection && isBankTransferMethod() && currentPaymentQr) return await confirmPaymentQrPaid();
+            if (!hasPendingCollection && isBankTransferMethod() && currentPaymentQr) {
+                if (currentPaymentQr.automaticConfirmation || isManualQrMode(currentPaymentQr)) return await confirmPaymentQrPaid();
+                openPaymentQrPopup();
+                return;
+            }
 
             clearPaymentInlineError();
 
@@ -1573,7 +1599,11 @@ window.PosPayment = (function () {
                 return;
             }
             const { method, amount } = collectionIntent.body;
-            return await runPosAction(
+            const collectionOrderId = Number(getCurrentDraft()?.orderId);
+            if (method === 0 && amount >= getDraftBalance(getCurrentDraft()))
+                prepareReceiptPrint?.(collectionOrderId, getCurrentDraft()?.askBeforePrintingReceipt === true);
+            let autoFinalizeOrderId = null;
+            const result = await runPosAction(
                 posState,
                 `payment:add:${method}`,
 
@@ -1779,12 +1809,7 @@ window.PosPayment = (function () {
                                         SUCCESS_HOLD_MS
                                 };
 
-                                setTimeout(
-                                    async function () {
-                                        await finalizeRecordedPayment(draft.orderId);
-                                    },
-                                    150
-                                );
+                                autoFinalizeOrderId = Number(draft.orderId);
 
                                 return;
                             }
@@ -1820,12 +1845,7 @@ window.PosPayment = (function () {
                                 /*
                                  * Không finalize lồng trong onSuccess.
                                  */
-                                setTimeout(
-                                    async function () {
-                                        await finalizeRecordedPayment(draft.orderId);
-                                    },
-                                    150
-                                );
+                                autoFinalizeOrderId = Number(draft.orderId);
 
                                 return;
                             }
@@ -1839,6 +1859,12 @@ window.PosPayment = (function () {
                         }
                 }
             );
+            // runPosAction has released its network scopes here. Keep the local
+            // collection latch through finalization so repeated Enter/clicks cannot
+            // enter between recording money and closing the same paid order.
+            if (autoFinalizeOrderId && result?.ok !== false) return await finalizeRecordedPayment(autoFinalizeOrderId);
+            discardReceiptPrint?.(collectionOrderId);
+            return result;
         }
 
         /* =====================================================
@@ -1848,6 +1874,18 @@ window.PosPayment = (function () {
         async function finalizeRecordedPayment(orderId = Number(getCurrentDraft()?.orderId), creditRequest = null) {
             const targetOrderId = Number(orderId);
             if (!Number.isInteger(targetOrderId) || targetOrderId <= 0) return;
+            if (finalizationJobs.has(targetOrderId)) return await finalizationJobs.get(targetOrderId);
+            prepareReceiptPrint?.(targetOrderId, getCurrentDraft()?.askBeforePrintingReceipt === true);
+            const job = Promise.resolve().then(() => finalizeRecordedPaymentCore(targetOrderId, creditRequest));
+            finalizationJobs.set(targetOrderId, job);
+            try {
+                const result = await job;
+                if (result?.ok === false) { finalizationJobs.delete(targetOrderId); discardReceiptPrint?.(targetOrderId); }
+                return result;
+            } catch (error) { finalizationJobs.delete(targetOrderId); discardReceiptPrint?.(targetOrderId); throw error; }
+        }
+
+        async function finalizeRecordedPaymentCore(targetOrderId, creditRequest) {
             const cashSummary = Number(getCurrentDraft()?.orderId) === targetOrderId
                 ? window.PosCheckoutFeedback?.cashSummary(getCurrentDraft()) : null;
             const askBeforePrintingReceipt = Number(getCurrentDraft()?.orderId) === targetOrderId && getCurrentDraft()?.askBeforePrintingReceipt === true;
@@ -1995,6 +2033,7 @@ window.PosPayment = (function () {
         }
 
         async function finalizeFromPaymentModal() {
+            if (isBusyPaymentAction()) return;
             clearPaymentInlineError();
 
             const draft =
@@ -2348,8 +2387,10 @@ window.PosPayment = (function () {
 
         function clearPaymentQrUi() {
             window.PosAcb?.blur?.();
+            window.PosBankNotifications?.track?.(null);
             currentPaymentQr =
                 null;
+            updateAddPaymentButtonText();
 
             const qrEls =
                 getQrEls();
@@ -2426,10 +2467,72 @@ window.PosPayment = (function () {
             window.bootstrap.Modal.getOrCreateInstance(qrEls.modal).show();
             setTimeout(() => {
                 if (!qrEls.modal.classList.contains('show')) return;
-                const action = [qrEls.btnConfirmPaid, document.getElementById('btnCheckAcbPayment'), qrEls.btnCancelQr]
+                const action = [qrEls.btnConfirmPaid, document.getElementById('btnCheckAcbPayment')]
                     .find(button => button && !button.hidden && button.style.display !== 'none' && !button.disabled);
-                (action || qrEls.modal.querySelector('[data-bs-dismiss="modal"]'))?.focus();
+                (action || qrEls.modal)?.focus();
             }, 200);
+        }
+
+        function isManualQrMode(qr) {
+            return qr.manualFallback === true || window.PosBankNotifications?.isManual(qr.id) === true;
+        }
+
+        function enterManualQrMode() {
+            if (!currentPaymentQr || currentPaymentQr.readOnly || currentPaymentQr.automaticConfirmation) return;
+            currentPaymentQr.manualFallback = true;
+            renderQrConfirmationState(currentPaymentQr);
+            showPaymentQrPopup(getQrEls());
+            getQrEls().btnConfirmPaid?.focus();
+        }
+
+        function renderQrConfirmationState(qr) {
+            const qrEls = getQrEls(), manual = isManualQrMode(qr), pending = !qr.readOnly;
+            const enabled = window.PosBankNotifications?.enabled(qr.id);
+            const waiting = window.PosBankNotifications?.waitingState?.(qr.id);
+            const title = document.getElementById('paymentQrPopupTitle');
+            if (title) title.textContent = qr.pendingWarningMessage ? 'QR trước chưa được xử lý'
+                : !pending ? 'QR thanh toán đã tạo' : manual ? 'Kiểm tra chuyển khoản thủ công' : 'Đợi xác nhận chuyển khoản';
+            const pendingBalance = document.getElementById('paymentQrPendingBalance');
+            if (pendingBalance) {
+                pendingBalance.hidden = !qr.pendingWarningMessage;
+                pendingBalance.textContent = qr.pendingWarningMessage
+                    ? `Số tiền QR cũ: ${formatMoneyLocal(qr.amount)} đ. Còn thiếu hiện tại: ${formatMoneyLocal(getDraftBalance(getCurrentDraft()))} đ.`
+                    : '';
+            }
+            if (qrEls.btnConfirmPaid) {
+                qrEls.btnConfirmPaid.style.display = pending && manual && !qr.automaticConfirmation ? '' : 'none';
+                qrEls.btnConfirmPaid.textContent = 'Đã nhận chuyển khoản';
+            }
+            const state = document.getElementById('paymentQrWaitState');
+            if (state) { state.hidden = !pending; state.classList.toggle('is-manual', manual); state.classList.toggle('is-warning', !manual && waiting?.warning === true); }
+            const stateTitle = document.getElementById('paymentQrWaitTitle');
+            const description = document.getElementById('paymentQrWaitDescription');
+            if (stateTitle) stateTitle.textContent = manual ? 'Kiểm tra tiền vào trước khi xác nhận' : waiting?.warning ? 'Chưa nhận được kết quả chuyển khoản' : 'Đang đợi tiền chuyển khoản';
+            if (description) description.textContent = manual ? 'Đối chiếu số tiền và nội dung trong app ngân hàng, rồi bấm Đã nhận chuyển khoản.'
+                : window.PosOffline?.localMode() === true ? 'Đang chờ kết nối để nhận kết quả chuyển khoản. Giao dịch chưa được xác nhận.'
+                : enabled === false && !qr.automaticConfirmation ? 'Tài khoản này chưa kết nối nhận thông báo. Kiểm tra cấu hình nhận tiền của cửa hàng.'
+                : qr.automaticConfirmation ? 'ACB xác nhận từng khoản chuyển. Đơn đủ tiền sẽ tự chốt và in bill.' : 'Khớp mã POS và số tiền sẽ tự ghi nhận. Thiếu mã POS sẽ hiện tên khách để bạn xác nhận.';
+            if (!manual && waiting?.warning && description) description.textContent = waiting.canManual
+                ? 'Chưa nhận được xác nhận. Có thể tiếp tục chờ, kiểm tra lại hoặc đối chiếu app ngân hàng để xử lý thủ công.'
+                : 'Chưa nhận được kết quả chuyển khoản. Bấm Kiểm tra lại; hệ thống vẫn tiếp tục chờ tự động.';
+            const retry = document.getElementById('btnRetryBankNotification');
+            if (retry) retry.hidden = !pending || manual || !waiting?.warning;
+            const manualButton = document.getElementById('btnManualPaymentQr');
+            if (manualButton) manualButton.hidden = !pending || manual || !waiting?.canManual || qr.automaticConfirmation === true;
+            const phone = document.getElementById('paymentQrPhoneStatus');
+            if (phone) {
+                const phones = waiting?.phones || [];
+                const labels = { Connected: 'Điện thoại đang kết nối', Disconnected: 'Chưa liên lạc được với điện thoại', Queued: 'Điện thoại có tin chờ gửi', SendError: 'Điện thoại đang lỗi gửi tin', Unknown: 'Chưa có trạng thái kết nối điện thoại' };
+                phone.hidden = !pending || !phones.length;
+                phone.textContent = phones.map(item => `${item.name}: ${labels[item.state] || item.state}${item.queuedCount > 0 ? ` (${item.queuedCount} tin)` : ''}`).join(' · ');
+            }
+            if (qrEls.popupStatusText) qrEls.popupStatusText.textContent = qr.pendingWarningMessage
+                ? 'Đang mở lại QR cũ. Chưa tạo QR mới cho đơn này.'
+                : !pending ? 'QR đã kết thúc. Không chuyển thêm tiền vào mã này.' : 'Đơn chỉ chốt khi đã nhận đủ tiền.';
+            const shortcuts = document.getElementById('paymentQrShortcuts');
+            if (shortcuts) shortcuts.textContent = !pending ? 'ESC = Đóng QR' + (qr.canCancel === true ? ' · F10 = Hủy QR' : ' · Chỉ xem lịch sử')
+                : (qr.automaticConfirmation ? 'F9 = Kiểm tra ACB' : manual ? 'F9 = Đã nhận tiền' : 'F9 = Kiểm tra nhận tiền') + ' · ESC = Đóng QR' + (qr.canCancel === false ? '' : ' · F10 = Hủy QR');
+            updateAddPaymentButtonText();
         }
 
         function renderPaymentQr(qr) {
@@ -2448,12 +2551,10 @@ window.PosPayment = (function () {
                 pendingWarning.hidden = !qr.pendingWarningMessage;
                 pendingWarning.textContent = qr.pendingWarningMessage || '';
             }
-            const qrTitle = document.getElementById('paymentQrPopupTitle');
-            if (qrTitle) qrTitle.textContent = qr.savedStatus ? 'QR thanh toán đã tạo' : 'Quét mã thanh toán';
             const qrCode = document.getElementById('paymentQrRequestCode');
             if (qrCode) qrCode.textContent = qr.requestCode ? `Mã QR: ${qr.requestCode}` : '';
-            if (qrEls.btnConfirmPaid) qrEls.btnConfirmPaid.style.display = qr.automaticConfirmation || qr.readOnly ? 'none' : '';
-            if (qrEls.btnConfirmPaid && window.PosOffline?.localMode()) qrEls.btnConfirmPaid.textContent = 'Đã nhận thủ công';
+            renderQrConfirmationState(qr);
+            window.PosBankNotifications?.track(qr);
             if (qr.automaticConfirmation && !qr.readOnly) window.PosAcb?.track(qr);
             else window.PosAcb?.blur?.();
             let acbCheck = document.getElementById('btnCheckAcbPayment');
@@ -2466,22 +2567,16 @@ window.PosPayment = (function () {
             }
             if (acbCheck) acbCheck.hidden = !qr.automaticConfirmation || qr.readOnly;
             const acbStatus = document.getElementById('acbPaymentCheckStatus');
-            if (acbStatus) { acbStatus.hidden = !qr.automaticConfirmation && !qr.savedMessage; acbStatus.textContent = qr.savedMessage || (qr.automaticConfirmation ? 'Chưa nhận xác nhận thanh toán. Có thể bấm Kiểm tra ngay để tra cứu ACB.' : ''); }
+            const savedMessage = qr.manualRequested && !isManualQrMode(qr)
+                ? 'Mất kết nối: đang chờ kết quả chuyển khoản. Giao dịch chưa được xác nhận.' : qr.savedMessage;
+            if (acbStatus) { acbStatus.hidden = !qr.automaticConfirmation && !savedMessage; acbStatus.textContent = savedMessage || (qr.automaticConfirmation ? 'Chưa nhận xác nhận thanh toán. Có thể bấm Kiểm tra ngay để tra cứu ACB.' : ''); }
             if (qrEls.btnCancelQr) qrEls.btnCancelQr.hidden = qr.canCancel === false;
-            const shortcuts = document.getElementById('paymentQrShortcuts');
-            if (shortcuts) shortcuts.textContent = qr.readOnly ? 'ESC = Đóng QR' + (qr.canCancel === true ? ' · F10 = Hủy QR' : ' · Chỉ xem lịch sử') : qr.automaticConfirmation
-                ? 'F9 = Kiểm tra ACB · ESC = Đóng QR' + (qr.canCancel === false ? '' : ' · F10 = Hủy QR')
-                : 'F9 = Đã nhận tiền · ESC = Đóng QR · F10 = Hủy QR';
 
             if (qrEls.statusText) {
                 qrEls.statusText.textContent =
                     'QR đã tạo. Bấm "Xem QR" hoặc kiểm tra popup QR.';
             }
 
-            if (qrEls.popupStatusText) {
-                qrEls.popupStatusText.textContent =
-                    qr.readOnly ? 'QR đã kết thúc. Không chuyển thêm tiền vào mã này.' : qr.automaticConfirmation ? 'ACB xác nhận từng khoản. Khi đơn đủ tiền sẽ tự chốt và in bill.' : 'Khách quét mã, sau đó nhân viên kiểm tra app ngân hàng.';
-            }
 
             if (qrEls.btnOpenPopup) {
                 qrEls.btnOpenPopup.style.display =
@@ -2548,40 +2643,29 @@ window.PosPayment = (function () {
             showPaymentQrPopup(qrEls);
 
             if (qr.readOnly) return;
+            if (qr.offline || window.PosOffline?.localMode?.()) return;
             sendCustomerDisplayEvent(
                 'customer_payment_qr_created',
                 {
-                    qrDataUrl:
-                        qr.qrDataUrl ||
-                        '',
-
-                    amount:
-                        Number(
-                            qr.amount ||
-                            0
-                        ),
-
-                    content:
-                        qr.content ||
-                        '',
-
-                    bankName:
-                        qr.bankName ||
-                        qr.bankCode ||
-                        '',
-
-                    accountNumber:
-                        qr.accountNumber ||
-                        '',
-
-                    accountName:
-                        qr.accountName ||
-                        ''
+                    orderId: qr.orderId,
+                    qrId: qr.id
                 }
             );
         }
 
+        function showPendingQrWarning(orderId, message) {
+            if (currentPaymentQr) clearPaymentQrUi();
+            const modal = document.getElementById('paymentQrPendingModal');
+            const text = document.getElementById('paymentQrPendingMessage');
+            const historyLink = document.getElementById('paymentQrPendingHistoryLink');
+            if (text) text.textContent = message;
+            if (historyLink) historyLink.href = `/admin/acb/payments/orders/${orderId}`;
+            if (modal && window.bootstrap?.Modal)
+                window.bootstrap.Modal.getOrCreateInstance(modal).show();
+        }
+
         async function createPaymentQr() {
+            if (creditModeActive) return;
             clearPaymentInlineError();
 
             if (
@@ -2712,15 +2796,17 @@ window.PosPayment = (function () {
                                 if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
                                 const saved = qr.savedQr;
                                 let reopened = false;
-                                if (saved?.qr?.orderId === qr.orderId && saved.qr.id === qr.qrId) {
+                                if (saved?.qr?.orderId === qr.orderId && saved.qr.id === qr.qrId &&
+                                    typeof saved.qr.qrDataUrl === 'string' && saved.qr.qrDataUrl.trim()) {
                                     renderPaymentQr({ ...saved.qr, canCancel: saved.canCancel, readOnly: saved.readOnly,
                                         savedStatus: saved.status, savedMessage: saved.message, pendingWarningMessage: qr.message });
                                     reopened = true;
-                                } else if (!saved?.qr && qr.qrId) {
-                                    const history = await qrHistory?.refresh();
+                                } else if (qr.qrId) {
+                                    await qrHistory?.refresh();
                                     if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
-                                    if (history?.orderId === qr.orderId && history.items.some(item => item.qrId === qr.qrId && item.canReopen))
-                                        reopened = await qrHistory.open(qr.qrId, qr.message);
+                                    // The list may be temporarily unavailable while this exact QR
+                                    // can still be read. Never substitute another history item.
+                                    reopened = await qrHistory?.open?.(qr.qrId, qr.message) === true;
                                 }
                                 if (Number(getCurrentDraft()?.orderId) !== Number(qr.orderId)) return;
                                 showPaymentInlineError(qr.message, 'warning');
@@ -2730,6 +2816,7 @@ window.PosPayment = (function () {
                                     link.target = '_blank'; link.rel = 'noopener'; link.className = 'd-block mt-2';
                                     link.textContent = 'Mở lịch sử giao dịch để xử lý QR';
                                     ensurePaymentErrorBox()?.appendChild(link);
+                                    showPendingQrWarning(qr.orderId, qr.message);
                                 }
                                 if (saved?.qr) qrHistory?.refresh();
                                 return;
@@ -2778,8 +2865,10 @@ window.PosPayment = (function () {
         }
 
         window.addEventListener('pos:offline-status', () => {
-            if (currentPaymentQr && window.PosOffline?.localMode() && currentPaymentQr.automaticConfirmation)
-                renderPaymentQr(currentPaymentQr);
+            if (currentPaymentQr) {
+                renderQrConfirmationState(currentPaymentQr);
+                window.PosBankNotifications?.track(currentPaymentQr);
+            }
         });
 
         async function cancelPaymentQr() {
@@ -2864,11 +2953,8 @@ window.PosPayment = (function () {
                             hidePaymentPreviewOnCustomerDisplay();
 
                             sendCustomerDisplayEvent(
-                                'customer_payment_changed',
-                                {
-                                    reason:
-                                        'qr_cancelled'
-                                }
+                                'customer_payment_refresh',
+                                {}
                             );
 
                             showSuccess?.(
@@ -2919,7 +3005,8 @@ window.PosPayment = (function () {
                         'POS đang bận xử lý thanh toán khác.',
 
                     pendingMessage:
-                        'Tác vụ thanh toán đang được xử lý.'
+                        'Tác vụ thanh toán đang được xử lý.',
+                    afterApply: target => { if (paymentCollectionInFlight) target.disabled = true; }
                 }
             );
 
@@ -2951,7 +3038,8 @@ window.PosPayment = (function () {
                         'POS đang bận cập nhật thanh toán.',
 
                     pendingMessage:
-                        'Đơn đang được chốt.'
+                        'Đơn đang được chốt.',
+                    afterApply: target => { if (paymentCollectionInFlight) target.disabled = true; }
                 }
             );
         }
@@ -2972,6 +3060,9 @@ window.PosPayment = (function () {
 
         function isBusyPaymentAction() {
             return !!(
+                paymentCollectionInFlight ||
+                window.PosCommon.hasAnyBusyScope?.(posState, ['checkout', 'modalSubmit']) ||
+                posState?.network?.pendingActions?.size ||
                 posState?.ui
                     ?.busyScopes
                     ?.checkout ||
@@ -3007,7 +3098,9 @@ window.PosPayment = (function () {
         }
 
         async function handlePaymentEnterAction() {
+            if (isBusyPaymentAction()) return;
             clearPaymentInlineError();
+            if (creditModeActive) return await finalizeFromPaymentModal();
 
             /*
              * Chuyển khoản:
@@ -3039,9 +3132,12 @@ window.PosPayment = (function () {
             // QR is the active dialog. Its hotkeys must not also act on the payment form underneath.
             const qrModal = document.getElementById('paymentQrModal');
             if (qrModal?.classList.contains('show') || qrModal?.contains?.(e.target)) return;
+            const pendingModal = document.getElementById('paymentQrPendingModal');
+            if (pendingModal?.classList.contains('show') || pendingModal?.contains?.(e.target)) return;
             if (!isPaymentModalOpen()) {
                 return;
             }
+            if (e.key === 'Enter' && e.repeat) { e.preventDefault(); e.stopPropagation(); return; }
 
             const target =
                 e.target;
@@ -3079,6 +3175,7 @@ window.PosPayment = (function () {
              */
             if (e.key === 'F8') {
                 e.preventDefault();
+                if (creditModeActive) return;
 
                 setPayAmountExact({
                     focus: true
@@ -3120,13 +3217,20 @@ window.PosPayment = (function () {
                     return;
                 }
 
+                if (creditModeActive) {
+                    await finalizeFromPaymentModal();
+                    return;
+                }
+
                 const reference =
                     (
                         payReference?.value ||
                         ''
                     ).trim();
 
+                // QR creation generates the transfer reference and provider on the server.
                 if (
+                    !isBankTransferMethod() &&
                     isReferenceRequired(
                         getCurrentMethod()
                     ) &&
@@ -3159,11 +3263,7 @@ window.PosPayment = (function () {
                 e.preventDefault();
 
                 if (e.key === '4') {
-                    if (creditToggle && !creditToggle.hidden) {
-                        creditModeActive = true;
-                        syncCreditModePresentation();
-                        refreshLocksSafe();
-                    }
+                    selectCreditMode();
                     return;
                 }
 
@@ -3201,6 +3301,9 @@ window.PosPayment = (function () {
 
                 return;
             }
+
+            // Amount shortcuts apply only to collecting a payment, never credit.
+            if (creditModeActive) return;
 
             /*
              * Ctrl + 1..6
@@ -3324,11 +3427,13 @@ window.PosPayment = (function () {
             if (e.key === 'F9') {
                 e.preventDefault();
                 e.stopPropagation();
+                if (e.repeat) return;
 
                 if (
                     currentPaymentQr?.id
                 ) {
-                    await confirmPaymentQrPaid();
+                    if (!currentPaymentQr.automaticConfirmation && !isManualQrMode(currentPaymentQr)) await window.PosBankNotifications?.refresh();
+                    else await confirmPaymentQrPaid();
                 }
 
                 return;
@@ -3396,6 +3501,14 @@ window.PosPayment = (function () {
                 );
 
             document.getElementById('btnCreatePaymentQr')?.addEventListener('click', createPaymentQr);
+            document.getElementById('btnRetryBankNotification')?.addEventListener('click', () => window.PosBankNotifications?.refresh());
+            document.getElementById('btnManualPaymentQr')?.addEventListener('click', async function () {
+                const qr = currentPaymentQr; if (!qr) return;
+                this.disabled = true;
+                try { await window.PosBankNotifications.beginManual(qr); }
+                catch (error) { showPaymentInlineError(error.message, 'warning'); }
+                finally { this.disabled = false; }
+            });
 
             document
                 .getElementById(
@@ -3461,8 +3574,7 @@ window.PosPayment = (function () {
 
                         e.preventDefault();
                         e.stopPropagation();
-
-                        await handlePaymentEnterAction();
+                        if (!e.repeat && isPaymentModalOpen()) await handlePaymentModalHotkeys(e);
                     }
                 );
 
@@ -3479,8 +3591,7 @@ window.PosPayment = (function () {
 
                         e.preventDefault();
                         e.stopPropagation();
-
-                        await handlePaymentEnterAction();
+                        if (!e.repeat && isPaymentModalOpen()) await handlePaymentModalHotkeys(e);
                     }
                 );
 
@@ -3497,8 +3608,7 @@ window.PosPayment = (function () {
 
                         e.preventDefault();
                         e.stopPropagation();
-
-                        await handlePaymentEnterAction();
+                        if (!e.repeat && isPaymentModalOpen()) await handlePaymentModalHotkeys(e);
                     }
                 );
 

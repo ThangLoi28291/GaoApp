@@ -3,7 +3,7 @@ using GaoApp.Domain.Common;
 
 namespace GaoApp.Domain.Entities;
 
-public sealed class StoreAcbSettings : BaseStoreEntity
+public sealed class StoreAcbSettings : BaseStoreEntity, IAuditTrackedEntity
 {
     public bool Enabled { get; set; }
     public int BankAccountId { get; set; }

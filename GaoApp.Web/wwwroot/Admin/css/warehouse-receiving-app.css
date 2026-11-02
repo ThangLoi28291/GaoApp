@@ -12,7 +12,7 @@
 .wra-sheet-stepper input{min-width:0;width:100%;border:1px solid #abc7b7;border-radius:14px;text-align:center;font-size:30px;font-weight:750;color:#1d4734;background:#fff}
 .wra-sheet .wra-primary{background:#21644f;color:white;border-color:#21644f;width:100%;min-height:52px;border-radius:14px;font-weight:700}
 .wra-remove{border:0;background:transparent;color:#ae4436;min-height:44px;padding:8px 0;font-size:13px}
-@media(max-width:768px){
+@media(max-width:767.98px){
  html:has(body.wrd-app-mode){scroll-padding-top:112px;scroll-padding-bottom:188px}
  body.wrd-app-mode{background:#f3f6f3!important;color:#283e32;padding-bottom:0!important}
  .wrd-app-mode .gao-admin-toolbar-fallback,.wrd-app-mode .content-footer,.wrd-app-mode .gds-responsive-nav-trigger{display:none!important}

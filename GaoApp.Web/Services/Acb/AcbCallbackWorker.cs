@@ -1,6 +1,7 @@
 using GaoApp.Application.Common;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Tenant;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Web.Services.Acb;
@@ -17,6 +18,8 @@ public sealed class AcbCallbackWorker(IServiceScopeFactory scopes, AcbCallbackSi
                 await signal.WaitAsync(stoppingToken);
                 await using var discovery = scopes.CreateAsyncScope();
                 var db = discovery.ServiceProvider.GetRequiredService<AppDbContext>();
+                using var access = discovery.ServiceProvider.GetRequiredService<TenantContext>()
+                    .BeginSystemAccess(SystemDataAccessPurpose.BankCallbackDiscovery);
                 // Cross-store discovery reads identifiers only. Processing always uses a fresh tenant scope.
                 var due = await db.Set<AcbCallbackReceipt>().AsNoTracking()
                     .Where(x => !x.IsDeleted && x.ProcessedAtUtc == null && x.NextAttemptAtUtc <= DateTime.UtcNow && x.Store != null && x.Store.IsActive)

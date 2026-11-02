@@ -1,0 +1,48 @@
+@model GaoApp.Web.Areas.Admin.Controllers.AssistantSettingsPage
+@{
+    ViewData["Title"] = "Quản lý AI";
+    Layout = "_ContentNavbarLayout";
+    var state = Model.Switches;
+}
+<link rel="stylesheet" href="~/Admin/css/assistant-admin.mobile.css" asp-append-version="true" />
+<div class="mx-auto" style="max-width:900px">
+    <div class="mb-4"><h3 class="mb-2">Quản lý AI</h3><p class="text-muted mb-0">Cấu hình trợ lý cho cửa hàng hiện tại.</p></div>
+    <a class="btn btn-outline-primary mb-4" href="@Url.Content("~/admin/assistant/quality")">Theo dõi chất lượng và vận hành</a>
+    @if (TempData["AssistantSettingsSaved"] is string saved)
+    { <div class="alert alert-success" role="status">@saved</div> }
+    @if (!Model.ConnectorEnabled)
+    { <div class="alert alert-warning">Kết nối AI đang tắt trên máy chủ. Các lựa chọn bên dưới được lưu để sử dụng khi kết nối được bật lại.</div> }
+    <div asp-validation-summary="ModelOnly" class="text-danger mb-3" role="alert"></div>
+    <form action="@Url.Content("~/admin/assistant/settings")" method="post">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Version" value="@state.Version" />
+        <div class="card mb-4">
+            <div class="card-body d-flex justify-content-between align-items-center gap-4">
+                <div><h5 class="mb-2">Bật trợ lý AI</h5><p class="text-muted mb-0">Khi tắt, trợ lý và các hỗ trợ AI ngừng hoạt động. Nhập hàng, tạo sản phẩm và các thao tác thủ công vẫn dùng bình thường.</p></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="Enabled" value="true" checked="@state.Enabled" id="aiEnabled" aria-label="Bật trợ lý AI" /></div>
+            </div>
+        </div>
+        <div class="card mb-4">
+            <div class="card-header"><h5 class="mb-0">Chức năng AI</h5></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center gap-4 pb-3 border-bottom">
+                    <div><label for="aiChat" class="fw-semibold mb-1">Chat và tra giá</label><p class="text-muted mb-0">Hỏi bằng chữ hoặc giọng nói, tra giá lẻ và giá sỉ theo quyền của nhân viên.</p></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="ChatEnabled" value="true" checked="@state.ChatEnabled" id="aiChat" /></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center gap-4 py-3 border-bottom">
+                    <div><label for="aiReceiving" class="fw-semibold mb-1">Hỗ trợ nhập hàng</label><p class="text-muted mb-0">Hiểu tên hàng, đơn vị và số lượng để nhân viên kiểm tra rồi xác nhận.</p></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="ReceivingEnabled" value="true" checked="@state.ReceivingEnabled" id="aiReceiving" /></div>
+                </div>
+                <div class="d-flex justify-content-between align-items-center gap-4 pt-3">
+                    <div><label for="aiNormalize" class="fw-semibold mb-1">Gợi ý tên sản phẩm</label><p class="text-muted mb-0">Chỉnh câu nói thành tên sản phẩm để nhân viên xem và chọn sử dụng.</p></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="NormalizeEnabled" value="true" checked="@state.NormalizeEnabled" id="aiNormalize" /></div>
+                </div>
+            </div>
+        </div>
+        <div class="d-flex justify-content-between align-items-center gap-3"><small class="text-muted">Thay đổi có hiệu lực sau khi lưu. Tải lại các trang đang mở để cập nhật giao diện.</small><button type="submit" class="btn btn-primary text-nowrap">Lưu cấu hình</button></div>
+    </form>
+</div>
+
+@section PageScripts {
+<script src="~/Admin/js/assistant-admin.mobile.js" asp-append-version="true"></script>
+}

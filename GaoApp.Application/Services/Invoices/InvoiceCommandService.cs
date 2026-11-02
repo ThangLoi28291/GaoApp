@@ -12,26 +12,29 @@ using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Invoices;
 
-public class InvoiceCommandService : IInvoiceCommandService
+public partial class InvoiceCommandService : IInvoiceCommandService
 {
     private readonly IInvoiceRepository _invoiceRepository;
     private readonly IProductVariantRepository _productVariantRepository;
     private readonly IInvoiceProviderSettingRepository _invoiceProviderSettingRepository;
     private readonly IOrderLegalEntityAllocationRepository _allocationRepository;
     private readonly ILegalEntityRepository _legalEntityRepository;
+    private readonly IInvoiceProductPickerRepository _productPicker;
 
     public InvoiceCommandService(
         IInvoiceRepository invoiceRepository,
         IProductVariantRepository productVariantRepository,
         IInvoiceProviderSettingRepository invoiceProviderSettingRepository,
         IOrderLegalEntityAllocationRepository allocationRepository,
-        ILegalEntityRepository legalEntityRepository)
+        ILegalEntityRepository legalEntityRepository,
+        IInvoiceProductPickerRepository productPicker)
     {
         _invoiceRepository = invoiceRepository;
         _productVariantRepository = productVariantRepository;
         _invoiceProviderSettingRepository = invoiceProviderSettingRepository;
         _allocationRepository = allocationRepository;
         _legalEntityRepository = legalEntityRepository;
+        _productPicker = productPicker;
     }
 
     public async Task<Result<InvoiceHeadDto>> CreateInvoiceHeadFromOrderAsync(
@@ -93,6 +96,12 @@ public class InvoiceCommandService : IInvoiceCommandService
         }
 
         var allocations = await _allocationRepository.GetForOrderAsync(orderId, ct);
+        if (order.Lines.Any(x => x.StorefrontOrderLineId.HasValue))
+        {
+            var eligibleNativeIds = order.Lines.Where(x => !x.IsDeleted && (x.HasInputInvoiceSnapshot ?? x.Variant != null && x.Variant.HasInputInvoice)).Select(x => x.Id).ToHashSet();
+            allocations = allocations.Where(x => eligibleNativeIds.Contains(x.OrderLineId)).ToList();
+            if (allocations.Count == 0) return Result<List<InvoiceHeadDto>>.Success([]);
+        }
         if (allocations.Count == 0)
         {
             var legacyResult = await GenerateLegacyDetailsAsync(orderId, ct);
@@ -157,7 +166,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                 order.StoreId,
                 settingId,
                 ct);
-            var settingError = ValidateProviderSetting(setting, legalEntity);
+            var settingError = ValidateProviderSetting(setting, legalEntity, existingHead);
             if (settingError != null)
                 return Result<List<InvoiceHeadDto>>.Failure(settingError);
 
@@ -198,8 +207,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                 .Where(x =>
                     linesById.TryGetValue(x.OrderLineId, out var line) &&
                     line.VariantId > 0 &&
-                    line.Variant != null &&
-                    line.Variant.HasInputInvoice)
+                    (line.HasInputInvoiceSnapshot ?? line.Variant != null && line.Variant.HasInputInvoice))
                 .OrderBy(x => x.OrderLineId)
                 .ThenBy(x => x.Id)
                 .ToList();
@@ -207,6 +215,8 @@ public class InvoiceCommandService : IInvoiceCommandService
                 .Where(x => !x.IsDeleted && x.OrderLegalEntityAllocationId.HasValue)
                 .Select(x => x.OrderLegalEntityAllocationId!.Value)
                 .ToHashSet();
+            var historicalSources = await _invoiceRepository.GetGeneratedSourceReferencesAsync(head.Id, ct);
+            existingAllocationIds.UnionWith(historicalSources.AllocationIds);
             var missing = eligibleAllocations
                 .Where(x => !existingAllocationIds.Contains(x.Id))
                 .ToList();
@@ -323,13 +333,14 @@ public class InvoiceCommandService : IInvoiceCommandService
             .Where(x => !x.IsDeleted && x.OrderLineId.HasValue)
             .Select(x => x.OrderLineId!.Value)
             .ToHashSet();
+        var historicalSources = await _invoiceRepository.GetGeneratedSourceReferencesAsync(invoiceHead.Id, ct);
+        existedOrderLineIds.UnionWith(historicalSources.OrderLineIds);
         var eligibleLines = order.Lines
             .Where(x =>
                 !x.IsDeleted &&
                 !existedOrderLineIds.Contains(x.Id) &&
                 x.VariantId > 0 &&
-                x.Variant != null &&
-                x.Variant.HasInputInvoice)
+                (x.HasInputInvoiceSnapshot ?? x.Variant != null && x.Variant.HasInputInvoice))
             .ToList();
 
         foreach (var line in eligibleLines)
@@ -341,7 +352,7 @@ public class InvoiceCommandService : IInvoiceCommandService
         return Result<InvoiceHead>.Success(invoiceHead);
     }
 
-    private static InvoiceHead BuildInvoiceHead(
+    internal static InvoiceHead BuildInvoiceHead(
         Order order,
         InvoiceProviderSetting providerSetting,
         LegalEntity? legalEntity)
@@ -353,7 +364,7 @@ public class InvoiceCommandService : IInvoiceCommandService
             LegalEntityId = legalEntity?.Id,
             LegalEntity = legalEntity,
             InvoiceProviderSettingId = providerSetting.Id,
-            InvoiceDate = DateTime.Now,
+            InvoiceDate = VietnamTime.Now,
             BuyerType = InvoiceBuyerTypes.NoInvoice,
             ProviderCode = string.IsNullOrWhiteSpace(providerSetting.ProviderCode)
                 ? "VIETTEL"
@@ -372,9 +383,10 @@ public class InvoiceCommandService : IInvoiceCommandService
         };
     }
 
-    private static Error? ValidateProviderSetting(
+    public static Error? ValidateProviderSetting(
         InvoiceProviderSetting? providerSetting,
-        LegalEntity? legalEntity)
+        LegalEntity? legalEntity,
+        InvoiceHead? existingHead = null)
     {
         if (providerSetting == null)
         {
@@ -385,36 +397,39 @@ public class InvoiceCommandService : IInvoiceCommandService
                     : $"Cấu hình Viettel của HKD {legalEntity.Code} không còn active hoặc không hợp lệ.");
         }
 
-        if (string.IsNullOrWhiteSpace(providerSetting.SupplierTaxCode) ||
+        if (!providerSetting.IsActive || providerSetting.IsDeleted ||
+            !string.Equals(providerSetting.ProviderCode, "VIETTEL", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(providerSetting.SupplierTaxCode) ||
             string.IsNullOrWhiteSpace(providerSetting.TemplateCode) ||
             string.IsNullOrWhiteSpace(providerSetting.InvoiceSeries))
         {
             return Error.Validation(
                 "Invoice.ProviderSettingInvalid",
-                "Cấu hình Viettel thiếu MST phát hành, mẫu số hoặc ký hiệu hóa đơn.");
+                "Cấu hình Viettel phải đang hoạt động và có MST kết nối, mẫu số, ký hiệu hóa đơn.");
         }
 
+        // Viettel's API tenant tax code may be the HKD's former MST. Ownership is
+        // established by the configured FK (or an existing invoice's snapshot),
+        // never by equality with the HKD's current seller/display tax code.
         if (legalEntity != null &&
-            !TaxCodesEqual(legalEntity.TaxCode, providerSetting.SupplierTaxCode))
+            (providerSetting.StoreId != legalEntity.StoreId ||
+             (legalEntity.InvoiceProviderSettingId != providerSetting.Id &&
+              !(existingHead?.StoreId == legalEntity.StoreId &&
+                existingHead.LegalEntityId == legalEntity.Id &&
+                existingHead.InvoiceProviderSettingId == providerSetting.Id))))
         {
             return Error.Validation(
-                "Invoice.LegalEntityTaxCodeMismatch",
-                $"MST của HKD {legalEntity.Code} không khớp MST cấu hình Viettel.");
+                "Invoice.LegalEntityProviderSettingMismatch",
+                $"Cấu hình Viettel không thuộc HKD {legalEntity.Code} hoặc cửa hàng của hóa đơn.");
+        }
+
+        if (legalEntity != null && string.IsNullOrWhiteSpace(legalEntity.TaxCode))
+        {
+            return Error.Validation("Invoice.LegalEntityTaxCodeMissing", $"HKD {legalEntity.Code} chưa có MST người bán.");
         }
 
         return null;
     }
-
-    private static bool TaxCodesEqual(string? left, string? right)
-        => string.Equals(
-            NormalizeTaxCode(left),
-            NormalizeTaxCode(right),
-            StringComparison.OrdinalIgnoreCase);
-
-    private static string NormalizeTaxCode(string? value)
-        => new((value ?? string.Empty)
-            .Where(char.IsLetterOrDigit)
-            .ToArray());
 
     public async Task<Result<InvoiceHeadDto>> AddManualDetailAsync(
         CreateManualInvoiceDetailRequest request,
@@ -428,6 +443,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                     "InvoiceHeadId không hợp lệ."));
         }
 
+        await using var mutation = await _invoiceRepository.BeginDetailMutationAsync(request.InvoiceHeadId, ct);
         var invoiceHead = await _invoiceRepository
             .GetInvoiceHeadWithDetailsByIdAsync(request.InvoiceHeadId, ct);
 
@@ -437,13 +453,8 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
 
-        if (invoiceHead.IsLocked)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.Locked",
-                    "Hóa đơn đã khóa, không thể thêm dòng manual."));
-        }
+        var mutationError = await ValidateDetailMutationAsync(invoiceHead, ct);
+        if (mutationError != null) return Result<InvoiceHeadDto>.Failure(mutationError);
 
         if (request.ProductVariantId.HasValue &&
             request.ProductVariantId.Value > 0)
@@ -496,23 +507,51 @@ public class InvoiceCommandService : IInvoiceCommandService
                 validation.Error!);
         }
 
+        // The existing detail-mutation transaction holds the shared store lock.
+        // Re-read here, without the page cache, rather than trusting autocomplete data.
+        if (request.ProductVariantId is > 0 && !invoiceHead.OriginalInvoiceHeadId.HasValue && !invoiceHead.CorrectionType.HasValue)
+        {
+            var stock = await _productPicker.GetProductStockAsync(invoiceHead.Id, request.ProductVariantId.Value, ct);
+            if (stock.IsFailure) return Result<InvoiceHeadDto>.Failure(stock.Error);
+            if (stock.Value.AvailableQuantity is not > 0 || stock.Value.MaximumAdditionalQuantity is not > 0
+                || request.Quantity > stock.Value.MaximumAdditionalQuantity.Value)
+            {
+                var available = (stock.Value.MaximumAdditionalQuantity ?? 0m).ToString("0.####", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"));
+                return Result<InvoiceHeadDto>.Failure(Error.Validation("Invoice.InputStockInsufficient",
+                    $"Tồn khả dụng đã thay đổi hoặc không đủ. Có thể thêm tối đa {available} {stock.Value.UnitName} tại {stock.Value.WarehouseName}. Tìm lại sản phẩm để cập nhật số lượng."));
+            }
+        }
+
         var detail = InvoiceDetailFactory.Manual(
             invoiceHead,
             request);
 
         invoiceHead.Details.Add(detail);
+        invoiceHead.LastIssuanceRelevantChangeAtUtc = DateTime.UtcNow;
 
         InvoiceAmountCalculator.RecalculateHead(invoiceHead);
 
         await _invoiceRepository.SaveChangesAsync(ct);
+        await mutation.CommitAsync(ct);
 
         return Result<InvoiceHeadDto>.Success(
             InvoiceDtoMapper.ToDetailDto(invoiceHead));
     }
 
-    public async Task<Result<InvoiceHeadDto>> DeleteManualDetailAsync(
+    public Task<Result<InvoiceHeadDto>> DeleteManualDetailAsync(
         int invoiceDetailId,
         CancellationToken ct = default)
+        => DeleteDetailCoreAsync(invoiceDetailId, manualOnly: true, ct);
+
+    public Task<Result<InvoiceHeadDto>> DeleteDetailAsync(
+        int invoiceDetailId,
+        CancellationToken ct = default)
+        => DeleteDetailCoreAsync(invoiceDetailId, manualOnly: false, ct);
+
+    private async Task<Result<InvoiceHeadDto>> DeleteDetailCoreAsync(
+        int invoiceDetailId,
+        bool manualOnly,
+        CancellationToken ct)
     {
         if (invoiceDetailId <= 0)
         {
@@ -532,7 +571,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy dòng hóa đơn."));
         }
 
-        if (detail.SourceType != InvoiceDetailSourceType.Manual)
+        if (manualOnly && detail.SourceType != InvoiceDetailSourceType.Manual)
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.Validation(
@@ -540,6 +579,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                     "Chỉ được xóa dòng manual. Dòng tự sinh từ OrderLine không được xóa."));
         }
 
+        await using var mutation = await _invoiceRepository.BeginDetailMutationAsync(detail.InvoiceHeadId, ct);
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
             detail.InvoiceHeadId,
             ct);
@@ -550,16 +590,20 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
 
-        if (invoiceHead.IsLocked)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.Locked",
-                    "Hóa đơn đã khóa, không thể xóa dòng manual."));
-        }
+        var mutationError = await ValidateDetailMutationAsync(invoiceHead, ct);
+        if (mutationError != null) return Result<InvoiceHeadDto>.Failure(mutationError);
 
-        detail.IsDeleted = true;
-        detail.DeletedAtUtc = DateTime.UtcNow;
+        var activeDetail = invoiceHead.Details.FirstOrDefault(x => x.Id == detail.Id && !x.IsDeleted);
+        if (activeDetail == null)
+            return Result<InvoiceHeadDto>.Failure(Error.NotFound("Dòng hóa đơn đã bị xóa."));
+        if (manualOnly && activeDetail.SourceType != InvoiceDetailSourceType.Manual)
+            return Result<InvoiceHeadDto>.Failure(Error.Validation("Invoice.CannotDeleteAutoLine", "Chỉ được xóa dòng manual. Dòng tự sinh từ OrderLine không được xóa."));
+        if (activeDetail.SourceType is not (InvoiceDetailSourceType.Manual or InvoiceDetailSourceType.FromOrderLine))
+            return Result<InvoiceHeadDto>.Failure(Error.Validation("Invoice.InvalidDetailSource", "Nguồn dòng hóa đơn không hợp lệ."));
+
+        activeDetail.IsDeleted = true;
+        activeDetail.DeletedAtUtc = DateTime.UtcNow;
+        invoiceHead.LastIssuanceRelevantChangeAtUtc = activeDetail.DeletedAtUtc;
 
         InvoiceAmountCalculator.RecalculateHead(invoiceHead);
 
@@ -572,16 +616,28 @@ public class InvoiceCommandService : IInvoiceCommandService
         if (updatedInvoice == null)
         {
             return Result<InvoiceHeadDto>.Failure(
-                Error.NotFound("Không tìm thấy hóa đơn sau khi xóa dòng manual."));
+                Error.NotFound("Không tìm thấy hóa đơn sau khi xóa dòng."));
         }
 
+        await mutation.CommitAsync(ct);
         return Result<InvoiceHeadDto>.Success(
             InvoiceDtoMapper.ToDetailDto(updatedInvoice));
     }
 
-    public async Task<Result<InvoiceHeadDto>> UpdateManualDetailAsync(
+    public Task<Result<InvoiceHeadDto>> UpdateManualDetailAsync(
         UpdateManualInvoiceDetailRequest request,
         CancellationToken ct = default)
+        => UpdateDetailCoreAsync(request, manualOnly: true, ct);
+
+    public Task<Result<InvoiceHeadDto>> UpdateDetailAsync(
+        UpdateManualInvoiceDetailRequest request,
+        CancellationToken ct = default)
+        => UpdateDetailCoreAsync(request, manualOnly: false, ct);
+
+    private async Task<Result<InvoiceHeadDto>> UpdateDetailCoreAsync(
+        UpdateManualInvoiceDetailRequest request,
+        bool manualOnly,
+        CancellationToken ct)
     {
         if (request.InvoiceDetailId <= 0)
         {
@@ -601,7 +657,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy dòng hóa đơn."));
         }
 
-        if (detail.SourceType != InvoiceDetailSourceType.Manual)
+        if (manualOnly && detail.SourceType != InvoiceDetailSourceType.Manual)
         {
             return Result<InvoiceHeadDto>.Failure(
                 Error.Validation(
@@ -609,6 +665,7 @@ public class InvoiceCommandService : IInvoiceCommandService
                     "Chỉ được sửa dòng manual. Dòng tự sinh từ OrderLine không được sửa."));
         }
 
+        await using var mutation = await _invoiceRepository.BeginDetailMutationAsync(detail.InvoiceHeadId, ct);
         var invoiceHead = await _invoiceRepository.GetInvoiceHeadWithDetailsByIdAsync(
             detail.InvoiceHeadId,
             ct);
@@ -619,13 +676,8 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy hóa đơn bán ra."));
         }
 
-        if (invoiceHead.IsLocked)
-        {
-            return Result<InvoiceHeadDto>.Failure(
-                Error.Validation(
-                    "Invoice.Locked",
-                    "Hóa đơn đã khóa, không thể sửa dòng manual."));
-        }
+        var mutationError = await ValidateDetailMutationAsync(invoiceHead, ct);
+        if (mutationError != null) return Result<InvoiceHeadDto>.Failure(mutationError);
 
         var activeDetail = invoiceHead.Details
             .FirstOrDefault(x => x.Id == detail.Id && !x.IsDeleted);
@@ -635,6 +687,11 @@ public class InvoiceCommandService : IInvoiceCommandService
             return Result<InvoiceHeadDto>.Failure(
                 Error.NotFound("Dòng hóa đơn đã bị xóa."));
         }
+        if (activeDetail.SourceType is not (InvoiceDetailSourceType.Manual or InvoiceDetailSourceType.FromOrderLine))
+            return Result<InvoiceHeadDto>.Failure(Error.Validation("Invoice.InvalidDetailSource", "Nguồn dòng hóa đơn không hợp lệ."));
+
+        if (manualOnly && activeDetail.SourceType != InvoiceDetailSourceType.Manual)
+            return Result<InvoiceHeadDto>.Failure(Error.Validation("Invoice.CannotEditAutoLine", "Chỉ được sửa dòng manual. Dòng tự sinh từ OrderLine không được sửa."));
 
         var validation = InvoiceManualDetailValidator.ValidateAmountInput(
             invoiceHead,
@@ -655,6 +712,7 @@ public class InvoiceCommandService : IInvoiceCommandService
         activeDetail.Note = string.IsNullOrWhiteSpace(request.Note)
             ? null
             : request.Note.Trim();
+        invoiceHead.LastIssuanceRelevantChangeAtUtc = DateTime.UtcNow;
 
         InvoiceAmountCalculator.RecalculateDetail(activeDetail);
         InvoiceAmountCalculator.RecalculateHead(invoiceHead);
@@ -671,8 +729,22 @@ public class InvoiceCommandService : IInvoiceCommandService
                 Error.NotFound("Không tìm thấy hóa đơn sau khi cập nhật."));
         }
 
+        await mutation.CommitAsync(ct);
         return Result<InvoiceHeadDto>.Success(
             InvoiceDtoMapper.ToDetailDto(updatedInvoice));
+    }
+
+    private async Task<Error?> ValidateDetailMutationAsync(InvoiceHead invoiceHead, CancellationToken ct)
+    {
+        if (invoiceHead.LegacyReadOnly)
+            return Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu, không được sửa chi tiết.");
+        if (invoiceHead.IsLocked)
+            return Error.Validation("Invoice.Locked", "Hóa đơn đã khóa, không thể thêm, sửa hoặc xóa dòng.");
+        if (!InvoiceIssuanceStatePolicy.CanEditDetails(invoiceHead))
+            return Error.Validation("Invoice.DetailsNotEditable", "Hóa đơn đã gửi, đang phát hành hoặc chưa rõ kết quả từ nhà cung cấp. Không được sửa chi tiết; cần tra cứu và xử lý trạng thái hóa đơn trước.");
+        if (await _invoiceRepository.HasActiveDetailIssuanceAsync(invoiceHead.Id, ct))
+            return Error.Conflict("Hóa đơn đang được giữ hoặc đã được sử dụng trong yêu cầu phát hành. Không được thêm, sửa hoặc xóa dòng.");
+        return null;
     }
 
     public async Task<Result<InvoiceHeadDto>> LockInvoiceAsync(

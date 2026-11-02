@@ -1,0 +1,139 @@
+@model GaoApp.Web.Services.SystemIntegrations.SystemIntegrationState
+@{
+    ViewData["Title"] = "Tích hợp và AI";
+    Layout = "_ContentNavbarLayout";
+}
+<main class="mx-auto" style="max-width:960px">
+    <header class="mb-4">
+        <h3 class="mb-2">Tích hợp và AI</h3>
+        <p class="text-muted mb-0">Cấu hình toàn hệ thống. Chỉ quản trị hệ thống được xem và sửa thông tin trên trang này.</p>
+    </header>
+    @if (TempData["SystemIntegrationsSaved"] is string saved)
+    { <div class="alert alert-success" role="status">@saved</div> }
+    @if (!ViewData.ModelState.IsValid)
+    { <div asp-validation-summary="ModelOnly" class="alert alert-danger" role="alert"></div> }
+    <form method="post" action="@Url.Content("~/admin/system/integrations")">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="Version" value="@Model.Saved.Version" />
+        <section class="card mb-3">
+            <div class="card-body d-flex align-items-start justify-content-between gap-3 gap-md-4">
+                <div><label for="systemZalo" class="h5 d-block mb-2">Zalo Marketing</label>
+                    <p class="text-muted mb-2">Bật hoặc tạm dừng nhận tin, đồng bộ và gửi trả lời qua các kết nối Zalo đã cấu hình.</p>
+                    <small class="text-muted">@Model.ConfiguredZaloConnections kết nối đã cấu hình · Facebook giữ nguyên trạng thái hoạt động hiện có. Để chỉ dừng chiến dịch mới, dùng công tắc gửi chiến dịch bên dưới.</small>
+                </div>
+                <div class="form-check form-switch flex-shrink-0 mt-1"><input id="systemZalo" class="form-check-input" type="checkbox" role="switch" name="ZaloEnabled" value="true" checked="@Model.ZaloEnabled" aria-label="Bật Zalo Marketing toàn hệ thống" /></div>
+            </div>
+        </section>
+        <section class="card mb-3">
+            <div class="card-body d-flex align-items-start justify-content-between gap-3 gap-md-4">
+                <div><label for="systemAi" class="h5 d-block mb-2">Trợ lý AI</label>
+                    <p class="text-muted mb-0">Điều khiển cả trợ lý AI nội bộ và AI trả lời khách. Khi tắt AI, nhân viên vẫn xử lý và trả lời khách thủ công.</p>
+                </div>
+                <div class="form-check form-switch flex-shrink-0 mt-1"><input id="systemAi" class="form-check-input" type="checkbox" role="switch" name="AiEnabled" value="true" checked="@Model.AiEnabled" aria-label="Bật AI toàn hệ thống" /></div>
+            </div>
+        </section>
+        <section class="card mb-4">
+            <div class="card-body d-flex align-items-start justify-content-between gap-3 gap-md-4">
+                <div><label for="systemCampaigns" class="h5 d-block mb-2">Gửi chiến dịch Marketing</label>
+                    <p class="text-muted mb-0">Cho phép bắt đầu gửi các chiến dịch đã lên lịch khi Zalo đang bật. Tắt công tắc sẽ dừng bắt đầu lượt gửi mới; các lượt đã nhận được kết quả vẫn được đối soát.</p>
+                </div>
+                <div class="form-check form-switch flex-shrink-0 mt-1"><input id="systemCampaigns" class="form-check-input" type="checkbox" role="switch" name="CampaignsEnabled" value="true" checked="@Model.CampaignsEnabled" aria-label="Cho phép gửi chiến dịch Marketing" /></div>
+            </div>
+        </section>
+        <footer class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
+            <small class="text-muted">Lưu công tắc riêng với cấu hình kết nối bên dưới. Có hiệu lực ngay, không cần khởi động lại Web.</small>
+            <button type="submit" class="btn btn-primary text-nowrap">Lưu công tắc</button>
+        </footer>
+    </form>
+    @if (Model.Connections is { } connections)
+    {
+        var stores = ViewData["IntegrationStores"] as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem> ?? [];
+        var zaloRows = connections.Zalo.Length < 50
+            ? connections.Zalo.Append(new GaoApp.Web.Services.SystemIntegrations.SystemZaloConnectionView("", 0, "", "", false)).ToArray()
+            : connections.Zalo;
+        <form method="post" action="@Url.Content("~/admin/system/integrations/connections")" class="mt-5" autocomplete="off">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="Version" value="@Model.Saved.Version" />
+            <h4 class="mb-2">Cấu hình kết nối</h4>
+            <p class="text-muted mb-3">Token và khóa riêng được lưu mã hóa. Để trống ô khóa để giữ giá trị hiện tại; khóa đã lưu không hiển thị lại. Lưu kết nối giữ nguyên các công tắc phía trên.</p>
+            <section class="card mb-3" aria-labelledby="aiConnectionTitle">
+                <div class="card-header"><h5 id="aiConnectionTitle" class="mb-0">Dịch vụ AI</h5></div>
+                <div class="card-body">
+                    <p class="text-muted">Kết nối ChatbotLocal dùng chung cho trợ lý nội bộ và AI trả lời khách.</p>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="aiBaseUrl">Địa chỉ dịch vụ AI</label>
+                            <input id="aiBaseUrl" name="AiBaseUrl" class="form-control" type="url" maxlength="2048" value="@connections.AiBaseUrl" placeholder="https://ai.example.com" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="aiIssuer">Issuer</label>
+                            <input id="aiIssuer" name="AiIssuer" class="form-control" maxlength="200" value="@connections.AiIssuer" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="aiKeyId">Mã khóa (Key ID)</label>
+                            <input id="aiKeyId" name="AiKeyId" class="form-control" maxlength="120" value="@connections.AiKeyId" />
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label" for="aiPrivateKey">Khóa riêng RSA (PEM)</label>
+                            <textarea id="aiPrivateKey" name="AiPrivateKeyPem" class="form-control font-monospace" rows="4" maxlength="16384" spellcheck="false" autocomplete="off" aria-describedby="aiKeyHelp"></textarea>
+                            <div id="aiKeyHelp" class="form-text">@(connections.HasAiKey ? "Đã có khóa. Chỉ nhập khi cần thay khóa." : "Chưa có khóa. Nhập khóa riêng RSA PEM, tối thiểu 2048 bit.") Khóa công khai tương ứng phải được cấu hình ở dịch vụ AI.</div>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="aiTimeout">Thời gian chờ (giây)</label>
+                            <input id="aiTimeout" name="AiTimeoutSeconds" class="form-control" type="number" min="5" max="100" value="@connections.AiTimeoutSeconds" />
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="form-label" for="aiLifetime">Thời hạn token kết nối (giây)</label>
+                            <input id="aiLifetime" name="AiTokenLifetimeSeconds" class="form-control" type="number" min="1" max="120" value="@connections.AiTokenLifetimeSeconds" />
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <h5 class="mt-4 mb-3">Kết nối Zalo Marketing</h5>
+            @for (var i = 0; i < zaloRows.Length; i++)
+            {
+                var row = zaloRows[i];
+                var isNew = string.IsNullOrEmpty(row.Id);
+                <section class="card mb-3" aria-labelledby="zaloTitle_@i">
+                    <div class="card-header"><h6 id="zaloTitle_@i" class="mb-0">@(isNew ? "Thêm kết nối Zalo" : row.Id)</h6></div>
+                    <div class="card-body">
+                        @if (isNew)
+                        { <p class="text-muted">Để trống phần này nếu không thêm kết nối.</p> }
+                        <div class="row g-3">
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="zaloId_@i">Mã kết nối</label>
+                                <input id="zaloId_@i" name="Zalo[@i].Id" class="form-control" value="@row.Id" maxlength="48" readonly="@(!isNew)" placeholder="zalo-cua-hang-1" aria-describedby="zaloIdHelp_@i" />
+                                <div id="zaloIdHelp_@i" class="form-text">3–48 chữ thường, số hoặc dấu gạch ngang. Mã kết nối đã tạo được giữ cố định.</div>
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="zaloStore_@i">Cửa hàng nhận hội thoại</label>
+                                <select id="zaloStore_@i" name="Zalo[@i].StoreId" class="form-select">
+                                    <option value="0">Chọn cửa hàng</option>
+                                    @foreach (var store in stores)
+                                    { <option value="@store.Value" selected="@(store.Value == row.StoreId.ToString())">@store.Text</option> }
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="zaloUrl_@i">Địa chỉ dịch vụ Zalo Marketing</label>
+                                <input id="zaloUrl_@i" name="Zalo[@i].BaseUrl" class="form-control" type="url" maxlength="2048" value="@row.BaseUrl" placeholder="https://zalo.example.com" />
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="zaloAccount_@i">Mã hồ sơ gửi (Sender Profile ID)</label>
+                                <input id="zaloAccount_@i" name="Zalo[@i].AccountId" class="form-control" maxlength="36" value="@row.AccountId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+                            </div>
+                            <div class="col-12 col-md-6">
+                                <label class="form-label" for="zaloToken_@i">Token kết nối</label>
+                                <input id="zaloToken_@i" name="Zalo[@i].AccessToken" class="form-control" type="password" maxlength="8192" autocomplete="new-password" aria-describedby="zaloTokenHelp_@i" />
+                                <div id="zaloTokenHelp_@i" class="form-text">@(row.HasToken ? "Đã có token. Để trống để giữ nguyên." : "Nhập token được cấp bởi dịch vụ Zalo Marketing.")</div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            }
+            <footer class="d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3 mb-4">
+                <small class="text-muted">Dùng HTTPS. Khi phát triển có thể dùng HTTP tại localhost. Đổi cửa hàng, hồ sơ hoặc URL sẽ yêu cầu đồng bộ lại hội thoại theo kết nối mới.</small>
+                <button type="submit" class="btn btn-primary text-nowrap">Lưu kết nối</button>
+            </footer>
+        </form>
+    }
+</main>

@@ -1,0 +1,89 @@
+/* UI-06a. No tablet/desktop rules; activated only with the phone presentation adapter. */
+@media (max-width: 767.98px) {
+    #posShell[data-pos-phone] { --pos-entry-ink: #172d50; --pos-entry-blue: #2563eb; }
+    #posShell[data-pos-phone] :is(.pos-prime-header, .pos-cockpit-header) {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center;
+        gap: 8px; padding: 10px; border: 1px solid #dce5f1; border-radius: 18px;
+        background: #fff; color: var(--pos-entry-ink); box-shadow: 0 3px 14px #17335408;
+    }
+    #posShell[data-pos-phone] :is(.pos-prime-header__identity, .pos-cockpit-header__identity) { min-width: 0; gap: 8px; padding-right: 0; }
+    #posShell[data-pos-phone] :is(.pos-prime-header__brand, .pos-cockpit-header__title) { min-width: 0; color: var(--pos-entry-ink); font-size: 15px; letter-spacing: -.25px; }
+    #posShell[data-pos-phone] .pos-prime-header__brand strong { color: inherit; font-size: 15px; }
+    #posShell[data-pos-phone] :is(.pos-prime-header__actions, .pos-cockpit-header__actions) { width: auto; gap: 4px; flex-wrap: nowrap; min-width: 0; }
+    #posShell[data-pos-phone] .gao-account-toolbar-slot { position: static; flex: 0 0 44px; width: 44px; min-width: 44px; }
+    #posShell[data-pos-phone] :is(.pos-prime-header__menu-button, .gao-mobile-shell-menu, .pos-prime-header__action--icon, .pos-cockpit-more-button) {
+        display: inline-flex; justify-content: center; align-items: center; flex: 0 0 44px;
+        width: 44px; min-width: 44px; height: 44px; padding: 0;
+        color: var(--pos-entry-ink); background: #f1f5fb; border: 1px solid #e4eaf3; border-radius: 13px;
+    }
+    #posShell[data-pos-phone] .pos-cockpit-held-slot { min-width: 0; flex: 0 0 auto; }
+    #posShell[data-pos-phone] .pos-held-summary-launcher { width: auto; min-width: 48px; min-height: 44px; padding: 5px 8px; background: #edf4ff; color: #214da2; border: 1px solid #d9e7ff; border-radius: 13px; }
+    #posShell[data-pos-phone] #btnOpenHeldOrders { min-width: 64px; }
+    #posShell[data-pos-phone] #btnOpenHeldOrders .pos-held-summary-launcher__total { color: #214da2; font-size: 11px; }
+    #posShell[data-pos-phone] #btnOpenHeldOrders .pos-held-summary-launcher__title { display: block; position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: nowrap; color: #214da2; font-size: 0; }
+    #posShell[data-pos-phone] #btnOpenHeldOrders .pos-held-summary-launcher__title::after { content: "Đơn giữ"; color: #214da2; font-size: 11px; }
+    #posShell[data-pos-phone] :is(.pos-held-summary-launcher__stats, .pos-held-summary-launcher__footer) { display: none; }
+    #posShell[data-pos-phone] .pos-held-summary-launcher__header { margin: 0; justify-content: center; }
+    #posShell[data-pos-phone] .pos-entry-context { grid-column: 1 / -1; min-width: 0; border-top: 1px solid #edf1f7; padding-top: 4px; }
+    #posShell[data-pos-phone] .pos-entry-context > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; list-style: none; border-radius: 9px; }
+    #posShell[data-pos-phone] .pos-entry-context > summary::-webkit-details-marker { display: none; }
+    #posShell[data-pos-phone] .pos-entry-context__caption { flex-shrink: 0; font-size: 12px; font-weight: 650; color: #526581; }
+    #posShell[data-pos-phone] .pos-entry-context__value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; margin-left: auto; color: #315b9b; font-size: 12px; }
+    #posShell[data-pos-phone] .pos-entry-context.is-warning .pos-entry-context__value { color: #925409; }
+    #posShell[data-pos-phone] .pos-entry-context > summary > i { font-size: 20px; flex-shrink: 0; transition: transform .18s ease; }
+    #posShell[data-pos-phone] .pos-entry-context[open] > summary > i { transform: rotate(180deg); }
+    #posShell[data-pos-phone] .pos-entry-context__body { max-height: min(32dvh, 220px); overflow: auto; overscroll-behavior: contain; padding: 8px; border-radius: 12px; background: #f5f8fd; }
+    #posShell[data-pos-phone] :is(.pos-prime-header__context, .pos-cockpit-header__context) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin: 0; padding: 0; color: var(--pos-entry-ink); }
+    #posShell[data-pos-phone] :is(.pos-prime-context-item, .pos-cockpit-context-item) { display: flex; gap: 8px; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: 12px; color: inherit; }
+    #posShell[data-pos-phone] :is(.pos-prime-context-item, .pos-cockpit-context-item) i { color: #6380a9; font-size: 17px; flex-shrink: 0; }
+    #posShell[data-pos-phone] :is(.pos-prime-context-item, .pos-cockpit-context-item) strong { color: inherit; }
+    #posShell[data-pos-phone] :is(.pos-prime-context-divider, .pos-cockpit-context-divider) { display: none; }
+    #posShell[data-pos-phone] .pos-entry-context__terminal { font-size: 12px; overflow-wrap: anywhere; margin-top: 10px; }
+    #posShell[data-pos-phone] .pos-entry-context__footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; }
+    #posShell[data-pos-phone] :is(.pos-prime-readiness, .pos-cockpit-readiness) { display: inline-flex; color: #27614d; background: #e9f5ef; border-color: #d8ebdf; }
+    #posShell[data-pos-phone] :is(.pos-prime-readiness, .pos-cockpit-readiness).is-warning { color: #925409; background: #fff3dc; border-color: #f4dfb5; }
+    #posShell[data-pos-phone] [data-pos-shortcuts-toggle] { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-width: 44px; min-height: 44px; padding: 6px 12px; color: #315b9b; background: #fff; border: 1px solid #dce5f1; border-radius: 10px; }
+    #posShell[data-pos-phone] [data-pos-shortcuts-toggle]::before { display: none; }
+    #posShell[data-pos-phone] [data-pos-shortcuts-toggle] span { display: inline; position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: nowrap; font-size: 12px; }
+    #posShell[data-pos-phone] .pos-cockpit-command { padding: 10px 0 6px; background: transparent; border: 0; }
+    #posShell[data-pos-phone] .pos-cockpit-search { min-width: 0; }
+    #posShell[data-pos-phone] #txtBarcode { min-height: 50px; height: 50px; font-size: 16px; border: 1px solid #cddbec; border-radius: 15px; background: #fff; color: var(--pos-entry-ink); box-shadow: 0 2px 8px #17335406; }
+    #posShell[data-pos-phone] #txtBarcode:focus { border-color: var(--pos-entry-blue); box-shadow: 0 0 0 3px #2563eb22; }
+    #posShell[data-pos-phone] #posCockpitCommandHints { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+    #posShell[data-pos-phone] .pos-cockpit-command-chip { display: inline-flex; justify-content: center; align-items: center; gap: 4px; min-width: 0; min-height: 44px; padding: 4px; font-size: 11px; border-radius: 11px; border: 1px solid #dfe7f2; background: #fff; color: #526581; }
+    #posShell[data-pos-phone] #barcodeAutocomplete { max-height: min(44dvh, 360px); overflow-y: auto; overscroll-behavior: contain; border: 1px solid #cddbec; border-radius: 14px; box-shadow: 0 12px 30px #18335424; }
+    #posShell[data-pos-phone] #barcodeAutocomplete .pos-autocomplete-item { min-height: 48px; padding: 12px 10px; }
+    #posShell[data-pos-phone] #barcodeAutocomplete .pos-ac-expand-btn { min-width: 44px; min-height: 44px; }
+    #posShell[data-pos-phone] #barcodeAutocomplete :is(.pos-ac-title, .pos-ac-meta) { white-space: normal; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] #posScanFeedback { margin: 2px 0 8px; padding: 8px; border: 1px solid #dfe7f2; border-radius: 14px; background: #fff; }
+    #posShell[data-pos-phone] #posScanStatus { font-size: 12px; color: #526581; }
+    #posShell[data-pos-phone] #posScanFeedback .pos-scan-feedback__header { gap: 4px; }
+    #posShell[data-pos-phone] #posScanFeedback .pos-scan-feedback__actions button { min-height: 44px; border-radius: 10px; font-size: 11px; }
+    #posShell[data-pos-phone] #posScanLast { border-radius: 10px; }
+    #posShell[data-pos-phone] ~ #heldOrdersModal .modal-header { align-items: flex-start; gap: 8px; }
+    #posShell[data-pos-phone] ~ #heldOrdersModal .modal-header > div { flex: 1 1 0; min-width: 0; }
+    #posShell[data-pos-phone] ~ #heldOrdersModal .modal-header .btn-close { flex: 0 0 44px; width: 44px; height: 44px; margin: 0; padding: 0; }
+    /* Reuse Prime's natural-flow fallback when entry information needs more room. */
+    .pos-prime-layout:has(#posShell[data-pos-phone] .pos-entry-context[open]) { overflow-y: auto; }
+    #posShell[data-pos-phone].pos-prime:has(.pos-entry-context[open]) { height: auto; min-height: 100%; }
+    #posShell[data-pos-phone].pos-prime:has(.pos-entry-context[open]) .pos-prime-workspace { grid-template-rows: auto auto; flex: 0 0 auto; }
+    #posShell[data-pos-phone].pos-prime:has(.pos-entry-context[open]) .pos-prime-cart { flex: 0 0 auto; height: 260px; }
+    #posShell[data-pos-phone].pos-prime:has(.pos-entry-context[open]) .pos-prime-mobile-dock { position: static; bottom: auto; }
+    #posShell[data-pos-phone] :is(summary, button):focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+    @media (max-height: 600px) {
+        #posShell[data-pos-phone] #posCockpitCommandHints { display: none; }
+        #posShell[data-pos-phone] :is(.pos-prime-header, .pos-cockpit-header) { gap: 2px; padding: 6px 8px; }
+        #posShell[data-pos-phone] .pos-cockpit-command { padding-top: 6px; }
+    }
+    @media (max-height: 680px) {
+        .pos-prime-layout:has(#posShell[data-pos-phone]) { overflow-y: auto; }
+        #posShell[data-pos-phone].pos-prime { height: auto; min-height: 100%; }
+        #posShell[data-pos-phone].pos-prime .pos-prime-workspace { grid-template-rows: auto auto; flex: 0 0 auto; }
+        #posShell[data-pos-phone].pos-prime .pos-prime-cart { flex: 0 0 auto; height: 260px; }
+        #posShell[data-pos-phone].pos-prime .pos-prime-mobile-dock { position: static; bottom: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) { #posShell[data-pos-phone] .pos-entry-context > summary > i { transition: none; } }
+    @media (forced-colors: active) {
+        #posShell[data-pos-phone] :is(.pos-entry-context, #txtBarcode, .pos-cockpit-command-chip, #posScanFeedback) { border: 1px solid CanvasText; }
+    }
+}

@@ -1,0 +1,36 @@
+@using GaoApp.Application.Storefront
+@using GaoApp.Domain.Storefront
+@model StorefrontOrderControlPage
+@{
+    ViewData["Title"] = "Hủy đơn và hoàn tiền website";
+    var q = ViewData["Query"] as StorefrontOrderControlQuery ?? new();
+    string Phase(StorefrontOrderPhase phase) => phase switch { StorefrontOrderPhase.AwaitingPayment => "Chờ thanh toán", StorefrontOrderPhase.AwaitingPreparation => "Chờ chuẩn bị", StorefrontOrderPhase.Preparing => "Đang chuẩn bị", StorefrontOrderPhase.Shipping => "Đang giao", StorefrontOrderPhase.Delivered => "Đã giao", StorefrontOrderPhase.Completed => "Đã ghi bán", _ => "Đã hủy" };
+}
+<main class="sf-control-page" id="sf-control-queue">
+    <header class="sf-control-heading"><p class="sf-control-eyebrow">Đơn website · Xử lý rõ từng bước</p><h1>Hủy đơn &amp; hoàn tiền</h1><p>Hàng thực tế, khoản cần hoàn và khoản đã thực trả được theo dõi riêng.</p></header>
+    <form method="get" class="sf-control-filter" id="sf-control-filter">
+        <label>Tìm đơn<input name="Search" value="@q.Search" maxlength="100" placeholder="Mã đơn hoặc người nhận" /></label>
+        <label>Việc cần xử lý<select name="Filter"><option value="0" selected="@(q.Filter == StorefrontOrderControlFilter.PendingCancellation)">Yêu cầu hủy chờ xử lý</option><option value="1" selected="@(q.Filter == StorefrontOrderControlFilter.RefundOutstanding)">Khoản hoàn còn chờ xử lý</option><option value="2" selected="@(q.Filter == StorefrontOrderControlFilter.DeliveryConflictReview)">Giao / hủy cần đối soát</option><option value="3" selected="@(q.Filter == StorefrontOrderControlFilter.All)">Tất cả đơn</option></select></label>
+        <button type="submit" class="sf-control-button">Lọc danh sách</button>
+    </form>
+    @if (Model.Items.Count == 0) { <section class="sf-control-card" role="status"><h2>Chưa có đơn phù hợp</h2><p>Chọn bộ lọc khác để xem các đơn đã tiếp nhận.</p></section> }
+    else {
+        <div class="sf-control-list" aria-label="Các đơn cần theo dõi">@foreach (var item in Model.Items) {
+            <article class="sf-control-card sf-control-queue-row" data-order-id="@item.OrderId">
+                <div><h2><a href="/admin/storefront/refunds/@item.OrderId">Đơn @item.Code</a></h2><p>@item.RecipientName</p><p>@Phase(item.Phase) · <time datetime="@item.CreatedAtUtc.ToString("O")">@item.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm")</time></p></div>
+                <div><p>Cần hoàn <strong>@item.RefundAmountText</strong></p><p>Đã thực hoàn <strong>@item.ExecutedRefundAmountText</strong></p>
+                    @if (item.CancellationPending) { <span class="sf-control-tag">Yêu cầu hủy chờ xử lý</span> }
+                    @if (item.NeedsDeliveryConflictReview) { <span class="sf-control-tag sf-control-warning">Giao / hủy cần đối soát</span> }
+                    @if (item.HasUnreconciledRefundSource) { <span class="sf-control-tag sf-control-warning">Nguồn tiền cần kiểm tra</span> }
+                </div>
+                <a class="sf-control-button sf-control-secondary" href="/admin/storefront/refunds/@item.OrderId">Mở hồ sơ</a>
+            </article>
+        }</div>
+    }
+    <nav class="sf-control-pagination" aria-label="Phân trang hồ sơ"><span>Trang @Model.Page · @Model.TotalCount đơn</span>
+        @if (Model.Page > 1) { <a asp-action="Index" asp-route-Page="@(Model.Page - 1)" asp-route-PageSize="@Model.PageSize" asp-route-Search="@q.Search" asp-route-Filter="@q.Filter">Trang trước</a> }
+        @if ((long)Model.Page * Model.PageSize < Model.TotalCount) { <a asp-action="Index" asp-route-Page="@(Model.Page + 1)" asp-route-PageSize="@Model.PageSize" asp-route-Search="@q.Search" asp-route-Filter="@q.Filter">Trang sau</a> }
+    </nav>
+    <p class="sf-control-help">Đường dẫn chức năng: <code>/admin/storefront/refunds</code>. Bạn tự thêm đường dẫn vào Quản lý menu khi cần.</p>
+</main>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/storefront-refunds.css" asp-append-version="true" /> }

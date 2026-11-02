@@ -5,7 +5,7 @@
     "AdminUrl": "https://admin.configure-host.invalid"
   },
   "Tenant": { "RootDomain": "configure-host.invalid", "AdminSubdomain": "admin" },
-  "AllowedHosts": "configure-host.invalid;admin.configure-host.invalid",
+  "AllowedHosts": "gaomart.com.vn;www.gaomart.com.vn;chonthanh.gaomart.com.vn;admin.gaomart.com.vn;*.gaomart.com.vn",
   "Storage": { "UploadRoot": "", "CreateIfMissing": false },
   "DataProtection": {
     "KeysPath": "", "RequirePortableKeys": true,
@@ -13,9 +13,15 @@
   },
   "SeedData": { "EnableDemoSeed": false, "EnableDefaultAdminSeed": false },
   "ProductionBootstrap": { "Enabled": false },
-  "InputInvoiceLibrary": { "Enabled": false },
+  "CustomerChannels": { "Enabled": false },
+  "InputInvoiceLibrary": {
+    "Enabled": true,
+    "RootPath": "XML",
+    "MaxMonthPartitions": 12,
+    "MaxCandidates": 200
+  },
   "TaxCodeLookup": { "Enabled": false },
-  "AcbCallbackRouting": { "Hosts": [] },
+  "AcbCallbackRouting": { "Hosts": [ "www.gaomart.com.vn" ] },
   "ReceivingWorkbench": { "Enabled": false, "ProvisionalItemsEnabled": false },
   "Reports": {
     "Profit": {

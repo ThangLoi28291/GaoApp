@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -12,17 +13,18 @@ internal static class InvoiceDtoMapper
         return new InvoiceHeadDto
         {
             Id = entity.Id,
+            IsAutoInvoiceGroup = entity.IsAutoInvoiceGroup,
             StoreId = entity.StoreId,
             OrderId = entity.OrderId,
             InvoiceIssuanceRoute =
     entity.Order?.InvoiceIssuanceRoute
-    ?? InvoiceIssuanceRoute.Unselected,
+    ?? entity.NativeServiceInvoiceRoute ?? InvoiceIssuanceRoute.Unselected,
 
             InvoiceIssuanceRouteSelectedAtUtc =
-    entity.Order?.InvoiceIssuanceRouteSelectedAtUtc,
+    entity.Order?.InvoiceIssuanceRouteSelectedAtUtc ?? entity.NativeServiceRecognizedAtUtc,
 
             InvoiceIssuanceRouteSelectedByUserId =
-    entity.Order?.InvoiceIssuanceRouteSelectedByUserId,
+    entity.Order?.InvoiceIssuanceRouteSelectedByUserId ?? entity.NativeServiceActorUserId,
             LegacySourceId = entity.LegacySourceId,
             LegacyOrderCategoryId = entity.LegacyOrderCategoryId,
             LegacyMergeId = entity.LegacyMergeId,
@@ -51,9 +53,13 @@ internal static class InvoiceDtoMapper
             SubTotal = entity.SubTotal,
             VatAmount = entity.VatAmount,
             GrandTotal = entity.GrandTotal,
+            RevenueTaxPercentage = entity.RevenueTaxPercentage,
+            RevenueTaxReductionAmount = entity.RevenueTaxReductionAmount,
+            Version = Convert.ToBase64String(entity.RowVersion ?? []),
 
             Note = entity.Note,
             IsLocked = entity.IsLocked,
+            CanEditDetails = InvoiceIssuanceStatePolicy.CanEditDetails(entity),
             LockedAtUtc = entity.LockedAtUtc,
             LockedByUserId = entity.LockedByUserId,
             LockReason = entity.LockReason,
@@ -73,8 +79,10 @@ internal static class InvoiceDtoMapper
 
             IssuedAtUtc = entity.IssuedAtUtc,
             LastSyncedAtUtc = entity.LastSyncedAtUtc,
-            LastErrorCode = entity.LastErrorCode,
-            LastErrorMessage = entity.LastErrorMessage,
+            RequiresUuidSyncBeforeIssue = ViettelInvoiceUiStateBuilder.IsProcessingOrUnclear(
+                entity.ProviderStatus, entity.LastErrorCode, entity.LastErrorMessage),
+            LastErrorCode = InvoiceErrorReadSanitizer.Code(entity.LastErrorCode),
+            LastErrorMessage = InvoiceErrorReadSanitizer.Message(entity.LastErrorMessage, entity.LastErrorCode),
             PdfFilePath = entity.PdfFilePath,
             ZipFilePath = entity.ZipFilePath,
             OfficialPdfStatus = entity.OfficialPdfStatus,
@@ -89,7 +97,7 @@ internal static class InvoiceDtoMapper
             EmailSentAtUtc = entity.EmailSentAtUtc,
             LastEmailTo = entity.LastEmailTo,
             EmailSendCount = entity.EmailSendCount,
-            LastEmailErrorMessage = entity.LastEmailErrorMessage,
+            LastEmailErrorMessage = InvoiceErrorReadSanitizer.Message(entity.LastEmailErrorMessage),
 
             OriginalInvoiceHeadId = entity.OriginalInvoiceHeadId,
             OriginalInvoiceNo = entity.OriginalInvoiceNo,
@@ -143,8 +151,8 @@ internal static class InvoiceDtoMapper
     entity.Order?.InvoiceIssuanceRoute
     ?? InvoiceIssuanceRoute.Unselected,
             ProviderStatus = entity.ProviderStatus,
-            LastErrorCode = entity.LastErrorCode,
-            LastErrorMessage = entity.LastErrorMessage,
+            LastErrorCode = InvoiceErrorReadSanitizer.Code(entity.LastErrorCode),
+            LastErrorMessage = InvoiceErrorReadSanitizer.Message(entity.LastErrorMessage, entity.LastErrorCode),
             LegacySourceId = entity.LegacySourceId,
             LegacyOrderCategoryId = entity.LegacyOrderCategoryId,
             LegacyMergeId = entity.LegacyMergeId,

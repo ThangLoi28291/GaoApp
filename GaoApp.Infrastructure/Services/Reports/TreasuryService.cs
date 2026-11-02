@@ -57,6 +57,12 @@ public sealed class TreasuryService(AppDbContext db) : ITreasuryService
                 if (cash.CustomerDebtReceiptId != null || cash.CustomerDepositEntryId != null || cash.Reason is "Thu công nợ khách hàng" or "Nhận cọc khách hàng" or "Hoàn cọc khách hàng")
                     throw new ConflictAppException("Phiếu này đã được đối chiếu qua công nợ hoặc tiền cọc.");
                 var signed = cash.Type == POSShiftCashTransactionType.CashIn ? cash.Amount : -cash.Amount;
+                if (await db.Set<GaoApp.Domain.Storefront.StorefrontRefundEvidence>().AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == cashId && x.FundingId != null, ct) &&
+                    (r.TargetFund != null || r.OperatingExpenseId != null || r.PurchasePayableId != null || r.Fund != "cash" || r.Amount != signed || cash.Type != POSShiftCashTransactionType.CashOut))
+                    throw new ConflictAppException("Phiếu đã là chứng cứ thực hoàn website; không chuyển quỹ hoặc thanh toán chứng từ khác từ cùng khoản chi.");
+                if (await db.Set<GaoApp.Domain.Storefront.StorefrontCodReceipt>().AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == cashId, ct) &&
+                    (r.TargetFund != null || r.OperatingExpenseId != null || r.PurchasePayableId != null || r.Amount != cash.Amount || cash.Type != POSShiftCashTransactionType.CashIn))
+                    throw new ConflictAppException("Tiền mặt này đã được đối soát COD; không chuyển quỹ hoặc thanh toán chứng từ khác từ nguồn đã nhận.");
                 if (r.Fund != "cash" || r.Amount != signed || cash.CreatedAtUtc.AddHours(7).Date != r.Date.Date)
                     throw new ArgumentException("Liên kết phiếu ca phải khớp quỹ tiền mặt, số tiền và ngày phiếu gốc.");
                 if (await db.TreasuryEntries.AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == cashId, ct))
@@ -66,6 +72,8 @@ public sealed class TreasuryService(AppDbContext db) : ITreasuryService
                 at = cash.CreatedAtUtc;
             }
             if (r.OperatingExpenseId is int expenseId) {
+                if (await db.Set<GaoApp.Domain.Storefront.StorefrontCarrierWithholding>().AnyAsync(x => x.StoreId == StoreId && x.OperatingExpenseId == expenseId, ct))
+                    throw new ConflictAppException("Chi phí đã được hãng giao giữ lại trên chứng từ COD; không chi tiền lần nữa.");
                 var expense = await db.OperatingExpenses.SingleOrDefaultAsync(x => x.StoreId == StoreId && x.Id == expenseId, ct)
                     ?? throw new KeyNotFoundException("Không tìm thấy chi phí.");
                 CheckVersion(expense.RowVersion, r.SourceRowVersion);
@@ -101,6 +109,11 @@ public sealed class TreasuryService(AppDbContext db) : ITreasuryService
         return await LockedAsync(async () => {
             var previous = await ExistingAsync(r.ClientRequestId, payload, ct); if (previous != null) return previous.Id;
             var original = await db.TreasuryEntries.SingleOrDefaultAsync(x => x.StoreId == StoreId && x.Id == id, ct) ?? throw new KeyNotFoundException("Không tìm thấy phiếu.");
+            if (await db.Set<GaoApp.Domain.Storefront.StorefrontRefundEvidence>().AnyAsync(x => x.StoreId == StoreId && x.FundingId != null &&
+                (x.TreasuryEntryId == id || original.POSShiftCashTransactionId != null && x.POSShiftCashTransactionId == original.POSShiftCashTransactionId), ct))
+                throw new ConflictAppException("Phiếu chi đã là chứng cứ thực hoàn website; không đảo riêng nguồn đã xác nhận.");
+            if (await db.Set<GaoApp.Domain.Storefront.StorefrontCodReceipt>().AnyAsync(x => x.StoreId == StoreId && (x.TreasuryEntryId == id || x.POSShiftCashTransactionId == original.POSShiftCashTransactionId && original.POSShiftCashTransactionId != null), ct))
+                throw new ConflictAppException("Phiếu thực thu đã là nguồn đối soát COD; cần quy trình điều chỉnh nguồn, không đảo riêng phiếu quỹ.");
             CheckVersion(original.RowVersion, r.RowVersion);
             if (original.ReversedAtUtc != null || original.ReversalOfId != null)
                 throw new ConflictAppException("Phiếu đã đảo hoặc không phải phiếu gốc.");

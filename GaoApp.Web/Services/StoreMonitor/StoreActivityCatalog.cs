@@ -4,7 +4,7 @@ namespace GaoApp.Web.Services.StoreMonitor;
 
 public static class StoreActivityCatalog
 {
-    public static readonly IReadOnlySet<string> Modules = new HashSet<string>(["receipt", "pos", "warehouse", "label", "review"], StringComparer.Ordinal);
+    public static readonly IReadOnlySet<string> Modules = new HashSet<string>(["receipt", "pos", "warehouse", "label", "review", "delivery"], StringComparer.Ordinal);
 
     public static string? PageModule(string controller) => controller switch
     {
@@ -13,6 +13,7 @@ public static class StoreActivityCatalog
         "POS" => "pos",
         "StockCountPages" or "StockTransfer" or "InventoryAdjustmentDocuments" => "warehouse",
         "LabelPrinting" => "label",
+        "DeliveryPage" => "delivery",
         _ => null
     };
     public static string[] Permissions(string module) => module switch
@@ -23,6 +24,7 @@ public static class StoreActivityCatalog
         "pos" => [PermissionCodes.Pos.Order.View],
         "warehouse" => [PermissionCodes.Inventory.StockCount.View, PermissionCodes.Inventory.StockTransfer.View, PermissionCodes.Inventory.Adjustment.View],
         "label" => [PermissionCodes.System.ProductLabel.Print],
+        "delivery" => [PermissionCodes.Delivery.View],
         _ => []
     };
     // Only successful, known writes enter the event rail. Lookup, preview, refresh and QR reads do not.
@@ -73,6 +75,9 @@ public static class StoreActivityCatalog
         "UpdateQty" => ("pos", "vừa sửa số lượng mặt hàng"),
         "RemoveLine" => ("pos", "vừa bỏ mặt hàng khỏi giỏ"),
         "ClearCurrentCartLines" => ("pos", "vừa dọn các mặt hàng trong giỏ"),
+        "SetCustomerForCurrentCart" or "QuickCreateCustomer" => ("pos", "vừa gắn khách hàng vào đơn"),
+        "ClearCustomerForCurrentCart" => ("pos", "vừa bỏ khách hàng khỏi đơn"),
+        "UpdateCurrentCartDiscount" or "ApplyRewardVouchersToCurrentCart" or "ClearRewardVouchersFromCurrentCart" => ("pos", "vừa cập nhật giảm giá đơn"),
         "AddPayment" or "AddPaymentToCurrentCart" or "AddPaymentAndMaybeFinalizeCurrentCart" => ("pos", "vừa ghi nhận thanh toán"),
         "Finalize" or "FinalizeCurrentCart" or "FinalizeCredit" => ("pos", "vừa chốt đơn bán hàng"),
         "HoldOrder" or "HoldCurrentCart" => ("pos", "vừa giữ đơn chờ xử lý"),

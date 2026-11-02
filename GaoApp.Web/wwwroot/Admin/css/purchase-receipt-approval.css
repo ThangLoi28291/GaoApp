@@ -577,6 +577,11 @@
     transform: translateY(-1px);
 }
 
+.sd-filter-chips button:focus-visible {
+    outline: 3px solid #1849a9;
+    outline-offset: 3px;
+}
+
 .sd-filter-chips button.active {
     border-color: #696cff;
     color: #fff;
@@ -597,6 +602,73 @@
 
 .sd-product-identity {
     min-width: 240px;
+}
+
+.sd-revision-summary {
+    display: flex;
+    align-items: flex-start;
+    gap: .75rem;
+    margin-bottom: 1rem;
+    padding: .9rem 1rem;
+    border: 1px solid #c7d7fe;
+    border-radius: 12px;
+    background: #eff4ff;
+    color: #1849a9;
+    overflow-wrap: anywhere;
+}
+
+.sd-revision-summary > i {
+    margin-top: .15rem;
+    font-size: 1.4rem;
+}
+
+.sd-revision-summary strong,
+.sd-revision-summary small {
+    display: block;
+}
+
+.sd-revision-summary small {
+    margin-top: .3rem;
+    color: #475467;
+}
+
+.sd-commercial-table .commercial-line.sd-revision-line > td {
+    background-color: #f4f7ff;
+}
+
+.sd-commercial-table .commercial-line.sd-revision-line > td:first-child {
+    border-left: 4px solid #5277eb;
+}
+
+.sd-revision-change {
+    display: grid;
+    gap: .35rem;
+    margin-top: .45rem;
+}
+
+.sd-revision-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-self: start;
+    gap: .3rem;
+    padding: .25rem .55rem;
+    border: 1px solid #b2ccff;
+    border-radius: 6px;
+    background: #e0eaff;
+    color: #1849a9;
+    font-size: .78rem;
+    font-weight: 700;
+}
+
+.sd-revision-change small {
+    color: #344054;
+    overflow-wrap: anywhere;
+}
+
+.commercial-price-save-state:empty,
+.commercial-price-variance:empty,
+.commercial-price-error:empty {
+    display: none;
 }
 
 .sd-catalog-modal .modal-header {
@@ -887,13 +959,53 @@
         background: #fff;
     }
 
+    .sd-commercial-table tr.commercial-line.sd-revision-line {
+        border-left: 4px solid #5277eb;
+    }
+
+    .sd-commercial-table .commercial-line.sd-revision-line > td:first-child {
+        border-left: 0;
+    }
+
+    .sd-commercial-table .sd-product-identity {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
     .sd-commercial-table tbody td {
         display: grid;
         grid-template-columns: minmax(88px, .38fr) minmax(0, 1fr);
-        gap: .75rem;
+        gap: .3rem .75rem;
         padding: .65rem 0;
         text-align: left !important;
         border-bottom: 1px solid #eef0f3;
+    }
+
+    .sd-commercial-table tbody td > * {
+        grid-column: 2;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .sd-commercial-table td[data-label="Giá bán lẻ hiện tại"] > .text-nowrap {
+        white-space: normal !important;
+    }
+
+    .sd-commercial-table .input-group .commercial-unit-price[type="number"] {
+        min-width: 80px;
+        min-height: 44px;
+        min-block-size: 44px;
+        font-size: 16px;
+    }
+
+    .sd-commercial-table td[data-label="Giá nhập"] .input-group {
+        flex-wrap: nowrap;
+    }
+
+    .sd-filter-chips button,
+    .sd-commercial-table .btn,
+    .sd-commercial-sticky-actions .btn {
+        min-height: 44px;
     }
 
     .sd-commercial-table tbody td:last-child {
@@ -916,11 +1028,25 @@
         grid-template-columns: 1fr;
     }
 }
+
+@media (max-width: 380px) {
+    .sd-commercial-table td[data-label="Sản phẩm"],
+    .sd-commercial-table td[data-label="Giá nhập"] {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sd-commercial-table td[data-label="Sản phẩm"] > *,
+    .sd-commercial-table td[data-label="Giá nhập"] > * {
+        grid-column: 1;
+    }
+}
 /* Bill pricing stays within the commercial workbench; amounts come from the server. */
 .sd-pricing-toolbar, .sd-pricing-actions { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin: 1rem 0; }
 .sd-pricing-reconciliation { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 1rem; padding: 1rem; background: #f5f7fb; border-radius: .75rem; margin-bottom: 1rem; }
 .sd-pricing-reconciliation label, .sd-pricing-reconciliation span { font-size: .85rem; color: #566171; }
 .sd-pricing-reconciliation strong { display: block; margin-top: .5rem; font-size: 1.1rem; }
+.sd-global-discount { display: grid; gap: .35rem; min-width: 0; }
+.sd-global-discount > label { margin: 0; }
 .sd-pricing-grid { min-width: 1100px; }
 .sd-pricing-grid input[type="number"] { min-width: 105px; }
 .sd-pricing-rule { display: flex; align-items: center; gap: .5rem; padding: .75rem; border: 1px solid #dee2e6; border-radius: .5rem; margin-top: .5rem; }
@@ -942,14 +1068,15 @@
 .sd-pricing-xml-fields .form-label { font-size: .85rem; margin-bottom: .35rem; }
 .sd-pricing-xml-identity { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; gap: .5rem .75rem; font-size: .85rem; }
 .sd-pricing-xml-identity > span:not(.sd-bill-product-image) { flex: 1 1 240px; overflow-wrap: anywhere; }
-.sd-pricing-xml-row > button { align-self: center; }
+.sd-pricing-xml-actions { display: flex; align-self: center; flex-wrap: wrap; gap: .5rem; }
 .sd-pricing-xml-fields .sd-bill-suggestion small { display: block; margin-top: .25rem; }
 @media (max-width: 600px) {
     .sd-pricing-xml-panel { padding: .75rem; }
     .sd-pricing-xml-row { padding: .75rem; grid-template-columns: 1fr; }
     .sd-pricing-xml-fields { grid-template-columns: 1fr 1fr; }
     .sd-pricing-xml-fields > .sd-bill-search { grid-column: 1 / -1; }
-    .sd-pricing-xml-toolbar > button, .sd-pricing-xml-footer > button, .sd-pricing-xml-row > button { width: 100%; }
+    .sd-pricing-xml-toolbar > button, .sd-pricing-xml-footer > button { width: 100%; }
+    .sd-pricing-xml-actions > button { flex: 1 1 120px; }
 }
 #receiptPricingAllocation [hidden] { display: none !important; }
 .sd-pricing-steps { display: flex; gap: .25rem; border-bottom: 1px solid var(--bs-border-color, #dee2e6); margin-bottom: 1.25rem; }
@@ -964,8 +1091,8 @@
 .sd-bill-suggestion.is-active { background: #e9e7ff; color: #34258c; box-shadow: inset 4px 0 #6554d9; }
 .sd-bill-suggestion.is-active strong { font-weight: 800; }
 .sd-bill-suggestion.is-active .text-muted { color: #514581 !important; }
-.sd-bill-entry-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem; margin-top: .75rem; }
-.sd-bill-price-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: .75rem; margin-top: .75rem; }
+.sd-bill-entry-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: end; gap: .75rem; margin-top: .75rem; }
+.sd-bill-price-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: end; gap: .75rem; margin-top: .75rem; }
 .sd-bill-entry-fields label, .sd-bill-price-fields label, .sd-pricing-field, .sd-pricing-program-fields label { display: flex; flex-direction: column; min-width: 0; gap: .35rem; font-size: .85rem; }
 .sd-bill-price-fields input[readonly] { background: var(--bs-body-bg, #fff); color: var(--bs-secondary-color, #667085); }
 .sd-bill-product-image { display: flex; align-items: center; justify-content: center; flex: 0 0 56px; width: 56px; height: 56px; border: 1px solid var(--bs-border-color, #dee2e6); border-radius: .5rem; background: var(--bs-body-bg, #fff); color: var(--bs-secondary-color, #667085); overflow: hidden; }
@@ -1080,10 +1207,10 @@
 .receipt-quick-price-actions kbd { background: transparent; color: inherit; font-size: .75rem; font-weight: normal; }
 @media (max-width: 767.98px) {
     .sd-commercial-workbench:has([data-workbench-panel="goods"]:not([hidden]) .receipt-quick-price:not([hidden])) > .sd-commercial-sticky-actions { position: static; }
-    .sd-commercial-table td[data-label="Giá nhập"] > .receipt-quick-price-entry { grid-column: 2; }
+    .sd-commercial-table td[data-label="Giá nhập"] > .receipt-quick-price-entry { grid-column: -2 / -1; }
     .sd-commercial-table td[data-label="Giá nhập"] > .receipt-quick-price { grid-column: 1 / -1; min-width: 0; max-width: none; margin-top: .25rem; padding: .85rem; }
     .receipt-quick-price-fields { grid-template-columns: 1fr; }
     .receipt-quick-price-gift-fields { max-width: none; }
-    .receipt-quick-price-entry > button { min-height: 40px; }
+    .receipt-quick-price-entry > button { min-height: 44px; }
     .receipt-quick-price-actions > button { flex: 1 1 0; min-height: 44px; }
 }

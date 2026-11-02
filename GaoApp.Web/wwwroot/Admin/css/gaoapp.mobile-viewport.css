@@ -1,0 +1,96 @@
+/* UI-03b: only real phone shells opt in. No desktop/tablet declarations. */
+@media (max-width: 767.98px) {
+    html:has(> body[data-mobile-viewport]) {
+        scroll-padding-top: calc(var(--gao-mobile-header-height,72px) + 12px);
+        scroll-padding-bottom: calc(var(--gao-mobile-dock-height,88px) + 12px);
+        scroll-behavior: auto;
+    }
+    body[data-mobile-viewport] [data-mobile-app-shell="admin"] [data-mobile-shell-content]:not(.d-flex) {
+        padding-left: max(12px,env(safe-area-inset-left)) !important;
+        padding-right: max(12px,env(safe-area-inset-right)) !important;
+    }
+    body[data-mobile-viewport] .layout-content-navbar[data-mobile-dock-owner="navigation"]:has(> .layout-container > .gao-mobile-pins) > .layout-container > .layout-page > .content-wrapper {
+        padding-bottom: calc(var(--gao-mobile-dock-height,88px) + 12px) !important;
+    }
+    body[data-mobile-viewport] .layout-content-navbar[data-mobile-dock-owner="navigation"] > .layout-container > .gao-mobile-pins {
+        bottom: var(--gao-mobile-visible-bottom,0px);
+    }
+    body[data-mobile-keyboard] .layout-content-navbar[data-mobile-dock-owner="navigation"] > .layout-container > .gao-mobile-pins,
+    body[data-mobile-overlay] .layout-content-navbar > .layout-container > .gao-mobile-pins { display: none !important; }
+
+    body[data-mobile-viewport] .layout-content-navbar #layout-menu[data-admin-navigation] {
+        top: var(--gao-mobile-visible-top,0px) !important;
+        bottom: auto !important;
+        height: var(--gao-mobile-visible-height,100dvh) !important;
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+    body[data-mobile-viewport] :is(#employeeAccountDrawer,#posPrimeAdminDrawer) {
+        top: var(--gao-mobile-visible-top,0px);
+        bottom: auto;
+        height: var(--gao-mobile-visible-height,100dvh);
+    }
+    body[data-mobile-viewport] :is(#employeeAccountDrawer,#posPrimeAdminDrawer) .offcanvas-header { padding-top: max(16px,env(safe-area-inset-top)); }
+    body[data-mobile-viewport] :is(#employeeAccountDrawer,#posPrimeAdminDrawer) .offcanvas-body { min-height: 0; overscroll-behavior: contain; }
+    body[data-mobile-viewport] .pos-prime-admin-drawer__footer { padding-bottom: max(12px,env(safe-area-inset-bottom)); }
+
+    /* Prime owns its payment/sheet geometry. Other Bootstrap modals retain their existing scroll/focus owner. */
+    body[data-mobile-viewport]:not([data-mobile-shell-owner="pos-prime"]) .modal {
+        top: var(--gao-mobile-visible-top,0px);
+        bottom: auto;
+        height: var(--gao-mobile-visible-height,100dvh);
+    }
+    body[data-mobile-viewport]:not([data-mobile-shell-owner="pos-prime"]) .modal-dialog { margin-top: 12px; margin-bottom: 12px; }
+    body[data-mobile-viewport]:not([data-mobile-shell-owner="pos-prime"]) .modal-dialog-scrollable { height: calc(var(--gao-mobile-visible-height,100dvh) - 24px); }
+    body[data-mobile-viewport]:not([data-mobile-shell-owner="pos-prime"]) .modal { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+    body[data-mobile-viewport] .modal-header { padding-top: max(16px,env(safe-area-inset-top)); }
+    body[data-mobile-viewport] .modal-footer { padding-bottom: max(16px,env(safe-area-inset-bottom)); }
+    body[data-mobile-viewport] :is(.gao-menu-review,.ga-correction)[open] {
+        top: calc(var(--gao-mobile-visible-top,0px) + max(12px,env(safe-area-inset-top)));
+        bottom: auto;
+        max-height: calc(var(--gao-mobile-visible-height,100dvh) - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom)));
+        margin-top: 0; margin-bottom: 0;
+    }
+    body[data-mobile-viewport] .gao-menu-review-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+
+    body[data-mobile-viewport].wrd-app-mode .wra-header {
+        padding-left: max(12px,env(safe-area-inset-left)); padding-right: max(12px,env(safe-area-inset-right));
+    }
+    body[data-mobile-viewport].wrd-app-mode .wrd-page {
+        padding-top: calc(var(--gao-mobile-header-height,100px) + 12px) !important;
+        padding-bottom: calc(var(--gao-mobile-dock-height,188px) + 12px) !important;
+        padding-left: max(12px,env(safe-area-inset-left)) !important; padding-right: max(12px,env(safe-area-inset-right)) !important;
+    }
+    body[data-mobile-viewport].wrd-app-mode .wra-dock { padding-left: max(12px,env(safe-area-inset-left)); padding-right: max(12px,env(safe-area-inset-right)); }
+    body[data-mobile-keyboard].wrd-app-mode .wra-dock { display: none !important; }
+    body[data-mobile-viewport][data-mobile-shell-owner="pos-prime"] .pos-prime-layout { padding-left: max(8px,env(safe-area-inset-left)); padding-right: max(8px,env(safe-area-inset-right)); }
+    body[data-mobile-viewport][data-mobile-shell-owner="pos-prime"] .pos-prime-header { padding-top: max(8px,env(safe-area-inset-top)); }
+    body[data-mobile-viewport] #posPrimeCheckoutDock { padding-bottom: max(8px,env(safe-area-inset-bottom)); }
+    body[data-mobile-viewport] .pos-prime-sheet .offcanvas-header { padding-top: max(16px,env(safe-area-inset-top)); }
+    body[data-mobile-viewport] .pos-prime-sheet .offcanvas-body { padding-bottom: max(16px,env(safe-area-inset-bottom)); }
+
+    body[data-mobile-viewport] #gaoAssistant .ga-launch {
+        top: auto; right: max(12px,env(safe-area-inset-right));
+        bottom: calc(var(--gao-mobile-visible-bottom,0px) + var(--gao-mobile-dock-clearance,0px) + max(12px,env(safe-area-inset-bottom)));
+    }
+    body[data-mobile-viewport] #gaoAssistant :is(.ga-panel,.ga-panel.ga-expanded) {
+        top: auto; left: max(8px,env(safe-area-inset-left)); right: max(8px,env(safe-area-inset-right)); width: auto;
+        bottom: calc(var(--gao-mobile-visible-bottom,0px) + var(--gao-mobile-dock-clearance,0px) + 76px);
+        height: max(0px,min(650px,calc(var(--gao-mobile-visible-height,100dvh) - var(--gao-mobile-dock-clearance,0px) - 100px)));
+    }
+    body[data-mobile-viewport][data-mobile-assistant-compact] #gaoAssistant :is(.ga-panel,.ga-panel.ga-expanded) {
+        top: calc(var(--gao-mobile-visible-top,0px) + 8px);
+        bottom: auto;
+        height: max(0px,calc(var(--gao-mobile-visible-height,100dvh) - 16px));
+    }
+    body[data-mobile-assistant-suspended] #gaoAssistant { visibility: hidden; pointer-events: none; }
+    body[data-mobile-viewport] #gaoAssistant :is(input,textarea,select),
+    body[data-mobile-viewport] .gao-account-password-input input { font-size: 16px; }
+    body[data-mobile-viewport] #toast-container {
+        top: var(--gao-mobile-toast-top,12px) !important; bottom: auto !important;
+        left: max(12px,env(safe-area-inset-left)) !important; right: max(12px,env(safe-area-inset-right)) !important;
+        width: auto; max-height: min(28vh,180px); max-height: min(calc(var(--gao-mobile-visible-height,100dvh) * .28),180px);
+        overflow-y: auto; overscroll-behavior: contain; pointer-events: none;
+    }
+    body[data-mobile-viewport] #toast-container > div { width: 100%; pointer-events: auto; }
+}

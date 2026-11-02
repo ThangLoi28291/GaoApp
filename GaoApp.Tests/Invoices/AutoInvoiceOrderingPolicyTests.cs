@@ -280,6 +280,26 @@ public sealed class AutoInvoiceOrderingPolicyTests
             result.InvoiceHeadIds);
     }
 
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(true, -50_000)]
+    [InlineData(false, 0)]
+    [InlineData(false, -50_000)]
+    public void Non_positive_old_draft_does_not_block_newer_ready_single(bool consumer, int total)
+    {
+        var empty = Candidate(1, "2026-09-23", total, "old-day", 8) with { IsConsumer = consumer };
+        var ready = Candidate(2, "2026-09-24", 200_000m, "today", 9);
+
+        var result = AutoInvoiceOrderingPolicy.Select(
+            [empty, ready], 100_000m, 100_000m, new(23, 0, 0), true, Today);
+
+        Assert.NotNull(result);
+        Assert.Equal(AutoInvoiceOperationKind.Single, result.Kind);
+        Assert.Equal(new[] { ready.InvoiceHeadId }, result.InvoiceHeadIds);
+        Assert.Null(AutoInvoiceOrderingPolicy.Select(
+            [empty], 100_000m, 100_000m, new(23, 0, 0), true, Today));
+    }
+
     private static AutoInvoiceCandidate Candidate(
         int id,
         string date,

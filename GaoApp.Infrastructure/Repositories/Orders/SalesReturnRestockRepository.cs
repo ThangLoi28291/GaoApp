@@ -36,6 +36,17 @@ public sealed class SalesReturnRestockRepository(AppDbContext db) : ISalesReturn
             .Where(x => !x.IsDeleted && x.CompletedAtUtc == null && !x.SalesReturnLine.IsDeleted && !x.SalesReturnLine.SalesReturn.IsDeleted && x.SalesReturnLine.SalesReturn.Status == SalesReturnStatus.Completed && (returnId == null || x.SalesReturnLine.SalesReturnId == returnId))
             .OrderBy(x => x.SalesReturnLine.SalesReturnId).ThenBy(x => x.Id).ToListAsync(ct);
     }
+    public async Task<Dictionary<(int ReturnLineId, int WarehouseId), decimal>> GetCompletedQuantitiesAsync(IReadOnlyCollection<int> returnLineIds, CancellationToken ct)
+    {
+        if (returnLineIds.Count == 0) return [];
+        var rows = await db.SalesReturnRestockFragments.AsNoTracking()
+            .Where(x => returnLineIds.Contains(x.SalesReturnLineId) && !x.IsDeleted && x.CompletedAtUtc != null
+                && x.InventoryTransactionId != null && !x.SalesReturnLine.IsDeleted && !x.SalesReturnLine.SalesReturn.IsDeleted
+                && x.SalesReturnLine.SalesReturn.Status == SalesReturnStatus.Completed)
+            .GroupBy(x => new { x.SalesReturnLineId, x.SourceValuationEntry.WarehouseId })
+            .Select(x => new { x.Key.SalesReturnLineId, x.Key.WarehouseId, Quantity = x.Sum(y => y.BaseQuantity) }).ToListAsync(ct);
+        return rows.ToDictionary(x => (x.SalesReturnLineId, x.WarehouseId), x => x.Quantity);
+    }
     public async Task<Dictionary<int, decimal>> GetLegacyReservedQuantitiesAsync(IReadOnlyCollection<int> sourceIds, CancellationToken ct)
     {
         // Older databases can continue normal returns until the additive migration is applied.

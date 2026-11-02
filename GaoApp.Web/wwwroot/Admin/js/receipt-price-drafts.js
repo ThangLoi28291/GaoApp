@@ -1,12 +1,13 @@
 (() => {
     'use strict';
     const states = new Map();
-    let timer, pending, error = '', savedAt = '', held = 0;
+    let timer, pending, error = '', savedAt = '', held = 0, uncertain = false;
     const inputs = () => [...document.querySelectorAll('#commercialApprovalWorkbench .commercial-unit-price')];
     const dirty = () => [...states.values()].filter(s => s.value !== s.saved);
     const valid = s => s.value.trim() !== '' && Number.isFinite(Number(s.value)) && Number(s.value) > 0 && Number(s.value) <= 99999999999999.99;
     function render() {
         const changed = dirty();
+        if (!pending && !changed.length && !uncertain) error = '';
         for (const s of states.values()) {
             const label = s.input.closest('.commercial-line')?.querySelector('.commercial-price-save-state');
             if (!label) continue;
@@ -16,13 +17,14 @@
         }
         const label = document.getElementById('receiptPriceDraftStatus');
         if (label) {
-            label.textContent = pending ? 'Đang lưu giá nháp…' : changed.length ? (error || `Còn ${changed.length} dòng giá chưa lưu`) : savedAt ? `Đã lưu tất cả thay đổi giá · Lần cuối ${savedAt}` : 'Giá nhập được tự động lưu nháp';
-            label.className = 'small d-block ' + (changed.length && error ? 'text-danger' : changed.length ? 'text-warning' : 'text-success');
+            label.textContent = pending ? 'Đang lưu giá nhập nháp…' : error || (changed.length ? `Còn ${changed.length} dòng giá nhập chưa lưu` : savedAt ? `Đã lưu giá nhập · Lần cuối ${savedAt}` : 'Giá nhập được tự động lưu nháp');
+            label.className = 'small d-block ' + (error ? 'text-danger' : changed.length ? 'text-warning' : 'text-success');
         }
         const footer = document.querySelector('.sd-manager-save-state span');
-        if (footer) { footer.textContent = pending ? 'Đang lưu giá…' : changed.length ? 'Giá chưa lưu' : 'Giá đã lưu'; footer.className = changed.length ? 'text-danger' : ''; }
+        if (footer) { footer.textContent = pending ? 'Đang lưu giá…' : error ? 'Cần kiểm tra việc lưu giá' : changed.length ? 'Giá chưa lưu' : 'Giá đã lưu'; footer.className = changed.length || error ? 'text-danger' : ''; }
         const button = document.getElementById('receiptPriceDraftSave');
         if (button) button.disabled = !!pending || held > 0;
+        document.dispatchEvent(new Event('receipt-price-drafts-state-changed'));
     }
     function schedule() {
         clearTimeout(timer);
@@ -32,7 +34,7 @@
         clearTimeout(timer);
         if (pending) { await pending; if (error) return false; return flush(); }
         const batch = dirty().filter(valid).slice(0, 500).map(s => ({ s, value: s.value, version: s.version }));
-        if (!batch.length) { render(); return dirty().length === 0; }
+        if (!batch.length) { render(); return dirty().length === 0 && !error; }
         error = '';
         pending = (async () => {
             const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 20000);
@@ -44,21 +46,25 @@
                         lines: batch.map(x => ({ stockDocumentLineId: x.s.id, rowVersion: x.version, unitPriceBeforeVat: Number(x.value) })) })
                 });
                 const data = await response.json().catch(() => ({}));
+                if (response.ok && (!data.rowVersion || !data.lineVersions || !data.lineAmountsBeforeVat)) uncertain = true;
                 if (!response.ok || !data.rowVersion || !data.lineVersions || !data.lineAmountsBeforeVat) throw new Error(data.message || 'Chưa lưu được giá nháp. Kiểm tra kết nối rồi bấm Lưu nháp ngay.');
                 for (const x of batch) {
                     x.s.saved = x.value; x.s.version = data.lineVersions[x.s.id]; x.s.done = true;
                     x.s.input.dataset.lineVersion = x.s.version;
                     const row = x.s.input.closest('.commercial-line');
+                    row.dataset.rowVersion = x.s.version;
                     row.dataset.exactUnitPrice = x.value;
                     row.dataset.exactBeforeVat = String(data.lineAmountsBeforeVat[x.s.id]);
                 }
                 window.stockDocumentRowVersion?.update(data.rowVersion);
                 window.stockDocumentPage.rowVersion = data.rowVersion;
                 window.GaoReceiptPricingAllocation?.pricesSaved(data);
+                uncertain = false;
                 document.getElementById('commercialHasVat')?.dispatchEvent(new Event('change'));
-                savedAt = new Date(data.savedAtUtc).toLocaleTimeString('vi-VN');
+                savedAt = new Date(typeof data.savedAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(data.savedAtUtc) ? data.savedAtUtc + 'Z' : data.savedAtUtc).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
             } catch (e) {
-                error = e.name === 'AbortError' ? 'Chưa xác nhận được kết quả lưu. Giá đang nhập vẫn được giữ ở trang này; kiểm tra kết nối trước khi rời trang.' : e instanceof TypeError ? 'Không kết nối được máy chủ. Giá chưa được lưu; kiểm tra mạng rồi bấm Lưu nháp ngay.' : e.message;
+                uncertain = uncertain || e.name === 'AbortError' || e instanceof TypeError;
+                error = uncertain ? 'Chưa xác minh được kết quả lưu giá. Giá đang nhập vẫn được giữ; tải lại phiếu và đối chiếu trước khi tiếp tục.' : e.message;
             } finally { clearTimeout(timeout); }
         })();
         render(); await pending; pending = null; render();
@@ -93,11 +99,13 @@
     }
     window.addEventListener('beforeunload', event => { if (pending || dirty().length) { event.preventDefault(); event.returnValue = ''; } });
     window.GaoReceiptPriceDrafts = { init, flush, hold,
+        getState: () => ({ pending: !!pending, dirtyCount: dirty().length, invalidCount: dirty().filter(s => !valid(s)).length, error, uncertain, savedAt }),
         acceptSavedPrice: (id, value, version) => {
             const state = states.get(id);
             if (!state || state.value !== state.saved || pending) return;
             state.saved = state.value = String(value); state.input.value = value;
-            state.version = version; state.input.dataset.lineVersion = version; render();
+            state.version = version; state.input.dataset.lineVersion = version;
+            state.input.closest('.commercial-line').dataset.rowVersion = version; render();
         },
-        updateLineVersion: (id, version) => { const state = states.get(id); if (state && version) { state.version = version; state.input.dataset.lineVersion = version; } }, hasUnsaved: () => !!pending || dirty().length > 0 };
+        updateLineVersion: (id, version) => { const state = states.get(id); if (state && version) { state.version = version; state.input.dataset.lineVersion = version; state.input.closest('.commercial-line').dataset.rowVersion = version; } }, hasUnsaved: () => !!pending || dirty().length > 0 };
 })();

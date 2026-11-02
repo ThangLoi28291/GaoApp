@@ -29,6 +29,9 @@ public sealed class PurchaseOrderLine : BaseStoreEntity, IAuditTrackedEntity
     public string ProductNameSnapshot { get; set; } = string.Empty;
     [StringLength(100)]
     public string? SkuSnapshot { get; set; }
+    /// <summary>Ghi chú theo mặt hàng, chụp từ yêu cầu mua để gửi nhà cung cấp.</summary>
+    [StringLength(1000)]
+    public string? Note { get; set; }
     [Required, StringLength(100)]
     public string UnitNameSnapshot { get; set; } = string.Empty;
     [StringLength(100)]

@@ -2,6 +2,7 @@ namespace GaoApp.Application.DTOs.POSShifts;
 
 public sealed class POSShiftReconciliationDto
 {
+    public GaoApp.Application.DTOs.POSShiftDashboards.POSShiftPaymentBreakdownDto PaymentBreakdown { get; set; } = new();
     public int StoreId { get; set; }
     public int ShiftId { get; set; }
     public int OwnerId { get; set; }
@@ -39,10 +40,11 @@ public sealed class POSShiftReconciliationDto
 
 public sealed record ReconciliationPaymentDto(int Id, string Method, decimal Amount, string? Reference,
     string? Provider, DateTime PaidAtUtc, string Actor, bool Cancelled, bool IsDebtCollection,
-    string Confirmation, bool BankVerified, bool CanRequest = false, int? PendingRequestId = null);
+    string Confirmation, bool BankVerified, bool CanRequest = false, int? PendingRequestId = null, string? Channel = null, string? SourceReceivedAtText = null);
 public sealed record ReconciliationLineDto(string Name, decimal Quantity, decimal UnitPrice, decimal Total);
 public sealed class ReconciliationOrderDto
 {
+    public bool NativeStorefrontSource { get; set; }
     public int Id { get; set; }
     public string Number { get; set; } = "";
     public string Status { get; set; } = "";

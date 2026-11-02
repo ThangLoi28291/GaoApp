@@ -54,6 +54,7 @@ public sealed class DeliveryPosService(AppDbContext db, ICurrentUser user, ICurr
     {
         await Authorize(ct); var shift = await OpenShift(ct); await Scope(shift, ct);
         var cart = await db.Orders.AsNoTracking().Include(x => x.Lines).Include(x => x.Customer)
+            .Include(x => x.RewardVouchers).ThenInclude(x => x.Voucher)
             .SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == shift.CurrentOrderId, ct)
             ?? throw Error(409, "CART_REQUIRED", "Chọn giỏ có hàng trước khi tạo đơn giao.");
         await Guard(cart, shift, ct);
@@ -87,9 +88,10 @@ public sealed class DeliveryPosService(AppDbContext db, ICurrentUser user, ICurr
             }
             await using var bank = await bankLocks.AcquireAsync(db, request.SourceCartId, ct);
             // Protect against ordinary POS writes that have no offline/operation headers.
-            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT Id FROM POSShifts WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND TerminalId={Terminal} AND Status={(int)POSShiftStatus.Open}; SELECT Id FROM Orders WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND Id={request.SourceCartId}; SELECT Id FROM OrderLines WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND OrderId={request.SourceCartId};", ct);
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT Id FROM POSShifts WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND TerminalId={Terminal} AND Status={(int)POSShiftStatus.Open}; SELECT Id FROM Orders WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND Id={request.SourceCartId}; SELECT Id FROM OrderLines WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND OrderId={request.SourceCartId}; SELECT Id FROM OrderRewardVouchers WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND OrderId={request.SourceCartId};", ct);
             var shift = await OpenShift(ct); await Scope(shift, ct);
-            var cart = await db.Orders.Include(x => x.Lines).SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == request.SourceCartId, ct)
+            var cart = await db.Orders.Include(x => x.Lines).Include(x => x.RewardVouchers).ThenInclude(x => x.Voucher)
+                .SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == request.SourceCartId, ct)
                 ?? throw Error(404, "SOURCE_NOT_FOUND", "Không tìm thấy giỏ nguồn trong cửa hàng.");
             await Guard(cart, shift, ct);
             if (Convert.ToBase64String(cart.RowVersion) != request.ExpectedVersion || Fingerprint(cart, shift) != request.ExpectedFingerprint)
@@ -139,11 +141,10 @@ public sealed class DeliveryPosService(AppDbContext db, ICurrentUser user, ICurr
         if (await db.Set<PosPaymentQrRequest>().AnyAsync(x => x.StoreId == Store && x.OrderId == cart.Id && x.Status != PosPaymentQrStatus.Cancelled, ct) ||
             await db.Set<AcbQrSession>().AnyAsync(x => x.StoreId == Store && x.OrderId == cart.Id && x.Status != AcbSessionStatus.Cancelled, ct))
             throw Error(409, "BANK_QR_EXISTS", "Giỏ có QR ngân hàng chưa hủy/đối soát; kiểm tra QR trước khi chuyển sang giao hàng.");
-        if (cart.VoucherDiscountTotal != 0 || cart.PromotionDiscountTotal != 0 || cart.ComboDiscountTotal != 0 ||
-            cart.ComboPromotionId.HasValue || cart.Lines.Any(x => x.IsPromotionGift || x.PromotionId.HasValue || x.ComboPromotionId.HasValue ||
-                x.PromotionDiscount != 0 || x.ComboAllocatedDiscount != 0) ||
-            await db.Set<OrderRewardVoucher>().AnyAsync(x => x.StoreId == Store && x.OrderId == cart.Id, ct))
-            throw Error(409, "PRICE_FEATURE_UNSUPPORTED", "Đơn giao hiện hỗ trợ giá và giảm giá thông thường; bỏ combo/quà tặng/voucher trước khi chuyển.");
+        if (cart.GrandTotal <= 0) throw Error(409, "ZERO_PRICE_UNSUPPORTED", "Tổng đơn giao phải lớn hơn 0 như thanh toán POS.");
+        if (cart.RewardVouchers.Any(x => x.Voucher.StoreId != Store || x.Voucher.CustomerId != cart.CustomerId ||
+            x.Voucher.Status != CustomerRewardVoucherStatus.Available || x.Voucher.Value != x.VoucherValue))
+            throw Error(409, "VOUCHER_UNAVAILABLE", "Voucher không còn khả dụng hoặc không thuộc khách nguồn; tải lại giỏ.");
         if (cart.HasMultipleLegalEntities || cart.LegalEntityCount != 0 ||
             await db.OrderLegalEntityAllocations.AnyAsync(x => x.StoreId == Store && x.OrderId == cart.Id, ct))
             throw Error(409, "SOURCE_ALREADY_ALLOCATED", "Giỏ đã có phân bổ xuất hàng; cần xử lý trước khi tạo đơn giao.");
@@ -166,11 +167,17 @@ public sealed class DeliveryPosService(AppDbContext db, ICurrentUser user, ICurr
     }
     private static string Fingerprint(Order cart, POSShift shift) => Hash(JsonSerializer.Serialize(new {
         cart.Id, cart.StoreId, cart.POSShiftId, cart.RowVersion, cart.CustomerId, cart.GrandTotal, cart.OrderDiscount,
+        cart.Subtotal, cart.PromotionDiscountTotal, cart.ComboDiscountTotal, cart.VoucherDiscountTotal,
+        cart.ComboPromotionId, cart.ComboPromotionName, cart.ComboPromotionNote,
         cart.DiscountTotal, cart.PaidTotal, cart.DepositAmount, cart.UseMultiLegalEntity,
         shiftVersion = shift.RowVersion, shiftId = shift.Id, shift.WarehouseId, shift.CurrentOrderId,
         lines = cart.Lines.OrderBy(x => x.Id).Select(x => new { x.Id, x.RowVersion, x.VariantId, x.ItemName, x.UnitName,
             x.SellingUnitId, x.SellingUnitName, x.BaseUnitId, x.BaseUnitName, x.ProductUnitConversionId,
-            x.Multiplier, x.Quantity, x.BaseQuantity, x.UnitPrice, x.LineDiscount, x.LineTotal })
+            x.Multiplier, x.Quantity, x.BaseQuantity, x.UnitPrice, x.LineDiscount, x.LineTotal,
+            x.PromotionDiscount, x.PromotionId, x.PromotionType, x.ComboPromotionId, x.ComboAllocatedDiscount,
+            x.IsPromotionGift, x.PromotionGiftQuantity, x.GiftPromotionId, x.GiftSourceLineId }),
+        vouchers = cart.RewardVouchers.OrderBy(x => x.VoucherId).Select(x => new { x.Id, x.RowVersion, x.VoucherId,
+            x.VoucherValue, voucherVersion = x.Voucher.RowVersion, x.Voucher.Value, x.Voucher.Status, x.Voucher.CustomerId })
     }, Json));
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     private Task Lock(string resource, CancellationToken ct) => db.Database.ExecuteSqlInterpolatedAsync(

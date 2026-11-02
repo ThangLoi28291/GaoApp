@@ -1,5 +1,7 @@
 ﻿namespace GaoApp.Application.DTOs.Audit;
 
+using GaoApp.Application.Common;
+
 /// <summary>
 /// Bộ lọc tra cứu audit log.
 /// </summary>
@@ -18,4 +20,17 @@ public class AuditLogQueryDto
 
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
+
+    /// <summary>Normalize paging and return a checked SQL offset before any read.</summary>
+    public int NormalizeAndValidate()
+    {
+        var paging = LogReadLimits.NormalizePage(Page, PageSize);
+        LogReadLimits.ValidateText(Keyword, LogReadLimits.MaxKeywordLength, "Từ khóa");
+        LogReadLimits.ValidateText(EntityName, 150, "Tên đối tượng");
+        LogReadLimits.ValidateText(EntityId, 100, "Mã đối tượng");
+        LogReadLimits.ValidateDateRange(FromUtc, ToUtc);
+        Page = paging.Page;
+        PageSize = paging.PageSize;
+        return paging.Offset;
+    }
 }

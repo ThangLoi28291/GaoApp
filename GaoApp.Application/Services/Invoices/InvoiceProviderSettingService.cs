@@ -172,12 +172,11 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
             {
                 await _repository.GetByIdWithCredentialAsync(request.Id, ct);
             }
-            catch (CryptographicException)
+            catch (CryptographicException ex)
             {
                 return Result<int>.Failure(
-                    Error.Validation(
-                        "InvoiceProvider.CredentialKeyUnavailable",
-                        "Không đọc được mật khẩu đã lưu vì DataProtection key cũ không còn. Hãy nhập lại mật khẩu Viettel rồi bấm Lưu để mã hóa lại bằng key hiện tại."));
+                    InvoiceCredentialErrors.CannotDecrypt(ex,
+                        "Không đọc được mật khẩu Viettel đã lưu."));
             }
         }
 
@@ -262,12 +261,11 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
         {
             entity = await _repository.GetByIdWithCredentialAsync(id, ct);
         }
-        catch (CryptographicException)
+        catch (CryptographicException ex)
         {
             return Result<TestInvoiceProviderLoginResultDto>.Failure(
-                Error.Validation(
-                    "InvoiceProvider.CredentialKeyUnavailable",
-                    "Không giải mã được mật khẩu Viettel vì key DataProtection cũ không còn. Hãy vào Sửa cấu hình, nhập lại mật khẩu Viettel và bấm Lưu; không chỉ bấm Test kết nối."));
+                InvoiceCredentialErrors.CannotDecrypt(ex,
+                    "Không giải mã được mật khẩu Viettel đã lưu để kiểm tra kết nối."));
         }
 
         if (entity == null)
@@ -297,12 +295,11 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
                 entity.InvoiceSeries,
                 ct);
         }
-        catch (CryptographicException)
+        catch (CryptographicException ex)
         {
             return Result<TestInvoiceProviderLoginResultDto>.Failure(
-                Error.Validation(
-                    "InvoiceProvider.CredentialKeyUnavailable",
-                    "Không giải mã được mật khẩu Viettel vì key DataProtection cũ không còn. Hãy vào Sửa cấu hình, nhập lại mật khẩu Viettel và bấm Lưu; không chỉ bấm Test kết nối."));
+                InvoiceCredentialErrors.CannotDecrypt(ex,
+                    "Kiểm tra kết nối Viettel gặp lỗi mã hóa."));
         }
     }
 
@@ -455,11 +452,8 @@ public class InvoiceProviderSettingService : IInvoiceProviderSettingService
         }
         catch (CryptographicException ex)
         {
-            return Result<bool>.Failure(Error.Validation(
-                "InvoiceProvider.CredentialKeyUnavailable",
-                "Đã lưu nhưng không kiểm tra lại được mật khẩu Viettel bằng key hiện tại. " +
-                "Hãy kiểm tra Web và Worker cùng dùng C:\\GaoAppData\\DataProtectionKeys. " +
-                $"Chi tiết kỹ thuật: {ex.Message}"));
+            return Result<bool>.Failure(InvoiceCredentialErrors.CannotDecrypt(ex,
+                "Đã lưu cấu hình nhưng không giải mã lại được mật khẩu Viettel bằng khóa hiện tại."));
         }
     }
 }

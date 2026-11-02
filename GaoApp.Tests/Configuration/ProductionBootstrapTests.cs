@@ -204,7 +204,7 @@ public sealed class ProductionBootstrapTests
                 "Server=127.0.0.1,1;Database=DesignOnly;User Id=design;Password=not-used;Encrypt=False")
             .Options;
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         using var db = new AppDbContext(
             options,
             tenant,
@@ -281,7 +281,13 @@ public sealed class ProductionBootstrapTests
                 "20261007090000_AddMixedQuantityPromotions",
                 "20261007100000_AddDeliveryInventoryPosting",
                 "20261008100000_AddDeliveryTrips",
-                "20261008180000_AllowDeliveryOpeningCostSources"
+                "20261008120000_AddDeliveryProvisionalCosts",
+                "20261008180000_AllowDeliveryOpeningCostSources",
+                "20261009060000_WidenOrderLineSku",
+                "20261014010000_AddPurchaseLineNotes",
+                "20261014020000_AddReceiptGlobalDiscountAmount",
+                "20261014140000_AddBankNotificationBridge",
+                "20261022090000_AddDurableAuditOutbox"
             ]);
         db.Database.HasPendingModelChanges().Should().BeFalse();
     }
@@ -312,7 +318,7 @@ public sealed class ProductionBootstrapTests
             .Options;
 
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
 
         return new InMemoryAppDbContext(
             options,

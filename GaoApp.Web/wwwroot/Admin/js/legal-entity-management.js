@@ -357,11 +357,11 @@
                    <div class="legal-muted">MST ${escapeHtml(x.invoiceSupplierTaxCode || '')}</div>`
                 : '<span class="badge bg-label-danger">Chưa chọn</span>';
             const actions = permissions.canUpdate
-                ? `<button class="btn btn-sm btn-outline-primary" type="button" onclick="LegalEntityPage.openEdit(${x.id})">Sửa</button>`
+                ? `<button class="btn btn-sm btn-outline-primary" type="button" data-csp-action="legal-entity-edit" data-csp-id="${Number(x.id)}">Sửa</button>`
                 : '';
             const toggle = permissions.canUpdate
                 ? `<input class="form-check-input" type="checkbox" ${x.isActive ? 'checked' : ''}
-                     onchange="LegalEntityPage.confirmActive(${x.id}, this.checked, this)" />`
+                     data-csp-action="legal-entity-active" data-csp-event="change" data-csp-id="${Number(x.id)}" />`
                 : `<span class="badge ${x.isActive ? 'bg-label-success' : 'bg-label-secondary'}">${x.isActive ? 'Hoạt động' : 'Đã khóa'}</span>`;
 
             return `<tr>
@@ -580,7 +580,7 @@
     function numberValue(id) { return Number(document.getElementById(id)?.value || 0); }
     function nullableNumberValue(id) { const x = numberValue(id); return x > 0 ? x : null; }
     function toBool(x) { return x === true || x === 1 || x === '1' || x === 'true'; }
-    function formatLocalDateTime(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString('vi-VN'); }
+    function formatLocalDateTime(value) { const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value); return Number.isNaN(date.getTime()) ? value : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }); }
     function showError(message) { const x = document.getElementById('legalEntityError'); x.textContent = message; x.classList.remove('d-none'); }
     function clearError() { const x = document.getElementById('legalEntityError'); x.textContent = ''; x.classList.add('d-none'); }
     function notify(type, message) { if (window.GaoAppNotify?.[type]) window.GaoAppNotify[type](message); else if (type === 'error') alert(message); }

@@ -1,0 +1,13 @@
+@model string
+<div class="cd-customer-card" aria-label="Thông tin khách hàng" aria-live="polite">
+    <svg class="cd-customer-icon" aria-hidden="true"><use href="#cd-icon-person" /></svg>
+    <div class="cd-customer-copy">
+        <span class="cd-customer-label">Khách hàng</span>
+        <strong id="@(Model + "Name")">Khách lẻ</strong>
+        <span id="@(Model + "Phone")" class="cd-customer-phone" hidden></span>
+    </div>
+    <div id="@(Model + "PointsBox")" class="cd-customer-points" hidden>
+        <span>Điểm hiện tại</span>
+        <strong><b id="@(Model + "Points")"></b> <small>điểm</small></strong>
+    </div>
+</div>

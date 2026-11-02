@@ -15,7 +15,7 @@ public sealed class PurchaseOrderTenantIsolationTests
     {
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        await using (var seed = Create(options, t => t.SetHostAdmin()))
+        await using (var seed = Create(options, t => t.SetHostAdminForTest()))
         {
             seed.PurchaseOrders.AddRange(NewOrder(1, "PO-S1", 11), NewOrder(2, "PO-S2", 22));
             await seed.SaveChangesAsync();
@@ -31,7 +31,7 @@ public sealed class PurchaseOrderTenantIsolationTests
     {
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        await using (var seed = Create(options, t => t.SetHostAdmin()))
+        await using (var seed = Create(options, t => t.SetHostAdminForTest()))
         {
             seed.PurchaseOrders.Add(NewOrder(2, "PO-S2", 22));
             await seed.SaveChangesAsync();

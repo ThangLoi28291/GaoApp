@@ -17,6 +17,7 @@
     <link rel="stylesheet"
           href="~/Admin/css/reports/sales-report.css"
           asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/reports-workspace.mobile.css" asp-append-version="true" />
 }
 
 @section header {
@@ -36,7 +37,7 @@
                 @if ((await ProfitNavigationAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Profit.View)).Succeeded)
                 {
                     <a class="btn btn-outline-primary" href="@Url.Action("Index", "ProfitReport", new { area = "Admin", fromDate = Context.Request.Query["fromDate"].ToString(), toDate = Context.Request.Query["toDate"].ToString(), compare = Context.Request.Query["compare"].ToString(), terminalId = Context.Request.Query["terminalId"].ToString(), customerState = Context.Request.Query["customerState"].ToString() })"
-                       onclick="const u=new URL(this.href); ['fromDate','toDate','compare','terminalId','customerState'].forEach(k=>{const v=new URL(location.href).searchParams.get(k); if(v!==null)u.searchParams.set(k,v);else u.searchParams.delete(k);});this.href=u.href;">Lợi nhuận gộp</a>
+                       data-csp-action="report-profit">Lợi nhuận gộp</a>
                 }
                 <div class="sales-report-refresh-meta" aria-live="polite">
                     <span>Cập nhật</span>
@@ -571,4 +572,5 @@ else
     <script src="~/Admin/js/reports/sales-report.page.js"
             asp-append-version="true"></script>
     }
+    <script src="~/Admin/js/reports-workspace.mobile.js" asp-append-version="true"></script>
 }

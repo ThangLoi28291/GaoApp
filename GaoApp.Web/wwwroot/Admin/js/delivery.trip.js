@@ -3,13 +3,18 @@
     const ops = new Set(['create', 'draft', 'abandon', 'handover', 'depart', 'reassign', 'cancel-request']);
     const tripStates = { Draft: 'Đang xếp chuyến', HandedOver: 'Đã nhận hàng', Departed: 'Đã xuất phát', Abandoned: 'Đã bỏ chuyến nháp' };
     const orderStates = new Set(['Created', 'Picking', 'AwaitingApproval', 'ReadyForHandover', 'HandedOver', 'Delivering', 'AwaitingReconciliation', 'ReadyToSettle', 'CancellationPending', 'Settled', 'Cancelled']);
-    const orderLabels = { ReadyForHandover: 'Đã chốt soạn', HandedOver: 'Đã bàn giao', Delivering: 'Đang giao', AwaitingReconciliation: 'Chờ đối chiếu', CancellationPending: 'Chờ xử lý thu hồi' };
+    const orderLabels = { ReadyForHandover: 'Đã chốt soạn', HandedOver: 'Đã bàn giao', Delivering: 'Đang giao', AwaitingReconciliation: 'Chờ đối chiếu', ReadyToSettle: 'Sẵn sàng chốt', CancellationPending: 'Chờ xử lý thu hồi', Settled: 'Đã chốt', Cancelled: 'Đã hủy' };
+    function tripStatus(model) {
+        if (model.isCompleted === true) return { code:'Completed', label:'Đã hoàn thành' };
+        if (model.returnToStore) return { code:'Returned', label:'Đã trở về' };
+        return { code:model.state, label:tripStates[model.state] };
+    }
     const positive = value => Number.isInteger(value) && value > 0 && value <= 2147483647;
     const guid = value => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) && value !== '00000000-0000-0000-0000-000000000000';
     const version = value => typeof value === 'string' && /^[A-Za-z0-9+/]{10}[AEIMQUYcgkosw048]=$/.test(value);
     function utc(value) {
         if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?(?:Z|\+00:00)$/.test(value) || !Number.isFinite(Date.parse(value))) throw new Error('Giờ máy chủ không hợp lệ.');
-        return new Date(value);
+        return new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     }
     function quantity(value) {
         if (typeof value !== 'string' || value.length > 19 || !/^\d+(?:\.\d{1,4})?$/.test(value)) throw new Error('Lượng hàng không hợp lệ.');
@@ -105,6 +110,9 @@
     }
     function validateDetail(detail, storeId) {
         if (!detail || detail.storeId !== storeId || !positive(detail.tripId) || !positive(detail.revision) || !version(detail.version) || !tripStates[detail.state] || !Array.isArray(detail.orders) || !detail.capabilities || ['canEditDraft', 'canAbandonDraft', 'canHandover', 'canDepart', 'canReassignCourier', 'canRequestCancellation'].some(key => typeof detail.capabilities[key] !== 'boolean')) throw new Error('Bản chuyến không khớp cửa hàng.'); utc(detail.serverTimeUtc);
+        if (detail.isCompleted !== undefined && typeof detail.isCompleted !== 'boolean' || detail.isCompleted === true &&
+            (detail.state !== 'Departed' || !detail.orders.some(row => row.isActive) || detail.orders.some(row => row.isActive && !['Settled', 'Cancelled'].includes(row.state))))
+            throw new Error('Trạng thái hoàn thành không khớp các đơn trong chuyến.');
         const ids = new Set(); for (const row of detail.orders) {
             if (!positive(row.deliveryOrderId) || ids.has(row.deliveryOrderId) || !orderStates.has(row.state) || !version(row.version) || !positive(row.sourceWarehouseId) || !positive(row.sourceLegalEntityId) || !Array.isArray(row.lines)) throw new Error('Nguồn đơn trong chuyến không hợp lệ.'); ids.add(row.deliveryOrderId);
             const lines = new Set(); for (const line of row.lines) { if (!positive(line.lineId) || lines.has(line.lineId)) throw new Error('Dòng trách nhiệm bị trùng.'); lines.add(line.lineId); const dispatched = quantity(line.dispatchedBaseQuantityText), returned = quantity(line.acceptedReturnedBaseQuantityText); quantity(line.approvedBaseQuantityText); if (returned > dispatched) throw new Error('Lượng nhận trả vượt chứng từ xuất.'); const expectedCustody = ['Settled', 'Cancelled'].includes(row.state) ? 0n : dispatched - returned; if (line.inCustodyBaseQuantityText !== null && (quantity(line.inCustodyBaseQuantityText) !== expectedCustody || !row.custody)) throw new Error('Lượng trách nhiệm chưa có chứng cứ phù hợp.'); }
@@ -113,7 +121,7 @@
     }
     function canApply(current, incoming, requestEpoch, latestEpoch, minimum = null) { return requestEpoch === latestEpoch && (!minimum || minimum.tripId !== incoming.tripId || incoming.revision >= minimum.revision) && (!current || current.tripId === incoming.tripId && incoming.revision >= current.revision); }
     function elapsed(serverTime, departure, milliseconds) { const value = Math.max(0, utc(serverTime).getTime() + Math.max(0, milliseconds) - utc(departure).getTime()); const minutes = Math.floor(value / 60000); return Math.floor(minutes / 60) + ' giờ ' + minutes % 60 + ' phút'; }
-    const api = { positive, guid, version, utc, quantity, displayQuantity, note, selections, commandBody, intentPath, createIntentStore, validateDetail, canApply, elapsed };
+    const api = { positive, guid, version, utc, quantity, displayQuantity, note, selections, commandBody, intentPath, createIntentStore, validateDetail, canApply, elapsed, tripStatus };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (!root.document) return; root.DeliveryTripUi = api;
     const $ = id => document.getElementById(id), workspace = document.querySelector('.delivery-trip-workspace'); if (!workspace) return;
@@ -121,7 +129,7 @@
     try { registry = createIntentStore(localStorage, location.origin, storeId, workspace.dataset.actor); } catch (error) { $('deliveryTripMessage').textContent = error.message; return; }
     let detail = null, knownTripId = null, minimumApplied = null, options = null, epoch = 0, listEpoch = 0, busy = false, needsFresh = false, dirty = false, editing = false, inputEditing = false, nextBefore = null, list = [], serverBaseline = null, monotonicBaseline = 0;
     const node = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
-    const time = value => value ? utc(value).toLocaleString('vi-VN') : 'Chưa ghi nhận';
+    const time = value => value ? utc(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chưa ghi nhận';
     function message(text, error = false) { $('deliveryTripMessage').textContent = text; $('deliveryTripMessage').className = error ? 'alert alert-warning' : text ? 'alert alert-info' : ''; }
     function blocked() { return busy || needsFresh || Boolean(registry.read()); }
     function button(text, id, action, disabled = false, cls = 'btn btn-primary') { const b = node('button', text, cls); b.type = 'button'; if (id) b.id = id; b.disabled = disabled; b.addEventListener('click', () => Promise.resolve().then(action).catch(error => message(error.message, true))); return b; }
@@ -180,17 +188,18 @@
         panel.replaceChildren(); panel.dataset.editing = 'false'; panel.dataset.needsFresh = String(needsFresh);
         if (!detail) { if (needsFresh && knownTripId) panel.append(node('p', 'Đã xác nhận thao tác, cần tải bản chuyến mới.', 'delivery-trip-eligibility-error'), button('Tải bản mới', 'deliveryTripReload', () => loadDetail(knownTripId, true), busy)); return; }
         panel.dataset.tripId = String(detail.tripId); panel.dataset.state = detail.state; panel.classList.toggle('is-updated', changed);
-        const activeCount = detail.orders.filter(row => row.isActive).length, title = node('div', null, 'delivery-trip-title'), titleText = node('div'); titleText.append(node('h3', 'Chuyến #' + detail.tripId), node('p', detail.code, 'delivery-trip-code')); title.append(titleText, node('span', detail.returnToStore ? 'Đã trở về' : tripStates[detail.state], 'delivery-trip-state state-' + detail.state)); panel.append(title, progress(detail.state));
+        const activeCount = detail.orders.filter(row => row.isActive).length, title = node('div', null, 'delivery-trip-title'), titleText = node('div'), status = tripStatus(detail); titleText.append(node('h3', 'Chuyến #' + detail.tripId), node('p', detail.code, 'delivery-trip-code')); title.append(titleText, node('span', status.label, 'delivery-trip-state state-' + status.code)); panel.append(title, progress(detail.state));
         if (detail.note) panel.append(node('p', detail.note, 'delivery-trip-muted'));
         const facts = node('div', null, 'delivery-trip-facts'); function fact(label, value, annotation, confirmed) { const n = node('div', null, 'delivery-trip-fact' + (confirmed ? ' is-confirmed' : '')); n.append(node('span', label), node('strong', value), node('span', annotation)); facts.append(n); }
         fact('Người giao', detail.courierName, detail.state === 'Draft' ? 'Dự kiến · chưa nhận hàng' : detail.state === 'Abandoned' ? 'Phân công đã bỏ' : 'Đã xác nhận nhận hàng', detail.state === 'HandedOver' || detail.state === 'Departed'); fact('Đơn trong chuyến', String(activeCount) + ' đơn', 'Giữ riêng khách và nguồn hàng', false); fact('Bàn giao', time(detail.handedOverAtUtc), detail.handedOverByName ? detail.handedOverByName + ' xác nhận' : 'Chưa xác nhận nhận hàng', Boolean(detail.handedOverAtUtc)); fact('Xuất phát', time(detail.departedAtUtc), detail.departedByName ? detail.departedByName + ' ghi nhận' : 'Chưa ghi nhận', Boolean(detail.departedAtUtc)); panel.append(facts);
         const actions = node('div', null, 'delivery-trip-actions delivery-trip-toolbar'); actions.append(button('Tải bản mới', 'deliveryTripReload', () => loadDetail(detail.tripId, true), busy, 'btn btn-sm btn-outline-secondary'));
         if (detail.capabilities.canEditDraft) actions.append(button('Sửa đơn / thứ tự giao', 'deliveryTripEdit', async () => { await loadOptions(); editing = true; render(); }, blocked(), 'btn btn-sm btn-outline-primary')); panel.append(actions);
-        if (detail.state === 'Departed') { const outcomes = node('a', 'Bàn giao hàng và tiền →', 'btn btn-primary delivery-trip-outcomes-link'); outcomes.id = 'deliveryTripOutcomes'; outcomes.href = '/admin/deliveries/trips/' + detail.tripId + '/outcomes'; panel.append(outcomes); }
+        if (detail.state === 'Departed') { const outcomes = node('a', detail.isCompleted ? 'Xem bàn giao hàng và tiền →' : 'Bàn giao hàng và tiền →', 'btn btn-primary delivery-trip-outcomes-link'); outcomes.id = 'deliveryTripOutcomes'; outcomes.href = '/admin/deliveries/trips/' + detail.tripId + '/outcomes'; panel.append(outcomes); }
         if (needsFresh) panel.append(node('p', 'Đã xác nhận thao tác nhưng chưa tải được bản mới. Tải bản mới trước khi tiếp tục.', 'delivery-trip-eligibility-error'));
         if (detail.state === 'Draft' && detail.capabilities.canHandover) panel.append(physicalControls('handover'));
         if (detail.capabilities.canDepart) { const next = node('section', null, 'delivery-trip-primary'); next.append(node('h4', 'Sẵn sàng xuất phát'), node('p', 'Hàng đã bàn giao. Ghi nhận khi người giao bắt đầu đi.', 'delivery-trip-muted'), button('Ghi nhận xuất phát', 'deliveryTripDepart', () => command('depart', {}), blocked())); panel.append(next); }
-        if (detail.returnToStore) { const returned = node('section', null, 'delivery-trip-departure'); returned.append(node('span', 'NGƯỜI GIAO ĐÃ TRỞ VỀ', 'delivery-trip-stop'), node('p', time(detail.returnToStore.recordedAtUtc), 'delivery-trip-clock'), node('p', detail.returnToStore.actorName + ' ghi nhận · Hàng và tiền còn chờ đối chiếu.', 'delivery-trip-muted')); panel.append(returned); }
+        if (detail.returnToStore) { const returned = node('section', null, 'delivery-trip-departure'); returned.append(node('span', 'NGƯỜI GIAO ĐÃ TRỞ VỀ', 'delivery-trip-stop'), node('p', time(detail.returnToStore.recordedAtUtc), 'delivery-trip-clock'), node('p', detail.returnToStore.actorName + (detail.isCompleted ? ' ghi nhận · Đã chốt hàng và tiền của toàn bộ chuyến.' : ' ghi nhận · Hàng và tiền còn chờ đối chiếu.'), 'delivery-trip-muted')); panel.append(returned); }
+        else if (detail.isCompleted) panel.append(node('p', 'Đã chốt hàng và tiền của toàn bộ chuyến.', 'delivery-trip-departure'));
         else if (detail.departedAtUtc) { const status = node('section', null, 'delivery-trip-departure'), clock = node('p', '', 'delivery-trip-clock'); clock.id = 'deliveryTripElapsed'; status.append(node('span', 'CHUYẾN ĐÃ XUẤT PHÁT', 'delivery-trip-stop'), clock, node('p', 'Thời gian để theo dõi. Chưa có vị trí hoặc kết quả khách nhận hàng.', 'delivery-trip-muted')); panel.append(status); tick(); }
         const orderHeading = node('div', null, 'delivery-trip-section-heading delivery-trip-orders-heading'); orderHeading.append(node('h4', 'Đơn giao · ' + activeCount), node('span', 'Lượng theo đơn vị của từng sản phẩm', 'delivery-trip-muted')); panel.append(orderHeading);
         for (const row of detail.orders) panel.append(orderCard(row, detail.capabilities.canRequestCancellation));
@@ -201,10 +210,30 @@
         for (const row of detail.history) { const item = node('li'); item.append(node('strong', labels[row.action] || row.action), node('span', row.actorName + ' · ' + time(row.recordedAtUtc)), node('small', 'Bản ' + row.revision)); ol.append(item); } history.append(ol); panel.append(history, node('p', 'Cập nhật: ' + time(detail.serverTimeUtc) + ' · Bản ' + detail.revision, 'delivery-trip-sync')); restorePresentation(panel, saved); pendingPanel();
     }
     function tick() { const clock = $('deliveryTripElapsed'); if (clock && detail?.departedAtUtc && serverBaseline) clock.textContent = 'Đã xuất phát ' + elapsed(serverBaseline, detail.departedAtUtc, performance.now() - monotonicBaseline); }
-    async function loadDetail(id, discard = false) { if (dirty && !discard) return; const ticket = ++epoch; knownTripId = id; try { const value = validateDetail(await request('/admin/api/delivery-trips/' + id), storeId); if (!canApply(detail?.tripId === id ? detail : null, value, ticket, epoch, minimumApplied)) { if (ticket === epoch && needsFresh) message('Bản đọc còn cũ; cần tải bản mới sau thao tác đã xác nhận.', true); return; } detail = value; needsFresh = false; if (discard) { dirty = false; editing = false; inputEditing = false; } serverBaseline = value.serverTimeUtc; monotonicBaseline = performance.now(); if (!editing && !dirty && !inputEditing) render(); message(''); const url = new URL(location.href); url.searchParams.set('trip', String(id)); history.replaceState(null, '', url); } catch (error) { if (ticket === epoch) { message((needsFresh ? 'Đã xác nhận thao tác, cần tải bản mới. ' : '') + error.message, true); if (!dirty && !inputEditing) render(); } } }
+    async function loadDetail(id, discard = false) {
+        if (dirty && !discard) return;
+        const ticket = ++epoch; knownTripId = id;
+        try {
+            const value = validateDetail(await request('/admin/api/delivery-trips/' + id), storeId);
+            if (!canApply(detail?.tripId === id ? detail : null, value, ticket, epoch, minimumApplied)) {
+                if (ticket === epoch && needsFresh) message('Bản đọc còn cũ; cần tải bản mới sau thao tác đã xác nhận.', true);
+                return;
+            }
+            const completionChanged = detail?.tripId === id && Boolean(detail.isCompleted) !== Boolean(value.isCompleted) ||
+                list.some(row => row.tripId === id && Boolean(row.isCompleted) !== Boolean(value.isCompleted));
+            detail = value; needsFresh = false;
+            if (discard) { dirty = false; editing = false; inputEditing = false; }
+            serverBaseline = value.serverTimeUtc; monotonicBaseline = performance.now();
+            if (!editing && !dirty && !inputEditing) render();
+            message(''); const url = new URL(location.href); url.searchParams.set('trip', String(id)); history.replaceState(null, '', url);
+            if (completionChanged) await loadList();
+        } catch (error) {
+            if (ticket === epoch) { message((needsFresh ? 'Đã xác nhận thao tác, cần tải bản mới. ' : '') + error.message, true); if (!dirty && !inputEditing) render(); }
+        }
+    }
     function renderList() {
         const box = $('deliveryTripList'); box.replaceChildren();
-        for (const row of list) { const selected = row.tripId === detail?.tripId, b = button('', null, () => { if (dirty) throw new Error('Có chỉnh sửa chưa lưu. Bỏ chỉnh sửa trước khi mở chuyến khác.'); detail = null; editing = false; return loadDetail(row.tripId, true); }, busy, 'delivery-trip-list-item' + (selected ? ' is-selected' : '')); b.dataset.tripId = String(row.tripId); b.setAttribute('aria-current', selected ? 'true' : 'false'); const top = node('div', null, 'delivery-trip-list-top'); top.append(node('strong', 'Chuyến #' + row.tripId), node('span', tripStates[row.state], 'delivery-trip-list-state state-' + row.state)); b.append(top, node('span', row.courierName + ' · ' + row.activeOrderCount + ' đơn', 'delivery-trip-list-courier'), node('span', row.code, 'delivery-trip-list-code'), node('span', time(row.departedAtUtc || row.handedOverAtUtc || row.createdAtUtc), 'delivery-trip-list-time')); box.append(b); }
+        for (const row of list) { const selected = row.tripId === detail?.tripId, status = tripStatus(row), b = button('', null, () => { if (dirty) throw new Error('Có chỉnh sửa chưa lưu. Bỏ chỉnh sửa trước khi mở chuyến khác.'); detail = null; editing = false; return loadDetail(row.tripId, true); }, busy, 'delivery-trip-list-item' + (selected ? ' is-selected' : '')); b.dataset.tripId = String(row.tripId); b.setAttribute('aria-current', selected ? 'true' : 'false'); const top = node('div', null, 'delivery-trip-list-top'); top.append(node('strong', 'Chuyến #' + row.tripId), node('span', status.label, 'delivery-trip-list-state state-' + status.code)); b.append(top, node('span', row.courierName + ' · ' + row.activeOrderCount + ' đơn', 'delivery-trip-list-courier'), node('span', row.code, 'delivery-trip-list-code'), node('span', time(row.departedAtUtc || row.handedOverAtUtc || row.createdAtUtc), 'delivery-trip-list-time')); box.append(b); }
         if (!list.length) box.append(node('p', 'Chưa có chuyến theo bộ lọc.', 'delivery-trip-muted')); $('deliveryTripMore').hidden = !nextBefore;
     }
     async function loadList(more = false) { const ticket = ++listEpoch, query = new URLSearchParams({ take: '30' }); if ($('deliveryTripState').value) query.set('state', $('deliveryTripState').value); if (more && nextBefore) query.set('beforeId', String(nextBefore)); const value = await request('/admin/api/delivery-trips?' + query); if (ticket !== listEpoch) return; if (value.storeId !== storeId || !Array.isArray(value.items)) throw new Error('Danh sách chuyến không khớp cửa hàng.'); list = more ? [...list, ...value.items.filter(x => !list.some(y => y.tripId === x.tripId))] : value.items; nextBefore = value.nextBeforeId; renderList(); }

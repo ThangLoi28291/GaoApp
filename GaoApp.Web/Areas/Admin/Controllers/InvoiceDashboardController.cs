@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
@@ -24,17 +25,15 @@ public class InvoiceDashboardController : Controller
         [FromQuery] InvoiceDashboardQueryDto query,
         CancellationToken ct)
     {
-        if (query.FromDate == default)
-            query.FromDate = DateTime.Today;
-
-        if (query.ToDate == default)
-            query.ToDate = DateTime.Today;
+        if (!ModelState.IsValid)
+            return BadRequest(InvoiceReadLimits.InvalidQueryMessage);
+        query.NormalizeAndValidate();
 
         var result = await _dashboardService.GetDashboardAsync(query, ct);
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message ?? "Không tải được dashboard hóa đơn.";
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error) ?? "Không tải được dashboard hóa đơn.";
 
             return View(new InvoiceDashboardIndexViewModel
             {

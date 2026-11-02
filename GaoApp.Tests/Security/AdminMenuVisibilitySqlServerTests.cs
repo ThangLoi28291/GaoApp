@@ -47,6 +47,8 @@ public sealed class AdminMenuVisibilitySqlServerTests
             var product = new AdminMenuItem { StoreId = store.StoreId, ParentId = rootId, Title = "MV-Products", Controller = "Product", PermissionCode = PermissionCodes.Catalog.Product.View };
             var denied = new AdminMenuItem { StoreId = store.StoreId, ParentId = rootId, Title = "MV-Security", Controller = "AdminMenus", PermissionCode = PermissionCodes.Security.Role.Permissions };
             db.AdminMenuItems.AddRange(product, denied); await db.SaveChangesAsync(); productId = product.Id; deniedId = denied.Id;
+            db.Add(new AdminMenuVisibilitySetting { StoreId = store.StoreId, RoleId = employee.RoleId, HiddenMenuIdsJson = "[-1,-2]" });
+            await db.SaveChangesAsync();
             originalGrants = await db.RolePermissions.Where(x => x.RoleId == employee.RoleId).Select(x => x.PermissionId).OrderBy(x => x).ToArrayAsync();
         }
         await using (var db = app.Database.CreateTenantContext(app.Stores[1].StoreId))
@@ -65,13 +67,16 @@ public sealed class AdminMenuVisibilitySqlServerTests
         {
             await using var db = app.Database.CreateTenantContext(store.StoreId);
             var permissions = new CurrentStorePermissionService(new UserInStoreRepository(db));
-            var service = new AdminMenuService(new AdminMenuRepository(db), null!, null!, permissions, new AdminMenuVisibilityService(db));
+            var service = new AdminMenuService(new AdminMenuRepository(db), null!, permissions, new AdminMenuVisibilityService(db));
             var tree = await service.GetForRenderAsync(store.StoreId, userId);
             return tree.SelectMany(x => new[] { x.Id }.Concat(x.Children.Select(c => c.Id))).ToArray();
         }
         var landing = await client.Http.GetStringAsync("/Admin/AdminMenuVisibility");
         Assert.Contains("mvSubjects", landing); Assert.DoesNotContain($"data-type=\"role\" data-id=\"{foreign.RoleId}\"", landing);
         var roleState = await Read("role", employee.RoleId);
+        Assert.All(roleState.Menus, menu => Assert.True(menu.Id > 0));
+        Assert.Empty(roleState.HiddenIds);
+        Assert.Empty(roleState.InheritedHiddenIds);
         Assert.False(roleState.Menus.Single(x => x.Id == deniedId).Available);
         using (var invalid = await Save(roleState, [foreignMenuId])) Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         using (var invalid = await client.Http.GetAsync($"/Admin/AdminMenuVisibility/Detail?type=role&id={foreign.RoleId}")) Assert.Equal(HttpStatusCode.NotFound, invalid.StatusCode);

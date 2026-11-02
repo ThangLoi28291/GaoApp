@@ -319,6 +319,9 @@
             updateResultSummary();
             updateActiveFilterCount();
             elements.resultsPanel?.setAttribute("aria-busy", "false");
+            root.dispatchEvent(new CustomEvent("gao:ledger-loaded", { detail: {
+                items: state.items, fromDate: elements.fromDate?.value || "", toDate: elements.toDate?.value || ""
+            } }));
         } catch (error) {
             if (sequence !== state.requestSequence) return;
             if (error.name === "AbortError" && !timedOut) return;
@@ -437,8 +440,11 @@
                     <div class="ledger-mobile-card__facts">
                         <span><i class="bx bx-transfer"></i>${escapeHtml(resolveTransactionLabel(item))}</span>
                         <span><i class="bx bx-file"></i>${escapeHtml(resolveReferenceLabel(item))}${item.referenceCode ? ` · ${escapeHtml(item.referenceCode)}` : ""}</span>
+                        ${item.receiptDocumentNo ? `<span>Phiếu nhập: ${escapeHtml(item.receiptDocumentNo)}</span>` : ""}
+                        ${renderXmlReferences(item)}
                     </div>
                     ${state.canViewCost && (change > 0 || isRevaluation(item)) ? `<div class="ledger-mobile-cost"><span>${isRevaluation(item) ? "Điều chỉnh giá vốn" : "Giá nhập lô"}</span><div class="text-end">${renderInboundCost(item)}</div></div>` : ""}
+                    ${renderSourceLink(item)}
                     <button type="button" class="btn btn-label-primary ledger-mobile-card__action js-ledger-quick" data-transaction-id="${Number(item.transactionId || 0)}">
                         <i class="bx bx-show me-1" aria-hidden="true"></i>Xem nhanh
                     </button>
@@ -476,7 +482,19 @@
     }
 
     function renderReference(item) {
-        return `<div class="ledger-reference"><strong>${escapeHtml(resolveReferenceLabel(item))}</strong><span>${escapeHtml(item.referenceCode || "Không có mã chứng từ")}</span></div>`;
+        return `<div class="ledger-reference"><strong>${escapeHtml(resolveReferenceLabel(item))}</strong><span>${escapeHtml(item.referenceCode || "Không có mã chứng từ")}</span>${item.receiptDocumentNo ? `<span>${escapeHtml(item.receiptDocumentNo)}</span>` : ""}${renderXmlReferences(item)}</div>`;
+    }
+
+    function xmlReferenceLabels(item) {
+        return (Array.isArray(item.linkedInputInvoices) ? item.linkedInputInvoices : []).map(function (invoice) {
+            return [invoice.invoiceSeries, invoice.invoiceNumber].filter(Boolean).join(" · ") || "Không có số hóa đơn";
+        });
+    }
+
+    function renderXmlReferences(item) {
+        return xmlReferenceLabels(item).map(function (label) {
+            return `<span class="text-primary">XML: ${escapeHtml(label)}</span>`;
+        }).join("");
     }
 
     function renderNegativeBadge(item) {
@@ -566,6 +584,7 @@
             if (!response.ok) throw new Error("Không tải được thông tin giao dịch.");
             const payload = await response.json();
             renderQuickView(payload.item || {});
+            root.dispatchEvent(new CustomEvent("gao:ledger-quickview", { detail: { item: payload.item || {} } }));
         } catch (error) {
             if (error.name === "AbortError") return;
             elements.quickBody.innerHTML = renderEmptyState(error.message || "Không tải được thông tin.", true);
@@ -605,6 +624,9 @@
                         ${renderQuickFact("Loại giao dịch", resolveTransactionLabel(item))}
                         ${renderQuickFact("Nguồn / chứng từ", resolveReferenceLabel(item))}
                         ${renderQuickFact("Mã chứng từ", item.referenceCode || "Không có")}
+                        ${item.receiptDocumentNo ? renderQuickFact("Phiếu nhập", item.receiptDocumentNo) : ""}
+                        ${xmlReferenceLabels(item).length ? renderQuickFact("Hóa đơn XML", xmlReferenceLabels(item).join("; ")) : ""}
+                        <div class="d-md-none">${renderSourceLink(item) || '<span class="text-muted small">Chứng từ nguồn chưa có liên kết hoặc bạn chưa có quyền xem.</span>'}</div>
                     </div>
                     ${renderCostDetails(item)}
                     <div class="ledger-quick-note">
@@ -688,6 +710,15 @@
 
     function renderQuickFact(label, value) {
         return `<div class="ledger-quick-fact"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value || "—")}</strong></div>`;
+    }
+
+    function renderSourceLink(item) {
+        if (!item.sourceUrl) return "";
+        try {
+            const url = new URL(item.sourceUrl, window.location.href);
+            if (url.origin !== window.location.origin || !url.pathname.endsWith("/admin/inventory-ledger/source")) return "";
+            return `<a class="ledger-source-link d-md-none" href="${escapeAttribute(url.pathname + url.search)}"><i class="bx bx-link-external" aria-hidden="true"></i>Mở chứng từ nguồn</a>`;
+        } catch { return ""; }
     }
 
     function setQuickState(isNegative) {
@@ -844,9 +875,9 @@
 
     function formatDateOnly(value) {
         if (!value) return "—";
-        const date = new Date(value);
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
         if (Number.isNaN(date.getTime())) return "—";
-        return date.toLocaleDateString("vi-VN");
+        return date.toLocaleDateString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function formatNumber(value) {

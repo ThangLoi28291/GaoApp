@@ -1,0 +1,10 @@
+{
+  "Logging": { "LogLevel": { "Default": "Information", "Microsoft.AspNetCore": "Warning", "Microsoft.AspNetCore.DataProtection": "None" } },
+  "AllowedHosts": "",
+  "StorefrontHost": {
+    "Host": "", "StoreSubdomain": "", "PreviewEnabled": false,
+    "ReleaseEnabled": false, "KeyProtection": "WindowsDpapiCurrentUser",
+    "UploadsRoot": "", "KeyRingPath": ""
+  },
+  "StorefrontDiagnostics": { "RequestTimings": false }
+}

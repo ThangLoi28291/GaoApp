@@ -20,7 +20,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
 {
     private const string Previous = "20261007090000_AddMixedQuantityPromotions";
     private const string Current = "20261007100000_AddDeliveryInventoryPosting";
-    private const string Latest = "20261008180000_AllowDeliveryOpeningCostSources";
+    private const string Latest = "20261022090000_AddDurableAuditOutbox";
 
     [Fact]
     public async Task M01_Current72_real_SQL_matches_manifest_and_preserves_legacy_quantity_capacity()
@@ -77,7 +77,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
             await using var db = isolated.Web.Database.CreateHostContext();
             try
             {
-                await db.GetService<IMigrator>().MigrateAsync(Current);
+                await MigrationTestSupport.MigrateHistoricalPrefixAsync(isolated.Web.Database, Current);
                 await AssertCurrent(db, d05Prefix: true);
                 var before = await c.SnapshotAsync();
                 var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(Previous));
@@ -377,7 +377,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
     private static async Task<DatabaseSchemaManifest> AssertCurrent(AppDbContext db, bool d05Prefix = false)
     {
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(d05Prefix ? 72 : 74, applied.Length);
+        Assert.Equal(d05Prefix ? 72 : 80, applied.Length);
         Assert.Equal(d05Prefix ? Current : Latest, applied[^1]);
         Assert.Equal(Current, applied[71]); Assert.Equal(Previous, applied[70]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db); Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(applied, out var expected));
@@ -387,7 +387,7 @@ public sealed class DeliveryD05SchemaTests(DeliveryD02Fixture fixture)
         finally { await db.Database.CloseConnectionAsync(); }
         var comparison = DatabaseSchemaComparer.Compare(expected, actual);
         Assert.True(comparison.IsMatch, Json(comparison)); Assert.Equal(0, comparison.Mismatches.Total);
-        Assert.Equal(d05Prefix ? 27 : 38, actual.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(d05Prefix ? 27 : 41, actual.Tables.Sum(x => x.Triggers.Count));
         return actual;
     }
     private static string Json(object value) => System.Text.Json.JsonSerializer.Serialize(value);

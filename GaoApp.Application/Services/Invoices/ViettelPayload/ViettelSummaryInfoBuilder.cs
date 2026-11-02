@@ -4,7 +4,7 @@ namespace GaoApp.Application.Services.Invoices;
 
 internal static class ViettelSummaryInfoBuilder
 {
-    public static ViettelSummaryBuildResult Build(List<ViettelItemInfoDto> itemInfo)
+    public static ViettelSummaryBuildResult Build(List<ViettelItemInfoDto> itemInfo, int? revenueTaxPercentage = null)
     {
         var totalAmountWithoutTax = ViettelPayloadTextHelper.RoundVnd(
             itemInfo.Sum(x => x.ItemTotalAmountWithoutTax));
@@ -14,6 +14,7 @@ internal static class ViettelSummaryInfoBuilder
 
         var totalAmountWithTax = ViettelPayloadTextHelper.RoundVnd(
             itemInfo.Sum(x => x.ItemTotalAmountWithTax));
+        totalAmountWithTax -= InvoiceRevenueTaxPolicy.Reduction(totalAmountWithTax, revenueTaxPercentage);
 
         var taxBreakdowns = itemInfo
             .GroupBy(x => x.TaxPercentage)

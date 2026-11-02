@@ -20,9 +20,9 @@
     var title = titles.GetValueOrDefault(tab, "Theo tháng");
     TimeZoneInfo zone;
     try { zone = TimeZoneInfo.FindSystemTimeZoneById(Model.Settings.TimeZoneId); }
-    catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.Local; }
-    catch (InvalidTimeZoneException) { zone = TimeZoneInfo.Local; }
-    catch (ArgumentException) { zone = TimeZoneInfo.Local; }
+    catch (TimeZoneNotFoundException) { zone = VietnamTime.Zone; }
+    catch (InvalidTimeZoneException) { zone = VietnamTime.Zone; }
+    catch (ArgumentException) { zone = VietnamTime.Zone; }
     string LocalTime(DateTime? utc) => utc.HasValue
         ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc.Value, DateTimeKind.Utc), zone).ToString("dd/MM/yyyy HH:mm:ss") : "—";
     string Money(decimal value) => value.ToString("N0", CultureInfo.CurrentCulture);
@@ -244,3 +244,11 @@
         </section>
     }
 </div>
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-operations.mobile.css" asp-append-version="true" />
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-operations.mobile.js" asp-append-version="true"></script>
+}

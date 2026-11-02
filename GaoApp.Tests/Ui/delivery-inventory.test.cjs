@@ -37,7 +37,32 @@ test('inventory checks qty4 with BigInt at maximum precision and rejects fifth-d
 test('quantity viewers receive null costs and no fragments, while genuine final zero costs remain authorized data', () => {
     const d = detail(); d.inventory.lines[0].dispatchedCostText = '0'; assert.throws(() => ui.inventoryProjection(d, 6), /quyền/);
     d.inventory.lines[0].dispatchedCostText = null; d.inventory.costFragments = [{ costAmountText: '80000' }]; assert.throws(() => ui.inventoryProjection(d, 6), /quyền/);
-    d.inventory.canViewCosts = true; d.inventory.lines[0].dispatchedCostText = '0'; assert.equal(ui.inventoryProjection(d, 6).lines[0].dispatchedCostText, '0');
+    d.inventory.canViewCosts = true; d.inventory.costFragments = []; d.inventory.lines[0].dispatchedCostText = '0'; assert.equal(ui.inventoryProjection(d, 6).lines[0].dispatchedCostText, '0');
+});
+test('original provisional estimates and unknown zero estimates remain distinct from final zero and resolved source costs', () => {
+    for (const [quality, label, layer, debit, amount] of [
+        ['Final', 'Giá vốn đã chốt', 8, 9, '0'],
+        ['Provisional', 'Giá vốn tạm tính', null, null, '15000'],
+        ['Unknown', 'Chưa xác định giá vốn', null, null, '0'],
+        ['Resolved', 'Nguồn đã xử lý; giữ số ghi nhận ban đầu', null, null, '15000']]) {
+        const d = detail(); d.inventory.canViewCosts = true;
+        const fragment = { fragmentId: 1, lineId: 2, inventoryCostLayerId: layer, inventoryCostBudgetDebitId: debit,
+            costQuality: quality, costAmountText: amount, baseQuantityText: '3', unitCostText: quality === 'Unknown' ? '0' : '5000' };
+        d.inventory.costFragments = [fragment];
+        assert.equal(ui.inventoryProjection(d, 6).costFragments[0].costAmountText, amount);
+        assert.equal(ui.costQualityLabel(fragment), label);
+    }
+});
+test('fragment quality cannot manufacture a final layer or relabel incomplete source evidence as final', () => {
+    for (const fragment of [
+        { costQuality: 'Final', inventoryCostLayerId: null, inventoryCostBudgetDebitId: null },
+        { costQuality: 'Final', inventoryCostLayerId: 7, inventoryCostBudgetDebitId: 0 },
+        { costQuality: 'Provisional', inventoryCostLayerId: 7, inventoryCostBudgetDebitId: null },
+        { costQuality: 'Resolved', inventoryCostLayerId: null, inventoryCostBudgetDebitId: 8 },
+        { costQuality: 'Invented', inventoryCostLayerId: null, inventoryCostBudgetDebitId: null }]) {
+        const d = detail(); d.inventory.canViewCosts = true; d.inventory.costFragments = [fragment];
+        assert.throws(() => ui.inventoryProjection(d, 6));
+    }
 });
 test('same-revision readiness, inventory changes and cost permission changes require rendering; clock-only polling preserves editing focus', () => {
     const current = detail(), next = detail(); next.inventory.serverTimeUtc = '2026-10-07T04:00:08Z';

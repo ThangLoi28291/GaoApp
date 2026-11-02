@@ -20,6 +20,7 @@ public sealed class RewardOrderRepository : IRewardOrderRepository
     {
         var order = await _db.Orders
             .AsNoTracking()
+            .Include(x => x.Customer)
             .Include(x => x.Lines)
                 .ThenInclude(x => x.Variant)
                     .ThenInclude(x => x!.Product)

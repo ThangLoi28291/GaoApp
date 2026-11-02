@@ -5,6 +5,8 @@ namespace GaoApp.Application.Interfaces.Services.Reports;
 public interface IManagementReportService
 {
     Task<ManagementReportDto> ReadAsync(ManagementReportQueryDto query, CancellationToken ct = default);
+    Task<ManagementReportDto> ReadOverviewAsync(ManagementReportQueryDto query, CancellationToken ct = default)
+        => ReadAsync(query, ct);
 }
 public interface IOperatingExpenseService
 {

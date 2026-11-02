@@ -20,6 +20,7 @@ public sealed partial class AutoInvoiceServiceTests
     [InlineData("wallet", false)]
     [InlineData("other", false)]
     [InlineData("no-payment", false)]
+    [InlineData("credit", false)]
     [InlineData("deposit", false)]
     [InlineData("partial-cash", false)]
     [InlineData("foreign-store", false)]
@@ -202,6 +203,9 @@ public sealed partial class AutoInvoiceServiceTests
             case "foreign-store": first.StoreId = 2; break;
             case "foreign-order": first.OrderId = id + 1; break;
             case "no-payment": order.Payments.Clear(); break;
+            case "credit":
+                order.Payments.Clear(); order.IsCreditSale = true; order.PaymentStatus = PaymentStatus.Unpaid;
+                order.PaidTotal = 0; order.BalanceDue = total; break;
             case "mixed":
             case "deleted-bank":
             case "zero-bank":

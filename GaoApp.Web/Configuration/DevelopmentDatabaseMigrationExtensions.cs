@@ -22,6 +22,8 @@ public static class DevelopmentDatabaseMigrationExtensions
         }
 
         await using var scope = app.Services.CreateAsyncScope();
+        using var access = scope.ServiceProvider.GetRequiredService<GaoApp.Infrastructure.Tenant.TenantContext>()
+            .BeginSystemAccess(GaoApp.Infrastructure.Tenant.SystemDataAccessPurpose.Provisioning);
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var connection = db.Database.GetDbConnection();
 
@@ -30,7 +32,40 @@ public static class DevelopmentDatabaseMigrationExtensions
             connection.Database,
             connection.DataSource);
 
-        await db.Database.MigrateAsync(cancellationToken);
+        // The repository has reviewed hand-authored delta migrations. Do not invoke
+        // EF's model-drift validation for a no-op startup; a pending migration still
+        // follows the normal strict MigrateAsync path below.
+        var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
+        if (pending.Length == 0)
+        {
+            Log.Information("Development database has no pending migrations");
+            return;
+        }
+
+        var commandTimeoutSeconds = app.Configuration.GetValue(
+            "Database:MigrationCommandTimeoutSeconds", 300);
+        if (commandTimeoutSeconds is < 1 or > 3600)
+        {
+            throw new InvalidOperationException(
+                "Database:MigrationCommandTimeoutSeconds must be between 1 and 3600.");
+        }
+
+        // Adding constraints to existing order data can exceed the normal
+        // request timeout. Give only this migration context a longer budget.
+        var previousCommandTimeout = db.Database.GetCommandTimeout();
+        db.Database.SetCommandTimeout(commandTimeoutSeconds);
+        try
+        {
+            Log.Information(
+                "Applying {MigrationCount} development migrations with a {CommandTimeoutSeconds}s command timeout",
+                pending.Length,
+                commandTimeoutSeconds);
+            await db.Database.MigrateAsync(cancellationToken);
+        }
+        finally
+        {
+            db.Database.SetCommandTimeout(previousCommandTimeout);
+        }
 
         Log.Information("Development migration check completed successfully");
     }

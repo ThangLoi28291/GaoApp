@@ -14,10 +14,10 @@
 }
 
 @section VendorStyles {
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="~/lib/select2/select2.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/lib/select2/select2-bootstrap-5-theme.min.css" rel="stylesheet"  asp-append-version="true" />
 }
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-edit.css" asp-append-version="true" /> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-edit.css" asp-append-version="true" /> <link rel="stylesheet" href="~/Admin/css/purchasing.mobile.css" asp-append-version="true" /> }
 
 <div class="po-page" id="purchaseOrderPage"
      data-product-lookup-url="@Url.Content("~/admin/purchase-orders/product-lookup")"
@@ -90,5 +90,6 @@
 
 <template id="lineTemplate"><tr class="purchase-line"><td class="po-line-number"></td><td class="po-product-cell"><input type="hidden" class="line-id"/><input type="hidden" class="item-kind"/><input type="hidden" class="variant-id"/><input type="hidden" class="conversion-id"/><input type="hidden" class="product-name-input"/><input type="hidden" class="unit-name-input"/><input type="hidden" class="tax-id" value="0"/><input type="hidden" class="unit-price" value="0"/><div class="po-product-name"></div><small class="po-product-meta"></small><small class="text-warning d-none po-free-text"><i class="bx bx-pencil me-1"></i>Hàng chưa có trong danh mục</small></td><td class="po-unit-cell"><span class="po-unit-name"></span><span class="po-factor"></span></td><td><input class="form-control qty text-end" type="number" min="0.001" step="0.001" required/></td><td class="po-actions-cell"><button type="button" class="btn btn-sm btn-icon btn-text-danger rounded-pill remove-line"><i class="bx bx-trash"></i></button></td></tr></template>
 
-@section VendorScripts { <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> }
-@section PageScripts { <script src="~/Admin/js/purchase-order-edit.js" asp-append-version="true"></script> }
+@section VendorScripts { <script src="~/lib/select2/select2.min.js" asp-append-version="true"></script> }
+@section PageScripts { <script src="~/Admin/js/purchase-order-edit.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/purchasing.mobile.js" asp-append-version="true"></script> }

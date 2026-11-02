@@ -1,0 +1,46 @@
+@model GaoApp.Web.Areas.Admin.Controllers.CustomerMarketingCampaignPage
+@{
+    ViewData["Title"] = "Chiến dịch Zalo";
+}
+<main class="container-fluid py-3">
+    <h1>Chiến dịch quảng cáo Zalo</h1>
+    <p class="text-muted">@Model.StoreName · Chỉ lấy khách đồng ý nhận quảng cáo, còn liên kết Zalo hiện hành và có số điện thoại khớp. Gửi từng người để có thể kiểm tra lại consent sát lúc gửi.</p>
+    @if (!Model.DispatchEnabled) { <div class="alert alert-warning">Worker gửi chiến dịch hiện đang tắt. Lên lịch chỉ lưu chiến dịch; không tin nhắn nào được gửi cho đến khi cấu hình cho phép. Khi bật, P6 vẫn khóa ở một khách thử duy nhất với số 0398946174.</div> }
+    @if (!string.IsNullOrWhiteSpace(Model.Notice)) { <div class="alert alert-success" role="status">@Model.Notice</div> }
+    @if (Model.Connections.Count == 0)
+    {
+        <div class="alert alert-warning">Chưa có tài khoản ZaloMarketing đang bật cho cửa hàng này.</div>
+    }
+    else
+    {
+        <section class="card mb-4">
+            <div class="card-header"><h2 class="h5 mb-0">Tạo bản xem trước</h2></div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data" action="/admin/customer-service/marketing-campaigns/preview" class="row g-3">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="PreviewRequestId" value="@Model.PreviewRequestId" />
+                    <div class="col-md-6"><label class="form-label" for="Name">Tên chiến dịch</label><input id="Name" name="Name" class="form-control" maxlength="120" required /></div>
+                    <div class="col-md-6"><label class="form-label" for="ConnectionId">Tài khoản gửi</label><select id="ConnectionId" name="ConnectionId" class="form-select" required><option value="">Chọn tài khoản</option>@foreach (var c in Model.Connections) { <option value="@c.Id" data-profile="@c.ProfileId">@c.Label · @c.ProfileId</option> }</select><input type="hidden" id="SenderProfileId" name="SenderProfileId" /></div>
+                    <div class="col-md-6"><label class="form-label" for="CustomerGroup">Nhóm khách</label><select id="CustomerGroup" name="CustomerGroup" class="form-select"><option value="">Tất cả nhóm đủ điều kiện</option>@foreach (var group in Model.CustomerGroups) { <option value="@group">@group</option> }</select></div>
+                    <div class="col-md-6"><label class="form-label" for="ScheduledLocal">Thời gian gửi (UTC+7)</label><input id="ScheduledLocal" name="ScheduledLocal" type="datetime-local" class="form-control" required /><div class="form-text">Từ 5 phút đến 30 ngày sau thời điểm hiện tại.</div></div>
+                    <div class="col-12"><label class="form-label" for="MessageText">Nội dung</label><textarea id="MessageText" name="MessageText" class="form-control" rows="5" maxlength="8000" required></textarea><div class="form-text">Tối đa 4.000 ký tự Unicode. Có thể gửi kèm một ảnh hoặc tệp PDF, Word, Excel.</div></div>
+                    <div class="col-12"><label class="form-label" for="Asset">Ảnh hoặc tệp đính kèm (không bắt buộc)</label><input id="Asset" name="Asset" type="file" class="form-control" accept=".jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx" /><div class="form-text">Ảnh tối đa 10 MiB; tài liệu tối đa 20 MiB. Hệ thống kiểm tra nội dung tệp trước khi lưu.</div></div>
+                    <div class="col-12"><button type="submit" class="btn btn-primary">Xem trước danh sách</button></div>
+                </form>
+            </div>
+        </section>
+        <script>
+            (() => { const account = document.getElementById('ConnectionId'); const profile = document.getElementById('SenderProfileId'); const sync = () => profile.value = account.selectedOptions[0]?.dataset.profile || ''; account.addEventListener('change', sync); sync(); })();
+        </script>
+    }
+    <section class="card">
+        <div class="card-header"><h2 class="h5 mb-0">Chiến dịch gần đây</h2></div>
+        <div class="table-responsive"><table class="table table-striped align-middle mb-0">
+            <thead><tr><th>Tên</th><th>Trạng thái</th><th>Số khách lúc xem trước</th><th>Lịch gửi (UTC+7)</th><th>Tài khoản</th><th></th></tr></thead>
+            <tbody>@if (Model.Campaigns.Count == 0) { <tr><td colspan="6" class="text-muted">Chưa có chiến dịch.</td></tr> }
+            @foreach (var c in Model.Campaigns) { <tr><td>@c.Name@if (!string.IsNullOrWhiteSpace(c.Detail)) { <br /><small class="text-danger">@c.Detail</small> }</td><td>@c.Status</td><td>@c.RecipientCount</td><td>@(new DateTimeOffset(c.ScheduledAtUtc, TimeSpan.Zero).ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm"))</td><td>@c.ConnectionId</td><td>@if (c.Status is "Draft" or "Scheduled") { <form method="post" action="/admin/customer-service/marketing-campaigns/@c.Id/cancel">@Html.AntiForgeryToken()<button class="btn btn-sm btn-outline-danger" type="submit">Hủy</button></form> }</td></tr> }
+            </tbody>
+        </table></div>
+    </section>
+    <p class="text-muted small mt-3">Đường dẫn để tự cấu hình menu: <code>/admin/customer-service/marketing-campaigns</code>.</p>
+</main>

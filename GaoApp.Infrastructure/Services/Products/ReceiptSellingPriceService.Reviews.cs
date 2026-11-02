@@ -65,9 +65,9 @@ public sealed partial class ReceiptSellingPriceService
                 Margin(x.WholesalePrice ?? x.Price, cost * x.Factor, review?.Basis) < (review?.WholesaleTargets.GetValueOrDefault(x.Id, 10) ?? 10));
             result.Add(new(line.Id, review?.HasChanges == true, reviewed,
                 !reviewed && (review != null || belowTarget || cost <= 0), belowCost,
-                audit?.CreatedAtUtc, audit?.ActorUserName, review?.BaseCost, cost) { CatalogCurrent = currentCatalog });
+                audit?.CreatedAtUtc, audit?.ActorUserName, review?.BaseCost, cost) { CatalogCurrent = currentCatalog, Units = prices });
         }
-        return new(document.ReceiptSource, result);
+        return new(EffectiveReceiptSource(document), result);
     }
 
     private static decimal Margin(decimal price, decimal cost, string? basis) =>

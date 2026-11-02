@@ -1,4 +1,4 @@
-﻿@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceIntegrationLogCleanupViewModel
+@model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceIntegrationLogCleanupViewModel
 
 @{
     ViewData["Title"] = "Dọn log tích hợp";
@@ -238,7 +238,7 @@
                                 name="submitMode"
                                 value="execute"
                                 class="btn btn-danger"
-                                onclick="return confirm('Xác nhận dọn log? Thao tác này sẽ xóa mềm các log cũ theo chính sách.');">
+                                data-csp-confirm="Xác nhận dọn log? Thao tác này sẽ xóa mềm các log cũ theo chính sách.">
                             Dọn log
                         </button>
                     </div>
@@ -296,7 +296,7 @@
                             <th>Action</th>
                             <th>Kết quả</th>
                             <th>Giữ</th>
-                            <th>Xóa trước UTC</th>
+                            <th>Xóa trước</th>
                             <th class="text-end">Có thể dọn</th>
                             <th class="text-end">Đã dọn</th>
                         </tr>
@@ -330,7 +330,7 @@
                                         }
                                     </td>
                                     <td>@row.RetentionDays ngày</td>
-                                    <td>@row.DeleteBeforeUtc.ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                    <td>@row.DeleteBeforeUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
                                     <td class="text-end fw-semibold">@row.CandidateCount.ToString("N0")</td>
                                     <td class="text-end text-danger fw-semibold">@row.DeletedCount.ToString("N0")</td>
                                 </tr>
@@ -343,3 +343,10 @@
     }
 
 </div>
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-operations.mobile.css" asp-append-version="true" />
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-operations.mobile.js" asp-append-version="true"></script>
+}

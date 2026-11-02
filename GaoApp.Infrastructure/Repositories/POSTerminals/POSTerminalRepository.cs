@@ -79,11 +79,13 @@ public class POSTerminalRepository : IPOSTerminalRepository
             .FirstOrDefaultAsync(ct);
     }
 
-    /// <summary>
-    /// Ghép thiết bị hiện tại vào một terminal.
-    /// Nếu DeviceKey đã tồn tại thì cập nhật lại thông tin.
-    /// Nếu chưa có thì tạo mới.
-    /// </summary>
+    public Task<POSTerminalDevice?> GetActiveDeviceByKeyAsync(int storeId, string deviceKey, CancellationToken ct = default)
+        => _db.POSTerminalDevices.AsNoTracking().Include(x => x.Terminal)
+            .SingleOrDefaultAsync(x => x.StoreId == storeId && x.DeviceKey == deviceKey && x.IsActive && !x.IsDeleted &&
+                x.Terminal.StoreId == storeId && x.Terminal.IsActive && !x.Terminal.IsDeleted &&
+                x.Terminal.Status == POSTerminalStatus.Active, ct);
+
+    /// <summary>Ghép thiết bị hiện tại vào một terminal; cập nhật thông tin nếu khóa đã tồn tại.</summary>
     public async Task<POSTerminalDevice> AttachDeviceAsync(
         int storeId,
         int terminalId,

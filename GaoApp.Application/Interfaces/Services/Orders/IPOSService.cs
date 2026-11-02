@@ -71,6 +71,8 @@ public interface IPOSService
 
     Task<OrderDraftDto> AddPaymentToCurrentCartAsync(QuickAddPaymentRequest dto, CancellationToken ct = default);
 
+    Task<OrderDraftDto> AddPaymentAndMaybeFinalizeCurrentCartAsync(QuickAddPaymentRequest dto, CancellationToken ct = default);
+
     Task<OrderDraftDto> FinalizeCurrentCartAsync(CancellationToken ct = default);
 
     Task<HoldOrderResultDto> HoldCurrentCartAsync(string? holdNote = null, CancellationToken ct = default);

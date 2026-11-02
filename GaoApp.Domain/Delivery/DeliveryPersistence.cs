@@ -3,6 +3,7 @@ using GaoApp.Domain.Common;
 namespace GaoApp.Domain.Delivery;
 
 public interface IDeliveryImmutableRecord { }
+public enum DeliverySourceKind { Pos, Storefront }
 
 public sealed class DeliveryOrder : BaseStoreEntity
 {
@@ -12,9 +13,13 @@ public sealed class DeliveryOrder : BaseStoreEntity
     public int Revision { get; set; } = 1;
     public int SourceWarehouseId { get; set; }
     public int SourceLegalEntityId { get; set; }
-    public int SourceCartId { get; set; }
-    public int CreatedTerminalId { get; set; }
-    public int CreatedShiftId { get; set; }
+    public DeliverySourceKind SourceKind { get; set; }
+    public int? SourceCartId { get; set; }
+    public int? CreatedTerminalId { get; set; }
+    public int? CreatedShiftId { get; set; }
+    public int? StorefrontOrderId { get; set; }
+    public int? StorefrontFulfillmentSourceId { get; set; }
+    public bool? StorefrontAllowNegativeInventory { get; set; }
     public int CreatedByUserId { get; set; }
     public int? CustomerId { get; set; }
     public string RecipientName { get; set; } = "";
@@ -29,7 +34,10 @@ public sealed class DeliveryOrderLine : BaseStoreEntity, IDeliveryImmutableRecor
 {
     public int DeliveryOrderId { get; set; }
     public DeliveryOrder DeliveryOrder { get; set; } = null!;
-    public int SourceCartId { get; set; }
+    public int? SourceCartId { get; set; }
+    public int? StorefrontOrderId { get; set; }
+    public int? StorefrontOrderLineId { get; set; }
+    public decimal? StorefrontBaseQuantity { get; set; }
     public int? SourceOrderLineId { get; set; }
     public int? OriginalRootLineId { get; set; }
     public int? ProductUnitConversionId { get; set; }
@@ -119,8 +127,9 @@ public sealed class DeliveryDispatchCostFragment : BaseStoreEntity, IDeliveryImm
     public int VariantId { get; set; }
     public int InventoryTransactionId { get; set; }
     public int InventoryValuationEntryId { get; set; }
-    public int InventoryCostLayerId { get; set; }
-    public int InventoryCostBudgetDebitId { get; set; }
+    public int? InventoryCostLayerId { get; set; }
+    public int? InventoryCostBudgetDebitId { get; set; }
+    public bool IsProvisional { get; set; }
     public int DeliveryOrderId { get; set; }
     public int DeliveryOrderLineId { get; set; }
     public int SourceWarehouseId { get; set; }
@@ -147,6 +156,7 @@ public sealed class DeliveryReturnedCostFragment : BaseStoreEntity, IDeliveryImm
     public decimal BaseQuantity { get; set; }
     public decimal UnitCost { get; set; }
     public decimal CostAmount { get; set; }
+    public bool IsProvisional { get; set; }
 }
 
 public sealed class DeliveryCommandReceipt : BaseStoreEntity, IDeliveryImmutableRecord

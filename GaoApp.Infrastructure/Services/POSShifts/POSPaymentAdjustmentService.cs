@@ -24,10 +24,15 @@ public sealed partial class POSPaymentAdjustmentService(AppDbContext db, ITenant
     private Task<string> Actor(CancellationToken ct) => db.Users.Where(x => x.Id == UserId).Select(x => x.FullName ?? x.UserName).SingleAsync(ct);
     private async Task<POSPaymentAdjustmentRequest> Request(int id, CancellationToken ct) =>
         await Requests.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundAppException("Không tìm thấy yêu cầu sửa thanh toán.");
-    private async Task<Order> Order(int id, bool locked, CancellationToken ct) => await (locked
+    private async Task<Order> Order(int id, bool locked, CancellationToken ct)
+    {
+        if (await db.Set<GaoApp.Domain.Storefront.StorefrontSaleBinding>().AnyAsync(x => x.StoreId == StoreId && x.SaleOrderId == id, ct))
+            throw new ConflictAppException("Khoản bán website có nguồn thu thực tế riêng; mở trang đối soát đơn website, không điều chỉnh như thu tại POS.");
+        return await (locked
         ? db.Orders.FromSqlInterpolated($"SELECT * FROM [Orders] WITH (UPDLOCK,HOLDLOCK) WHERE [Id]={id} AND [StoreId]={StoreId}").IgnoreQueryFilters()
         : db.Orders.IgnoreQueryFilters().AsNoTracking().Where(x => x.Id == id && x.StoreId == StoreId)).SingleOrDefaultAsync(ct)
         ?? throw new NotFoundAppException("Không tìm thấy đơn POS.");
+    }
     private async Task<POSShift> Shift(int id, bool locked, CancellationToken ct) => await (locked
         ? db.POSShifts.FromSqlInterpolated($"SELECT * FROM [POSShifts] WITH (UPDLOCK,HOLDLOCK) WHERE [Id]={id} AND [StoreId]={StoreId}")
         : db.POSShifts.AsNoTracking().Where(x => x.Id == id && x.StoreId == StoreId)).SingleOrDefaultAsync(ct)
@@ -45,6 +50,7 @@ public sealed partial class POSPaymentAdjustmentService(AppDbContext db, ITenant
     private static string? Unavailable(Order o, OrderPayment? p, bool bankProtected) => o.IsDeleted || o.Status is not (OrderStatus.Completed or OrderStatus.Refunded)
         ? "Chỉ điều chỉnh khoản thanh toán của đơn đã chốt, chưa hủy."
         : p == null || p.IsDeleted ? "Khoản thanh toán đã bị hủy hoặc không còn hợp lệ."
+        : p.StorefrontCodReceiptId.HasValue || p.StorefrontCarrierWithholdingId.HasValue || p.Provider == "STOREFRONT_SOURCE" ? "Nguồn thu website cần đối soát tại trang đơn website."
         : p.IsDebtCollection ? "Khoản thu công nợ cần đối soát qua sổ công nợ."
         : p.Amount <= 0 ? "Khoản thanh toán phải có số tiền dương."
         : bankProtected ? "Khoản này có chứng từ ngân hàng tự động liên kết. Hãy kiểm tra giao dịch ngân hàng; không đổi phương thức của chứng từ này." : null;

@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.Services.Invoices;
@@ -45,8 +46,8 @@ internal static class ViettelInvoicePayloadResultAssembler
             ProviderStatusBadgeClass = uiState.ProviderStatusBadgeClass,
 
             ProviderInvoiceNo = invoice.ProviderInvoiceNo,
-            LastErrorCode = invoice.LastErrorCode,
-            LastErrorMessage = invoice.LastErrorMessage,
+            LastErrorCode = InvoiceErrorReadSanitizer.Code(invoice.LastErrorCode),
+            LastErrorMessage = InvoiceErrorReadSanitizer.Message(invoice.LastErrorMessage, invoice.LastErrorCode),
             IssuedAtUtc = invoice.IssuedAtUtc,
             LastSyncedAtUtc = invoice.LastSyncedAtUtc,
             PdfFilePath = invoice.PdfFilePath,
@@ -63,7 +64,7 @@ internal static class ViettelInvoicePayloadResultAssembler
             EmailSentAtUtc = invoice.EmailSentAtUtc,
             LastEmailTo = invoice.LastEmailTo,
             EmailSendCount = invoice.EmailSendCount,
-            LastEmailErrorMessage = invoice.LastEmailErrorMessage,
+            LastEmailErrorMessage = InvoiceErrorReadSanitizer.Message(invoice.LastEmailErrorMessage),
 
             CanSendEmail = uiState.CanSendEmail,
             IsIssued = uiState.IsIssued,

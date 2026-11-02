@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <!-- Compile the actual production Razor and models; no reference to Web startup,
+       database services, application workers or production authentication. -->
+  <ItemGroup>
+    <Compile Include="../../GaoApp.Web/Areas/Admin/ViewModels/Commerce/*.cs" Link="Models/%(Filename)%(Extension)" />
+    <Compile Include="../../GaoApp.Web/Areas/Admin/Controllers/UiFoundationController.cs" Link="Contracts/UiFoundationController.cs" />
+    <Compile Include="../../GaoApp.Web/Areas/Admin/Controllers/BaseAdminController.cs" Link="Contracts/BaseAdminController.cs" />
+    <Compile Include="../../GaoApp.Application/Common/Security/PermissionCodes.cs" Link="Contracts/PermissionCodes.cs" />
+    <Compile Include="../../GaoApp.Application/Common/ITenantContext.cs" Link="Contracts/ITenantContext.cs" />
+    <Compile Include="../../GaoApp.Application/DTOs/AdminMenus/AdminMenuItemDto.cs" Link="Contracts/AdminMenuItemDto.cs" />
+    <Compile Include="../../GaoApp.Application/DTOs/AdminMenus/SaveAdminMenuItemRequest.cs" Link="Contracts/SaveAdminMenuItemRequest.cs" />
+    <Compile Include="../../GaoApp.Application/DTOs/AdminMenus/AdminMenuFormOptionsDto.cs" Link="Contracts/AdminMenuFormOptionsDto.cs" />
+    <Compile Include="../../GaoApp.Application/DTOs/AdminMenus/AdminMenuPinDtos.cs" Link="Contracts/AdminMenuPinDtos.cs" />
+    <Compile Include="../../GaoApp.Application/DTOs/AdminMenus/AdminMenuVisibilityDtos.cs" Link="Contracts/AdminMenuVisibilityDtos.cs" />
+    <Compile Include="../../GaoApp.Application/DTOs/Security/SecurityActionConfirmation.cs" Link="Contracts/SecurityActionConfirmation.cs" />
+    <Compile Include="../../GaoApp.Application/Interfaces/Services/AdminMenus/IAdminMenuService.cs" Link="Contracts/IAdminMenuService.cs" />
+    <Compile Include="../../GaoApp.Application/Interfaces/Services/AdminMenus/IAdminMenuPinService.cs" Link="Contracts/IAdminMenuPinService.cs" />
+    <Compile Include="../../GaoApp.Application/Interfaces/Services/Security/IStoreAdminAccess.cs" Link="Contracts/IStoreAdminAccess.cs" />
+    <Compile Include="../../GaoApp.Web/Services/AdminNavigationProvider.cs" Link="Services/AdminNavigationProvider.cs" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/UiFoundation/*.cshtml" Link="Areas/Admin/Views/UiFoundation/%(Filename)%(Extension)" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/_CommercePreviewLayout.cshtml" Link="Areas/Admin/Views/Shared/_CommercePreviewLayout.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/_CommerceMobileLayout.cshtml" Link="Areas/Admin/Views/Shared/_CommerceMobileLayout.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/Commerce/*.cshtml" Link="Areas/Admin/Views/Shared/Commerce/%(Filename)%(Extension)" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/Sections/_Styles.cshtml" Link="Areas/Admin/Views/Shared/Sections/_Styles.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/Sections/_Scripts.cshtml" Link="Areas/Admin/Views/Shared/Sections/_Scripts.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/Sections/_ScriptsIncludes.cshtml" Link="Areas/Admin/Views/Shared/Sections/_ScriptsIncludes.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/Sections/Menu/*.cshtml" Link="Areas/Admin/Views/Shared/Sections/Menu/%(Filename)%(Extension)" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/_Partials/_Macros.cshtml" Link="Areas/Admin/Views/_Partials/_Macros.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/_CommonMasterLayout.cshtml" Link="Areas/Admin/Views/Shared/_CommonMasterLayout.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/_ContentNavbarLayout.cshtml" Link="Areas/Admin/Views/Shared/_ContentNavbarLayout.cshtml" />
+    <Content Include="../../GaoApp.Web/Areas/Admin/Views/Shared/_POSPrimeLayout.cshtml" Link="Areas/Admin/Views/Shared/_POSPrimeLayout.cshtml" />
+  </ItemGroup>
+</Project>

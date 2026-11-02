@@ -24,7 +24,7 @@ public sealed class SavePurchaseOrderRequest
     [Range(1, int.MaxValue)] public int SupplierId { get; set; }
     [Range(1, int.MaxValue)] public int ExpectedWarehouseId { get; set; }
     [Range(1, int.MaxValue)] public int LegalEntityId { get; set; }
-    public DateTime OrderDate { get; set; } = DateTime.Today;
+    public DateTime OrderDate { get; set; } = VietnamTime.Today;
     public DateTime? ExpectedDeliveryDate { get; set; }
     [StringLength(1000)] public string? Note { get; set; }
     [StringLength(500)] public string? OutsideRequestReason { get; set; }
@@ -94,6 +94,7 @@ public sealed class PurchaseOrderListItemDto
 
 public sealed class PurchaseOrderLineDto
 {
+    public string? Note { get; set; }
     public int Id { get; set; }
     public int? SourcePurchaseRequestLineId { get; set; }
     public int LineNo { get; set; }

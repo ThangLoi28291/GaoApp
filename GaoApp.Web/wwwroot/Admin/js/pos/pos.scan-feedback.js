@@ -32,7 +32,7 @@ window.PosScanFeedback = (() => {
             write('posScanMeta', [latest.barcode ? 'Mã: ' + latest.barcode : '', latest.packing].filter(Boolean).join(' · '));
             write('posScanAdded', 'Vừa cộng ' + number(latest.added) + ' ' + latest.unit);
             write('posScanTransition', number(latest.before) + ' → ' + number(latest.after) + ' ' + latest.unit);
-            write('posScanTime', new Date(latest.at).toLocaleTimeString('vi-VN'));
+            write('posScanTime', new Date(latest.at).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }));
             el('posScanTime').dateTime = latest.at;
             el('posScanCurrent').hidden = !!line && Number(line.quantity) === latest.after;
             write('posScanCurrent', line ? 'Hiện trong giỏ: ' + number(line.quantity) + ' ' + latest.unit : 'Sản phẩm này đã được xóa khỏi giỏ');
@@ -47,7 +47,7 @@ window.PosScanFeedback = (() => {
         for (const receipt of receipts) {
             const li = document.createElement('li'); li.dataset.scanReceipt = receipt.id;
             const top = document.createElement('div'), time = document.createElement('time'), qty = document.createElement('b');
-            time.dateTime = receipt.at; time.textContent = new Date(receipt.at).toLocaleTimeString('vi-VN');
+            time.dateTime = receipt.at; time.textContent = new Date(receipt.at).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
             qty.textContent = '+' + number(receipt.added) + ' ' + receipt.unit; top.append(time, qty);
             const name = document.createElement('strong'); name.textContent = receipt.name;
             const meta = document.createElement('small'); meta.textContent = [receipt.barcode, receipt.packing].filter(Boolean).join(' · ');

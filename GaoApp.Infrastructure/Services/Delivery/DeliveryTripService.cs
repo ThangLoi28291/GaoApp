@@ -294,7 +294,7 @@ public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser us
         catch { await tx.RollbackAsync(CancellationToken.None); db.ChangeTracker.Clear(); throw; }
     }
     private async Task RecordTrip<T>(DeliveryTrip trip, Guid key, string operation, string hash,
-        DeliveryCapability required, T request, DeliveryTripCommandAck ack, DateTime now, CancellationToken ct)
+        DeliveryCapability required, T request, DeliveryTripCommandAck ack, DateTime now, CancellationToken ct, bool phaseOnly = false)
     {
         var bindings = await db.DeliveryTripOrders.AsNoTracking().Where(x => x.StoreId == Store && x.TripId == trip.Id).OrderBy(x => x.Id).ToListAsync(ct);
         var detail = JsonSerializer.SerializeToNode(new { trip.Id, trip.Code, state = trip.State.ToString(), trip.Revision, trip.CourierUserId,
@@ -310,8 +310,9 @@ public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser us
         var snapshot = detail.ToJsonString(Json);
         db.DeliveryTripRevisions.Add(new() { StoreId = Store, TripId = trip.Id, Revision = trip.Revision, ActorUserId = Actor,
             Action = operation, AggregateVersion = Version(trip.RowVersion), SnapshotJson = snapshot, SnapshotHash = Hash(snapshot) });
-        db.DeliveryTripCommandReceipts.Add(new() { StoreId = Store, TripId = trip.Id, ClientRequestId = key, ActorUserId = Actor,
-            Operation = operation, RequestHash = hash, RequiredCapabilities = required, OutcomeJson = JsonSerializer.Serialize(ack, Json) });
+        if (!phaseOnly)
+            db.DeliveryTripCommandReceipts.Add(new() { StoreId = Store, TripId = trip.Id, ClientRequestId = key, ActorUserId = Actor,
+                Operation = operation, RequestHash = hash, RequiredCapabilities = required, OutcomeJson = JsonSerializer.Serialize(ack, Json) });
         var eventId = Guid.NewGuid();
         db.DeliveryTripOutboxMessages.Add(new() { StoreId = Store, TripId = trip.Id, Revision = trip.Revision, EventId = eventId,
             Action = operation, PayloadJson = JsonSerializer.Serialize(new { eventId, storeId = Store, tripId = trip.Id,
@@ -431,65 +432,71 @@ public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser us
         Selections(request.Orders);
         request = request with { ConfirmationNote = DeliveryTripPolicy.NormalizeNote(request.ConfirmationNote) };
         return Command(id, request.ClientRequestId, "handover", request.ExpectedTripVersion, request,
-            DeliveryCapability.View | DeliveryCapability.Handover, request.Orders, async (value, members, now) =>
-            {
-                var trip = value!; RequireState(trip, DeliveryTripState.Draft); await Courier(trip.CourierUserId, ct);
-                DeliveryTripPolicy.PhysicalReceipt(request.PhysicalReceiptConfirmed, request.ConfirmedCourierUserId, trip.CourierUserId);
-                await PhysicalSelections(trip, members, request.Orders, DeliveryState.ReadyForHandover, ct);
-                var union = new HashSet<(int Warehouse, int Variant)>();
-                foreach (var member in members)
-                {
-                    var lines = await db.DeliveryPickingLines.AsNoTracking().Include(x => x.Quote).Where(x => x.StoreId == Store &&
-                        x.DeliveryOrderId == member.DeliveryOrderId && x.IsActive).ToListAsync(ct);
-                    foreach (var line in lines) union.Add((member.SourceWarehouseId, line.Quote.VariantId));
-                    var heldVariants = await db.InventoryReservations.AsNoTracking().Where(x => x.StoreId == Store &&
-                        x.DeliveryOrderId == member.DeliveryOrderId && x.Status == InventoryReservationStatus.Active).Select(x => x.ProductVariantId).ToListAsync(ct);
-                    foreach (var variant in heldVariants) union.Add((member.SourceWarehouseId, variant));
-                }
-                foreach (var pair in union.OrderBy(x => x.Warehouse).ThenBy(x => x.Variant))
-                    _ = await balances.LockAndGetOrCreateAsync(Store, pair.Warehouse, pair.Variant, ct);
-                DateTime? lastConfirmation = null;
-                foreach (var member in members.OrderBy(x => x.DeliveryOrderId))
-                {
-                    var before = await Order(member.DeliveryOrderId, true, false, ct);
-                    await inventory.DispatchInTransactionAsync(before.Id, new(DeliveryTripPolicy.ChildCommandId(request.ClientRequestId, before.Id),
-                        Version(before.RowVersion), member.AssignedApprovedRevision), ct);
-                    // D05 refreshed its tracked order and increased revision. Read that persisted version, not the old reference.
-                    Fresh([before.Id], null); var order = await Order(before.Id, true, true, ct);
-                    order.State = DeliveryWorkflowPolicy.Apply(order.State, DeliveryCommand.Handover,
-                        new(PickingComplete: true, HasPickedGoods: true, CourierAssigned: true, CustodyHandoverConfirmed: true));
-                    order.Revision++; await db.SaveChangesAsync(ct);
-                    var confirmed = await Custody(trip, member, order, request.ClientRequestId, DeliveryCustodyKind.Handover,
-                        trip.CourierUserId, null, null, request.ConfirmationNote, ct);
-                    await RecordOrder(order, "handover", request.ClientRequestId, null, confirmed, ct);
-                    lastConfirmation = confirmed;
-                }
-                trip.State = DeliveryTripState.HandedOver; trip.HandedOverByUserId = Actor;
-                trip.HandedOverAtUtc = lastConfirmation; trip.Revision++;
-                return trip;
-            }, ct);
+            DeliveryCapability.View | DeliveryCapability.Handover, request.Orders,
+            (value, members, _) => HandoverCore(value!, members, request, ct), ct);
+    }
+    private async Task<DeliveryTrip> HandoverCore(DeliveryTrip trip, List<DeliveryTripOrder> members,
+        DeliveryTripHandoverRequest request, CancellationToken ct)
+    {
+        RequireState(trip, DeliveryTripState.Draft); await Courier(trip.CourierUserId, ct);
+        DeliveryTripPolicy.PhysicalReceipt(request.PhysicalReceiptConfirmed, request.ConfirmedCourierUserId, trip.CourierUserId);
+        await PhysicalSelections(trip, members, request.Orders, DeliveryState.ReadyForHandover, ct);
+        var union = new HashSet<(int Warehouse, int Variant)>();
+        foreach (var member in members)
+        {
+            var lines = await db.DeliveryPickingLines.AsNoTracking().Include(x => x.Quote).Where(x => x.StoreId == Store &&
+                x.DeliveryOrderId == member.DeliveryOrderId && x.IsActive).ToListAsync(ct);
+            foreach (var line in lines) union.Add((member.SourceWarehouseId, line.Quote.VariantId));
+            var heldVariants = await db.InventoryReservations.AsNoTracking().Where(x => x.StoreId == Store &&
+                x.DeliveryOrderId == member.DeliveryOrderId && x.Status == InventoryReservationStatus.Active).Select(x => x.ProductVariantId).ToListAsync(ct);
+            foreach (var variant in heldVariants) union.Add((member.SourceWarehouseId, variant));
+        }
+        foreach (var pair in union.OrderBy(x => x.Warehouse).ThenBy(x => x.Variant))
+            _ = await balances.LockAndGetOrCreateAsync(Store, pair.Warehouse, pair.Variant, ct);
+        DateTime? lastConfirmation = null;
+        foreach (var member in members.OrderBy(x => x.DeliveryOrderId))
+        {
+            var before = await Order(member.DeliveryOrderId, true, false, ct);
+            await inventory.DispatchInTransactionAsync(before.Id, new(DeliveryTripPolicy.ChildCommandId(request.ClientRequestId, before.Id),
+                Version(before.RowVersion), member.AssignedApprovedRevision), ct);
+            // D05 refreshed its tracked order and increased revision. Read that persisted version, not the old reference.
+            Fresh([before.Id], null); var order = await Order(before.Id, true, true, ct);
+            order.State = DeliveryWorkflowPolicy.Apply(order.State, DeliveryCommand.Handover,
+                new(PickingComplete: true, HasPickedGoods: true, CourierAssigned: true, CustodyHandoverConfirmed: true));
+            order.Revision++; await db.SaveChangesAsync(ct);
+            var confirmed = await Custody(trip, member, order, request.ClientRequestId, DeliveryCustodyKind.Handover,
+                trip.CourierUserId, null, null, request.ConfirmationNote, ct);
+            await RecordOrder(order, "handover", request.ClientRequestId, null, confirmed, ct);
+            lastConfirmation = confirmed;
+        }
+        trip.State = DeliveryTripState.HandedOver; trip.HandedOverByUserId = Actor;
+        trip.HandedOverAtUtc = lastConfirmation; trip.Revision++;
+        return trip;
     }
     public Task<DeliveryTripCommandAck> DepartAsync(int id, DeliveryTripDepartureRequest request, CancellationToken ct = default)
     {
         Selections(request.Orders);
         return Command(id, request.ClientRequestId, "depart", request.ExpectedTripVersion, request,
-            DeliveryCapability.View | DeliveryCapability.RecordDeparture, request.Orders, async (value, members, now) =>
-            {
-                var trip = value!; RequireState(trip, DeliveryTripState.HandedOver); await Courier(trip.CourierUserId, ct);
-                await PhysicalSelections(trip, members, request.Orders, DeliveryState.HandedOver, ct);
-                var latestCustody = await db.DeliveryCustodyEvents.AsNoTracking().Where(x => x.StoreId == Store && x.TripId == id)
-                    .MaxAsync(x => (DateTime?)x.ConfirmedAtUtc, ct)
-                    ?? throw Error(409, "CUSTODY_PROOF_INVALID", "Chưa có chứng cứ bàn giao cho chuyến.");
-                now = await SqlUtcAtOrAfter(latestCustody, ct);
-                foreach (var member in members.OrderBy(x => x.DeliveryOrderId))
-                {
-                    var order = await Order(member.DeliveryOrderId, true, true, ct);
-                    order.State = DeliveryWorkflowPolicy.Apply(order.State, DeliveryCommand.Depart,
-                        new(CourierAssigned: true, CustodyHandoverConfirmed: true));
-                    order.Revision++; await db.SaveChangesAsync(ct); await RecordOrder(order, "depart", request.ClientRequestId, null, now, ct);
-                }
-                trip.State = DeliveryTripState.Departed; trip.DepartedByUserId = Actor; trip.DepartedAtUtc = now; trip.Revision++; return trip;
-            }, ct);
+            DeliveryCapability.View | DeliveryCapability.RecordDeparture, request.Orders,
+            (value, members, _) => DepartCore(value!, members, request, ct), ct);
+    }
+    private async Task<DeliveryTrip> DepartCore(DeliveryTrip trip, List<DeliveryTripOrder> members,
+        DeliveryTripDepartureRequest request, CancellationToken ct)
+    {
+        RequireState(trip, DeliveryTripState.HandedOver); await Courier(trip.CourierUserId, ct);
+        await PhysicalSelections(trip, members, request.Orders, DeliveryState.HandedOver, ct);
+        var latestCustody = await db.DeliveryCustodyEvents.AsNoTracking().Where(x => x.StoreId == Store && x.TripId == trip.Id)
+            .MaxAsync(x => (DateTime?)x.ConfirmedAtUtc, ct)
+            ?? throw Error(409, "CUSTODY_PROOF_INVALID", "Chưa có chứng cứ bàn giao cho chuyến.");
+        var now = await SqlUtcAtOrAfter(latestCustody, ct);
+        foreach (var member in members.OrderBy(x => x.DeliveryOrderId))
+        {
+            var order = await Order(member.DeliveryOrderId, true, true, ct);
+            order.State = DeliveryWorkflowPolicy.Apply(order.State, DeliveryCommand.Depart,
+                new(CourierAssigned: true, CustodyHandoverConfirmed: true));
+            order.Revision++; await db.SaveChangesAsync(ct); await RecordOrder(order, "depart", request.ClientRequestId, null, now, ct);
+        }
+        trip.State = DeliveryTripState.Departed; trip.DepartedByUserId = Actor; trip.DepartedAtUtc = now; trip.Revision++; return trip;
     }
     public Task<DeliveryTripCommandAck> ReassignCourierAsync(int id, DeliveryTripReassignRequest request, CancellationToken ct = default)
     {
@@ -601,7 +608,10 @@ public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser us
                 trip.State == DeliveryTripState.HandedOver && canDepart && courierActive && eligible,
                 canHandover && canReassign && (trip.State == DeliveryTripState.Draft || trip.State == DeliveryTripState.HandedOver && eligible),
                 rows.Any(x => x.CanRequestCancellation)), historyRows);
-        return await ProjectHandoverTrip(trip, await ProjectOutcomes(trip, detail, ct), ct);
+        detail = await ProjectHandoverTrip(trip, await ProjectOutcomes(trip, detail, ct), ct);
+        var activeOrders = detail.Orders.Where(x => x.IsActive).ToArray();
+        return detail with { IsCompleted = trip.State == DeliveryTripState.Departed && activeOrders.Length > 0 &&
+            activeOrders.All(x => x.State is nameof(DeliveryState.Settled) or nameof(DeliveryState.Cancelled)) };
     }
     public async Task<DeliveryTripDetailDto> GetAsync(int id, CancellationToken ct = default)
     {
@@ -640,7 +650,11 @@ public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser us
                 result.Add(new(id, order.Code, order.Revision, Version(order.RowVersion), work.ApprovedRevision!.Value,
                     wh.Id, wh.Name, le.Id, le.Name, order.RecipientName, order.RecipientAddress, await Lines(order, ct)));
             }
-            catch (DeliveryFoundationException ex) when (ex.Code is "ORDER_NOT_ELIGIBLE" or "RESERVATION_DRIFT" or "SOURCE_SCOPE_INVALID") { }
+            catch (DeliveryFoundationException ex) when (ex.Code is "ORDER_NOT_ELIGIBLE" or "RESERVATION_DRIFT" or "SOURCE_SCOPE_INVALID")
+            {
+                // Eligibility may change while waiting for the order lock.
+                continue;
+            }
         }
         await tx.CommitAsync(ct); return new(Store, Utc(DateTime.UtcNow), couriers, result);
     }
@@ -651,23 +665,41 @@ public sealed partial class DeliveryTripService(AppDbContext db, ICurrentUser us
         if (take is < 1 or > 100 || beforeId is <= 0 || courierUserId is <= 0) throw Error(400, "PAGE_INVALID", "Bộ lọc trang không hợp lệ.");
         var query = db.DeliveryTrips.AsNoTracking().Where(x => x.StoreId == Store && (!beforeId.HasValue || x.Id < beforeId) &&
             (!courierUserId.HasValue || x.CourierUserId == courierUserId));
+        // Completion is derived from final order states, including trips closed before this projection existed.
+        // Keep the dispatch state and immutable handover/settlement evidence intact.
+        var completedIds = db.DeliveryTrips.Where(t => t.StoreId == Store && t.State == DeliveryTripState.Departed &&
+            db.DeliveryTripOrders.Any(b => b.StoreId == Store && b.TripId == t.Id && b.IsActive) &&
+            !db.DeliveryTripOrders.Any(b => b.StoreId == Store && b.TripId == t.Id && b.IsActive &&
+                !db.DeliveryOrders.Any(o => o.StoreId == Store && o.Id == b.DeliveryOrderId &&
+                    (o.State == DeliveryState.Settled || o.State == DeliveryState.Cancelled)))).Select(t => t.Id);
         if (!string.IsNullOrWhiteSpace(state))
         {
-            if (!Enum.TryParse<DeliveryTripState>(state, false, out var parsed) || !Enum.IsDefined(parsed) || parsed.ToString() != state)
-                throw Error(400, "STATE_INVALID", "Trạng thái lọc không hợp lệ.");
-            query = query.Where(x => x.State == parsed);
+            if (state == "Completed") query = query.Where(x => completedIds.Contains(x.Id));
+            else
+            {
+                if (!Enum.TryParse<DeliveryTripState>(state, false, out var parsed) || !Enum.IsDefined(parsed) || parsed.ToString() != state)
+                    throw Error(400, "STATE_INVALID", "Trạng thái lọc không hợp lệ.");
+                query = query.Where(x => x.State == parsed);
+                if (parsed == DeliveryTripState.Departed) query = query.Where(x => !completedIds.Contains(x.Id));
+            }
         }
         var candidates = await query.OrderByDescending(x => x.Id).Take(take + 1).Select(x => x.Id).ToListAsync(ct);
         if (db.Database.CurrentTransaction is not null) throw Error(409, "TRANSACTION_CONFLICT", "Đọc chuyến cần giao dịch riêng.");
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         foreach (var id in candidates.Order()) await DeliverySqlLock.AcquireAsync(db, $"trip:{Store}:{id}", ct);
         await Authorize(DeliveryCapability.View, ct);
-        var trips = await query.Where(x => candidates.Contains(x.Id)).OrderByDescending(x => x.Id).ToListAsync(ct);
+        var trips = await query.Where(x => candidates.Contains(x.Id)).OrderByDescending(x => x.Id)
+            .Select(x => new { Trip = x, IsCompleted = completedIds.Contains(x.Id),
+                ActiveOrders = db.DeliveryTripOrders.Count(b => b.StoreId == Store && b.TripId == x.Id && b.IsActive) }).ToListAsync(ct);
         var rows = new List<DeliveryTripSummaryDto>();
-        foreach (var trip in trips.Take(take)) rows.Add(new(trip.Id, trip.Code, trip.State.ToString(), trip.Revision, Version(trip.RowVersion),
-            trip.CourierUserId, await Name(trip.CourierUserId, ct), await db.DeliveryTripOrders.AsNoTracking().CountAsync(x => x.StoreId == Store && x.TripId == trip.Id && x.IsActive, ct),
-            Utc(trip.CreatedAtUtc), trip.HandedOverAtUtc.HasValue ? Utc(trip.HandedOverAtUtc.Value) : null,
-            trip.DepartedAtUtc.HasValue ? Utc(trip.DepartedAtUtc.Value) : null));
+        foreach (var item in trips.Take(take))
+        {
+            var trip = item.Trip;
+            rows.Add(new(trip.Id, trip.Code, trip.State.ToString(), trip.Revision, Version(trip.RowVersion),
+                trip.CourierUserId, await Name(trip.CourierUserId, ct), item.ActiveOrders,
+                Utc(trip.CreatedAtUtc), trip.HandedOverAtUtc.HasValue ? Utc(trip.HandedOverAtUtc.Value) : null,
+                trip.DepartedAtUtc.HasValue ? Utc(trip.DepartedAtUtc.Value) : null) { IsCompleted = item.IsCompleted });
+        }
         await tx.CommitAsync(ct);
         return new(Store, Utc(DateTime.UtcNow), rows, trips.Count > take ? rows[^1].TripId : null);
     }

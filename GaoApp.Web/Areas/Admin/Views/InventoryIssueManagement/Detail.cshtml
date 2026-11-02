@@ -10,6 +10,10 @@
         : 0;
 }
 
+@section PageStyles {
+    <link href="~/Admin/css/inventory-operations.mobile.css" rel="stylesheet" asp-append-version="true" />
+}
+
 <div class="container-fluid py-3 inventory-issue-detail-page">
     @if (TempData["Success"] != null)
     {
@@ -66,7 +70,7 @@
                     <div class="col-6 col-md-3">
                         <div class="stat-card danger">
                             <div class="stat-label">Deadline</div>
-                            <div class="stat-value small-value">@Model.DueAtUtc.ToLocalTime().ToString("dd/MM HH:mm")</div>
+                            <div class="stat-value small-value">@Model.DueAtUtc.ToVietnamTime().ToString("dd/MM HH:mm")</div>
                         </div>
                     </div>
                 </div>
@@ -148,31 +152,31 @@
                         <div class="col-md-6 col-lg-4">
                             <div class="info-box">
                                 <div class="label">Mở case</div>
-                                <div class="value">@Model.OpenedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                <div class="value">@Model.OpenedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</div>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-4">
                             <div class="info-box">
                                 <div class="label">Deadline</div>
-                                <div class="value">@Model.DueAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                                <div class="value">@Model.DueAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</div>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-4">
                             <div class="info-box">
                                 <div class="label">Sẵn sàng duyệt</div>
-                                <div class="value">@(Model.ReadyForApprovalAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                                <div class="value">@(Model.ReadyForApprovalAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-4">
                             <div class="info-box">
                                 <div class="label">Đã duyệt</div>
-                                <div class="value">@(Model.ApprovedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                                <div class="value">@(Model.ApprovedAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
                             </div>
                         </div>
                         <div class="col-md-6 col-lg-4">
                             <div class="info-box">
                                 <div class="label">Đã từ chối</div>
-                                <div class="value">@(Model.RejectedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
+                                <div class="value">@(Model.RejectedAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "-")</div>
                             </div>
                         </div>
                     </div>
@@ -288,7 +292,7 @@
                                                         Đã resolve
                                                     </div>
                                                     <div class="text-muted small mt-1">
-                                                        @(line.ResolvedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "")
+                                                        @(line.ResolvedAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "")
                                                     </div>
                                                 }
                                                 else
@@ -560,7 +564,7 @@
                                         </div>
 
                                         <div class="small text-muted">
-                                            @item.ActionAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                            @item.ActionAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")
                                         </div>
                                     </div>
 
@@ -1206,4 +1210,8 @@
 
         return "Đã đủ điều kiện";
     }
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/inventory-operations.mobile.js" asp-append-version="true"></script>
 }

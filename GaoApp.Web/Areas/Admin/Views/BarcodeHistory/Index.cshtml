@@ -4,6 +4,10 @@
     ViewData["Title"] = "Lịch sử barcode";
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/catalog-barcodes.mobile.css" asp-append-version="true" />
+}
+
 <div class="container-fluid" id="barcodeHistoryPage">
     <div class="row">
         <div class="col-12 col-xl-4 mb-3">
@@ -109,7 +113,7 @@
                                         </div>
 
                                         <div class="text-muted small text-nowrap">
-                                            @item.ChangedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                            @item.ChangedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")
                                         </div>
                                     </div>
                                 </div>
@@ -140,5 +144,6 @@
             totalPages: @Model.Result.TotalPages
         };
     </script>
-    <script src="~/admin/js/barcode-history.js"></script>
+    <script src="~/admin/js/barcode-history.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/catalog-barcodes.mobile.js" asp-append-version="true"></script>
 }

@@ -12,6 +12,28 @@
 <div id="receiptDocumentActions" data-document-id="@documentId" class="mb-3">
     @if (documentId > 0) { <div id="receiptDocumentToolbar" class="d-flex flex-wrap gap-2 mb-2"></div><div id="receiptTitleProposalNotice" class="alert alert-info d-none" role="status"></div> }
 </div>
+<div class="modal" id="receiptSupplierModal" tabindex="-1" aria-labelledby="receiptSupplierModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+        <div class="modal-header"><h5 id="receiptSupplierModalTitle" class="modal-title">Sửa nhà cung cấp sau duyệt</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+        <div class="modal-body">
+            <div id="receiptSupplierIdentity" class="fw-semibold mb-3"></div>
+            <div class="small text-muted">Nhà cung cấp hiện tại</div>
+            <div id="receiptSupplierCurrent" class="mb-3"></div>
+            <label for="receiptSupplierNewId" class="form-label">Nhà cung cấp đúng <span class="text-danger">*</span></label>
+            <input id="receiptSupplierSearch" class="form-control mb-2 d-none" placeholder="Tìm tên, mã số thuế hoặc số điện thoại…" aria-label="Tìm nhà cung cấp" autocomplete="off" />
+            <select id="receiptSupplierNewId" class="form-select"><option value="">-- Chọn nhà cung cấp --</option></select>
+            <label for="receiptSupplierReason" class="form-label mt-3">Lý do sửa <span class="text-danger">*</span></label>
+            <textarea id="receiptSupplierReason" class="form-control" rows="2" maxlength="1000" placeholder="Ví dụ: chọn nhầm nhà cung cấp khi duyệt phiếu"></textarea>
+            <div class="alert alert-info small mt-3 mb-2">Cập nhật nhà cung cấp của phiếu và công nợ tiền hàng. Giữ nguyên số lượng, giá nhập, ngày duyệt và trạng thái thanh toán. Nếu đã trả tiền, thao tác này chỉ sửa thông tin nhà cung cấp; các phiếu chi đã ghi nhận vẫn giữ nguyên.</div>
+            <div id="receiptSupplierConstraint" class="small text-warning mb-2"></div>
+            <div id="receiptSupplierMessage" class="text-danger" role="alert"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Hủy</button>
+            <button id="receiptSupplierSave" class="btn btn-primary" type="button">Lưu nhà cung cấp</button>
+        </div>
+    </div></div>
+</div>
 <div class="modal" id="receiptDocumentModal" tabindex="-1" aria-labelledby="receiptDocumentModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
         <div class="modal-header"><h5 id="receiptDocumentModalTitle" class="modal-title">Tên phiếu nhập</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
@@ -20,7 +42,7 @@
             <div id="receiptDocumentIdentity" class="fw-semibold mb-3"></div>
             <div id="receiptTitleProposal" class="alert alert-info d-none"></div>
             <div id="receiptTitleFields"><label for="receiptNewTitle" class="form-label">Tên phiếu mới</label><input id="receiptNewTitle" class="form-control" maxlength="255" autocomplete="off" /><p id="receiptTitleHint" class="small text-muted mt-2"></p></div>
-            <div id="receiptDeleteWarning" class="alert alert-warning d-none">Xóa phiếu này khỏi danh sách? Chỉ phiếu nháp chưa từng gửi duyệt mới được xóa.</div>
+            <div id="receiptDeleteWarning" class="alert alert-warning d-none">Xóa phiếu này khỏi danh sách? Có thể xóa phiếu nháp chưa từng gửi duyệt hoặc phiếu bị trả về/từ chối chưa nhập kho.</div>
             <div id="receiptDocumentMessage" class="text-danger mt-2" role="alert"></div>
         </div>
         <div class="modal-footer flex-wrap">

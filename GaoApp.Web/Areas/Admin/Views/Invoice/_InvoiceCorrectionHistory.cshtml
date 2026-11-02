@@ -120,7 +120,7 @@
                                     @if (item.AgreementDateUtc.HasValue)
                                     {
                                         <div class="text-muted small">
-                                            @item.AgreementDateUtc.Value.ToString("dd/MM/yyyy")
+                                            @item.AgreementDateUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy")
                                         </div>
                                     }
                                 }
@@ -134,7 +134,7 @@
                                 @if (item.IssuedAtUtc.HasValue)
                                 {
                                     <span class="small">
-                                        @item.IssuedAtUtc.Value.ToString("dd/MM/yyyy HH:mm")
+                                        @item.IssuedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")
                                     </span>
                                 }
                                 else

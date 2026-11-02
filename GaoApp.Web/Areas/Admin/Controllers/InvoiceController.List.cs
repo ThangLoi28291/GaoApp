@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,17 +13,15 @@ public partial class InvoiceController
         [FromQuery] InvoiceListQueryDto query,
         CancellationToken ct)
     {
-        if (query.Page <= 0)
-            query.Page = 1;
-
-        if (query.PageSize <= 0)
-            query.PageSize = 20;
+        if (!ModelState.IsValid)
+            return BadRequest(InvoiceReadLimits.InvalidQueryMessage);
+        query.NormalizeAndValidate();
 
         var result = await _invoiceService.GetInvoicesAsync(query, ct);
 
         if (!result.IsSuccess)
         {
-            FlashError(result.Error?.Message);
+            FlashError(InvoiceErrorReadSanitizer.UserMessage(result.Error));
             return View(new InvoiceIndexViewModel
             {
                 Query = query,
@@ -60,7 +60,7 @@ public partial class InvoiceController
 
         if (!result.IsSuccess)
         {
-            FlashError(result.Error?.Message);
+            FlashError(InvoiceErrorReadSanitizer.UserMessage(result.Error));
             return RedirectToInvoiceIndexPage();
         }
 
@@ -80,7 +80,7 @@ public partial class InvoiceController
         var result = await _invoiceService.GetInvoiceDetailAsync(id, ct);
 
         if (!result.IsSuccess)
-            return BadRequest(result.Error?.Message);
+            return BadRequest(InvoiceErrorReadSanitizer.UserMessage(result.Error));
 
         return PartialView("_InvoiceSummary", result.Value);
     }
@@ -93,21 +93,31 @@ public partial class InvoiceController
         var result = await _invoiceService.GetInvoiceDetailAsync(id, ct);
 
         if (!result.IsSuccess)
-            return BadRequest(result.Error?.Message);
+            return BadRequest(InvoiceErrorReadSanitizer.UserMessage(result.Error));
 
         return PartialView("_ManualLinesTable", result.Value);
     }
 
     [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> SearchProductVariants(
         string keyword,
+        int invoiceHeadId,
+        [FromServices] GaoApp.Application.Interfaces.Repositories.Invoices.IInvoiceProductPickerRepository picker,
         CancellationToken ct)
     {
-        var items = await _invoiceService.SearchProductVariantsAsync(
-            keyword,
-            20,
-            ct);
+        var result = await picker.SearchProductsAsync(invoiceHeadId, keyword, 20, ct);
+        if (result.IsFailure) return result.Error.Code == "NotFound" ? NotFound(new { message = result.Error.Message }) : BadRequest(new { message = result.Error.Message });
+        return Json(result.Value);
+    }
 
-        return AjaxProductVariantSearch(items);
+    [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ProductStock(int invoiceHeadId, int productVariantId,
+        [FromServices] GaoApp.Application.Interfaces.Repositories.Invoices.IInvoiceProductPickerRepository picker, CancellationToken ct)
+    {
+        var result = await picker.GetProductStockAsync(invoiceHeadId, productVariantId, ct);
+        if (result.IsFailure) return result.Error.Code == "NotFound" ? NotFound(new { message = result.Error.Message }) : BadRequest(new { message = result.Error.Message });
+        return Json(result.Value);
     }
 }

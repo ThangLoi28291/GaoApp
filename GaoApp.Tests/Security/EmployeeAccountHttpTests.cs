@@ -30,6 +30,9 @@ public sealed class EmployeeAccountHttpTests
         await using (var db = app.Database.CreateTenantContext(other.Store.StoreId))
         {
             db.UserInStores.Add(new UserInStore { UserId = account.UserId, StoreId = other.Store.StoreId, RoleId = other.RoleId });
+            // This disposable store explicitly configures its POS destination. A grant alone must not invent a menu.
+            db.AdminMenuItems.Add(new AdminMenuItem { StoreId = other.Store.StoreId, Title = "Đến quầy bán hàng",
+                Url = "/admin/pos", PermissionCode = PermissionCodes.Pos.Order.View, IsActive = true, SortOrder = 1 });
             await db.SaveChangesAsync();
         }
         using var own = await app.LoginAsync(account);

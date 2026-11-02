@@ -19,6 +19,7 @@ const path = require('node:path');
         page.on('response', response => { const task = recordResponse(response); recordings.push(task); task.catch(() => {}); });
     }
     async function login(page, user, password) {
+        await require('./delivery-mobile-review.cjs').protect(page, info.baseUrl);
         await page.goto(info.baseUrl + '/admin/account/login');
         await page.locator('[name=UserName]').fill(user); await page.locator('[name=Password]').fill(password);
         await page.locator('[name=SelectedTerminalId]').selectOption(String(info.terminalId));
@@ -42,7 +43,8 @@ const path = require('node:path');
     }
     async function clickCommand(page, selector) {
         await page.locator(selector).click();
-        await page.waitForFunction(() => /Đã (lưu thao tác|xác nhận yêu cầu cũ)/.test(document.querySelector('#deliveryPageMessage').textContent));
+        try { await page.waitForFunction(() => /Đã (lưu thao tác|xác nhận yêu cầu cũ)/.test(document.querySelector('#deliveryPageMessage').textContent) && !document.getElementById('deliveryKey').disabled); }
+        catch (error) { throw new Error(selector + ': ' + await page.locator('#deliveryPageMessage').textContent(), { cause: error }); }
     }
     async function postCommand(page, operation, fields = {}, id = mainId, expected = 200) {
         const current = await projection(page, id), body = { clientRequestId: crypto.randomUUID(), expectedVersion: current.delivery.version, ...fields };
@@ -65,6 +67,7 @@ const path = require('node:path');
 
         const beforeClaim = await projection(picker);
         await clickCommand(manager, '#deliveryClaim');
+        await require('./delivery-mobile-review.cjs').review(manager, 'picking-edit', evidence);
         const race = await http(picker, 'POST', '/admin/api/deliveries/' + mainId + '/picking/claim', {
             clientRequestId: crypto.randomUUID(), expectedVersion: beforeClaim.delivery.version
         }); assert.equal(race.status, 409);
@@ -100,7 +103,8 @@ const path = require('node:path');
         await manager.unroute('**/admin/api/deliveries/' + mainId + '/picking/report');
         assert.equal(lostBodies.length, 2); assert.equal(lostBodies[0], lostBodies[1]);
         current = await projection(manager); assert.equal(current.pickerUserId, info.pickerId);
-        assert.match(await manager.locator('#deliveryDetail').innerText(), /Đã soạn: 8/);
+        assert.equal(current.lines.find(x => x.lineId === original.lineId).reportedQuantityText, '8');
+        assert.equal(await manager.locator('.delivery-actual-readonly strong').filter({ hasText: /^8(?:\s|$)/ }).count(), 1);
         assert.equal(await manager.locator('#deliverySaveReport').count(), 0);
         checks.push('7: commit response lost, reload exact GUID/body/version replay, latest GET retains newer reassignment');
 
@@ -137,7 +141,7 @@ const path = require('node:path');
         assert.equal(current.delivery.state, 'ReadyForHandover'); assert.equal(current.quotedTotalText, '830'); assert.equal(current.approvedTotalText, '880');
         assert.equal(current.lines.find(x => x.lineId === original.lineId).approvedNetText, '640');
         const approvedBill = await managerContext.newPage(); await approvedBill.goto(info.baseUrl + '/admin/deliveries/' + mainId + '/bill');
-        assert.match(await approvedBill.locator('.delivery-bill-total').innerText(), /880/); assert.match(await approvedBill.locator('.delivery-bill-summary').innerText(), /830/);
+        assert.match(await approvedBill.locator('.delivery-bill-total').innerText(), /880/); assert.match(await approvedBill.locator('.delivery-source-total').innerText(), /830/);
         assert.match(await approvedBill.locator('.delivery-badge').innerText(), /ĐÃ CHỐT SOẠN/);
         await approvedBill.pdf({ path: path.join(evidence, 'approved-a5.pdf'), preferCSSPageSize: true, printBackground: true }); await approvedBill.close();
         checks.push('5: manager removes/reduces, fresh replacement stays unreported, actual picker reports then approval freezes 880 apart from source 830');
@@ -201,8 +205,8 @@ const path = require('node:path');
         const unsavedQuantity = '99999999999998.9999', unsavedReason = 'Báo thiếu một phần chưa lưu';
         await manager.locator('#deliveryQty-' + exactLine.lineId).fill(unsavedQuantity);
         await manager.locator('#deliveryReason-' + exactLine.lineId).fill(unsavedReason);
-        await manager.locator('#deliverySubmitPicking').click();
-        await manager.waitForFunction(() => document.querySelector('#deliveryPageMessage').textContent.includes('Có chỉnh sửa chưa lưu'));
+        assert.equal(await manager.locator('#deliverySubmitPicking').isDisabled(), true, 'Unsaved edits disable submission before a request can be sent.');
+        assert.match(await manager.locator('#deliveryDraftProgress').textContent(), /chưa lưu/);
         assert.equal(dirtySubmitRequests.length, 0);
         assert.equal(await manager.evaluate(() => Object.keys(localStorage).some(key => key.startsWith('gao.delivery.picking.v1:'))), false);
         const afterDirty = await projection(manager, info.exact.id);
@@ -232,6 +236,7 @@ const path = require('node:path');
         await manager.locator('.delivery-revision-warning').waitFor();
         checks.push('8: stale printed revision warning persists manual lookup, cleaned URL and reload; A5 distinguishes draft and approved values');
 
+        await require('./delivery-mobile-review.cjs').review(manager, 'picking-approved', evidence);
         await manager.screenshot({ path: path.join(evidence, 'picking-desktop.png'), fullPage: true });
         await manager.setViewportSize({ width: 390, height: 844 });
         await manager.screenshot({ path: path.join(evidence, 'picking-mobile.png'), fullPage: true });

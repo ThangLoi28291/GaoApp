@@ -228,7 +228,7 @@ public sealed class PosCheckoutPaymentUiContractTests
             StringComparison.Ordinal);
 
         Assert.Contains(
-            "await finalizeRecordedPayment(draft.orderId);",
+            "await finalizeRecordedPayment(draft.orderId, request);",
             normalizedScript,
             StringComparison.Ordinal);
 

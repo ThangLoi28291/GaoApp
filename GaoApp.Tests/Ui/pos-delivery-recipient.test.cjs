@@ -13,7 +13,7 @@ const response = (status, body) => ({ ok: status >= 200 && status < 300, status,
 const snapshot = overrides => ({ sourceCartId: 31, version: 'AAAAAAAAAAE=', fingerprint: 'fresh-fingerprint',
     warehouseName: 'Kho chính', quotedTotal: 20000, lines: [], recipientName: 'Khách từ máy chủ',
     recipientPhone: '0900000002', recipientAddress: 'Địa chỉ từ máy chủ', ...overrides });
-const unsupported = () => response(409, { code: 'PRICE_FEATURE_UNSUPPORTED', message: 'Giỏ có khuyến mãi chưa hỗ trợ giao hàng.' });
+const ineligible = () => response(409, { code: 'PAYMENT_EXISTS', message: 'Giỏ đã có thanh toán nên chưa thể chuyển giao hàng.' });
 
 function fixture(draft, replies, savedIntent) {
     class Element {
@@ -49,14 +49,14 @@ function fixture(draft, replies, savedIntent) {
         submit: () => elements.deliveryForm.emit('submit') };
 }
 
-test('selected POS name and phone appear immediately and survive promotion409 without enabling creation', async () => {
+test('selected POS name and phone appear immediately and survive payment409 without enabling creation', async () => {
     const request = pending(), app = fixture({ customerId: 7, customerName: 'A Nghĩa', customerPhone: '0901234567' }, [request.promise]);
     app.open();
     assert.equal(app.elements.deliveryName.value, 'A Nghĩa'); assert.equal(app.elements.deliveryPhone.value, '0901234567');
     assert.equal(app.elements.deliverySubmit.disabled, true);
-    request.resolve(unsupported()); await tick();
+    request.resolve(ineligible()); await tick();
     assert.equal(app.elements.deliveryName.value, 'A Nghĩa'); assert.equal(app.elements.deliveryPhone.value, '0901234567');
-    assert.match(app.elements.deliveryMessage.textContent, /khuyến mãi/); assert.equal(app.elements.deliverySubmit.disabled, true);
+    assert.match(app.elements.deliveryMessage.textContent, /thanh toán/); assert.equal(app.elements.deliverySubmit.disabled, true);
     await app.submit(); assert.equal(app.calls.length, 1); assert.equal(app.disk.size, 0);
 });
 
@@ -86,7 +86,7 @@ test('recipient edits including an explicit clear survive a late snapshot and cr
 
 test('reopening seeds the current changed customer and clearing the POS customer removes old recipient defaults', async () => {
     const app = fixture({ customerName: 'Khách A', customerPhone: '0900000001', customerAddress: 'Địa chỉ A' },
-        [unsupported(), unsupported(), unsupported()]);
+        [ineligible(), ineligible(), ineligible()]);
     app.open(); await tick(); app.input('deliveryName', 'Nhập ở lần trước');
     app.state.business.currentDraft = { customer: { name: 'Khách B', phone: '0900000002', address: 'Địa chỉ B' } };
     app.open(); assert.equal(app.elements.deliveryName.value, 'Khách B'); assert.equal(app.elements.deliveryAddress.value, 'Địa chỉ B'); await tick();
@@ -97,11 +97,11 @@ test('reopening seeds the current changed customer and clearing the POS customer
 });
 
 test('an older modal snapshot cannot overwrite a reopened cleared customer or remove the latest eligibility warning', async () => {
-    const oldRequest = pending(), app = fixture({ customerName: 'Khách A' }, [oldRequest.promise, unsupported()]);
+    const oldRequest = pending(), app = fixture({ customerName: 'Khách A' }, [oldRequest.promise, ineligible()]);
     app.open(); app.state.business.currentDraft = null; app.open(); await tick();
     oldRequest.resolve(response(200, snapshot({ recipientName: 'Khách A trả về muộn' }))); await tick();
     assert.equal(app.elements.deliveryName.value, ''); assert.equal(app.elements.deliveryCart.children.length, 0);
-    assert.match(app.elements.deliveryMessage.textContent, /khuyến mãi/); assert.equal(app.elements.deliverySubmit.disabled, true);
+    assert.match(app.elements.deliveryMessage.textContent, /thanh toán/); assert.equal(app.elements.deliverySubmit.disabled, true);
 });
 
 test('stored uncertain intent takes priority over customer defaults and retries the exact body without a new snapshot or GUID', async () => {
@@ -116,4 +116,38 @@ test('stored uncertain intent takes priority over customer defaults and retries 
     assert.equal(app.calls.length, 1); assert.equal(app.calls[0].url, '/admin/api/deliveries/from-current-cart');
     assert.equal(app.calls[0].body, saved); assert.equal(app.disk.get(intentKey), saved);
     assert.equal(app.elements.deliveryName.value, 'Người nhận đã gửi');
+});
+
+test('an eligible cart can create a delivery immediately and exposes its bill and lookup links', async () => {
+    const app = fixture({ customerName: 'Khách hiện tại' }, [response(200, snapshot()), response(200, {
+        delivery: { id: 22, code: 'GH-22' }, billUrl: '/admin/deliveries/22/bill', lookupUrl: '/admin/deliveries?key=GH-22' })]);
+    app.open(); await tick();
+    assert.equal(app.elements.deliverySubmit.disabled, false);
+    assert.match(app.elements.deliveryMessage.textContent, /Giá trị dự kiến/);
+    assert.equal(app.elements.deliveryName.value, 'Khách từ máy chủ');
+    assert.match(app.elements.deliveryCart.children[0].textContent, /Giỏ #31/);
+    await app.submit();
+    assert.equal(app.calls.length, 2); assert.equal(app.disk.size, 0);
+    assert.equal(app.elements.deliveryResult.hidden, false);
+    assert.equal(app.elements.deliveryCreatedCode.textContent, 'GH-22 · Chờ soạn');
+    assert.equal(app.elements.deliveryBillLink.href, '/admin/deliveries/22/bill');
+    assert.equal(app.elements.deliveryLookupLink.href, '/admin/deliveries?key=GH-22');
+    assert.equal(app.elements.deliverySubmit.disabled, true);
+    await app.submit(); assert.equal(app.calls.length, 2);
+});
+
+test('a changed cart clears the rejected intent and refresh enables creation with the current cart version', async () => {
+    const app = fixture({}, [response(200, snapshot()), response(409, {
+        code: 'CART_CHANGED', message: 'Giỏ đã đổi hàng/giá/ca; tải lại nội dung trước khi tạo đơn giao.' }),
+        response(200, snapshot({ version: 'AAAAAAAAAAI=', fingerprint: 'updated-fingerprint' })),
+        response(200, { delivery: { id: 23, code: 'GH-23' }, billUrl: '/23/bill', lookupUrl: '/23' })]);
+    app.open(); await tick(); await app.submit();
+    assert.equal(app.disk.size, 0); assert.equal(app.elements.deliverySubmit.disabled, true);
+    await app.elements.deliveryRefresh.emit('click');
+    assert.equal(app.calls.length, 3); assert.equal(app.elements.deliverySubmit.disabled, false);
+    await app.submit();
+    assert.equal(app.calls.length, 4); assert.equal(app.disk.size, 0);
+    const body = JSON.parse(app.calls[3].body);
+    assert.equal(body.expectedVersion, 'AAAAAAAAAAI=');
+    assert.equal(body.expectedFingerprint, 'updated-fingerprint');
 });

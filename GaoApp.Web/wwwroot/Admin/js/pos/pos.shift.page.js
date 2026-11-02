@@ -365,7 +365,7 @@
         if (!value) return '-';
 
         try {
-            return new Date(value).toLocaleString('vi-VN');
+            return new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
         } catch (_) {
             return '-';
         }

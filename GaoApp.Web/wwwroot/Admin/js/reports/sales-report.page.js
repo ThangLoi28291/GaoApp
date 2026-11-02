@@ -408,6 +408,8 @@
         document.getElementById('salesReportAttentionMessage').textContent = hasAttention
             ? 'Có nghiệp vụ return hoặc đơn đã Void trong cohort bán của kỳ. Nên kiểm tra chi tiết khi Sales Detail được mở.'
             : 'Không có return hoặc đơn đã Void trong cohort bán của kỳ hiện tại.';
+        if (Number(summary.storefrontServiceGross) > 0 && summary.storefrontServiceText)
+            document.getElementById('salesReportAttentionMessage').textContent += ' ' + summary.storefrontServiceText;
     }
 
     function renderTrendTable(points) {
@@ -1110,9 +1112,9 @@
         renderCustomerMix(data);
 
         const generatedAt = data.generatedAtUtc
-            ? new Date(data.generatedAtUtc)
+            ? new Date(typeof data.generatedAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(data.generatedAtUtc) ? data.generatedAtUtc + 'Z' : data.generatedAtUtc)
             : new Date();
-        els.lastRefresh.textContent = generatedAt.toLocaleTimeString('vi-VN', {
+        els.lastRefresh.textContent = generatedAt.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
             hour: '2-digit',
             minute: '2-digit',
             second: '2-digit'
@@ -1286,7 +1288,13 @@
     let contextReady = false;
     const money = value => `${new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(value || 0))} ₫`;
     const number = value => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(Number(value || 0));
-    const dateTime = value => value ? new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value)) : '—';
+    // Offsetless *AtLocal DTO values are already wall time in the report timezone.
+    const dateTimeLocal = value => {
+        if (!value) return '—';
+        const input = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + '+07:00' : value;
+        const parsed = new Date(input);
+        return Number.isNaN(parsed.getTime()) ? '—' : new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' }).format(parsed);
+    };
     const params = () => new URLSearchParams(window.location.search);
 
     function syncFromUrl() {
@@ -1404,7 +1412,7 @@
     const renderers = {
         orders(data) {
             setHead([['Đơn'],['Hoàn tất'],['Khách hàng'],['Gross Sales','text-end'],['Discounts','text-end'],['Sau giảm','text-end'],['Return'],['']]);
-            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.orderNumber),td(dateTime(x.completedAtLocal)),td(x.customerName),td(money(x.subtotal),'text-end'),td(money(x.discounts),'text-end'),td(money(x.salesAfterDiscount),'text-end')); const ret=td(x.returnCount?`${x.returnCount} phiếu · ${money(x.returnValue)}`:'—'); if(x.returnCount)ret.innerHTML=`<span class="sales-detail-return-badge">${x.returnCount} phiếu · ${money(x.returnValue)}</span>`; tr.append(ret); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
+            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.orderNumber),td(dateTimeLocal(x.completedAtLocal)),td(x.customerName),td(money(x.subtotal),'text-end'),td(money(x.discounts),'text-end'),td(money(x.salesAfterDiscount),'text-end')); const ret=td(x.returnCount?`${x.returnCount} phiếu · ${money(x.returnValue)}`:'—'); if(x.returnCount)ret.innerHTML=`<span class="sales-detail-return-badge">${x.returnCount} phiếu · ${money(x.returnValue)}</span>`; tr.append(ret); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
         },
         products(data) {
             setHead([['Sản phẩm / Variant'],['SKU'],['Đơn vị gốc'],['Số lượng','text-end'],['Gross Sales','text-end'],['Số đơn','text-end']]);
@@ -1412,15 +1420,15 @@
         },
         discounts(data) {
             setHead([['Đơn'],['Hoàn tất'],['Khách hàng'],['Total','text-end'],['Line','text-end'],['Promo','text-end'],['Combo','text-end'],['Order','text-end'],['Voucher','text-end'],['Đối soát'],['']]);
-            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.orderNumber),td(dateTime(x.completedAtLocal)),td(x.customerName),td(money(x.totalDiscounts),'text-end'),td(money(x.manualLine),'text-end'),td(money(x.promotion),'text-end'),td(money(x.combo),'text-end'),td(money(x.manualOrder),'text-end'),td(money(x.voucher),'text-end')); const rec=td(x.isReconciled?'Khớp':'Lệch '+money(x.reconciliationDifference),x.isReconciled?'sales-detail-reconcile-ok':'sales-detail-reconcile-bad'); tr.append(rec); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
+            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.orderNumber),td(dateTimeLocal(x.completedAtLocal)),td(x.customerName),td(money(x.totalDiscounts),'text-end'),td(money(x.manualLine),'text-end'),td(money(x.promotion),'text-end'),td(money(x.combo),'text-end'),td(money(x.manualOrder),'text-end'),td(money(x.voucher),'text-end')); const rec=td(x.isReconciled?'Khớp':'Lệch '+money(x.reconciliationDifference),x.isReconciled?'sales-detail-reconcile-ok':'sales-detail-reconcile-bad'); tr.append(rec); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
         },
         returns(data) {
             setHead([['Phiếu trả'],['Hoàn tất'],['Đơn gốc'],['Khách hàng'],['Loại'],['Giá trị hàng trả','text-end'],['Refund Amount','text-end'],['']]);
-            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.returnNumber),td(dateTime(x.completedAtLocal)),td(x.orderNumber),td(x.customerName),td(x.typeLabel),td(money(x.returnSubtotal),'text-end'),td(money(x.refundAmount),'text-end')); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
+            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.returnNumber),td(dateTimeLocal(x.completedAtLocal)),td(x.orderNumber),td(x.customerName),td(x.typeLabel),td(money(x.returnSubtotal),'text-end'),td(money(x.refundAmount),'text-end')); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
         },
         void(data) {
             setHead([['Đơn'],['Thời điểm bán gốc'],['Khách hàng'],['Gross Sales','text-end'],['Discounts','text-end'],['Giá trị Void','text-end'],['']]);
-            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.orderNumber),td(dateTime(x.completedAtLocal)),td(x.customerName),td(money(x.subtotal),'text-end'),td(money(x.discounts),'text-end'),td(money(x.voidValue),'text-end')); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
+            data.items.forEach(x=>{ const tr=document.createElement('tr'); tr.append(td(x.orderNumber),td(dateTimeLocal(x.completedAtLocal)),td(x.customerName),td(money(x.subtotal),'text-end'),td(money(x.discounts),'text-end'),td(money(x.voidValue),'text-end')); const action=td(''); action.append(orderLink(x.orderId)); tr.append(action); els.body.append(tr); });
         }
     };
 

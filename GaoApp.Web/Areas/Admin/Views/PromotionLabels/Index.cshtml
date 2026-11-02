@@ -1,0 +1,98 @@
+@{
+    ViewData["Title"] = "In tem khuyến mãi";
+}
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/promotion-labels.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/promotion-labels.mobile.css" asp-append-version="true" />
+}
+<main id="promotionLabels" data-store-id="@ViewBag.StoreId" data-api="@Url.Content("~/admin/promotion-labels/")" data-label-api="@Url.Content("~/admin/label-printing/")">
+    @Html.AntiForgeryToken()
+    <header class="pl-heading">
+        <div><div class="pl-eyebrow">QUẢN LÝ · IN TEM</div><h1>In tem khuyến mãi</h1><p>Tem cuộn 50 × 30, 80 × 50 hoặc A4 tối đa 10 tem. In bằng máy in kết nối với máy tính này.</p></div>
+        <a class="btn btn-outline-secondary" href="@Url.Action("Index", "Promotion", new { area = "Admin" })">Quản lý khuyến mãi</a>
+    </header>
+    <div id="plMessage" role="status" aria-live="polite" hidden></div>
+    <div class="pl-workspace">
+        <section class="pl-main">
+            <div class="pl-panel">
+                <form id="plSearchForm" class="pl-filters">
+                    <label>Chương trình giảm giá<select id="plCampaign" class="form-select" required><option value="">Đang tải…</option></select></label>
+                    <label>Sản phẩm<input id="plSearch" class="form-control" maxlength="100" autocomplete="off" placeholder="Tên, SKU hoặc mã vạch…" /></label>
+                    <button type="submit" class="btn btn-primary">Tìm kiếm</button>
+                </form>
+                <div class="pl-toolbar"><span id="plResultSummary" role="status">Chọn chương trình để lấy sản phẩm.</span><button id="plAddPage" type="button" class="btn btn-outline-primary btn-sm" disabled>Thêm trang này</button></div>
+                <div id="plProducts" class="pl-products"></div>
+                <div class="pl-paging"><button id="plPrev" type="button" class="btn btn-outline-secondary btn-sm" disabled>Trước</button><span id="plPageInfo"></span><button id="plNext" type="button" class="btn btn-outline-secondary btn-sm" disabled>Sau</button></div>
+            </div>
+            <div class="pl-panel">
+                <div class="pl-toolbar"><h2>Danh sách tem cần in</h2><button id="plRefresh" type="button" class="btn btn-outline-secondary btn-sm">Cập nhật giá / khuyến mãi</button></div>
+                <div class="pl-table-scroll"><table class="table"><thead><tr><th>Sản phẩm / đơn vị</th><th>Giá lẻ</th><th>Giá giảm</th><th>Số tem</th><th></th></tr></thead><tbody id="plLines"><tr><td colspan="5">Thêm sản phẩm ở phía trên.</td></tr></tbody></table></div>
+            </div>
+        </section>
+        <aside class="pl-panel pl-print-panel">
+            <div class="pl-toolbar"><h2>Mẫu tem kệ</h2><span id="plPaperSize">50 × 30 mm</span></div>
+            <label class="pl-template-choice">Mẫu đã lưu<select id="plTemplate" class="form-select"><option value="">Mẫu mới</option></select></label>
+            <div class="pl-preview-stage"><img id="plPreview" alt="Xem trước mẫu tem khuyến mãi" hidden /><span id="plPreviewStatus">Đang tạo mẫu xem trước…</span></div>
+            <div id="plSheetPaging" class="pl-sheet-paging" hidden><button id="plSheetPrev" type="button" class="btn btn-outline-secondary btn-sm" aria-label="Tờ A4 trước">‹</button><span id="plSheetPage" role="status"></span><button id="plSheetNext" type="button" class="btn btn-outline-secondary btn-sm" aria-label="Tờ A4 tiếp theo">›</button></div>
+            <a id="plPreviewOpen" class="pl-preview-open" target="_blank" rel="noopener" hidden>Xem mẫu lớn</a>
+            <div id="plPreviewDimensions" class="pl-note"></div>
+            <p class="pl-note">Mã vạch tự động: EAN-13 có vạch đầu, giữa, cuối dài hơn và số chia nhóm; các mã khác dùng Code 128.</p>
+            <p class="pl-note">Giá sau giảm % làm tròn đến 100đ gần nhất. Giá lẻ in đậm với nét gạch mảnh.</p>
+            <div class="pl-button-row"><button id="plPreviewButton" type="button" class="btn btn-outline-secondary btn-sm">Xem mẫu</button><button id="plTestPrint" type="button" class="btn btn-outline-primary btn-sm">In thử một hàng</button></div>
+            <p id="plA4ClientNotice" class="pl-note pl-error" role="status" hidden>Bộ kết nối đang chạy chưa hỗ trợ A4. Tải bộ client mới ở bên dưới, cập nhật trên máy này rồi kết nối lại.</p>
+            <div id="plUncertain" class="pl-note" hidden><strong>Lệnh vừa gửi chưa xác định kết quả. Kiểm tra máy in trước khi in tiếp.</strong><div class="pl-button-row"><button id="plCheckResult" type="button" class="btn btn-outline-secondary btn-sm">Kiểm tra kết quả gửi</button><button id="plAllowNewPrint" type="button" class="btn btn-outline-danger btn-sm">Đã kiểm tra giấy · cho phép in mới</button></div></div>
+            <div class="pl-print-footer"><span id="plActivePrinter" class="pl-note"></span><strong id="plTotal">Chưa chọn sản phẩm</strong><button id="plPrint" type="button" class="btn btn-primary w-100" disabled>In tem khuyến mãi</button></div>
+            <details id="plTemplateSettings" open>
+                <summary>Cấu hình mẫu trên client</summary>
+                <div class="pl-printer-fields">
+                    <div class="pl-button-row"><button id="plNewTemplate" type="button" class="btn btn-outline-secondary btn-sm">Mẫu mới</button><button id="plCopyTemplate" type="button" class="btn btn-outline-secondary btn-sm">Lưu bản sao</button><button id="plDeleteTemplate" type="button" class="btn btn-outline-danger btn-sm">Xóa mẫu</button></div>
+                    <label>Lấy cấu hình mẫu từ quản lý<select id="plImportTemplate" class="form-select"><option value="">Chọn mẫu đã lưu trong quản lý…</option></select></label>
+                    <form id="plDesign" class="pl-config-grid" autocomplete="off">
+                        <input name="paperMode" type="hidden" value="" />
+                        <label class="pl-full">Khổ mẫu<select id="plPaperPreset" class="form-select"><option value="50x30">Tem 50 × 30 mm</option><option value="80x50">Tem lớn 80 × 50 mm</option><option value="a4">A4 · 2 cột × 5 hàng · tối đa 10 tem</option><option value="custom">Khổ tùy chỉnh</option></select></label>
+                        <p id="plA4Details" class="pl-note pl-full" hidden>Giấy A4 dọc, in một mặt, tem 90 × 50 mm. Xếp 1–2 ở hàng đầu, 3–4 ở hàng tiếp theo; ô dư để trống. Lề trên/dưới 13,5 mm, có đường cắt mảnh.</p>
+                        <label class="pl-full">Tên mẫu<input name="name" class="form-control" maxlength="100" required value="Tem khuyến mãi 50 × 30" /></label>
+                        <label>Rộng tem (mm)<input name="widthMm" type="number" class="form-control" min="50" max="108" step="0.1" value="50" required /></label>
+                        <label>Cao tem (mm)<input name="heightMm" type="number" class="form-control" min="30" max="150" step="0.1" value="30" required /></label>
+                        <label>Số cột<input name="columns" type="number" class="form-control" min="1" max="5" step="1" value="1" required /></label>
+                        <label>Cách cột (mm)<input name="columnGapMm" type="number" class="form-control" min="0" max="10" step="0.1" value="2" required /></label>
+                        <label>Lề trái (mm)<input name="leftMarginMm" type="number" class="form-control" min="0" max="10" step="0.1" value="1" required /></label>
+                        <label>Lề phải (mm)<input name="rightMarginMm" type="number" class="form-control" min="0" max="10" step="0.1" value="1" required /></label>
+                        <label>Khe giữa hàng (mm)<input name="rowGapMm" type="number" class="form-control" min="0" max="10" step="0.1" value="2" required /></label>
+                        <label>Cỡ chữ tên<input name="fontSize" type="number" class="form-control" min="6" max="9" step="1" value="8" required /></label>
+                        <label class="pl-check"><input name="showName" type="checkbox" checked /> Tên sản phẩm</label>
+                        <label class="pl-check"><input name="showBarcode" type="checkbox" checked /> Mã vạch</label>
+                        <label class="pl-check"><input name="showBarcodeText" type="checkbox" checked /> Số mã vạch</label>
+                        <label class="pl-check"><input name="showUnit" type="checkbox" checked /> Đơn vị</label>
+                        <label class="pl-check"><input name="showPrice" type="checkbox" checked /> Giá lẻ / giá giảm</label>
+                        <label class="pl-check"><input id="plPeriod" type="checkbox" checked /> Ngày áp dụng</label>
+                    </form>
+                </div>
+            </details>
+            <details id="plPrinterSettings" open>
+                <summary>Máy in trên máy tính này</summary>
+                <div class="pl-printer-fields">
+                    <label>Mã kết nối GaoApp Label Print Client<input id="plToken" type="password" class="form-control" autocomplete="off" maxlength="128" placeholder="Mã được tạo khi cài bộ kết nối" /></label>
+                    <button id="plConnect" type="button" class="btn btn-outline-primary w-100">Kết nối / tải máy in trên client</button>
+                    <span id="plConnectionStatus" role="status">Chưa kết nối bộ in tem trên client.</span>
+                    <label>Máy in trên client<select id="plPrinter" class="form-select"><option value="">Chọn máy in trên client</option></select></label>
+                    <form id="plPrinterForm" class="pl-config-grid" autocomplete="off">
+                        <label class="pl-full">Tên hiển thị<input name="name" class="form-control" maxlength="100" value="Máy in tem" required /></label>
+                        <label>Độ phân giải<select name="dpi" class="form-select"><option value="203">203 DPI</option><option value="300">300 DPI</option></select></label>
+                        <label><span id="plWidthLabel">Vùng in (mm)</span><input name="printableWidthMm" class="form-control" type="number" min="20" max="210" step="0.1" value="108" required /></label>
+                        <label>Dịch ngang (mm)<input name="offsetXmm" class="form-control" type="number" min="-5" max="5" step="0.1" value="0" required /></label>
+                        <label>Dịch dọc (mm)<input name="offsetYmm" class="form-control" type="number" min="-5" max="5" step="0.1" value="0" required /></label>
+                        <label class="pl-check pl-full"><input name="enabled" type="checkbox" checked /> Cho phép in</label>
+                    </form>
+                    <button id="plSavePrinter" type="button" class="btn btn-outline-secondary">Lưu mẫu và máy in trên client</button>
+                    <span id="plSaveState" role="status">Chưa lưu</span>
+                    <a href="@Url.Content("~/admin/promotion-labels/client-download")">Tải bộ kết nối in tem client và hướng dẫn cài</a>
+                </div>
+            </details>
+        </aside>
+    </div>
+</main>
+@section PageScripts {
+    <script src="~/Admin/js/printing/promotion-labels.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/promotion-labels.mobile.js" asp-append-version="true"></script>
+}

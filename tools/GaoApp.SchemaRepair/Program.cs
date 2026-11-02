@@ -2,6 +2,7 @@ using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Data.Migrations;
+using GaoApp.Infrastructure.Tenant;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -19,7 +20,11 @@ try
     var connection = config.GetConnectionString("DefaultConnection");
     if (string.IsNullOrWhiteSpace(connection)) throw new MigratorConfigurationException("ConnectionStrings:DefaultConnection is empty.");
     var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(connection, sql => sql.CommandTimeout(180)).Options;
-    await using var db = new AppDbContext(options, new RepairTenant(), new RepairUser());
+    var tenant = new TenantContext();
+    // Preflight uses EF's unclassified database/history metadata commands even in
+    // --check mode. The operation flag below, not this trusted scope, selects writes.
+    using var maintenanceScope = tenant.BeginSystemAccess(SystemDataAccessPurpose.Provisioning);
+    await using var db = new AppDbContext(options, tenant, new RepairUser());
     Console.WriteLine(args[0] == "--check" ? "CHECK ONLY: no schema or data writes." : "APPLY: create only the verified missing AutoInvoice indexes in one transaction. No data or history changes.");
     var result = await new AutoInvoiceIndexRepair(db).RunAsync(args[0] == "--apply");
     foreach (var name in result.Indexes) Console.WriteLine(name);
@@ -33,12 +38,6 @@ catch (Exception ex)
     return 1;
 }
 
-sealed class RepairTenant : ITenantContext
-{
-    public int? StoreId => null;
-    public bool IsHostAdmin => true;
-    public string? Subdomain => null;
-}
 sealed class RepairUser : ICurrentUser
 {
     public int? UserId => null;

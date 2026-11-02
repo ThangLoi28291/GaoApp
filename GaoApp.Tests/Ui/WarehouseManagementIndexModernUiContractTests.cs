@@ -64,9 +64,13 @@ public sealed class WarehouseManagementIndexModernUiContractTests
         Assert.Contains("data-kpi-filter", script, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("addEventListener(\"input\"", script, StringComparison.Ordinal);
         Assert.Contains("warehousePageSize", script, StringComparison.Ordinal);
-        Assert.Contains("WarehousePage.confirmSetDefault", script, StringComparison.Ordinal);
-        Assert.Contains("WarehousePage.confirmToggleNegative", script, StringComparison.Ordinal);
-        Assert.Contains("WarehousePage.confirmToggleActive", script, StringComparison.Ordinal);
+        Assert.Contains("async function confirmSetDefault", script, StringComparison.Ordinal);
+        Assert.Contains("async function confirmToggleNegative", script, StringComparison.Ordinal);
+        Assert.Contains("async function confirmToggleActive", script, StringComparison.Ordinal);
+        var actions = File.ReadAllText(Path.Combine(RepositoryRoot, "GaoApp.Web/wwwroot/Admin/js/csp-actions.js"));
+        Assert.Contains("WarehousePage.confirmSetDefault", actions, StringComparison.Ordinal);
+        Assert.Contains("WarehousePage.confirmToggleNegative", actions, StringComparison.Ordinal);
+        Assert.Contains("WarehousePage.confirmToggleActive", actions, StringComparison.Ordinal);
         Assert.DoesNotContain("#${x.id}", script, StringComparison.Ordinal);
     }
 

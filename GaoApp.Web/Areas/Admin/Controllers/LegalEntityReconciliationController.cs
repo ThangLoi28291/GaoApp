@@ -117,7 +117,7 @@ public sealed class LegalEntityReconciliationController : BaseAdminController
         {
             sheet.Cell(row, 1).Value = item.OrderId;
             sheet.Cell(row, 2).Value = item.OrderNumber ?? string.Empty;
-            sheet.Cell(row, 3).Value = item.CompletedAtUtc?.ToLocalTime();
+            sheet.Cell(row, 3).Value = item.CompletedAtUtc?.ToVietnamTime();
             sheet.Cell(row, 4).Value = item.Status;
             sheet.Cell(row, 5).Value = item.LegalEntityCodes;
             sheet.Cell(row, 6).Value = item.UnifiedOrderTotal;

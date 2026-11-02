@@ -37,6 +37,7 @@ namespace GaoApp.Application.Services.Orders;
 public sealed partial class POSService : IPOSService, IDeliverySaleFinalizer
 {
     private const decimal MaxPosQuantity = 1_000_000m;
+    private readonly GaoApp.Application.InvoiceNotifications.IInvoiceNotificationCapture? _invoiceNotifications;
     private readonly ICustomerDepositService? _deposits;
     private readonly ICustomerReceivableService? _receivables;
     private readonly IAppUnitOfWork _uow;
@@ -111,8 +112,10 @@ IOrderLegalEntityReversalService legalEntityReversalService,
 IEnumerable<IOrderFinalizeGuard>? finalizeGuards = null,
 ICustomerReceivableService? receivables = null,
 ICustomerDepositService? deposits = null,
-IDeliverySaleCostEvidence? deliverySaleEvidence = null)
+IDeliverySaleCostEvidence? deliverySaleEvidence = null,
+GaoApp.Application.InvoiceNotifications.IInvoiceNotificationCapture? invoiceNotifications = null)
     {
+        _invoiceNotifications = invoiceNotifications;
         _deposits = deposits;
         _deliverySaleEvidence = deliverySaleEvidence;
         _receivables = receivables;
@@ -921,8 +924,8 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
         if (!order.CompletedAtUtc.HasValue)
             return false;
 
-        var completedLocal = order.CompletedAtUtc.Value.ToLocalTime();
-        var nowLocal = DateTime.Now;
+        var completedLocal = order.CompletedAtUtc.Value.ToVietnamTime();
+        var nowLocal = VietnamTime.Now;
 
         if (completedLocal.Date != nowLocal.Date)
             return false;
@@ -1701,7 +1704,7 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
                 order.PaymentStatus = PaymentStatus.Refunded;
 
                 var refundNote =
-                    $"[RETURN/REFUND - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] " +
+                    $"[RETURN/REFUND - {VietnamTime.Now:dd/MM/yyyy HH:mm:ss}] " +
                     $"Refund toàn phần. Số tiền: {refundAmount:n0}. " +
                     $"Phương thức hoàn: {refundMethod}. " +
                     $"Lý do: {reason}";
@@ -2273,6 +2276,14 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
             order.PaymentStatus = order.BalanceDue <= 0 ? PaymentStatus.Paid : (order.PaidTotal > 0 ? PaymentStatus.PartiallyPaid : PaymentStatus.Unpaid);
             if (_receivables != null) await _receivables.PostSaleAsync(order, ct);
             order.CompletedAtUtc = DateTime.UtcNow;
+            // POS defaults to a consumer invoice for cash, transfers and credit sales.
+            // Preserve an explicitly selected route and persist before invoice generation after commit.
+            if (order.InvoiceIssuanceRoute == InvoiceIssuanceRoute.Unselected)
+            {
+                order.InvoiceIssuanceRoute = InvoiceIssuanceRoute.Automatic;
+                order.InvoiceIssuanceRouteSelectedAtUtc = order.CompletedAtUtc;
+                order.InvoiceIssuanceRouteSelectedByUserId = _posContext.UserId;
+            }
             order.CustomerPriceTierSnapshot = ResolveOrderPriceTier(order);
 
             // Đánh dấu voucher đã dùng khi đơn chốt thành công
@@ -2299,6 +2310,14 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
 
             // Lưu thay đổi dữ liệu nghiệp vụ trước
             await _orders.SaveChangesAsync(ct);
+
+            if (_invoiceNotifications is not null)
+            {
+                var notificationRewards = await GetSafeRewardSummaryAsync(order.Id, order.CustomerId, ct);
+                await _invoiceNotifications.CaptureFinalizedOrderAsync(order,
+                    notificationRewards is { IsPointEligible: true } ? notificationRewards.AvailablePoints : null, ct);
+                await _orders.SaveChangesAsync(ct);
+            }
 
             // Ghi POS audit log riêng cho timeline order/POS
             await WritePosAuditLogAsync(
@@ -2470,7 +2489,7 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
 
     public async Task<OrderReceiptDto> GetReceiptAsync(int orderId, CancellationToken ct = default)
     {
-        var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
+        var order = await _orders.GetForReceiptAsync(orderId, ct)
             ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
         var transferOrderIds = await _orders.GetBankTransferOrderIdsAsync(new[] { order.Id }, ct);
@@ -2485,6 +2504,7 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
         var orderLines = order.Lines
             ?? throw new InvalidOperationException(
                 "Order receipt was loaded without its line collection.");
+        var rewardSummary = await GetSafeRewardSummaryAsync(order.Id, order.CustomerId, ct);
         return new OrderReceiptDto
         {
             OrderId = order.Id,
@@ -2501,6 +2521,8 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
             IsCreditSale = order.IsCreditSale,
             CreditDueDate = order.CreditDueDate,
             CustomerPhone = order.Customer?.Phone,
+            CustomerPriceTier = ResolveOrderPriceTier(order),
+            CustomerCurrentPoints = rewardSummary is { IsPointEligible: true } ? rewardSummary.AvailablePoints : null,
 
             CashierName = string.IsNullOrWhiteSpace(cashier?.FullName) ? cashier?.UserName : cashier.FullName,
             TerminalName = order.POSShift?.Terminal?.Name,
@@ -2690,188 +2712,7 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
         return order;
     }
 
-    private static void Recalc(Order order)
-    {
-        var lines = order.Lines
-            .Where(x => !x.IsDeleted)
-            .ToList();
-
-        // =========================
-        // 1. TÍNH LẠI TỪNG DÒNG
-        // =========================
-        foreach (var l in lines)
-        {
-            var grossLineAmount = Math.Round(
-                l.Quantity * l.UnitPrice,
-                0,
-                MidpointRounding.AwayFromZero);
-
-            if (grossLineAmount < 0)
-                grossLineAmount = 0;
-
-            if (l.LineDiscount < 0)
-                l.LineDiscount = 0;
-
-            if (l.PromotionDiscount < 0)
-                l.PromotionDiscount = 0;
-
-            if (l.LineDiscount > grossLineAmount)
-                l.LineDiscount = grossLineAmount;
-
-            var remainAfterLineDiscount = Math.Max(
-                grossLineAmount - l.LineDiscount,
-                0);
-
-            if (l.PromotionDiscount > remainAfterLineDiscount)
-                l.PromotionDiscount = remainAfterLineDiscount;
-
-            l.LineTotal = Math.Round(
-                grossLineAmount - l.LineDiscount - l.PromotionDiscount,
-                0,
-                MidpointRounding.AwayFromZero);
-
-            if (l.LineTotal < 0)
-                l.LineTotal = 0;
-        }
-
-        // =========================
-        // 2. TỔNG TIỀN HÀNG
-        // =========================
-        var subtotal = Math.Round(
-            // Mixed-group discounts reconcile whole dong on each sale line.
-            // Use the same gross basis so the bill and refunds share its total.
-            lines.Sum(x => x.PromotionType == PromotionType.ComboFixedPrice
-                ? Math.Round(x.Quantity * x.UnitPrice, 0, MidpointRounding.AwayFromZero)
-                : x.Quantity * x.UnitPrice),
-            0,
-            MidpointRounding.AwayFromZero);
-
-        if (subtotal < 0)
-            subtotal = 0;
-
-        var lineDiscountTotal = Math.Round(
-            Math.Max(lines.Sum(x => x.LineDiscount), 0),
-            0,
-            MidpointRounding.AwayFromZero);
-
-        var promotionDiscountTotal = Math.Round(
-            Math.Max(lines.Sum(x => x.PromotionDiscount), 0),
-            0,
-            MidpointRounding.AwayFromZero);
-
-        var comboDiscountTotal = Math.Round(
-            Math.Max(order.ComboDiscountTotal, 0),
-            0,
-            MidpointRounding.AwayFromZero);
-
-        order.Subtotal = subtotal;
-        order.PromotionDiscountTotal = promotionDiscountTotal;
-        order.ComboDiscountTotal = comboDiscountTotal;
-
-        // =========================
-        // 3. KHÓA COMBO KHÔNG VƯỢT TIỀN CÒN LẠI
-        // =========================
-        var maxComboDiscount = Math.Max(
-            subtotal - lineDiscountTotal - promotionDiscountTotal,
-            0);
-
-        if (order.ComboDiscountTotal > maxComboDiscount)
-            order.ComboDiscountTotal = maxComboDiscount;
-
-        comboDiscountTotal = order.ComboDiscountTotal;
-
-        // Nếu combo bị đưa về 0 thì xóa snapshot combo.
-        if (comboDiscountTotal <= 0)
-        {
-            order.ComboPromotionId = null;
-            order.ComboPromotionName = null;
-            order.ComboPromotionNote = null;
-        }
-
-        // =========================
-        // 4. GIẢM GIÁ ĐƠN HÀNG
-        // =========================
-        var maxOrderDiscount = Math.Max(
-            subtotal
-            - lineDiscountTotal
-            - promotionDiscountTotal
-            - comboDiscountTotal,
-            0);
-
-        if (order.OrderDiscount < 0)
-            order.OrderDiscount = 0;
-
-        order.OrderDiscount = Math.Round(
-            order.OrderDiscount,
-            0,
-            MidpointRounding.AwayFromZero);
-
-        if (order.OrderDiscount > maxOrderDiscount)
-            order.OrderDiscount = maxOrderDiscount;
-
-        // =========================
-        // 5. VOUCHER
-        // =========================
-        var voucherDiscountTotal = order.RewardVouchers?
-            .Where(x => !x.IsDeleted)
-            .Sum(x => x.VoucherValue) ?? 0m;
-
-        voucherDiscountTotal = Math.Round(
-            Math.Max(voucherDiscountTotal, 0),
-            0,
-            MidpointRounding.AwayFromZero);
-
-        var maxVoucherDiscount = Math.Max(
-            subtotal
-            - lineDiscountTotal
-            - promotionDiscountTotal
-            - comboDiscountTotal
-            - order.OrderDiscount,
-            0);
-
-        if (voucherDiscountTotal > maxVoucherDiscount)
-            voucherDiscountTotal = maxVoucherDiscount;
-
-        order.VoucherDiscountTotal = voucherDiscountTotal;
-
-        // =========================
-        // 6. TỔNG GIẢM / TỔNG THANH TOÁN
-        // =========================
-        order.DiscountTotal = Math.Round(
-            lineDiscountTotal
-            + promotionDiscountTotal
-            + comboDiscountTotal
-            + order.OrderDiscount
-            + order.VoucherDiscountTotal,
-            0,
-            MidpointRounding.AwayFromZero);
-
-        order.GrandTotal = Math.Round(
-            Math.Max(order.Subtotal - order.DiscountTotal, 0),
-            0,
-            MidpointRounding.AwayFromZero);
-
-        // =========================
-        // 7. THANH TOÁN
-        // =========================
-        order.PaidTotal = Math.Round(
-            order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount) + order.DepositAmount,
-            0,
-            MidpointRounding.AwayFromZero);
-
-        if (order.PaidTotal < 0)
-            order.PaidTotal = 0;
-
-        order.BalanceDue = Math.Max(order.GrandTotal - order.PaidTotal, 0);
-        order.ChangeDue = Math.Max(order.PaidTotal - order.GrandTotal, 0);
-
-        if (order.PaidTotal <= 0)
-            order.PaymentStatus = PaymentStatus.Unpaid;
-        else if (order.PaidTotal < order.GrandTotal)
-            order.PaymentStatus = PaymentStatus.PartiallyPaid;
-        else
-            order.PaymentStatus = PaymentStatus.Paid;
-    }
+    private static void Recalc(Order order) => OrderTotalsPolicy.Recalculate(order);
 
     /// <summary>
     /// Áp lại khuyến mãi cho toàn bộ line trong đơn.
@@ -3420,10 +3261,10 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
         var openShift = await RequireCurrentOpenShiftAsync(ct);
         EnsureShiftOwnership(openShift);
 
-        var orders = await _orders.GetHeldOrdersByStoreAsync(openShift.StoreId, ct);
+        var orders = await _orders.GetHeldOrderSummariesByStoreAsync(openShift.StoreId, ct);
         var userIds = orders
-    .Where(o => o.POSShift != null && o.POSShift.OpenedByUserId > 0)
-    .Select(o => o.POSShift.OpenedByUserId)
+    .Where(o => o.HeldByUserId is > 0)
+    .Select(o => o.HeldByUserId!.Value)
     .Distinct()
     .ToList();
         var users = await _users.GetByIdsAsync(userIds, ct);
@@ -3432,45 +3273,15 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
     x => string.IsNullOrWhiteSpace(x.FullName) ? x.UserName : x.FullName
 );
 
-        return orders.Select(o => new HeldOrderDto
+        foreach (var order in orders)
         {
-            OrderId = o.Id,
-            HoldCode = o.HoldCode,
-            HoldNote = o.HoldNote,
-            HeldAtUtc = o.HeldAtUtc,
-
-            LineCount = o.Lines.Count(x => !x.IsDeleted),
-            TotalQuantity = o.Lines.Where(x => !x.IsDeleted).Sum(x => x.Quantity),
-            Subtotal = o.Lines.Where(x => !x.IsDeleted).Sum(x => x.LineTotal),
-
-            CustomerId = o.CustomerId,
-            CustomerName = o.Customer?.Name,
-            CustomerPhone = o.Customer?.Phone,
-
-            // =========================================================
-            // BƯỚC 4.2:
-            // Map thông tin ca POS đang giữ đơn
-            // =========================================================
-            PosShiftId = o.POSShiftId,
-            ShiftCode = o.POSShift?.ShiftCode,
-
-            // Terminal hiện tạm map dạng string để UI dùng thống nhất
-            TerminalId = o.POSShift != null
-         ? o.POSShift.TerminalId.ToString()
-         : null,
-            TerminalName = o.POSShift != null
-    ? o.POSShift.Terminal.Name
-    : null,
-
-            HeldByUserId = o.POSShift?.OpenedByUserId,
-            HeldByUserName = o.POSShift != null &&
-                 userMap.ContainsKey(o.POSShift.OpenedByUserId)
-    ? userMap[o.POSShift.OpenedByUserId]
-    : null,
-            IsCurrentShift = o.POSShiftId == openShift.Id,
-            IsCurrentTerminal = o.POSShift != null
-         && o.POSShift.TerminalId == openShift.TerminalId
-        }).ToList();
+            order.HeldByUserName = order.HeldByUserId is int userId && userMap.TryGetValue(userId, out var name)
+                ? name
+                : null;
+            order.IsCurrentShift = order.PosShiftId == openShift.Id;
+            order.IsCurrentTerminal = order.TerminalId == openShift.TerminalId.ToString();
+        }
+        return orders;
     }
 
     public async Task<CurrentCartDto> GetCurrentCartAsync(CancellationToken ct = default)
@@ -3623,6 +3434,27 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
             ClientRequestId = dto.ClientRequestId, Method = dto.Method, Amount = dto.Amount,
             ReferenceCode = dto.ReferenceCode, Provider = dto.Provider
         }, requireCurrentCart: true, ct);
+
+    public async Task<OrderDraftDto> AddPaymentAndMaybeFinalizeCurrentCartAsync(QuickAddPaymentRequest dto, CancellationToken ct = default)
+    {
+        // This request records a new collection. Bank callback confirmations use their
+        // own durable path and are never rolled back by a later checkout failure here.
+        var transaction = await _uow.BeginTransactionAsync(ct);
+        OrderDraftDto draft;
+        await using (transaction)
+        {
+            draft = await AddPaymentToCurrentCartAsync(dto, ct);
+            if (draft.Status is not (OrderStatus.Draft or OrderStatus.Completed))
+                throw new ConflictAppException("Đơn đã đổi trạng thái. Vui lòng kiểm tra lịch sử thanh toán.");
+            if (draft.BalanceDue <= 0 && draft.Status != OrderStatus.Completed)
+                draft = await FinalizeAsync(draft.OrderId, ct);
+            _uow.EnsureCanCommit();
+            await transaction.CommitAsync(ct);
+        }
+        // Participating transactions defer this until their outer owner commits.
+        await transaction.AfterCommitAsync(token => _uow.RunDeferredActionsAsync(token), ct);
+        return draft;
+    }
     public async Task<OrderDraftDto> FinalizeCurrentCartAsync(CancellationToken ct = default)
     {
         var currentOrder = await RequireCurrentDraftAsync(ct);
@@ -3908,9 +3740,9 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
         await _customers.SaveChangesAsync(ct);
 
         return await SetCustomerForCurrentCartAsync(
-     customer.Id,
-     repriceExistingLines: false,
-     ct);
+            customer.Id,
+            repriceExistingLines: true,
+            ct);
     }
     /// <summary>
     /// Chuẩn hóa nhóm giá khách hàng.
@@ -3997,6 +3829,8 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
             if (_receivables != null) await _receivables.LockOrderAsync(orderId, ct);
             var order = await _orders.GetCompletedOrderForVoidAsync(orderId, ct)
                 ?? throw new BusinessRuleException("Không tìm thấy đơn hàng.");
+            if (order.Lines.Any(x => x.StorefrontOrderLineId.HasValue))
+                throw new BusinessRuleException("Đơn website đã có nguồn giao và đối soát riêng. Mở xử lý đơn website; không hủy qua POS.");
 
             // Lưu trạng thái cũ để ghi audit old/new values
             var oldStatus = order.Status.ToString();
@@ -4045,7 +3879,7 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
            reason,
            ct);
 
-            var voidNote = $"[HỦY SAU KHI CHỐT - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] {reason}";
+            var voidNote = $"[HỦY SAU KHI CHỐT - {VietnamTime.Now:dd/MM/yyyy HH:mm:ss}] {reason}";
             order.Note = string.IsNullOrWhiteSpace(order.Note)
                 ? voidNote
                 : $"{order.Note}{Environment.NewLine}{voidNote}";
@@ -4299,7 +4133,7 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
         {
             ShiftId = shift.Id,
             ShiftCode = shift.ShiftCode,
-            OpenedAt = shift.OpenedAtUtc.ToLocalTime(),
+            OpenedAt = DateTime.SpecifyKind(shift.OpenedAtUtc, DateTimeKind.Utc),
 
             CashSales = cashSales,
             BankSales = bankSales,
@@ -4328,7 +4162,8 @@ IDeliverySaleCostEvidence? deliverySaleEvidence = null)
     /// </summary>
     private async Task ApplyRewardForFinalizedOrderAsync(Order order, CancellationToken ct)
     {
-        if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0)
+        if (!order.CustomerId.HasValue || order.CustomerId.Value <= 0
+            || CustomerPriceTiers.IsWholesale(ResolveOrderPriceTier(order)))
         {
             foreach (var line in order.Lines.Where(x => !x.IsDeleted)) line.RewardableAmountSnapshot = 0;
             return;

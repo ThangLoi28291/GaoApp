@@ -11,14 +11,30 @@ using System.Text.Json;
 namespace GaoApp.Infrastructure.Repositories.Invoices;
 
 /// <summary>One documentary projection shared by the management view and issuance preflight.</summary>
-public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCache? cache = null) : IInvoiceInputStockReadRepository
+public sealed partial class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCache? cache = null) : IInvoiceInputStockReadRepository
 {
-    private static readonly ConcurrentDictionary<int, SemaphoreSlim> SnapshotLocks = new();
+    private static readonly ConcurrentDictionary<(int StoreId, bool FullStore), SemaphoreSlim> SnapshotLocks = new();
 
-    public async Task<IReadOnlyList<InvoiceInputStockMovement>> GetMovementsAsync(int storeId, CancellationToken ct = default)
+    public Task<IReadOnlyList<InvoiceInputStockMovement>> GetMovementsAsync(int storeId, CancellationToken ct = default)
+        => GetMovementsAsync(storeId, null, null, ct);
+
+    public Task<IReadOnlyList<InvoiceInputStockMovement>> GetMovementsAsync(
+        int storeId,
+        IReadOnlyCollection<int>? productVariantIds,
+        IReadOnlyCollection<int>? warehouseIds,
+        CancellationToken ct = default)
+        => GetCachedMovementsAsync(storeId, productVariantIds, warehouseIds, includeNotes: true, ct);
+
+    public Task<IReadOnlyList<InvoiceInputStockMovement>> GetPageMovementsAsync(int storeId,
+        IReadOnlyCollection<int>? productVariantIds, IReadOnlyCollection<int>? warehouseIds, CancellationToken ct = default)
+        => GetCachedMovementsAsync(storeId, productVariantIds, warehouseIds, includeNotes: false, ct);
+
+    private async Task<IReadOnlyList<InvoiceInputStockMovement>> GetCachedMovementsAsync(int storeId,
+        IReadOnlyCollection<int>? productVariantIds, IReadOnlyCollection<int>? warehouseIds, bool includeNotes, CancellationToken ct)
     {
+        if (productVariantIds is { Count: 0 } || warehouseIds is { Count: 0 }) return [];
         if (cache is null || storeId <= 0)
-            return await LoadMovementsAsync(storeId, null, null, ct);
+            return await LoadMovementsAsync(storeId, productVariantIds, warehouseIds, includeNotes, ct);
 
         // The revision changes when a receipt is linked/reviewed/accepted or
         // when a physical inventory transaction is posted. This keeps the
@@ -31,18 +47,21 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
             .Where(x => x.StoreId == storeId && !x.IsDeleted)
             .Select(x => (int?)x.Id)
             .MaxAsync(ct) ?? 0;
-        var key = $"invoice-input-stock:{storeId}:{latestAuditId}:{latestInventoryId}";
+        static string SliceKey(IReadOnlyCollection<int>? ids) => ids == null ? "all"
+            : string.Join(',', ids.Where(x => x > 0).Distinct().Order());
+        var key = $"invoice-input-stock:{storeId}:{latestAuditId}:{latestInventoryId}:notes={includeNotes}:p={SliceKey(productVariantIds)}:w={SliceKey(warehouseIds)}";
         if (cache.TryGetValue(key, out IReadOnlyList<InvoiceInputStockMovement>? snapshot) && snapshot is not null)
             return snapshot;
 
-        var gate = SnapshotLocks.GetOrAdd(storeId, _ => new SemaphoreSlim(1, 1));
+        // A long full-store read must not block a small product lookup.
+        var gate = SnapshotLocks.GetOrAdd((storeId, productVariantIds is null && warehouseIds is null), _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
             if (cache.TryGetValue(key, out snapshot) && snapshot is not null)
                 return snapshot;
 
-            snapshot = await LoadMovementsAsync(storeId, null, null, ct);
+            snapshot = await LoadMovementsAsync(storeId, productVariantIds, warehouseIds, includeNotes, ct);
             cache.Set(key, snapshot, new MemoryCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30),
@@ -56,23 +75,11 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
         }
     }
 
-    /// <summary>
-    /// Reads only the movement slice relevant to one invoice preflight.  The
-    /// unfiltered overload remains available for the management/read screens.
-    /// </summary>
-    public async Task<IReadOnlyList<InvoiceInputStockMovement>> GetMovementsAsync(
-        int storeId,
-        IReadOnlyCollection<int>? productVariantIds,
-        IReadOnlyCollection<int>? warehouseIds,
-        CancellationToken ct = default)
-        => productVariantIds is null && warehouseIds is null
-            ? await GetMovementsAsync(storeId, ct)
-            : await LoadMovementsAsync(storeId, productVariantIds, warehouseIds, ct);
-
     private async Task<IReadOnlyList<InvoiceInputStockMovement>> LoadMovementsAsync(
         int storeId,
         IReadOnlyCollection<int>? productVariantIds,
         IReadOnlyCollection<int>? warehouseIds,
+        bool includeNotes,
         CancellationToken ct)
     {
         if (storeId <= 0) return [];
@@ -184,6 +191,7 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                 BaseUnitId = evidence.ConfirmedBaseUnitId, XmlBase = evidence.DerivedBaseQuantity,
                 ReceiptBase = evidence.ReceiptBaseQuantity, DocumentNo = document.DocumentNo,
                 XmlNumber = xml.InputInvoiceHead.InvoiceNumber,
+                XmlSeries = xml.InputInvoiceHead.InvoiceSeries,
                 ConfirmedAt = document.ConfirmedAtUtc ?? document.CreatedAtUtc,
                 MappedAt = evidence.CreatedAtUtc, AssociatedAt = association.CreatedAtUtc
             }).ToListAsync(ct);
@@ -210,7 +218,8 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                 {
                     Key = $"xml-{source.EvidenceId}", WarehouseId = source.WarehouseId, LegalEntityId = source.LegalEntityId,
                     ProductVariantId = source.VariantId, DateUtc = Utc(source.RecognizedAt), Kind = "increase", Change = quantity,
-                    StockDocumentId = source.DocumentId, SourceCode = source.DocumentNo, XmlNumber = source.XmlNumber,
+                    StockDocumentId = source.DocumentId, SourceCode = source.DocumentNo,
+                    XmlNumber = source.XmlNumber, XmlSeries = source.XmlSeries,
                     Note = $"XML quy đổi: {source.XmlBase:0.####}; dòng nhập được map: {source.ReceiptBase:0.####}. Ghi nhận {quantity:0.####} đơn vị gốc sau khi giới hạn số lượng XML dùng chung."
                 });
             }
@@ -256,6 +265,8 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                 {
                     DocumentId = document.Id,
                     DocumentNo = document.DocumentNo,
+                    XmlSeries = invoice.InvoiceSeries,
+                    XmlNumber = invoice.InvoiceNumber,
                     // InvoiceIdentityDate is the date-only value normalized
                     // from the XML. Fall back to InvoiceDate for legacy XML.
                     InvoiceDate = invoice.InvoiceIdentityDate ?? invoice.InvoiceDate
@@ -282,12 +293,20 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                     IsProvisionalCost = source.IsProvisionalCost,
                     StockDocumentId = documentId,
                     SourceCode = document.DocumentNo,
+                    XmlSeries = document.XmlSeries,
+                    XmlNumber = document.XmlNumber,
                     OperationLabel = "Nhập theo phiếu đã xác nhận",
                     Note = $"Quản lý đã xác nhận kiểm tra/đối chiếu hóa đơn. Ghi nhận theo giao dịch nhập kho gốc lúc {Utc(source.OccurredAtUtc):dd/MM/yyyy HH:mm} UTC; XML chỉ hỗ trợ đối chiếu."
                 });
             }
         }
 
+        // Resolve legacy document links once. A correlated TOP(1) lookup for
+        // every supplemental movement repeats the same lookup across a large import.
+        var legacyInvoiceHeads = includeNotes ? await db.InvoiceHeads.AsNoTracking()
+            .Where(x => x.StoreId == storeId && x.LegacySourceId != null)
+            .Select(x => new { SourceId = x.LegacySourceId!.Value, x.Id })
+            .ToDictionaryAsync(x => x.SourceId, x => x.Id, ct) : new Dictionary<long, int>();
         var supplemental = await db.InvoiceInputStockSupplementalMovements.AsNoTracking()
             .Where(x => x.StoreId == storeId
                 && x.Warehouse.StoreId == storeId
@@ -306,10 +325,8 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                 x.LegacyOrderId,
                 x.LegacyInvoiceNumber,
                 x.LegacyInvoiceSymbol,
-                LegacyInvoiceHeadId = db.InvoiceHeads.Where(h => h.StoreId == storeId && h.LegacySourceId == x.LegacyOrderId && x.LegacyOrderId != null)
-                    .Select(h => (int?)h.Id).FirstOrDefault(),
-                x.SourcePeriod,
-                x.Note,
+                SourcePeriod = includeNotes ? x.SourcePeriod : null,
+                Note = includeNotes ? x.Note : null,
                 LegalEntityId = x.Warehouse.LegalEntityId
             })
             .ToListAsync(ct);
@@ -339,7 +356,8 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                 }.Where(x => x != null)) is { Length: > 0 } reference ? reference
                     : item.LegacySourceKey.StartsWith("GSTORE-IIS-V1|", StringComparison.Ordinal) ? label : item.LegacySourceKey,
                 LegacySourceKey = item.LegacySourceKey,
-                InvoiceHeadId = item.LegacyInvoiceHeadId,
+                InvoiceHeadId = item.LegacyOrderId.HasValue && legacyInvoiceHeads.TryGetValue(item.LegacyOrderId.Value, out var headId)
+                    ? headId : null,
                 LegacyOrderId = item.LegacyOrderId?.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 LegacyInvoiceNumber = item.LegacyInvoiceNumber,
                 LegacyInvoiceSymbol = item.LegacyInvoiceSymbol,
@@ -360,12 +378,22 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
             .Select(x => x!.Value)
             .ToHashSet();
 
-        var invoices = await db.InvoiceDetails.AsNoTracking()
+        var invoiceQuery = db.InvoiceDetails.AsNoTracking()
             .Where(x => x.StoreId == storeId && x.InvoiceHead.StoreId == storeId && !x.IsDeleted && !x.InvoiceHead.IsDeleted
                 && x.ProductVariantId.HasValue && x.ProductVariant!.StoreId == storeId
                 && (variantFilter == null || variantFilter.Contains(x.ProductVariantId.Value))
                 && x.InvoiceHead.OriginalInvoiceHeadId == null && x.InvoiceHead.CorrectionType == null
-                && (x.InvoiceHead.ProviderStatus >= InvoiceProviderStatus.Issuing || x.InvoiceHead.ProviderInvoiceNo != null || x.InvoiceHead.IssuedAtUtc != null))
+                && (x.InvoiceHead.ProviderStatus >= InvoiceProviderStatus.Issuing || x.InvoiceHead.ProviderInvoiceNo != null || x.InvoiceHead.IssuedAtUtc != null));
+        // Imported outbound movements already represent these invoice lines.
+        // Eliminate them before joining Orders/OrderLines/allocations: those
+        // joins can otherwise process hundreds of thousands of duplicate rows.
+        var candidateInvoices = await invoiceQuery
+            .Select(x => new { x.Id, x.LegacySourceId })
+            .ToListAsync(ct);
+        var invoiceIds = candidateInvoices
+            .Where(x => !x.LegacySourceId.HasValue || !legacyOutboundSourceIds.Contains(x.LegacySourceId.Value))
+            .Select(x => x.Id).ToArray();
+        var invoices = await invoiceQuery.Where(x => invoiceIds.Contains(x.Id))
             .Select(x => new
             {
                 x.Id, x.InvoiceHeadId, x.LegacySourceId, VariantId = x.ProductVariantId!.Value, x.ItemName, x.Quantity,
@@ -376,10 +404,13 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
                     : x.InvoiceHead.LegalEntity != null && x.InvoiceHead.LegalEntity.DefaultWarehouseId.HasValue
                         ? x.InvoiceHead.LegalEntity.DefaultWarehouseId.Value : x.InvoiceHead.Order != null ? x.InvoiceHead.Order.POSShift.WarehouseId : 0,
                 BaseQuantity = x.LegacyUnitFactor.HasValue ? x.Quantity * x.LegacyUnitFactor.Value
-                    : x.OrderLegalEntityAllocation != null ? x.OrderLegalEntityAllocation.BaseQuantity
+                    : x.OrderLegalEntityAllocation != null && x.OrderLegalEntityAllocation.Quantity != 0
+                        ? x.Quantity * x.OrderLegalEntityAllocation.BaseQuantity / x.OrderLegalEntityAllocation.Quantity
                     : x.OrderLine != null && x.OrderLine.Quantity != 0
                         ? x.Quantity * x.OrderLine.BaseQuantity / x.OrderLine.Quantity : x.Quantity
-            }).ToListAsync(ct);
+            })
+            .Where(x => warehouseFilter == null || warehouseFilter.Contains(x.WarehouseId))
+            .ToListAsync(ct);
         foreach (var item in invoices)
         {
             if (item.LegacySourceId.HasValue && legacyOutboundSourceIds.Contains(item.LegacySourceId.Value))
@@ -476,6 +507,7 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
         public decimal XmlBase { get; init; }
         public decimal ReceiptBase { get; init; }
         public string DocumentNo { get; init; } = "";
+        public string? XmlSeries { get; init; }
         public string? XmlNumber { get; init; }
         public DateTime ConfirmedAt { get; init; }
         public DateTime MappedAt { get; init; }
@@ -501,6 +533,8 @@ public sealed class InvoiceInputStockReadRepository(AppDbContext db, IMemoryCach
     {
         public int DocumentId { get; init; }
         public string DocumentNo { get; init; } = "";
+        public string? XmlSeries { get; init; }
+        public string? XmlNumber { get; init; }
         public DateTime? InvoiceDate { get; init; }
     }
 }

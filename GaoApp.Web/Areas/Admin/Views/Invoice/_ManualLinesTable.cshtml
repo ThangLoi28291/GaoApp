@@ -2,7 +2,7 @@
 @model GaoApp.Application.DTOs.Invoices.InvoiceHeadDto
 
 @{
-    var isLocked = Model.IsLocked;
+    var isLocked = !Model.CanEditDetails;
 
     var manualLines = Model.Details
         .Where(x => x.SourceType == InvoiceDetailSourceType.Manual)
@@ -30,6 +30,7 @@
                 <th>Nội dung</th>
                 <th>ĐVT</th>
                 <th class="text-end">SL</th>
+                <th class="text-end invoice-stock-heading">SL hiện tại</th>
                 <th class="text-end">Đơn giá</th>
                 <th class="text-end">VAT %</th>
                 <th class="text-end">VAT tiền</th>
@@ -43,7 +44,7 @@
             @if (!manualLines.Any())
             {
                 <tr>
-                    <td colspan="10" class="text-center text-muted py-4">
+                    <td colspan="11" class="text-center text-muted py-4">
                         Chưa có dòng manual.
                     </td>
                 </tr>
@@ -54,9 +55,9 @@
                 {
                     <tr class="manual-detail-row @(isLocked ? "is-locked" : "")"
                         data-manual-detail-id="@item.Id"
-                        data-manual-quantity="@item.Quantity"
-                        data-manual-unit-price="@item.UnitPrice"
-                        data-manual-vat-rate="@item.VatRate"
+                        data-manual-quantity="@item.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                        data-manual-unit-price="@item.UnitPrice.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                        data-manual-vat-rate="@item.VatRate.ToString(System.Globalization.CultureInfo.InvariantCulture)"
                         data-manual-note="@item.Note">
 
                         <td>#@item.Id</td>
@@ -80,6 +81,12 @@
 
                         <td class="text-end" data-manual-display="quantity">
                             @item.Quantity.ToString("N2")
+                        </td>
+
+                        <td class="text-end invoice-stock-cell"
+                            data-invoice-stock-detail-id="@item.Id"
+                            data-stock-product-id="@item.ProductVariantId">
+                            <span class="text-muted small">@(item.ProductVariantId.HasValue ? "Đang tải…" : "—")</span>
                         </td>
 
                         <td class="text-end" data-manual-display="unitPrice">

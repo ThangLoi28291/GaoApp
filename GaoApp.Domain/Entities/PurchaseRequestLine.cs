@@ -26,6 +26,8 @@ public sealed class PurchaseRequestLine : BaseStoreEntity, IAuditTrackedEntity
 
     [StringLength(100)]
     public string? SkuSnapshot { get; set; }
+    [StringLength(1000)]
+    public string? Note { get; set; }
 
     [Required, StringLength(100)]
     public string UnitNameSnapshot { get; set; } = string.Empty;

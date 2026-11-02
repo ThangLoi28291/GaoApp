@@ -6,8 +6,9 @@
 }
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/admin-menu-visibility.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.menu-management.mobile.css" asp-append-version="true" />
 }
-<div class="mv-page" id="menuVisibility" data-detail-url="@Url.Action("Detail")" data-save-url="@Url.Action("Save")">
+<div class="mv-page" id="menuVisibility" data-detail-url="@Url.Action("Detail")" data-save-url="@Url.Action("Save")" data-gao-theme="commerce" data-mobile-stage="subjects">
     @Html.AntiForgeryToken()
     <header class="mv-header">
         <div><span class="mv-eyebrow">KHÔNG GIAN LÀM VIỆC</span><h1>Menu phù hợp cho từng người</h1><p>Chọn nhân viên hoặc nhóm, chỉnh menu trên cùng một màn hình.</p></div>
@@ -15,6 +16,12 @@
     </header>
     <div class="mv-notice"><i class="bx bx-show"></i><span><strong>Chỉ thay đổi hiển thị.</strong> Quyền mở trang, thêm, sửa, xóa và duyệt giữ nguyên. Mục chưa có quyền sẽ không xuất hiện.</span></div>
     <div id="mvMessage" class="mv-message" role="status" aria-live="polite" hidden></div>
+    <nav class="gao-menu-mobile-only mv-mobile-steps" aria-label="Các bước chỉnh hiển thị menu">
+        <button type="button" data-mv-stage="subjects" aria-current="step"><span>1</span>Chọn đối tượng</button>
+        <button type="button" data-mv-stage="editor" disabled><span>2</span>Chỉnh menu</button>
+        <button type="button" data-mv-stage="preview" disabled><span>3</span>Xem trước</button>
+    </nav>
+    <div class="gao-menu-mobile-only mv-mobile-context"><button type="button" data-mv-stage="subjects"><i class="bx bx-chevron-left" aria-hidden="true"></i>Đổi đối tượng</button><strong id="mvMobileTarget">Chưa chọn đối tượng</strong></div>
     <div class="mv-layout">
         <aside class="mv-card mv-subjects">
             <div class="mv-card-head"><span class="mv-step">1</span><div><h2>Chọn đối tượng</h2><p>Áp dụng theo nhóm hoặc cá nhân</p></div></div>
@@ -50,6 +57,7 @@
         <div class="mv-save-actions"><button type="button" class="btn btn-outline-secondary" id="mvReload" disabled>Tải lại</button><button type="button" class="btn btn-outline-primary" id="mvReset" disabled>Khôi phục mặc định</button><button type="button" class="btn btn-primary" id="mvSave" disabled><i class="bx bx-check"></i> Lưu hiển thị</button></div>
     </footer>
 </div>
+<partial name="_MobileMenuReview" />
 @section PageScripts {
     <script src="~/Admin/js/admin-menu-visibility.js" asp-append-version="true"></script>
 }

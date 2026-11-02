@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -21,7 +22,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxNotFound(
-      result.Error?.Message,
+      InvoiceErrorReadSanitizer.UserMessage(result.Error),
       "Không tìm thấy thông tin người mua trong nội bộ.");
         }
 
@@ -41,7 +42,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxBadRequest(
-       result.Error?.Message,
+       InvoiceErrorReadSanitizer.UserMessage(result.Error),
        "Không cập nhật được thông tin người mua.");
         }
 

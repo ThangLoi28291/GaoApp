@@ -87,7 +87,10 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
         var options = canManage ? await db.UserInStores.AsNoTracking().Where(x => x.StoreId == Store && x.IsActive && x.User.IsActive)
             .OrderBy(x => x.User.FullName).ThenBy(x => x.UserId)
             .Select(x => new DeliveryPickingPickerOptionDto(x.UserId, x.User.FullName ?? x.User.UserName)).ToListAsync(ct) : [];
-        return Project(order, work, lines, caps, options, names) with { Inventory = await inventory.GetAsync(id, ct) };
+        var detail = DeliverySalePrices.Overlay(Project(order, work, lines, caps, options, names), order,
+            await DeliverySalePrices.ReadAsync(db, order, ct),
+            await permissions.HasPermissionAsync(Store, Actor, PermissionCodes.Delivery.EditSalePrice, ct));
+        return detail with { Inventory = await inventory.GetAsync(id, ct) };
     }
     public async Task<IReadOnlyList<DeliveryPickingReplacementOptionDto>> ReplacementOptionsAsync(int id, string? query, int take = 25, CancellationToken ct = default)
     {
@@ -125,42 +128,77 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
         }, ct);
 
     public Task<DeliveryPickingCommandAck> ReportAsync(int id, DeliveryPickingReportRequest request, CancellationToken ct = default)
-        => Command(id, "report", request.ClientRequestId, request.ExpectedVersion, request, (order, work, lines, now) =>
+        => Command(id, "report", request.ClientRequestId, request.ExpectedVersion, request, (_, work, lines, now) =>
         {
-            RequirePicker(work);
-            var patch = request.Lines ?? throw Error(400, "LINES_REQUIRED", "Thiếu kết quả soạn.");
-            UniqueIds(patch.Select(x => x?.LineId ?? 0), false);
-            foreach (var item in patch)
-            {
-                if (item is null) throw Error(400, "LINE_INVALID", "Dòng không hợp lệ.");
-                var line = Effective(lines).SingleOrDefault(x => x.DeliveryOrderLineId == item.LineId)
-                    ?? throw Error(400, "LINE_INVALID", "Dòng không thuộc kế hoạch hiện tại.");
-                var qty = ParseQuantity(item.PickedQuantityText);
-                var reason = Reason(item.ShortageReason, false);
-                RequireReported(line.PlannedQuantity, qty, reason);
-                _ = ToBase(qty, line.Quote.BaseMultiplier);
-                line.ReportedQuantity = qty; line.ShortageReason = reason; line.ReporterUserId = Actor;
-                line.ReportedAtUtc = now; line.ReportFactKind = "picker-report";
-            }
+            ReportPicked(work, lines, request.Lines, now);
             return Task.CompletedTask;
         }, ct);
 
     public Task<DeliveryPickingCommandAck> SubmitAsync(int id, DeliveryPickingEnvelope request, CancellationToken ct = default)
         => Command(id, "submit", request.ClientRequestId, request.ExpectedVersion, request, (order, work, lines, now) =>
         {
-            RequirePicker(work); var active = Effective(lines);
-            foreach (var line in active) RequireReported(line.PlannedQuantity, line.ReportedQuantity, line.ShortageReason);
-            var changed = work!.ApprovalRequired || active.Any(x => x.Quote.OriginalRootLineId.HasValue ||
-                x.PlannedQuantity != x.Quote.OrderedQuantity || x.ReportedQuantity != x.PlannedQuantity);
-            work.SubmittedAtUtc = now;
-            if (changed) { work.ApprovalRequired = true; order.State = DeliveryState.AwaitingApproval; }
-            else
-            {
-                foreach (var line in active) ApproveLine(line, line.ReportedQuantity!.Value, 0);
-                FinishApproval(order, work, active, now);
-            }
+            SubmitPicked(order, work, lines, now);
             return Task.CompletedTask;
         }, ct);
+
+    public Task<DeliveryPickingCommandAck> CompleteAsync(int id, DeliveryPickingReportRequest request, CancellationToken ct = default)
+        => Command(id, "complete", request.ClientRequestId, request.ExpectedVersion, request, async (order, work, lines, now) =>
+        {
+            if (order.State == DeliveryState.Created)
+            {
+                work = new DeliveryPickingWork { StoreId = Store, DeliveryOrderId = id, PickerUserId = Actor, AssignedAtUtc = now, StartedAtUtc = now };
+                db.DeliveryPickingWorks.Add(work);
+                await db.SaveChangesAsync(ct);
+                foreach (var quote in order.Lines.Where(x => x.SourceOrderLineId.HasValue))
+                {
+                    var line = new DeliveryPickingLine { StoreId = Store, DeliveryOrderId = id, DeliveryOrderLineId = quote.Id,
+                        Quote = quote, PlannedQuantity = quote.OrderedQuantity, PlannedOriginalCoverage = 0 };
+                    db.DeliveryPickingLines.Add(line); lines.Add(line);
+                }
+                order.State = DeliveryState.Picking;
+            }
+            var reports = request.Lines ?? throw Error(400, "LINES_REQUIRED", "Cần xác nhận kết quả từng dòng hàng.");
+            UniqueIds(reports.Select(x => x?.LineId ?? 0), false);
+            if (!reports.Select(x => x.LineId).Order().SequenceEqual(Effective(lines).Select(x => x.DeliveryOrderLineId).Order()))
+                throw Error(400, "PICKING_INCOMPLETE", "Cần xác nhận đúng toàn bộ dòng của bản soạn hiện tại.");
+            ReportPicked(work, lines, reports, now);
+            SubmitPicked(order, work, lines, now);
+        }, ct);
+
+    private void ReportPicked(DeliveryPickingWork? work, List<DeliveryPickingLine> lines,
+        IReadOnlyList<DeliveryPickingReportLine>? reports, DateTime now)
+    {
+        RequirePicker(work);
+        var patch = reports ?? throw Error(400, "LINES_REQUIRED", "Thiếu kết quả soạn.");
+        UniqueIds(patch.Select(x => x?.LineId ?? 0), false);
+        foreach (var item in patch)
+        {
+            if (item is null) throw Error(400, "LINE_INVALID", "Dòng không hợp lệ.");
+            var line = Effective(lines).SingleOrDefault(x => x.DeliveryOrderLineId == item.LineId)
+                ?? throw Error(400, "LINE_INVALID", "Dòng không thuộc kế hoạch hiện tại.");
+            var qty = ParseQuantity(item.PickedQuantityText);
+            var reason = Reason(item.ShortageReason, false);
+            RequireReported(line.PlannedQuantity, qty, reason);
+            _ = ToBase(qty, line.Quote.BaseMultiplier);
+            line.ReportedQuantity = qty; line.ShortageReason = reason; line.ReporterUserId = Actor;
+            line.ReportedAtUtc = now; line.ReportFactKind = "picker-report";
+        }
+    }
+
+    private void SubmitPicked(DeliveryOrder order, DeliveryPickingWork? work, List<DeliveryPickingLine> lines, DateTime now)
+    {
+        RequirePicker(work); var active = Effective(lines);
+        foreach (var line in active) RequireReported(line.PlannedQuantity, line.ReportedQuantity, line.ShortageReason);
+        var changed = work!.ApprovalRequired || active.Any(x => x.Quote.OriginalRootLineId.HasValue ||
+            x.PlannedQuantity != x.Quote.OrderedQuantity || x.ReportedQuantity != x.PlannedQuantity);
+        work.SubmittedAtUtc = now;
+        if (changed) { work.ApprovalRequired = true; order.State = DeliveryState.AwaitingApproval; }
+        else
+        {
+            foreach (var line in active) ApproveLine(line, line.ReportedQuantity!.Value, 0);
+            FinishApproval(order, work, active, now);
+        }
+    }
 
     public Task<DeliveryPickingCommandAck> PlanAsync(int id, DeliveryPickingPlanRequest request, CancellationToken ct = default)
         => Command(id, "plan", request.ClientRequestId, request.ExpectedVersion, request, async (order, work, lines, now) =>
@@ -305,6 +343,7 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
             // Resolve current membership/permissions/source under the aggregate lock, never from a pretracked instance.
             await Authorize(PermissionCodes.Delivery.View, ct); await Authorize(Permission(operation), ct);
             var current = await Load(id, false, ct);
+            await Scope(current, ct, active: true);
             var receipt = await db.DeliveryCommandReceipts.AsNoTracking().SingleOrDefaultAsync(x => x.StoreId == Store && x.ClientRequestId == key, ct);
             if (receipt is not null)
             {
@@ -519,7 +558,7 @@ public sealed class DeliveryPickingService(AppDbContext db, ICurrentUser user,
     private static string Version(string? value)
     {
         try { var b = Convert.FromBase64String(value ?? ""); if (b.Length == 8) return Convert.ToBase64String(b); }
-        catch (FormatException) { }
+        catch (FormatException) { throw Error(400, "VERSION_INVALID", "Phiên bản phải là rowversion hợp lệ."); }
         throw Error(400, "VERSION_INVALID", "Phiên bản phải là rowversion hợp lệ.");
     }
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

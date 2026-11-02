@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.DTOs.Invoices;
@@ -32,6 +32,7 @@ public class ViettelInvoiceDashboardQueryDto
 
     public DateTime? ToDate { get; set; }
 
+    [System.ComponentModel.DataAnnotations.DisplayFormat(ConvertEmptyStringToNull = false)]
     public string? Keyword { get; set; }
 
     public ViettelInvoiceDashboardFilter Filter { get; set; } =
@@ -40,6 +41,19 @@ public class ViettelInvoiceDashboardQueryDto
     public int Page { get; set; } = 1;
 
     public int PageSize { get; set; } = 20;
+
+    public int NormalizeAndValidate()
+    {
+        var paging = InvoiceReadLimits.NormalizePage(Page, PageSize);
+        InvoiceReadLimits.ValidateDates(FromDate, ToDate);
+        InvoiceReadLimits.ValidateEnum(Filter);
+        Keyword = InvoiceReadLimits.NormalizeKeyword(Keyword);
+        FromDate = FromDate?.Date;
+        ToDate = ToDate?.Date;
+        Page = paging.Page;
+        PageSize = paging.PageSize;
+        return paging.Offset;
+    }
 }
 
 public class ViettelInvoiceDashboardDto

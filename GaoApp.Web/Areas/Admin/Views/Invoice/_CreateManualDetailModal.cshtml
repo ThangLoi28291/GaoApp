@@ -15,9 +15,9 @@
 
     <div class="modal-header">
         <div>
-            <h5 class="modal-title">Thêm dòng manual</h5>
+            <h5 class="modal-title">Thêm sản phẩm vào hóa đơn</h5>
             <div class="text-muted small">
-                Chọn sản phẩm như POS, nhưng dòng này không gắn OrderLine.
+                Chọn sản phẩm để tự điền thông tin hàng hóa và kiểm tra số lượng.
             </div>
         </div>
 
@@ -55,6 +55,7 @@
                        id="manualProductSearch"
                        class="form-control"
                        placeholder="Gõ tên sản phẩm / SKU / barcode..."
+                       maxlength="200"
                        autocomplete="off" />
 
                 <div id="manualProductAutocomplete"
@@ -63,9 +64,10 @@
                 </div>
             </div>
 
-            <small class="text-muted">
+            <small class="text-muted" id="manualProductSearchHint">
                 Sau khi chọn, hệ thống tự điền tên, đơn vị, đơn giá.
             </small>
+            <div id="manualProductStock" class="invoice-selected-stock small mt-2" role="status" aria-live="polite" hidden></div>
         </div>
 
         <div class="mb-3">
@@ -176,7 +178,7 @@
         <button type="submit"
                 class="btn btn-primary">
             <i class="bx bx-save"></i>
-            Lưu dòng manual
+            Lưu sản phẩm
         </button>
     </div>
 </form>

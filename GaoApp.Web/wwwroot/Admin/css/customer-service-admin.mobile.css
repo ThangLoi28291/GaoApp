@@ -1,0 +1,74 @@
+/* UI-20: phone presentation only. Native channel, feedback and evaluation owners retain every command. */
+@media screen and (max-width: 767.98px) {
+  #customerChannels, #customerQuality { max-width: 100%; min-width: 0; color: #172d4d; color-scheme: light; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; padding-bottom: 18px; }
+  #customerChannels *, #customerQuality * { box-sizing: border-box; min-width: 0; }
+  #customerChannels [hidden], #customerQuality [hidden], #customerQuality .d-none { display: none !important; }
+  #customerChannels .cc-heading, #customerQuality .cq-heading { display: flex; flex-direction: column; align-items: stretch; gap: 15px; margin: 0 0 14px; padding: 18px; border: 1px solid #dce5f0; border-radius: 20px; background: linear-gradient(135deg,#fff 30%,#edf3ff); box-shadow: 0 7px 22px #172d4d06; }
+  #customerChannels .cc-heading h2, #customerQuality .cq-heading h2 { margin: 4px 0 9px; color: #172d4d; font-size: 25px; line-height: 1.25; letter-spacing: -.6px; }
+  #customerChannels .cc-heading p, #customerQuality .cq-heading p { margin: 0; color: #62758e; font-size: 13px; line-height: 1.55; }
+  #customerChannels .cc-heading p:first-child, #customerQuality .cq-eyebrow { color: #2463eb; font-size: 10px; line-height: 1.6; font-weight: 700; letter-spacing: 1px; }
+  #customerChannels a, #customerQuality a { color: #2459be; }
+  #customerChannels :is(button,.btn), #customerQuality :is(button,.btn) { min-height: 44px; min-width: 44px; border: 1px solid #c9daf8; border-radius: 12px; padding: 10px 13px; font-size: 13px; line-height: 1.4; font-weight: 650; color: #2459be; background: #f4f8ff; white-space: normal; touch-action: manipulation; box-shadow: none; }
+  #customerChannels button:disabled, #customerQuality button:disabled { opacity: .5; }
+  #customerQuality :is(input:not([type=hidden]):not([type=checkbox]),select,textarea) { min-width: 0; width: 100%; max-width: 100%; min-height: 46px; border: 1px solid #d2ddea; border-radius: 11px; padding: 10px 11px; color: #172d4d; background: #fff; font-size: 16px; line-height: 1.4; box-shadow: none; }
+  #customerQuality label { color: #526b87; font-size: 12px; line-height: 1.5; }
+  #customerChannels :is(button,a,input,summary):focus-visible, #customerQuality :is(button,a,input,select,textarea,summary):focus-visible { outline: 3px solid #87adff; outline-offset: 3px; }
+  #customerChannels .cc-card, #customerQuality .cq-card { margin: 14px 0; padding: 16px; border: 1px solid #dce5f0; border-radius: 18px; background: #fff; box-shadow: 0 5px 16px #172d4d04; }
+  #customerChannels .cc-card h3, #customerQuality .cq-card h3 { margin: 0 0 9px; color: #172d4d; font-size: 18px; line-height: 1.4; }
+  #customerChannels .cc-card > header { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+  #customerChannels .cc-card p { margin: 10px 0; line-height: 1.65; }
+  #customerChannels .cc-badge { max-width: 100%; padding: 6px 10px; border-radius: 9px; color: #2459be; background: #eaf1ff; font-size: 11px; line-height: 1.6; white-space: normal; }
+  #customerChannels .cc-meta, #customerChannels .cc-footnote { color: #62758e; font-size: 12px; line-height: 1.7; }
+  #customerChannels .cc-error, #customerChannels #ccNotice { color: #946015; }
+  #customerChannels .cc-actions { display: grid; grid-template-columns: minmax(0,1fr); gap: 9px; margin-top: 15px; }
+  #customerChannels .cc-delivery { padding: 15px 0; margin-top: 15px; border-color: #e4ebf5; }
+  #customerChannels .cc-delivery > strong { display: block; color: #172d4d; font-size: 14px; line-height: 1.55; }
+  #customerChannels .cc-delivery small { color: #62758e; line-height: 1.65; }
+  #customerChannels .cc-delivery nav { gap: 9px; align-items: stretch; }
+  #customerChannels .cc-delivery nav > * { flex: 1 1 140px; }
+  #customerChannels .cc-delivery nav > a { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 12px; border: 1px solid #dce5f0; border-radius: 12px; text-align: center; font-size: 13px; line-height: 1.4; }
+  #customerChannels .cc-footnote { padding: 14px; border: 1px solid #dce5f0; border-radius: 14px; background: #edf3fb; }
+  #customerQuality .cq-heading nav { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+  #customerQuality .cq-heading nav a:last-child { grid-column: 1 / -1; }
+  #customerQuality .cq-heading nav a { min-height: 44px; padding: 10px 12px; border-color: #c9daf8; border-radius: 12px; background: #fff; font-size: 13px; line-height: 1.5; text-align: center; }
+  #customerQuality .cq-filters { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 13px 10px; padding: 16px; border: 1px solid #dce5f0; border-radius: 18px; background: #fff; }
+  #customerQuality .cq-filters label { min-width: 0; }
+  #customerQuality .cq-filters > button, #customerQuality .cq-filters > small { grid-column: 1 / -1; }
+  #customerQuality .cq-filters > button, #customerQuality :is(#cqRun,#cqSaveCase) { border-color: #2463eb; color: #fff; background: #2463eb; }
+  #customerQuality .cq-filters small { color: #62758e; font-size: 12px; line-height: 1.65; }
+  #customerQuality .cq-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 14px; }
+  #customerQuality .cq-metric { min-height: 94px; padding: 13px; border-color: #dce5f0; border-radius: 15px; background: #fff; }
+  #customerQuality .cq-metric strong { color: #172d4d; font-size: 24px; line-height: 1.4; }
+  #customerQuality .cq-metric span { color: #62758e; font-size: 11px; line-height: 1.6; }
+  #customerQuality .cq-activity { display: grid; grid-template-columns: minmax(0,1fr); gap: 12px; }
+  #customerQuality .cq-activity > div { padding: 13px; border-radius: 12px; background: #f3f6fb; }
+  #customerQuality .cq-activity h4 { color: #172d4d; font-size: 14px; line-height: 1.5; }
+  #customerQuality .cq-muted { color: #62758e; font-size: 12px; line-height: 1.7; }
+  #customerQuality .cq-section-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  #customerQuality .cq-section-heading label { width: 100%; min-width: 0; }
+  #customerQuality .cq-feedback { padding: 16px 0; border-color: #e4ebf5; }
+  #customerQuality .cq-feedback summary { min-height: 44px; padding: 11px 0; color: #172d4d; font-size: 14px; line-height: 1.5; }
+  #customerQuality .cq-feedback pre, #customerQuality .cq-eval-row p { padding: 13px; border-radius: 12px; color: #345375; background: #f3f6fb; line-height: 1.65; }
+  #customerQuality .cq-buttons { gap: 9px; align-items: stretch; }
+  #customerQuality .cq-buttons > button { flex: 1 1 140px; }
+  #customerQuality .cq-case-form { grid-template-columns: minmax(0,1fr); gap: 14px; margin: 16px 0 20px; }
+  #customerQuality .cq-check { min-height: 44px; gap: 11px; color: #526b87; line-height: 1.65; }
+  #customerQuality .cq-check input { width: 20px; height: 20px; }
+  #customerQuality .cq-case-form > .cq-check { padding-inline-start: 14px; }
+  #customerQuality .cq-case { grid-template-columns: minmax(0,1fr); gap: 10px; padding: 14px 0; }
+  #customerQuality .cq-case > button { justify-self: start; }
+  #customerQuality .cq-badge { padding: 4px 8px; border-radius: 7px; color: #2459be; background: #eaf1ff; font-size: 11px; }
+  #customerQuality .cq-eval-summary { padding: 14px; border-radius: 13px; color: #244363; background: #eaf1ff; }
+  #customerQuality .cq-eval-summary[data-gate=needs_review] { color: #946015; background: #fff5df; }
+  #customerQuality .cq-eval-row { border-color: #e4ebf5; }
+  #customerQuality #cqNotice { color: #946015; }
+  #customerQuality #cqProposal { width: calc(100% - 24px); max-width: 440px; max-height: calc(var(--gao-mobile-visible-height,100dvh) - 24px); padding: 18px; border-color: #dce5f0; border-radius: 20px; color: #172d4d; background: #fff; overflow-y: auto; overscroll-behavior: contain; }
+  #customerQuality #cqProposal::backdrop { background: #172d4d70; }
+  #customerQuality #cqProposal form { gap: 15px; }
+  #customerQuality #cqProposal h3 { font-size: 20px; line-height: 1.4; }
+  #customerQuality #cqProposal p { font-size: 13px; line-height: 1.65; }
+  #customerQuality #cqProposal .cq-buttons { position: sticky; bottom: -18px; padding: 12px 0 max(12px,env(safe-area-inset-bottom)); border-top: 1px solid #e4ebf5; background: #fff; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  #customerChannels *, #customerQuality * { transition: none !important; animation: none !important; }
+}

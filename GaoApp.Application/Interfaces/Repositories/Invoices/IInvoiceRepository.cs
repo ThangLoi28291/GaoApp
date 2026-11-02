@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Interfaces.Common;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
@@ -50,7 +51,7 @@ public interface IInvoiceRepository
         CancellationToken ct = default);
     Task SaveChangesAsync(
         CancellationToken ct = default);
-    Task<(List<InvoiceHead> Items, int Total)> QueryInvoiceHeadsAsync(
+    Task<(List<InvoiceListItemDto> Items, int Total)> QueryInvoiceHeadsAsync(
         DateTime? fromDate,
         DateTime? toDate,
         int? orderId,
@@ -72,6 +73,18 @@ public interface IInvoiceRepository
     int invoiceDetailId,
     CancellationToken ct = default);
 
+    Task<(HashSet<int> OrderLineIds, HashSet<int> AllocationIds)> GetGeneratedSourceReferencesAsync(
+        int invoiceHeadId,
+        CancellationToken ct = default);
+
+    Task<bool> HasActiveDetailIssuanceAsync(
+        int invoiceHeadId,
+        CancellationToken ct = default);
+
+    Task<IAppTransaction> BeginDetailMutationAsync(
+        int invoiceHeadId,
+        CancellationToken ct = default);
+
     void UpdateInvoiceHead(InvoiceHead invoiceHead);
     Task<List<InvoiceHead>> GetByTransactionUuidsAsync(
        List<string> transactionUuids,
@@ -81,7 +94,7 @@ public interface IInvoiceRepository
         List<string> providerInvoiceNos,
         CancellationToken ct = default);
 
-    Task<List<InvoiceHead>> GetInvoiceHeadsForDashboardAsync(
+    Task<List<InvoiceDashboardAggregateRowDto>> GetInvoiceDashboardAggregatesAsync(
         DateTime fromDate,
         DateTime toDate,
         CancellationToken ct = default);

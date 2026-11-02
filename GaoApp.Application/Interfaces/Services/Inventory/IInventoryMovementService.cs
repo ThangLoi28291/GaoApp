@@ -13,6 +13,14 @@ namespace GaoApp.Application.Interfaces.Services.Inventory;
 /// </summary>
 public interface IInventoryMovementService
 {
+    /// <summary>Posts ordinary receipt inbounds in four save phases; false uses the existing per-movement engine.</summary>
+    Task<bool> TryCreatePurchaseReceiptBatchAsync(IReadOnlyList<CreateInventoryMovementRequest> requests, CancellationToken ct = default)
+        => Task.FromResult(false);
+
+    /// <summary>Prepares inbound provisional evidence inside the caller's transaction, after PreLockBalancesAsync.</summary>
+    Task PreparePurchaseReceiptAsync(IEnumerable<InventoryPostingLockKey> keys, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     Task<InventoryMovementResultDto> CreateDeliveryDispatchAsync(InventoryDeliveryDispatchPosting request, CancellationToken ct = default)
         => throw new NotSupportedException("Typed delivery posting is not implemented.");
     Task<InventoryMovementResultDto> CreateDeliveryReturnAsync(InventoryDeliveryReturnPosting request, CancellationToken ct = default)

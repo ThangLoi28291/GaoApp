@@ -4,8 +4,15 @@
       "commandName": "Project",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development",
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "DataProtection__KeysPath": "C:\\GaoAppData\\DataProtectionKeys"
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "GaoApp.AutoInvoiceWorker - Kiểm tra cấu hình": {
+      "commandName": "Project",
+      "commandLineArgs": "--check-keys --check-credentials",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     }
   }

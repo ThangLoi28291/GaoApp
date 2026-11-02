@@ -45,6 +45,10 @@ internal static class InvoiceManualDetailValidator
                     "Thuế suất VAT không hợp lệ."));
         }
 
+        if (invoiceHead.RevenueTaxPercentage.HasValue && vatRate != 0)
+            return Result<bool>.Failure(Error.Validation("Invoice.RevenueTaxWithVat",
+                "Hóa đơn đang giảm 20% tỷ lệ thuế theo doanh thu; VAT của dòng phải bằng 0."));
+
         return Result<bool>.Success(true);
     }
 

@@ -10,6 +10,7 @@ public interface IInventorySourceCostEvidenceRepository
     Task RejectUnsupportedMirrorAsync(CreateInventoryMovementRequest request, int storeId, CancellationToken ct);
     Task<InventoryDeliveryPostingProof> GetDeliveryDispatchProofAsync(InventoryDeliveryDispatchPosting request, CancellationToken ct);
     Task<InventoryDeliveryPostingProof> GetDeliveryReturnProofAsync(InventoryDeliveryReturnPosting request, CancellationToken ct);
+    Task<decimal> GetAcceptedProvisionalReturnQuantityAsync(int allocationId, CancellationToken ct);
     Task<InventoryTransferPostingProof> GetTransferProofAsync(InventorySourcePreservingTransfer request, CancellationToken ct);
     Task<IReadOnlyList<InventorySourceCostMirrorPart>> GetPostingPartsAsync(int storeId, int transactionId, CancellationToken ct);
     Task AddDebitAsync(InventoryCostBudgetDebit debit, CancellationToken ct);

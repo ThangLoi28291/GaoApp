@@ -33,15 +33,24 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
     }
 
     internal static Task<FullApplicationFixture> StartAsync() => StartWithSecurityAsync(initializeSecurity: true);
+    internal static Task<FullApplicationFixture> StartPurchasingAsync() => StartConfiguredAsync(true, false, enablePurchaseReceiving: true);
+    internal static Task<FullApplicationFixture> StartWithAuditPausedAsync() => StartConfiguredAsync(true, false, enableAuditOutbox: false);
+    internal static Task<FullApplicationFixture> StartInvoicePrivacyAsync() => StartConfiguredAsync(true, false, invoicePrivacyLogs: true);
+    internal string LogOutput => string.Join('\n', output);
+    // Test-only trusted loopback proxy for the phone API's HTTPS requirement.
+    // Browser requests stay HTTP; only the test phone client forwards its scheme.
+    internal static Task<FullApplicationFixture> StartBankNotificationAsync()
+        => StartConfiguredAsync(true, false, trustLoopbackProxy: true);
     internal static Task<FullApplicationFixture> StartDeliveryAsync()
         => StartConfiguredAsync(true, false, enableDeliveryOutbox: false);
     internal static Task<FullApplicationFixture> StartWithInvoiceLibraryAsync() => StartConfiguredAsync(true, true);
     internal string InvoiceLibraryRoot => Path.Combine(runtimeRoot, "uploads", "XML");
+    internal string CustomerServiceDatabasePath => Path.Combine(runtimeRoot,"customer-service.db");
 
     internal static Task<FullApplicationFixture> StartWithSecurityAsync(bool initializeSecurity)
         => StartConfiguredAsync(initializeSecurity, false);
 
-    private static async Task<FullApplicationFixture> StartConfiguredAsync(bool initializeSecurity, bool enableInvoiceLibrary, bool enableDeliveryOutbox = true)
+    private static async Task<FullApplicationFixture> StartConfiguredAsync(bool initializeSecurity, bool enableInvoiceLibrary, bool enableDeliveryOutbox = true, bool trustLoopbackProxy = false, bool invoicePrivacyLogs = false, bool enableAuditOutbox = true, bool enablePurchaseReceiving = false)
     {
         var fixture = new FullApplicationFixture();
         try
@@ -83,18 +92,22 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
                 Storage = new { UploadRoot = Path.Combine(fixture.runtimeRoot, "uploads"), CreateIfMissing = true },
                 InputInvoiceLibrary = new { Enabled = enableInvoiceLibrary, RootPath = "XML" },
                 DataProtection = new { KeysPath = Path.Combine(fixture.runtimeRoot, "keys") },
+                CustomerService = new { DatabasePath = Path.Combine(fixture.runtimeRoot, "customer-service.db") },
+                CustomerChannels = new { Enabled = false },
                 SeedData = new { EnableDemoSeed = false, EnableDefaultAdminSeed = false },
                 TaxCodeLookup = new { Enabled = false },
                 DeliveryOutbox = new { Enabled = enableDeliveryOutbox },
-                Proxy = new { EnableForwardedHeaders = false },
-                Serilog = new { MinimumLevel = new { Default = "Warning" }, WriteTo = new[] { new { Name = "Console" } } }
+                AuditOutbox = new { Enabled = enableAuditOutbox },
+                ReceivingWorkbench = new { Enabled = enablePurchaseReceiving },
+                Proxy = new { EnableForwardedHeaders = trustLoopbackProxy, KnownProxies = trustLoopbackProxy ? new[] { "127.0.0.1", "::1" } : Array.Empty<string>() },
+                Serilog = new { MinimumLevel = new { Default = invoicePrivacyLogs ? "Information" : "Warning" }, WriteTo = new[] { new { Name = "Console" } } }
             };
             await File.WriteAllTextAsync(Path.Combine(contentRoot, "appsettings.json"), JsonSerializer.Serialize(settings));
             // Use the Web build paired with this test artifact, not the running app or a default output folder.
             var webDll = TestApplicationBuild.WebAssemblyPath();
             var start = new ProcessStartInfo("dotnet") { WorkingDirectory = contentRoot, UseShellExecute = false,
                 CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
-            var configurationPrefixes = new[] { "ConnectionStrings", "AppUrl", "Tenant", "Storage", "InputInvoiceLibrary", "DataProtection", "SeedData", "ProductionBootstrap", "Serilog", "Proxy", "Kestrel", "TaxCodeLookup", "AcbCallbackRouting", "DeliveryOutbox" };
+            var configurationPrefixes = new[] { "ConnectionStrings", "AppUrl", "Tenant", "Storage", "InputInvoiceLibrary", "DataProtection", "SeedData", "ProductionBootstrap", "Serilog", "Proxy", "Kestrel", "TaxCodeLookup", "AcbCallbackRouting", "DeliveryOutbox", "Delivery", "AuditOutbox", "Security", "CustomerService", "CustomerChannels", "Assistant" };
             foreach (var key in start.Environment.Keys.ToArray())
                 if (configurationPrefixes.Any(prefix => key.StartsWith(prefix + "__", StringComparison.OrdinalIgnoreCase) || key.StartsWith(prefix + ":", StringComparison.OrdinalIgnoreCase)))
                     start.Environment.Remove(key);
@@ -106,6 +119,16 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
             start.Environment["SeedData__EnableDemoSeed"] = "false";
             start.Environment["SeedData__EnableDefaultAdminSeed"] = "false";
             start.Environment["TaxCodeLookup__Enabled"] = "false";
+            // Keep the real migration/startup path, but never inherit developer secrets or providers.
+            start.Environment["APPDATA"] = Path.Combine(fixture.runtimeRoot, "appdata");
+            start.Environment["LOCALAPPDATA"] = Path.Combine(fixture.runtimeRoot, "localappdata");
+            Directory.CreateDirectory(start.Environment["APPDATA"]!);
+            Directory.CreateDirectory(start.Environment["LOCALAPPDATA"]!);
+            start.Environment["Assistant__Enabled"] = "false";
+            start.Environment["Assistant__StoreSettingsDirectory"] = Path.Combine(fixture.runtimeRoot, "assistant-settings");
+            start.Environment["CustomerChannels__Enabled"] = "false";
+            start.Environment["CustomerChannels__WorkerEnabled"] = "false";
+            start.Environment["GaoAppDevBrowser__Enabled"] = "false";
             fixture.process = new Process { StartInfo = start };
             fixture.process.OutputDataReceived += (_, e) => { if (e.Data is not null) fixture.output.Enqueue(e.Data); };
             fixture.process.ErrorDataReceived += (_, e) => { if (e.Data is not null) fixture.output.Enqueue(e.Data); };
@@ -130,14 +153,54 @@ internal sealed class FullApplicationFixture : IAsyncDisposable
         return await AddAccountCoreAsync(store, permissions);
     }
 
+    internal async Task ConfigureResourceProtectionAsync(IReadOnlyDictionary<string, string> settings)
+    {
+        var start = process?.StartInfo ?? throw new InvalidOperationException("Fixture Web not started.");
+        foreach (var setting in settings) start.Environment["Security__ResourceProtection__" + setting.Key] = setting.Value;
+        await RestartAsync(enableDeliveryOutbox: false);
+    }
+
+    internal async Task ConfigureCustomerChannelsAsync(IReadOnlyDictionary<string,string> settings)
+    {
+        var start=process?.StartInfo??throw new InvalidOperationException("Fixture Web not started.");
+        start.Environment["CustomerChannels__Enabled"]="true";
+        start.Environment["CustomerChannels__WorkerEnabled"]="false";
+        if(!settings.ContainsKey("CredentialDirectory")) {
+            var token=settings.FirstOrDefault(p=>p.Key.EndsWith("__AccessTokenFile",StringComparison.Ordinal)).Value;
+            if(!string.IsNullOrWhiteSpace(token))start.Environment["CustomerChannels__CredentialDirectory"]=Path.GetDirectoryName(token)!;
+        }
+        foreach(var setting in settings)start.Environment["CustomerChannels__"+setting.Key]=setting.Value;
+        await RestartAsync(enableDeliveryOutbox:false);
+    }
+    internal async Task ConfigureCustomerServiceAsync(IReadOnlyDictionary<string,string> settings)
+    {
+        var start=process?.StartInfo??throw new InvalidOperationException("Fixture Web not started.");
+        foreach(var setting in settings)start.Environment["CustomerService__"+setting.Key]=setting.Value;
+        await RestartAsync(enableDeliveryOutbox:false);
+    }
+    internal async Task ConfigureAssistantAsync(IReadOnlyDictionary<string, string> settings)
+    {
+        var start = process?.StartInfo ?? throw new InvalidOperationException("Fixture Web not started.");
+        foreach (var setting in settings) start.Environment["Assistant__" + setting.Key] = setting.Value;
+        await RestartAsync(enableDeliveryOutbox: false);
+    }
+
+    internal async Task ConfigureCspAsync(bool reportOnly)
+    {
+        var start = process?.StartInfo ?? throw new InvalidOperationException("Fixture Web not started.");
+        start.Environment["Security__Csp__ReportOnly"] = reportOnly.ToString();
+        await RestartAsync(enableDeliveryOutbox: false);
+    }
+
     // Restart only the Web process owned by this fixture, preserving SQL, address and cookie keys.
-    internal async Task RestartAsync(bool enableDeliveryOutbox)
+    internal async Task RestartAsync(bool enableDeliveryOutbox, bool? enableAuditOutbox = null)
     {
         var previous = process ?? throw new InvalidOperationException("Fixture Web not started.");
         var start = previous.StartInfo;
         if (!previous.HasExited) { previous.Kill(entireProcessTree: true); await previous.WaitForExitAsync(); }
         previous.Dispose();
         start.Environment["DeliveryOutbox__Enabled"] = enableDeliveryOutbox.ToString();
+        if (enableAuditOutbox.HasValue) start.Environment["AuditOutbox__Enabled"] = enableAuditOutbox.Value.ToString();
         process = new Process { StartInfo = start };
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) output.Enqueue(e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) output.Enqueue(e.Data); };

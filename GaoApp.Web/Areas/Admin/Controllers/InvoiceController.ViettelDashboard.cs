@@ -1,4 +1,6 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -10,6 +12,10 @@ public partial class InvoiceController
         [FromQuery] ViettelInvoiceDashboardQueryDto query,
         CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(InvoiceReadLimits.InvalidQueryMessage);
+        query.NormalizeAndValidate();
+
         var result = await _viettelDashboardService.GetDashboardAsync(
             query,
             ct);
@@ -17,7 +23,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Không tải được dashboard Viettel.");
 
             return RedirectToAction(nameof(Index));

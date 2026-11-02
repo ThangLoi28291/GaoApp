@@ -1,0 +1,47 @@
+@model GaoApp.Application.Storefront.StorefrontProductListPage
+@using GaoApp.Application.Storefront
+@{ ViewData["Title"] = "Hàng đăng website"; }
+<div class="container-fluid py-3">
+    <h1 class="h3">Hàng đăng website</h1>
+    <p>Chọn hàng, nội dung và đơn vị bán cho website. Hàng mới mặc định chưa đăng; website vẫn đang đóng.</p>
+    <form method="get" class="row g-2 mb-3">
+        <div class="col-md-6"><label for="search" class="form-label">Tên hoặc SKU</label><input id="search" name="Search" value="@Model.Query.Search" maxlength="200" class="form-control" /></div>
+        <div class="col-md-3"><label for="publication" class="form-label">Trạng thái</label><select id="publication" name="Publication" class="form-select">
+            @foreach (var filter in Enum.GetValues<StorefrontPublicationFilter>()) { <option value="@filter" selected="@(Model.Query.Publication == filter)">@(filter switch { StorefrontPublicationFilter.Published => "Đã đăng", StorefrontPublicationFilter.Hidden => "Đang ẩn", StorefrontPublicationFilter.Unconfigured => "Chưa cấu hình", _ => "Tất cả" })</option> }
+        </select></div>
+        <div class="col-md-3 align-self-end"><button class="btn btn-primary">Tìm / lọc</button></div>
+    </form>
+    <p>@Model.TotalCount sản phẩm · Trang @Model.Query.Page</p>
+    @if (Model.CanManage)
+    {
+        <form id="bulkPublication" asp-action="Bulk" method="post" class="d-flex gap-2 mb-3">
+            <button class="btn btn-outline-primary" name="publish" value="true">Đăng các hàng đã chọn</button>
+            <button class="btn btn-outline-secondary" name="publish" value="false">Ẩn các hàng đã chọn</button>
+        </form>
+    }
+    @if (Model.Items.Count == 0) { <div class="alert alert-info" role="status">Không có sản phẩm phù hợp.</div> }
+    else
+    {
+        <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Chọn</th><th>Sản phẩm</th><th>Trạng thái website</th><th>Nguồn hàng</th><th>Thao tác</th></tr></thead><tbody>
+        @for (var i = 0; i < Model.Items.Count; i++)
+        {
+            var item = Model.Items[i];
+            <tr>
+                <td>@if (Model.CanManage) {
+                    <input type="checkbox" name="selectedProductIds" value="@item.ProductId" form="bulkPublication" aria-label="Chọn @item.Name" />
+                    <input type="hidden" name="items[@i].ProductId" value="@item.ProductId" form="bulkPublication" />
+                    <input type="hidden" name="items[@i].Version" value="@item.Version" form="bulkPublication" />
+                }</td>
+                <td><a asp-action="Edit" asp-route-id="@item.ProductId">@(item.DisplayName ?? item.Name)</a><div class="small">@item.Name · @item.DisplayGroup</div></td>
+                <td>@(item.IsPublished ? "Đã đăng" : item.IsConfigured ? "Đang ẩn" : "Chưa cấu hình")</td>
+                <td>@(item.IsSellable ? "Được bán" : "Ngừng hoạt động / ngừng bán")</td>
+                <td>@if (Model.CanManage) { <form asp-action="Publication" method="post"><input type="hidden" name="ProductId" value="@item.ProductId" /><input type="hidden" name="Version" value="@item.Version" /><input type="hidden" name="IsPublished" value="@((!item.IsPublished).ToString().ToLowerInvariant())" /><button class="btn btn-sm btn-outline-primary">@(item.IsPublished ? "Ẩn website" : "Đăng website")</button></form> }</td>
+            </tr>
+        }
+        </tbody></table></div>
+    }
+    <nav aria-label="Trang kết quả" class="d-flex gap-3">
+        @if (Model.Query.Page > 1) { <a asp-action="Index" asp-route-Search="@Model.Query.Search" asp-route-Publication="@Model.Query.Publication" asp-route-Page="@(Model.Query.Page - 1)" asp-route-PageSize="@Model.Query.PageSize">Trang trước</a> }
+        @if ((long)Model.Query.Page * Model.Query.PageSize < Model.TotalCount) { <a asp-action="Index" asp-route-Search="@Model.Query.Search" asp-route-Publication="@Model.Query.Publication" asp-route-Page="@(Model.Query.Page + 1)" asp-route-PageSize="@Model.Query.PageSize">Trang sau</a> }
+    </nav>
+</div>

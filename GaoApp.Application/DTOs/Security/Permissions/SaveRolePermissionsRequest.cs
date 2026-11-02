@@ -5,7 +5,7 @@ namespace GaoApp.Application.DTOs.Security.Permissions;
 /// <summary>
 /// Request lưu danh sách permission được chọn cho một role.
 /// </summary>
-public class SaveRolePermissionsRequest
+public class SaveRolePermissionsRequest : GaoApp.Application.DTOs.Security.SecurityActionConfirmation
 {
     [Required]
     public int RoleId { get; set; }

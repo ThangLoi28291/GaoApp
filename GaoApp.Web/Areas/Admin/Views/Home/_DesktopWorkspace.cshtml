@@ -1,0 +1,80 @@
+@model System.Collections.Generic.IReadOnlyList<GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminNavigationNode>
+@using GaoApp.Web.Areas.Admin.ViewModels.Commerce
+@using GaoApp.Web.Services
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject AdminNavigationProvider Navigation
+@inject IAuthorizationService WorkspaceAuthorization
+@{
+    var navigation = await Navigation.GetAsync(ViewContext);
+    var canSales = (await WorkspaceAuthorization.AuthorizeAsync(User, null, PermissionCodes.Report.Sales.View)).Succeeded;
+    var destinations = navigation.Destinations.Where(node => !AdminNavigationSnapshot.IsHomePath(navigation.LocalPath(node))).ToArray();
+    var quick = Model.Concat(destinations).DistinctBy(node => node.Id)
+        .Where(node => !AdminNavigationSnapshot.IsHomePath(navigation.LocalPath(node))).Take(6).ToArray();
+    var reportMenu = canSales ? destinations.FirstOrDefault(node => new[] { "/admin/reports/overview", "/admin/reports/sales" }
+        .Contains(navigation.LocalPath(node), StringComparer.OrdinalIgnoreCase)) : null;
+    var fullName = User.FindFirst("full_name")?.Value;
+}
+
+@if (!canSales)
+{
+    @await Html.PartialAsync("~/Areas/Admin/Views/Home/_DesktopEmployeeWorkspace.cshtml", navigation)
+}
+else
+{
+<main class="dwh-workspace" data-desktop-home aria-labelledby="desktopHomeTitle">
+    <header class="dwh-header">
+        <div><p class="dwh-eyebrow">KHÔNG GIAN LÀM VIỆC</p><h1 id="desktopHomeTitle">Bàn làm việc</h1>
+            <p class="dwh-subtitle">@(string.IsNullOrWhiteSpace(fullName) ? "Chào bạn." : $"Chào {fullName}.") Chọn công việc để bắt đầu ngày mới.</p></div>
+        <div class="dwh-header-tools"><span class="dwh-date"><i class="bx bx-calendar" aria-hidden="true"></i><time data-dwh-today>Hôm nay</time></span></div>
+    </header>
+
+    @if (quick.Length > 0)
+    {
+        <section class="dwh-quick-section" aria-labelledby="desktopHomeQuickTitle">
+            <div class="dwh-section-heading"><div><h2 id="desktopHomeQuickTitle">Công việc nhanh</h2><p>Ưu tiên mục đã ghim và thứ tự menu của bạn.</p></div><span class="dwh-section-tag">@quick.Length lối tắt</span></div>
+            <div class="dwh-quick-grid">
+                @foreach (var item in quick)
+                {
+                    <a class="dwh-quick-card" href="@item.Href" data-menu-id="@item.Id" data-dwh-quick>
+                        <span class="dwh-quick-icon"><i class="@item.Icon" aria-hidden="true"></i></span>
+                        <span>@item.Title</span><i class="bx bx-up-arrow-alt dwh-open-arrow" aria-hidden="true"></i>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (canSales)
+    {
+        <section class="dwh-business" data-dwh-business data-url="@Url.Action("GetData", "SalesExecutiveReport", new { area = "Admin" })" aria-labelledby="desktopHomeBusinessTitle" aria-busy="false">
+            <div class="dwh-section-heading"><div><h2 id="desktopHomeBusinessTitle">Nhịp kinh doanh</h2><p data-dwh-period>Toàn cửa hàng · Giờ Việt Nam</p></div>
+                <div class="dwh-business-tools"><label class="visually-hidden" for="desktopHomePeriod">Khoảng thời gian báo cáo</label>
+                    <select id="desktopHomePeriod"><option value="today">Hôm nay</option><option value="week">7 ngày gần nhất</option><option value="month">Tháng này</option></select>
+                    <button type="button" class="dwh-icon-button" data-dwh-refresh aria-label="Làm mới tổng quan kinh doanh"><i class="bx bx-refresh" aria-hidden="true"></i></button>
+                </div>
+            </div>
+            <div class="dwh-status" data-dwh-status role="status" aria-live="polite"><span data-dwh-message>Đang chuẩn bị tổng quan kinh doanh…</span><button type="button" data-dwh-reload data-csp-action="reload" hidden>Tải lại trang</button></div>
+            <div class="dwh-business-content" data-dwh-content hidden>
+                <div class="dwh-kpis">
+                    <article class="dwh-kpi dwh-kpi--primary"><span><i class="bx bx-line-chart" aria-hidden="true"></i>Doanh thu thuần</span><strong data-dwh-metric="netSales">—</strong><small>Sau giảm giá và giá trị trả hàng</small></article>
+                    <article class="dwh-kpi"><span><i class="bx bx-receipt" aria-hidden="true"></i>Đơn bán</span><strong data-dwh-metric="salesOrders">—</strong><small>Đơn đã ghi nhận trong kỳ</small></article>
+                    <article class="dwh-kpi"><span><i class="bx bx-wallet" aria-hidden="true"></i>Trung bình / đơn</span><strong data-dwh-metric="aov">—</strong><small>Doanh thu sau giảm giá / đơn bán</small></article>
+                    <article class="dwh-kpi"><span><i class="bx bx-undo" aria-hidden="true"></i>Giá trị trả hàng</span><strong data-dwh-metric="returns">—</strong><small><span data-dwh-metric="returnCount">—</span> phiếu trả · <span data-dwh-metric="voidCount">—</span> đơn hủy</small></article>
+                </div>
+                <div class="dwh-insights">
+                    <article class="dwh-panel dwh-trend"><div class="dwh-panel-heading"><h3>Diễn biến doanh thu</h3><span>Doanh thu thuần · ₫</span></div><div data-dwh-chart></div>
+                        <details class="dwh-chart-details"><summary>Xem số liệu biểu đồ</summary><div class="dwh-table-scroll"><table><thead><tr><th scope="col">Thời điểm</th><th scope="col">Doanh thu thuần</th><th scope="col">Đơn bán</th></tr></thead><tbody data-dwh-trend-rows></tbody></table></div></details>
+                    </article>
+                    <article class="dwh-panel dwh-top-products"><div class="dwh-panel-heading"><h3>Sản phẩm bán nổi bật</h3><span>Theo doanh số bán</span></div><ol data-dwh-products></ol><p class="dwh-muted" data-dwh-no-products hidden>Chưa có dữ liệu sản phẩm bán trong kỳ.</p></article>
+                </div>
+                <div class="dwh-report-footer"><span>Cập nhật <time data-dwh-generated>—</time></span>
+                    @if (reportMenu is not null) { <a href="@reportMenu.Href" data-menu-id="@reportMenu.Id">Xem báo cáo chi tiết<i class="bx bx-right-arrow-alt" aria-hidden="true"></i></a> }
+                </div>
+            </div>
+            <noscript><p class="dwh-status">Bật JavaScript để tải số liệu kinh doanh. Bạn vẫn có thể mở các lối tắt và menu cửa hàng.</p></noscript>
+        </section>
+    }
+
+</main>
+}

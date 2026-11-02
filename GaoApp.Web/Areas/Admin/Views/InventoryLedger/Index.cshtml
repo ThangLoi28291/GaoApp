@@ -29,6 +29,7 @@
 
 @section VendorStyles {
     <link href="~/Admin/css/inventory-ledger.css" rel="stylesheet" asp-append-version="true" />
+    <link href="~/Admin/css/inventory-lookup.mobile.css" rel="stylesheet" asp-append-version="true" />
 }
 
 <div class="inventory-ledger-page gds-page"
@@ -37,6 +38,18 @@
      data-data-url="@Url.Action("GetData", "InventoryLedger", new { area = "Admin" })"
      data-quick-view-url="@Url.Action("GetQuickView", "InventoryLedger", new { area = "Admin" })"
      data-warehouse-url="/admin/api/warehouses/select2?term=">
+
+    <section class="ledger-period d-md-none" data-ledger-period
+             data-url="@Url.Action("GetPeriod", "InventoryLedger", new { area = "Admin" })"
+             aria-label="Tổng đầu và cuối kỳ theo sản phẩm tại kho">
+        <div class="ledger-period__heading"><i class="bx bx-package" aria-hidden="true"></i><strong>Tổng đầu / cuối kỳ</strong></div>
+        <label class="form-label" for="ledgerPeriodStock">Sản phẩm và kho</label>
+        <select class="form-select" id="ledgerPeriodStock" aria-describedby="ledgerPeriodHelp" disabled>
+            <option>Đang tải giao dịch…</option>
+        </select>
+        <p id="ledgerPeriodHelp" class="ledger-period__help">Chọn từ giao dịch trên trang hoặc mở Xem nhanh. Tổng kỳ bao gồm mọi loại giao dịch, không phụ thuộc phân trang hay bộ lọc chứng từ / trạng thái.</p>
+        <div data-period-result aria-live="polite">Chọn sản phẩm để xem tổng kỳ.</div>
+    </section>
 
     <section aria-label="Tổng quan giao dịch kho">
         <div class="row row-cols-2 row-cols-xl-4 g-3">
@@ -133,7 +146,7 @@
                     <label for="ledgerSearchScope" class="form-label mt-2">Tìm theo</label>
                     <select id="ledgerSearchScope" class="form-select">
                         <option value="product">Sản phẩm / SKU / barcode</option>
-                        <option value="reference">Mã chứng từ</option>
+                        <option value="reference">Chứng từ / hóa đơn XML</option>
                         <option value="note">Ghi chú</option>
                         <option value="all">Tất cả (nên chọn khoảng ngày)</option>
                     </select>
@@ -193,8 +206,8 @@
                         <input type="date" id="ledgerToDate" class="form-control" />
                     </div>
                     <div>
-                        <label for="ledgerReferenceCode" class="form-label">Mã chứng từ</label>
-                        <input type="text" id="ledgerReferenceCode" class="form-control" placeholder="Ví dụ: NK-..." />
+                        <label for="ledgerReferenceCode" class="form-label">Mã chứng từ / hóa đơn XML</label>
+                        <input type="text" id="ledgerReferenceCode" class="form-control" placeholder="Mã phiếu, số hoặc ký hiệu XML..." />
                     </div>
                     <div>
                         <label for="ledgerSortBy" class="form-label">Sắp xếp</label>
@@ -395,8 +408,8 @@
                     <input type="date" id="ledgerMobileToDate" class="form-control" />
                 </div>
                 <div class="col-12">
-                    <label for="ledgerMobileReferenceCode" class="form-label">Mã chứng từ</label>
-                    <input type="text" id="ledgerMobileReferenceCode" class="form-control" />
+                    <label for="ledgerMobileReferenceCode" class="form-label">Mã chứng từ / hóa đơn XML</label>
+                    <input type="text" id="ledgerMobileReferenceCode" class="form-control" placeholder="Mã phiếu, số hoặc ký hiệu XML..." />
                 </div>
                 <div class="col-7">
                     <label for="ledgerMobileSortBy" class="form-label">Sắp xếp</label>
@@ -430,4 +443,6 @@
 
 @section PageScripts {
     <script src="~/Admin/js/inventory-ledger.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/inventory-lookup.mobile.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/inventory-ledger-period.js" asp-append-version="true"></script>
 }

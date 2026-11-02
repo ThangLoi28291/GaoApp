@@ -1,0 +1,82 @@
+/* UI-20: phone presentation. Native assistant jobs, context, focus and overlay ownership stay native. */
+@media screen and (max-width: 767.98px) {
+  #gaoAssistant[data-assistant-widget-phone] {
+    --ga-green: #2463eb; --ga-ink: #172d4d; --ga-muted: #62758e; --ga-border: #dce5f0; --ga-soft: #f3f6fb;
+    color-scheme: light;
+  }
+  #gaoAssistant[data-assistant-widget-phone] [hidden] { display: none !important; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-launch { border-radius: 18px; box-shadow: 0 8px 24px #172d4d26; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel,
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel.ga-expanded {
+    top: calc(var(--gao-mobile-visible-top,var(--ga-viewport-top,0px)) + max(8px,env(safe-area-inset-top)));
+    bottom: auto; left: max(8px,env(safe-area-inset-left)); right: max(8px,env(safe-area-inset-right)); width: auto;
+    height: max(0px,calc(var(--gao-mobile-visible-height,var(--ga-viewport-height,100dvh)) - var(--gao-mobile-dock-clearance,0px) - max(8px,env(safe-area-inset-top)) - max(8px,env(safe-area-inset-bottom))));
+    max-width: none; min-height: 0; border: 1px solid #dce5f0; border-radius: 20px;
+    background: #fff; color: #172d4d; box-shadow: 0 12px 40px #172d4d26; font-size: 14px; line-height: 1.5;
+  }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel * { min-width: 0; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-header { padding: 12px; gap: 8px; background: #f5f8ff; border-color: #dce5f0; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-heading { gap: 8px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-heading strong { color: #172d4d; font-size: 15px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-connection { white-space: normal; line-height: 1.4; align-items: flex-start; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-brand { width: 32px; height: 32px; border-radius: 10px; background: #eaf1ff; color: #2463eb; font-size: 16px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaExpand,
+  #gaoAssistant[data-assistant-widget-phone] .ga-history-toggle > span { display: none; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel :is(button,a):focus-visible,
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel :is(input,textarea,select):focus-visible { outline: 3px solid #87adff; outline-offset: 2px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel button { min-width: 44px; min-height: 44px; border-radius: 12px; font-size: 13px; color: #2459be; border-color: #dce5f0; background: #f5f8ff; white-space: normal; touch-action: manipulation; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel button:disabled { opacity: .5; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-header-actions button { width: 44px; padding: 0; background: #fff; border-color: #dce5f0; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-header-actions button[aria-expanded=true] { color: #2459be; background: #eaf1ff; border-color: #bdd0fa; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel button[aria-pressed=true] { color: #fff; background: #2463eb; border-color: #2463eb; font-weight: 650; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-danger { color: #b33e48; background: #fff5f5; border-color: #f0d7dc; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel :is(input,textarea,select) { min-width: 0; max-width: 100%; border-color: #d2ddea; border-radius: 11px; background: #fff; color: #172d4d; font-size: 16px; line-height: 1.4; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel :is(input:not([type=checkbox]):not([type=radio]),select) { min-height: 46px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel textarea { min-height: 56px; max-height: 112px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-context { padding: 9px 12px; background: #fff; border-color: #e5ecf5; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-store { color: #2459be; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-thread-heading { padding: 10px 12px 4px; gap: 8px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-thread-heading button { min-height: 44px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-messages { padding: 8px 12px 12px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-message { margin: 8px 18px 8px 0; padding: 12px; border-radius: 15px; background: #f3f6fb; color: #172d4d; font-size: 14px; line-height: 1.65; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-message[data-role=user] { margin-right: 0; margin-left: 24px; background: #eaf1ff; color: #244b7b; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-message :is(summary,a) { color: #2459be; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-history,
+  #gaoAssistant[data-assistant-widget-phone] .ga-screen-view { padding: 14px 12px; gap: 12px; background: #f3f6fb; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-history h3,
+  #gaoAssistant[data-assistant-widget-phone] .ga-screen-heading h3 { font-size: 15px; line-height: 1.45; color: #172d4d; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-history-heading { flex-wrap: wrap; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-history-actions { gap: 8px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaManage,
+  #gaoAssistant[data-assistant-widget-phone] .ga-task-preview { padding: 13px; border-color: #dce5f0; border-radius: 14px; background: #fff; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-screen-entry { padding-inline: 12px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-footer { padding: 10px 12px max(10px,env(safe-area-inset-bottom)); border-color: #dce5f0; background: #fff; max-height: 60%; overflow-y: auto; overscroll-behavior: contain; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel :is(#gaSend,.ga-task-apply,.ga-correction-send) { color: #fff; background: #2463eb; border-color: #2463eb; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel :is(#gaSend,.ga-task-apply,.ga-correction-send):hover:not(:disabled) { background: #1c51ca; border-color: #1c51ca; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-compose-tools { gap: 8px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-compose-tools button { padding: 9px 11px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaInputHint { display: none; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-status[data-tone=error] { color: #a33a43; background: #fff4f4; border-color: #f0d7dc; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-scanner { padding: 10px; background: #f3f6fb; border-color: #dce5f0; border-radius: 13px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-quote-label { color: #2459be; background: #eaf1ff; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-quote :is(th,td) { padding: 10px 8px; font-size: 12px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-quote td { color: #2459be; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-quote td.ga-price-unavailable { color: #80622d; font-size: 12px; font-weight: 400; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-product-tags span,
+  #gaoAssistant[data-assistant-widget-phone] .ga-choice-number { color: #2459be; background: #eaf1ff; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction { inset: auto; top: calc(var(--gao-mobile-visible-top,0px) + max(8px,env(safe-area-inset-top))); left: max(8px,env(safe-area-inset-left)); right: max(8px,env(safe-area-inset-right)); width: auto; max-width: none; max-height: calc(var(--gao-mobile-visible-height,100dvh) - max(8px,env(safe-area-inset-top)) - max(8px,env(safe-area-inset-bottom))); margin: 0; padding: 16px; color: #172d4d; background: #fff; border-color: #dce5f0; border-radius: 18px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction-header { gap: 12px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction h3 { font-size: 19px; line-height: 1.4; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction :is(input,select,textarea) { font-size: 16px; min-height: 46px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction-results article { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction-search { flex-wrap: wrap; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-correction-search input { flex: 1 1 160px; }
+}
+@media screen and (max-width: 767.98px) and (max-height: 520px) {
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel .ga-header { padding-block: 6px; }
+  #gaoAssistant[data-assistant-widget-phone] .ga-context { padding-block: 4px; }
+  #gaoAssistant[data-assistant-widget-phone] #gaPanel textarea { min-height: 46px; max-height: 76px; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  #gaoAssistant[data-assistant-widget-phone] *, #gaoAssistant[data-assistant-widget-phone] *::before, #gaoAssistant[data-assistant-widget-phone] *::after { transition: none !important; animation: none !important; }
+}

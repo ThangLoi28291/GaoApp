@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
@@ -90,7 +90,7 @@ public sealed class InvoiceBuyerSelfServiceServiceTests
             await h.Service.CreateLinkAsync(100);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("Conflict", result.Error.Code);
+        Assert.Equal("Closed", result.Error.Code);
         Assert.Empty(h.Requests.Items);
     }
 
@@ -183,7 +183,7 @@ public sealed class InvoiceBuyerSelfServiceServiceTests
     }
 
     [Fact]
-    public async Task At_two_hour_boundary_page_is_read_only_and_post_is_rejected()
+    public async Task At_two_hour_boundary_page_is_empty_and_post_is_rejected()
     {
         await using var h = CreateHarness();
 
@@ -200,6 +200,11 @@ public sealed class InvoiceBuyerSelfServiceServiceTests
         Assert.True(page.IsSuccess);
         Assert.True(page.Value.IsExpired);
         Assert.False(page.Value.CanEdit);
+        Assert.False(page.Value.CanView);
+        Assert.Equal(0, page.Value.OrderId);
+        Assert.Null(page.Value.BuyerName);
+        Assert.Null(page.Value.BuyerCitizenId);
+        Assert.Equal(0, page.Value.GrandTotal);
 
         var submit =
             await h.Service.SubmitAsync(
@@ -260,6 +265,125 @@ public sealed class InvoiceBuyerSelfServiceServiceTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal("NotFound", result.Error.Code);
+    }
+
+    [Fact]
+    public async Task Expired_legacy_link_with_long_stored_expiry_does_not_load_buyer_heads_or_create_new_link()
+    {
+        await using var h = CreateHarness();
+        var link = await h.Service.CreateLinkAsync(100);
+        h.Requests.Items.Single().ExpiresAtUtc = SaleAtUtc.AddDays(5);
+        var reads = h.Requests.HeadReads;
+        h.Clock.NowUtc = SaleAtUtc.AddHours(2);
+        var page = await h.Service.GetAsync(link.Value.Token);
+        Assert.True(page.Value.IsExpired);
+        Assert.False(page.Value.CanView);
+        Assert.Null(page.Value.OrderNumber);
+        Assert.Null(page.Value.BuyerEmail);
+        Assert.Equal(reads, h.Requests.HeadReads);
+        Assert.False((await h.Service.CreateLinkAsync(100)).IsSuccess);
+        Assert.False((await h.Service.ReplaceLinkAsync(100)).IsSuccess);
+        Assert.Null(h.Requests.Items.Single().RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task Replacement_revokes_all_old_copies_without_extending_sale_deadline()
+    {
+        await using var h = CreateHarness();
+        var first = await h.Service.CreateLinkAsync(100);
+        var second = await h.Service.CreateLinkAsync(100);
+        Assert.True((await h.Service.GetAsync(first.Value.Token)).Value.CanView);
+        var replacement = await h.Service.ReplaceLinkAsync(100);
+        Assert.True(replacement.IsSuccess);
+        Assert.Equal(first.Value.ExpiresAtUtc, replacement.Value.ExpiresAtUtc);
+        Assert.Equal(DateTimeKind.Utc, replacement.Value.ExpiresAtUtc.Kind);
+        Assert.False((await h.Service.GetAsync(first.Value.Token)).IsSuccess);
+        Assert.False((await h.Service.GetAsync(second.Value.Token)).IsSuccess);
+        Assert.True((await h.Service.GetAsync(replacement.Value.Token)).Value.CanView);
+    }
+
+    [Theory]
+    [InlineData(InvoiceProviderStatus.Issuing)]
+    [InlineData(InvoiceProviderStatus.IssuedWaitingNumber)]
+    [InlineData(InvoiceProviderStatus.Issued)]
+    [InlineData(InvoiceProviderStatus.EmailSent)]
+    public async Task Processing_and_issued_invoices_return_no_public_buyer_or_order_data(InvoiceProviderStatus status)
+    {
+        await using var h = CreateHarness();
+        var link = await h.Service.CreateLinkAsync(100);
+        var head = await h.Context.InvoiceHeads.SingleAsync();
+        head.ProviderStatus = status;
+        head.BuyerName = "PRIVATE";
+        head.BuyerCitizenId = "PRIVATE-ID";
+        await h.Context.SaveChangesAsync();
+        var page = (await h.Service.GetAsync(link.Value.Token)).Value;
+        Assert.False(page.CanView);
+        Assert.Null(page.BuyerName);
+        Assert.Null(page.BuyerCitizenId);
+        Assert.Null(page.OrderNumber);
+        Assert.Equal(0, page.GrandTotal);
+        Assert.False((await h.Service.SubmitAsync(link.Value.Token, new())).IsSuccess);
+        Assert.Equal(0, h.BuyerService.Calls);
+        Assert.False((await h.Service.ReplaceLinkAsync(100)).IsSuccess);
+    }
+
+    [Theory]
+    [InlineData(OrderStatus.Cancelled)]
+    [InlineData(OrderStatus.Voided)]
+    [InlineData(OrderStatus.Refunded)]
+    public async Task Non_completed_order_blocks_old_links_before_loading_heads(OrderStatus status)
+    {
+        await using var h = CreateHarness();
+        var link = await h.Service.CreateLinkAsync(100);
+        var order = await h.Context.Orders.SingleAsync();
+        order.Status = status;
+        await h.Context.SaveChangesAsync();
+        var reads = h.Requests.HeadReads;
+        Assert.False((await h.Service.GetAsync(link.Value.Token)).Value.CanView);
+        Assert.Equal(reads, h.Requests.HeadReads);
+        Assert.False((await h.Service.SubmitAsync(link.Value.Token, new())).IsSuccess);
+        Assert.Equal(0, h.BuyerService.Calls);
+    }
+
+    [Fact]
+    public async Task Request_order_store_mismatch_and_revoked_link_are_generic_not_found()
+    {
+        await using var h = CreateHarness();
+        var link = await h.Service.CreateLinkAsync(100);
+        var row = h.Requests.Items.Single();
+        row.StoreId = 2;
+        Assert.Equal("NotFound", (await h.Service.GetAsync(link.Value.Token)).Error.Code);
+        row.StoreId = 1;
+        row.RevokedAtUtc = SaleAtUtc;
+        Assert.Equal("NotFound", (await h.Service.GetAsync(link.Value.Token)).Error.Code);
+        Assert.Equal("NotFound", (await h.Service.SubmitAsync(link.Value.Token, new())).Error.Code);
+    }
+
+    [Fact]
+    public async Task Submit_rechecks_deadline_after_waiting_for_store_lock()
+    {
+        await using var h = CreateHarness();
+        var link = await h.Service.CreateLinkAsync(100);
+        h.Requests.OnLock = () => h.Clock.NowUtc = SaleAtUtc.AddHours(2);
+        Assert.False((await h.Service.SubmitAsync(link.Value.Token, new())).IsSuccess);
+        Assert.Equal(0, h.BuyerService.Calls);
+    }
+
+    [Theory]
+    [InlineData(-1L, true)]
+    [InlineData(0L, false)]
+    [InlineData(1L, false)]
+    public async Task Read_and_write_share_the_same_absolute_expiry_boundary(long ticks, bool allowed)
+    {
+        await using var h = CreateHarness();
+        var link = await h.Service.CreateLinkAsync(100);
+        h.Clock.NowUtc = SaleAtUtc.AddHours(2).AddTicks(ticks);
+        var page = (await h.Service.GetAsync(link.Value.Token)).Value;
+        Assert.Equal(allowed, page.CanView);
+        var result = await h.Service.SubmitAsync(link.Value.Token, new()
+            { BuyerType = "Individual", BuyerName = "Boundary buyer", BuyerAddress = "Boundary address" });
+        Assert.Equal(allowed, result.IsSuccess);
+        Assert.Equal(allowed ? 1 : 0, h.BuyerService.Calls);
     }
 
     private static Harness CreateHarness(
@@ -328,7 +452,6 @@ public sealed class InvoiceBuyerSelfServiceServiceTests
             new InvoiceBuyerSelfServiceService(
                 requests,
                 new OrderRepository(db),
-                new InvoiceRepository(db),
                 buyer,
                 new TestUnitOfWork(db),
                 tenant,
@@ -373,6 +496,29 @@ public sealed class InvoiceBuyerSelfServiceServiceTests
         InMemoryAppDbContext db)
         : IInvoiceBuyerSelfServiceRepository
     {
+        public int HeadReads { get; private set; }
+        public Action? OnLock { get; set; }
+        public Task LockStoreAsync(int storeId, CancellationToken ct = default)
+        {
+            OnLock?.Invoke();
+            return Task.CompletedTask;
+        }
+        public Task<List<InvoiceHead>> GetHeadsForAccessAsync(int storeId, int orderId, CancellationToken ct = default)
+        {
+            HeadReads++;
+            return db.InvoiceHeads.Where(x => x.StoreId == storeId && x.OrderId == orderId && x.OriginalInvoiceHeadId == null).ToListAsync(ct);
+        }
+        public Task RevokeForOrderAsync(int storeId, int orderId, DateTime nowUtc, CancellationToken ct = default)
+        {
+            foreach (var row in Items.Where(x => x.StoreId == storeId && x.OrderId == orderId && x.RevokedAtUtc == null))
+                row.RevokedAtUtc = nowUtc;
+            return Task.CompletedTask;
+        }
+        public Task MarkSubmittedAsync(int storeId, int requestId, DateTime nowUtc, CancellationToken ct = default)
+        {
+            Items.Single(x => x.StoreId == storeId && x.Id == requestId).LastSubmittedAtUtc = nowUtc;
+            return Task.CompletedTask;
+        }
         public List<InvoiceBuyerSelfServiceRequest> Items
         {
             get;

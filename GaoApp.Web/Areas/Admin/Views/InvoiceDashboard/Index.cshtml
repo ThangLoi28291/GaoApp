@@ -140,7 +140,7 @@
                 <div class="metric-card">
                     <div class="metric-value">@d.TotalInvoices.ToString("N0")</div>
                     <div class="metric-label">Tổng hóa đơn</div>
-                    <div class="metric-sub">@d.FromDate:dd/MM/yyyy - @d.ToDate:dd/MM/yyyy</div>
+                    <div class="metric-sub">@d.FromDate.ToString("dd/MM/yyyy") - @d.ToDate.ToString("dd/MM/yyyy")</div>
                 </div>
             </div>
 
@@ -255,7 +255,7 @@
                         <table class="table table-hover dashboard-table mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Thời gian UTC</th>
+                                    <th>Thời gian</th>
                                     <th>Hóa đơn</th>
                                     <th>API</th>
                                     <th>Lỗi</th>
@@ -276,7 +276,7 @@
                                     foreach (var err in d.RecentErrors)
                                     {
                                         <tr>
-                                            <td>@err.StartedAtUtc.ToString("dd/MM HH:mm")</td>
+                                            <td>@err.StartedAtUtc.ToVietnamTime().ToString("dd/MM HH:mm")</td>
                                             <td>
                                                 <a asp-area="Admin"
                                                        asp-controller="Invoice"
@@ -311,3 +311,11 @@
     }
 
 </div>
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-workspace.mobile.css" asp-append-version="true" />
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-workspace.mobile.js" asp-append-version="true"></script>
+}

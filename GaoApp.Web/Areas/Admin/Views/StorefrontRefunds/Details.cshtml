@@ -1,0 +1,74 @@
+@using GaoApp.Domain.Storefront
+@model GaoApp.Web.Areas.Admin.Models.StorefrontRefundPage
+@{
+    var c = Model.Cancellation;
+    ViewData["Title"] = "Hủy / hoàn đơn " + c.Code;
+    string State(StorefrontRefundState state) => state switch { StorefrontRefundState.Requested => "Chờ xem xét", StorefrontRefundState.Approved => "Đã duyệt, chờ thực hoàn", StorefrontRefundState.Executed => "Đã xác nhận thực hoàn", StorefrontRefundState.Rejected => "Cần đối soát lại", _ => "Chưa có khoản hoàn" };
+    string Phase(StorefrontOrderPhase phase) => phase switch { StorefrontOrderPhase.AwaitingPayment => "Chờ thanh toán", StorefrontOrderPhase.AwaitingPreparation => "Chờ chuẩn bị", StorefrontOrderPhase.Preparing => "Đang chuẩn bị", StorefrontOrderPhase.Shipping => "Đang giao", StorefrontOrderPhase.Delivered => "Đã giao", StorefrontOrderPhase.Completed => "Đã ghi bán", _ => "Đã hủy" };
+    string Verification(string method) => method switch { "RECORDED_CASH_OUT" => "Khoản chi tiền mặt đã ghi nhận", "STAFF_VERIFIED_BANK_DEBIT" => "Nhân viên xác nhận khoản chi ngân hàng thực tế", "STAFF_VERIFIED_CASH_TREASURY" => "Nhân viên xác nhận khoản chi tiền mặt thực tế", _ => method };
+}
+<main class="sf-control-page" id="sf-control-page" data-order-id="@c.OrderId" data-revision="@c.Revision" data-version="@c.Version" data-store-id="@Model.StoreId" data-actor-id="@Model.ActorUserId">
+    <header class="sf-control-heading"><a href="/admin/storefront/refunds">← Danh sách hồ sơ</a><p class="sf-control-eyebrow">Đơn website · @c.Code</p><h1>Hủy đơn &amp; hoàn tiền</h1><p><strong>@Phase(c.Phase)</strong></p><p><a href="/admin/storefront/fulfillment/@c.OrderId">Xem chuẩn bị, giao và nhận lại hàng</a></p><button id="sf-control-refresh" class="sf-control-button sf-control-secondary" type="button">Cập nhật hồ sơ</button></header>
+    @Html.AntiForgeryToken()
+    <div id="sf-control-status" class="sf-control-notice" role="status" aria-live="polite" hidden></div>
+    <aside id="sf-control-pending" class="sf-control-notice sf-control-warning" hidden aria-label="Thao tác chưa rõ kết quả"></aside>
+    <section class="sf-control-card" aria-labelledby="sf-cancel-heading"><h2 id="sf-cancel-heading">Yêu cầu hủy</h2>
+        @if (c.BlockedReason is not null) { <p class="sf-control-notice sf-control-warning">@c.BlockedReason</p> }
+        @if (c.ReturnAuthorised) { <p class="sf-control-notice">Đã chấp thuận thu hồi. Chỉ hoàn tất hủy sau khi nhận lại đủ hàng thực tế theo nguồn đã xuất.</p> }
+        @if (c.PendingRequestId.HasValue) { <p><strong>Lý do khách gửi</strong></p><p class="sf-control-prewrap">@c.RequestedReason</p> }
+        else if (!c.NeedsDeliveryConflictReview) { <p>Không có yêu cầu hủy đang chờ duyệt.</p> }
+        @if (c.CanApprove || c.CanReject) {
+            <form data-operation="cancellation-decision" data-request-id="@c.PendingRequestId">
+                <label for="sf-cancel-reason">Lý do quyết định (khách có thể xem)<textarea id="sf-cancel-reason" name="reason" maxlength="1000" rows="3" required></textarea></label>
+                <p>@(c.HasPhysicalDispatch ? "Chấp thuận chỉ tạo yêu cầu thu hồi; chưa nhập hàng hoặc coi đơn đã hủy." : "Duyệt hủy chỉ khi hàng chưa thực tế rời kho.")</p>
+                <div class="sf-control-actions">
+                    @if (c.CanApprove) { <button class="sf-control-button" type="submit" data-operation="cancellation-approve">@(c.HasPhysicalDispatch ? "Chấp thuận thu hồi" : "Duyệt hủy đơn")</button> }
+                    @if (c.CanReject) { <button class="sf-control-button sf-control-secondary" type="submit" data-operation="cancellation-reject">Không chấp thuận yêu cầu</button> }
+                </div>
+            </form>
+        }
+        @if (c.NeedsDeliveryConflictReview) {
+            <aside class="sf-control-notice sf-control-warning"><h3>Hàng đã giao khi yêu cầu hủy đang chờ</h3><p>Kiểm tra bằng chứng giao thực tế và liên hệ khách để xử lý yêu cầu. Xác nhận bên dưới không thay đổi tiền hoặc kho.</p></aside>
+            @if (c.CanAcknowledgeDeliveryConflict && c.DeliveryConflictRequestId.HasValue) {
+                <form data-operation="cancellation-acknowledge" data-request-id="@c.DeliveryConflictRequestId"><label for="sf-cancel-ack-reason">Kết quả đã kiểm tra<textarea id="sf-cancel-ack-reason" name="reason" maxlength="1000" rows="3" required></textarea></label><button class="sf-control-button" type="submit">Xác nhận đã xử lý xung đột giao / hủy</button></form>
+            }
+        }
+        <h3>Lịch sử xử lý</h3><ol class="sf-control-history" id="sf-control-history">@foreach (var item in c.History) { <li><strong>@item.Status</strong><time datetime="@item.AtUtc.ToString("O")">@item.AtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm")</time><p class="sf-control-prewrap">@item.Reason</p></li> }</ol>
+        @if (c.History.Count == 0) { <p>Chưa có lịch sử hủy đơn.</p> }
+    </section>
+    <section aria-labelledby="sf-refunds-heading"><h2 id="sf-refunds-heading">Theo dõi hoàn tiền</h2><p>Phí giao khách đã trả nằm trong khoản cần hoàn khi hủy toàn bộ. Chi phí hãng giao theo dõi riêng.</p>
+        @if (Model.Refunds.Count == 0) { <div class="sf-control-card" role="status"><p>Chưa có khoản hoàn được xác định. Tiền đến sau hủy vẫn được tiếp tục đối soát.</p></div> }
+        @foreach (var refund in Model.Refunds) {
+            <article class="sf-control-card sf-refund-card" data-refund-id="@refund.Id"><h3>@State(refund.State)</h3>
+                <dl class="sf-control-amounts"><dt>Khoản cần hoàn</dt><dd>@refund.AmountText</dd><dt>Đã xác nhận thực hoàn</dt><dd>@refund.ExecutedAmountText</dd></dl>
+                <p class="sf-control-prewrap">@refund.Reason</p><p>@refund.SourceDescription</p>
+                @if (refund.BlockedReason is not null) { <p class="sf-control-notice sf-control-warning">@refund.BlockedReason</p> }
+                @if (refund.State == StorefrontRefundState.Rejected) { <p class="sf-control-notice sf-control-warning">Khoản còn phải xử lý vẫn được giữ để đối soát. Từ chối hồ sơ không có nghĩa là đã trả tiền hoặc xóa nghĩa vụ hoàn.</p> }
+                @if (Model.CanApproveRefund && (refund.CanApprove || refund.State is StorefrontRefundState.Requested or StorefrontRefundState.Approved)) {
+                    <form data-operation="refund-decision" data-refund-id="@refund.Id"><label for="sf-refund-reason-@refund.Id">Lý do duyệt / chưa chấp thuận<textarea id="sf-refund-reason-@refund.Id" name="reason" maxlength="1000" rows="3" required></textarea></label><div class="sf-control-actions">
+                        @if (refund.CanApprove) { <button type="submit" class="sf-control-button" data-operation="refund-approve">@(refund.State == StorefrontRefundState.Rejected ? "Duyệt lại hồ sơ" : "Duyệt khoản cần hoàn")</button> }
+                        @if (refund.State is StorefrontRefundState.Requested or StorefrontRefundState.Approved) { <button type="submit" class="sf-control-button sf-control-secondary" data-operation="refund-reject">Chưa chấp thuận, cần đối soát</button> }
+                    </div><p>Duyệt hồ sơ chưa ghi là đã chi tiền.</p></form>
+                }
+                @if (Model.CanConfirmRefund && refund.CanConfirmExecution) {
+                    <form data-operation="refund-confirm" data-refund-id="@refund.Id" class="sf-refund-execution">
+                        <h4>Xác nhận khoản đã thực trả</h4><p>Chọn chứng từ chi đã ghi nhận và kiểm tra bằng chứng thực trả. Thao tác này không gửi lệnh chuyển tiền.</p>
+                        <button class="sf-control-button sf-control-secondary" type="button" data-load-payouts>Tải chứng từ thực chi có thể chọn</button>
+                        <label for="sf-payout-source-@refund.Id">Chứng từ thực chi<select id="sf-payout-source-@refund.Id" name="source" required disabled><option value="">Tải và chọn chứng từ đã chi</option></select></label>
+                        <p data-payout-message role="status"></p>
+                        <label for="sf-payer-owner-@refund.Id">Chủ thể thực chi<select id="sf-payer-owner-@refund.Id" name="payerLegalEntityId" required><option value="">Chọn đúng chủ thể thực trả</option>@foreach (var owner in Model.PayerLegalEntities) { <option value="@owner.Id">@owner.Name</option> }</select></label>
+                        <label for="sf-payer-bank-@refund.Id" data-bank-field hidden>Tài khoản thực chuyển<select id="sf-payer-bank-@refund.Id" name="payerBankAccountId" disabled><option value="">Chọn tài khoản đã chuyển tiền</option>@foreach (var bank in Model.PayerBankAccounts) { <option value="@bank.Id" data-version="@bank.Version">@bank.Name</option> }</select></label>
+                        <label for="sf-payout-reference-@refund.Id">Mã giao dịch / phiếu thực chi<input id="sf-payout-reference-@refund.Id" name="externalTransactionId" maxlength="100" required autocomplete="off" /></label>
+                        <label for="sf-payout-time-@refund.Id" data-bank-time hidden>Thời điểm thực chi đã xác minh<input id="sf-payout-time-@refund.Id" name="executedAt" type="datetime-local" step="0.001" disabled /></label>
+                        <label for="sf-payout-evidence-@refund.Id">Chứng cứ đã trả khách<textarea id="sf-payout-evidence-@refund.Id" name="evidenceReference" maxlength="500" rows="3" required></textarea></label>
+                        <label class="sf-control-confirm"><input type="checkbox" required /> Tôi đã kiểm tra khoản thực trả, đúng người nhận, số tiền và chứng từ bên trên.</label>
+                        <button class="sf-control-button" type="submit">Xác nhận đã thực hoàn theo chứng từ</button>
+                    </form>
+                }
+                @if (refund.Executions.Count > 0) { <h4>Các lần thực hoàn đã xác nhận</h4><ol class="sf-control-history">@foreach (var execution in refund.Executions) { <li><strong>@execution.AmountText</strong><time datetime="@execution.ExecutedAtUtc.ToString("O")">@execution.ExecutedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</time><p>@Verification(execution.VerificationMethod)</p><p class="sf-control-prewrap">@execution.EvidenceReference</p></li> }</ol> }
+            </article>
+        }
+    </section>
+</main>
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/storefront-refunds.css" asp-append-version="true" /> }
+@section Scripts { <script src="~/Admin/js/storefront-refunds.js" asp-append-version="true" defer></script> }

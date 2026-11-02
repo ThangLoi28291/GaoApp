@@ -1,0 +1,40 @@
+@inject GaoApp.Web.Services.AdminNavigationProvider Navigation
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
+@using Microsoft.AspNetCore.Authorization
+@{
+    var navigation = await Navigation.GetAsync(ViewContext);
+    var items = navigation.PosNodes(includeReceiptTemplates: true);
+    var phoneItems = navigation.Select(item => !navigation.IsCustomerDisplay(item));
+    var phoneNavigation = navigation with { Nodes = phoneItems };
+    phoneItems = phoneNavigation.PosNodes(includeReceiptTemplates: true);
+    var desktopItems = navigation.PosHeaderNodes();
+    var canOpenDisplay = (await Authorization.AuthorizeAsync(User, GaoApp.Application.Common.Security.PermissionCodes.Pos.Order.View)).Succeeded;
+    var phoneViewData = new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData) { ["ConfiguredPosItemClass"] = "d-md-none" };
+}
+@if (items.Count > 0 || canOpenDisplay)
+{
+    <div class="dropdown">
+        <button type="button" class="@(ViewData["IsPOSPrime"] is true ? "pos-prime-header__action pos-prime-header__action--icon" : "pos-cockpit-header-button pos-cockpit-more-button")"
+                data-bs-toggle="dropdown" aria-expanded="false" aria-label="Mở thêm chức năng POS">
+            <i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end @(ViewData["IsPOSPrime"] is true ? "pos-prime-more-menu" : "pos-cockpit-menu")" data-configured-pos-menu>
+            @foreach (var item in desktopItems)
+            {
+                var printSettings = navigation.LocalPath(item).Equals("/admin/receipt-templates", StringComparison.OrdinalIgnoreCase)
+                    || navigation.LocalPath(item).Equals("/admin/pos/printer-settings", StringComparison.OrdinalIgnoreCase);
+                <li class="d-none d-md-block" data-pos-compact-shortcut><a class="dropdown-item @(item.IsCurrent ? "active" : "")" href="@item.Href" data-menu-id="@item.Id"
+                    target="@(printSettings ? "_blank" : null)" rel="@(printSettings ? "noopener" : null)"><i class="@item.Icon me-2" aria-hidden="true"></i><span>@item.Title</span></a></li>
+            }
+            @await Html.PartialAsync("~/Areas/Admin/Views/Shared/_ConfiguredPOSMenuItems.cshtml", phoneItems, phoneViewData)
+            @if (canOpenDisplay)
+            {
+                @* Opening the terminal's customer window is a POS command, independent of menu configuration. *@
+                <li><hr class="dropdown-divider" /></li>
+                <li><button type="button" class="dropdown-item" data-configured-customer-display data-pos-native-customer-display data-url="@Url.Content("~/admin/pos/customer-display")">
+                    <i class="bx bx-desktop me-2" aria-hidden="true"></i><span>Màn hình khách</span>
+                </button></li>
+            }
+        </ul>
+    </div>
+}

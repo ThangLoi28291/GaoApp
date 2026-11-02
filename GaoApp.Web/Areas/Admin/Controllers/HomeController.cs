@@ -9,6 +9,7 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Authorize]
 [Route("admin")]
 [Authorize(Policy = PermissionCodes.Admin.DashboardView)]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class HomeController : Controller
 {
     [HttpGet("")]

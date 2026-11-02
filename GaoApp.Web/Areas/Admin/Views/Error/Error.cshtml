@@ -1,13 +1,14 @@
 ﻿@{
     Layout = "~/Areas/Admin/Views/Shared/_Layout.cshtml";
+    ViewData["MobileStatePage"] = true;
     var statusCode = ViewBag.StatusCode ?? 500;
     var message = ViewBag.Message ?? "Đã xảy ra lỗi.";
     var traceId = ViewBag.TraceId ?? "";
 }
 
-<div class="container-fluid py-4">
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-4">
+<div class="container-fluid py-4" data-mobile-state-page="error">
+    <div class="card shadow-sm border-0" data-mobile-state-card>
+        <div class="card-body p-4" data-mobile-state-body>
             <div class="d-flex align-items-center justify-content-between mb-3">
                 <div>
                     <span class="badge bg-danger">Lỗi @statusCode</span>
@@ -15,14 +16,15 @@
             </div>
 
             <h3 class="mb-3">Hệ thống gặp sự cố</h3>
-            <p class="text-muted mb-4">@message</p>
+            <p class="text-muted mb-4" data-mobile-state-message>@message</p>
 
-            <div class="alert alert-light border mb-4">
+            <div class="alert alert-light border mb-4" data-mobile-state-detail>
                 <strong>TraceId:</strong> @traceId
             </div>
 
-            <div class="d-flex gap-2">
-                <a href="javascript:history.back()" class="btn btn-outline-secondary">Quay lại</a>
+            <p class="gao-mobile-state-help">Nếu lỗi vẫn còn, gửi mã TraceId ở trên cho người hỗ trợ để kiểm tra.</p>
+            <div class="d-flex gap-2" data-mobile-state-actions>
+                <a href="#" data-csp-action="back" class="btn btn-outline-secondary">Quay lại</a>
                 <a href="/Admin" class="btn btn-primary">Về trang quản trị</a>
             </div>
         </div>

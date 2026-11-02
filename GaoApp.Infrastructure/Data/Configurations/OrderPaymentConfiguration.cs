@@ -11,6 +11,9 @@ public sealed class OrderPaymentConfiguration : IEntityTypeConfiguration<OrderPa
         b.ToTable("OrderPayments");
 
         b.HasKey(x => x.Id);
+        b.HasOne<BankVerifiedReceipt>().WithMany().HasForeignKey(x=>new{x.StoreId,x.BankVerifiedReceiptId}).HasPrincipalKey(x=>new{x.OriginStoreId,x.Id}).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<GaoApp.Domain.Storefront.StorefrontCodReceipt>().WithMany().HasForeignKey(x => new { x.StoreId, x.StorefrontCodReceiptId }).HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<GaoApp.Domain.Storefront.StorefrontCarrierWithholding>().WithMany().HasForeignKey(x => new { x.StoreId, x.StorefrontCarrierWithholdingId }).HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
 
         b.Property(x => x.ReferenceCode)
             .HasMaxLength(100);

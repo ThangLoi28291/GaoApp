@@ -335,11 +335,12 @@ public class POSShiftController : ControllerBase
         CreateOverviewSheet(workbook, data, fromUtc, toUtcExclusive);
         CreateEmployeeSheet(workbook, data);
         CreateShiftSheet(workbook, data);
+        CreatePaymentBreakdownSheet(workbook, data);
 
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
 
-        var fileName = $"BaoCaoCaPOS-{DateTime.Now:yyyyMMdd-HHmmss}.xlsx";
+        var fileName = $"BaoCaoCaPOS-{VietnamTime.Now:yyyyMMdd-HHmmss}.xlsx";
 
         return File(
             stream.ToArray(),
@@ -355,6 +356,28 @@ public class POSShiftController : ControllerBase
     {
         await receipts.ConfirmAsync(shiftId, request, ct);
         return Ok(new { success = true, message = "Đã xác nhận nhận tiền và duyệt chốt ca." });
+    }
+
+    private static void CreatePaymentBreakdownSheet(XLWorkbook workbook, POSShiftManagerDashboardDto data)
+    {
+        var ws = workbook.Worksheets.Add("Chi tiết thanh toán");
+        WriteHeader(ws, ["Phạm vi", "Nhân viên / Ca", "Phương thức", "Số giao dịch", "Tiền ghi nhận", "Tiền tính doanh thu", "Chênh tổng ca - chi tiết"]);
+        var row = 2;
+        void Write(string scope, string name, POSShiftPaymentBreakdownDto breakdown)
+        {
+            foreach (var channel in breakdown.Channels)
+            {
+                ws.Cell(row, 1).Value = scope; ws.Cell(row, 2).Value = name; ws.Cell(row, 3).Value = channel.Label;
+                ws.Cell(row, 4).Value = channel.PaymentCount; ws.Cell(row, 5).Value = channel.RecordedAmount;
+                ws.Cell(row, 6).Value = channel.SalesAmount; row++;
+            }
+            ws.Cell(row - breakdown.Channels.Count, 7).Value = breakdown.Difference;
+        }
+        Write("Tổng quan", "Theo bộ lọc", data.Overview.PaymentBreakdown);
+        foreach (var employee in data.EmployeeStats) Write("Nhân viên", employee.FullName ?? employee.UserName ?? $"#{employee.UserId}", employee.PaymentBreakdown);
+        foreach (var shift in data.Shifts) Write("Ca", shift.ShiftCode ?? $"#{shift.Id}", shift.PaymentBreakdown);
+        ws.Columns(5, 7).Style.NumberFormat.Format = "#,##0";
+        ws.Columns().AdjustToContents(); ws.SheetView.FreezeRows(1);
     }
 
     private static void CreateOverviewSheet(
@@ -373,10 +396,10 @@ public class POSShiftController : ControllerBase
         ws.Cell("A1").Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
         ws.Cell("A3").Value = "Từ ngày";
-        ws.Cell("B3").Value = fromUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Tất cả";
+        ws.Cell("B3").Value = fromUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "Tất cả";
 
         ws.Cell("A4").Value = "Đến trước";
-        ws.Cell("B4").Value = toUtcExclusive?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Tất cả";
+        ws.Cell("B4").Value = toUtcExclusive?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "Tất cả";
 
         var o = data.Overview;
 
@@ -545,8 +568,8 @@ public class POSShiftController : ControllerBase
             ws.Cell(row, 5).Value = $"{x.TerminalCode} {x.TerminalName}".Trim();
             ws.Cell(row, 6).Value = $"{x.WarehouseCode} {x.WarehouseName}".Trim();
 
-            ws.Cell(row, 7).Value = x.OpenedAtUtc.ToLocalTime();
-            ws.Cell(row, 8).Value = x.ClosedAtUtc?.ToLocalTime();
+            ws.Cell(row, 7).Value = x.OpenedAtUtc.ToVietnamTime();
+            ws.Cell(row, 8).Value = x.ClosedAtUtc?.ToVietnamTime();
 
             ws.Cell(row, 9).Value = x.OpeningCash;
             ws.Cell(row, 10).Value = x.TotalSales;
@@ -566,7 +589,7 @@ public class POSShiftController : ControllerBase
             ws.Cell(row, 24).Value = x.CashReceivedAmount;
             ws.Cell(row, 25).Value = x.CashReceivedAmount - x.ClosingCashActual;
             ws.Cell(row, 26).Value = x.CashReceivedByUserName;
-            ws.Cell(row, 27).Value = x.CashReceivedAtUtc?.ToLocalTime();
+            ws.Cell(row, 27).Value = x.CashReceivedAtUtc?.ToVietnamTime();
             ws.Cell(row, 28).Value = x.CashReceiptNote;
 
             row++;

@@ -3,6 +3,7 @@
 public sealed class CustomerRewardSummaryDto
 {
     public int CustomerId { get; set; }
+    public bool IsPointEligible { get; set; } = true;
 
     public decimal BalanceAmount { get; set; }
     public decimal AvailablePoints { get; set; }

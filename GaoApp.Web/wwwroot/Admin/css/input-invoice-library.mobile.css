@@ -1,0 +1,130 @@
+/* UI-11f. Every visual override is limited to phones; the desktop owner styles remain unchanged. */
+@media (max-width: 767.98px) {
+    #invoiceLibrary,
+    #ilDetail,
+    #ilUploadDialog {
+        --il-ink: #172d4d;
+        --il-muted: #64758c;
+        --il-line: #dce5f0;
+        color: var(--il-ink);
+        overflow-wrap: anywhere;
+    }
+    #invoiceLibrary { min-width: 0; padding: 4px 0 18px; }
+    #invoiceLibrary .il-heading { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 16px; }
+    #invoiceLibrary .il-kicker,
+    #ilDetail .il-kicker { color: #2463eb; font-size: 9px; letter-spacing: 1.1px; }
+    #invoiceLibrary h1 { color: #172d4d; font-size: 26px; font-weight: 750; line-height: 1.2; margin: 7px 0 9px; }
+    #invoiceLibrary .il-heading p { font-size: 13px; line-height: 1.55; }
+    #invoiceLibrary .il-heading > .il-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    #invoiceLibrary .btn,
+    #ilDetail .btn,
+    #ilUploadDialog .btn { min-height: 44px; font-size: 13px; line-height: 1.4; white-space: normal; border-radius: 12px; }
+    #invoiceLibrary .btn-primary,
+    #ilDetail .btn-primary,
+    #ilUploadDialog .btn-primary { background: #2463eb; border-color: #2463eb; }
+    #invoiceLibrary .btn-outline-primary,
+    #ilDetail .btn-outline-primary { color: #2463eb; border-color: #b7ccef; background: #f6f9ff; }
+    #invoiceLibrary .il-heading .btn { padding: 10px 8px; }
+    #invoiceLibrary .il-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-bottom: 14px; }
+    #invoiceLibrary .il-stats > div { min-width: 0; padding: 13px 9px; border-radius: 15px; box-shadow: none; }
+    #invoiceLibrary .il-stats span { font-size: 11px; line-height: 1.45; }
+    #invoiceLibrary .il-stats strong { color: #172d4d; font-size: 25px; line-height: 1.4; }
+    #invoiceLibrary .il-stats small { font-size: 10px; line-height: 1.4; }
+    #invoiceLibrary .il-stats .il-amber { background: #fff8e9; border-color: #f1dfb9; }
+    #invoiceLibrary .il-amber strong { color: #a36508; }
+    #invoiceLibrary .il-stats .il-types { grid-column: 1 / -1; padding: 12px 14px; background: #f7f9fd; }
+    #invoiceLibrary .il-types b { min-width: 0; font-size: 12px; line-height: 1.5; align-items: start; }
+    #invoiceLibrary .il-types b > span { text-align: right; }
+    #invoiceLibrary .il-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px; gap: 12px; margin-bottom: 16px; border-radius: 17px; }
+    #invoiceLibrary .il-search { grid-column: 1 / -1; }
+    #invoiceLibrary label,
+    #ilDetail label,
+    #ilUploadDialog label { min-width: 0; font-size: 12px; line-height: 1.5; color: #425670; }
+    #invoiceLibrary :is(input, select),
+    #ilDetail :is(select, textarea),
+    #ilUploadDialog input { min-width: 0; max-width: 100%; min-height: 46px; font-size: 16px; line-height: 1.5; border-color: #dce5f0; border-radius: 11px; padding: 9px 11px; }
+    #invoiceLibrary .il-filters label:nth-of-type(6) { grid-column: 1 / -1; }
+    #invoiceLibrary .il-filters > .il-actions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+    #invoiceLibrary[data-il-phone-filter-expanded="false"] .il-filters > label:not(.il-search) { display: none; }
+    #invoiceLibrary .il-mobile-filter-toggle { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; width: 100%; border: 1px solid #dce5f0; background: #f3f6fb; border-radius: 11px; padding: 10px 12px; color: #425670; font: inherit; font-size: 13px; font-weight: 650; }
+    #invoiceLibrary .il-mobile-filter-toggle::after { content: ''; width: 8px; height: 8px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg) translateY(-2px); margin-right: 3px; }
+    #invoiceLibrary .il-mobile-filter-toggle[aria-expanded="true"]::after { transform: rotate(225deg) translate(-2px, -2px); }
+    #invoiceLibrary .il-list { background: transparent; border: 0; overflow: visible; }
+    #invoiceLibrary .il-list-heading { padding: 0 2px 12px; gap: 10px; align-items: baseline; }
+    #invoiceLibrary .il-list-heading h2 { color: #172d4d; font-size: 17px; font-weight: 750; }
+    #invoiceLibrary .il-list-heading span { font-size: 11px; text-align: right; }
+    #invoiceLibrary .il-table-wrap { overflow: visible; }
+    #invoiceLibrary table { display: block; width: 100%; min-width: 0; }
+    #invoiceLibrary thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    #invoiceLibrary tbody { display: grid; gap: 12px; }
+    #invoiceLibrary tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 15px; border: 1px solid #dce5f0; border-radius: 18px; background: #fff; box-shadow: 0 4px 14px #172d4d04; }
+    #invoiceLibrary tbody tr:hover { background: #fff; }
+    #invoiceLibrary td { display: block; min-width: 0; border: 0; padding: 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+    #invoiceLibrary td::before { content: attr(data-il-phone-label); display: block; font-size: 10px; line-height: 1.5; font-weight: 500; color: #64758c; margin-bottom: 4px; }
+    #invoiceLibrary td:not([data-il-phone-label])::before { display: none; }
+    #invoiceLibrary td small { margin-top: 4px; color: #64758c; font-size: 11px; line-height: 1.5; }
+    #invoiceLibrary td:nth-child(1) { order: 0; }
+    #invoiceLibrary td:nth-child(1) strong { font-size: 16px; color: #172d4d; }
+    #invoiceLibrary td:nth-child(2) { order: 2; grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid #edf1f7; }
+    #invoiceLibrary td:nth-child(3) { order: 1; text-align: right; }
+    #invoiceLibrary td:nth-child(4) { order: 3; grid-column: 1 / -1; text-align: left; padding: 10px 12px; background: #f3f6fb; border-radius: 12px; white-space: normal; }
+    #invoiceLibrary td:nth-child(4) strong { color: #172d4d; font-size: 17px; }
+    #invoiceLibrary td:nth-child(5) { order: 4; }
+    #invoiceLibrary td:nth-child(6) { order: 5; }
+    #invoiceLibrary td:nth-child(7) { order: 6; grid-column: 1 / -1; }
+    #invoiceLibrary td:nth-child(7) .btn { width: 100%; }
+    #invoiceLibrary .il-chip { max-width: 100%; font-size: 11px; line-height: 1.5; padding: 5px 8px; border-radius: 8px; }
+    #invoiceLibrary td.il-empty { grid-column: 1 / -1; padding: 24px 6px !important; color: #64758c; font-size: 13px; }
+    #invoiceLibrary .il-pagination { padding: 14px 0 0; gap: 8px; flex-wrap: wrap; }
+    #invoiceLibrary .il-pagination span { flex-basis: 100%; margin: 0; text-align: center; }
+    #invoiceLibrary .il-pagination .btn { flex: 1; }
+    #invoiceLibrary .il-footnote { font-size: 11px; line-height: 1.65; padding: 0 2px; margin-top: 16px; }
+    #invoiceLibrary #ilMessage { font-size: 13px; line-height: 1.6; border-radius: 13px; }
+    #ilDetail[open],
+    #ilDetail.il-commercial-restricted[open] { position: fixed; inset: 0; margin: 0; width: 100%; max-width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+    #ilDetail > header { padding: max(12px, env(safe-area-inset-top)) 16px 12px; gap: 12px; align-items: center; background: #fff; }
+    #ilDetail h2 { color: #172d4d; font-size: 19px; line-height: 1.4; margin: 4px 0 0; }
+    #ilDetail .il-close,
+    #ilUploadDialog .il-close { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 12px; background: #f3f6fb; color: #425670; }
+    #ilDetail .il-detail-body { display: block; min-height: 0; overflow: auto; overscroll-behavior: contain; background: #f3f6fb; }
+    #ilDetail:not(.il-commercial-restricted) .il-preview { height: 56dvh; min-height: 280px; max-height: 520px; border-bottom: 1px solid #dce5f0; }
+    #ilDetail:not(.il-commercial-restricted) .il-preview nav { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px; background: #fff; }
+    #ilDetail .il-preview nav .btn { flex: 1 1 80px; font-size: 12px; padding: 9px 6px; }
+    #ilDetail #ilPreviewContent { min-width: 0; overscroll-behavior: contain; }
+    #ilDetail .il-preview iframe { min-height: 0; height: 100%; }
+    #ilDetail .il-review { padding: 18px 16px 22px; overflow: visible; border: 0; background: #fff; }
+    #ilDetail .il-review h3 { color: #172d4d; font-size: 17px; margin: 0 0 14px; }
+    #ilDetail .il-review h4 { color: #172d4d; font-size: 13px; margin: 22px 0 10px; }
+    #ilDetail .il-review p { font-size: 13px; line-height: 1.65; }
+    #ilDetail .il-review label { margin-top: 16px; }
+    #ilDetail #ilReceipts a { display: inline-flex; align-items: center; min-height: 44px; font-size: 13px; color: #2463eb; }
+    #ilDetail #ilReviewNote { min-height: 100px; resize: vertical; }
+    #ilDetail .il-review-hint { color: #64758c; font-size: 12px; line-height: 1.6; }
+    #ilDetail .il-history-item { border-left-color: #b9cdf4; font-size: 12px; line-height: 1.6; }
+    #ilDetail > footer { padding: 12px 16px max(12px, env(safe-area-inset-bottom)); gap: 8px; flex-wrap: wrap; border-color: #dce5f0; }
+    #ilDetail > footer > span { flex-basis: 100%; width: 100%; line-height: 1.5; overflow-wrap: anywhere; }
+    #ilDetail > footer > span:empty { display: none; }
+    #ilDetail > footer .btn { flex: 1 1 100px; }
+    #ilDetail.il-commercial-restricted .il-preview { height: auto; min-height: 0; max-height: none; }
+    #ilDetail.il-commercial-restricted #ilPreviewContent { padding: 14px 16px; font-size: 13px; }
+    #ilUploadDialog[open] { position: fixed; inset: auto 0 0; margin: 0; width: 100%; max-width: 100%; max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); border-radius: 22px 22px 0 0; overflow: hidden; }
+    #ilUploadDialog form { max-height: calc(100dvh - max(12px, env(safe-area-inset-top))); overflow: auto; overscroll-behavior: contain; }
+    #ilUploadDialog header { position: sticky; top: 0; z-index: 1; padding: 16px; gap: 12px; align-items: center; background: #fff; }
+    #ilUploadDialog h2 { color: #172d4d; font-size: 19px; line-height: 1.4; }
+    #ilUploadDialog form > :is(p, label, small),
+    #ilUploadDialog #ilUploadMessage { margin: 14px 16px; }
+    #ilUploadDialog p { line-height: 1.65; font-size: 13px; }
+    #ilUploadDialog input[type="file"] { margin-top: 7px; font-size: 16px; min-height: 50px; }
+    #ilUploadDialog input[type="file"]::file-selector-button { min-height: 40px; margin-right: 8px; border: 0; border-radius: 7px; padding: 7px 9px; color: #2463eb; background: #eaf1ff; font-size: 13px; }
+    #ilUploadDialog footer { position: sticky; bottom: 0; padding: 12px 16px max(12px, env(safe-area-inset-bottom)); gap: 8px; background: #fff; }
+    #ilUploadDialog footer .btn { flex: 1; }
+    #invoiceLibrary :is(button, input, select):focus-visible,
+    #ilDetail :is(button, a, select, textarea):focus-visible,
+    #ilUploadDialog :is(button, input):focus-visible { outline: 3px solid #a9c4ff; outline-offset: 2px; }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: no-preference) {
+    #invoiceLibrary tbody tr { animation: il-phone-card-in 160ms ease-out both; }
+    #ilUploadDialog[open] { transform-origin: bottom center; animation: il-phone-sheet-in 180ms ease-out both; }
+    @keyframes il-phone-card-in { from { opacity: .5; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes il-phone-sheet-in { from { transform: scale(.985); opacity: .5; } to { transform: scale(1); opacity: 1; } }
+}

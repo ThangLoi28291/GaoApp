@@ -1,0 +1,53 @@
+@model GaoApp.Web.Services.CustomerService.CustomerInvoiceNotificationAdminPage
+@{ Layout="_ContentNavbarLayout"; ViewData["Title"]="Người nhận & thông báo hóa đơn"; }
+<link rel="stylesheet" href="~/Admin/css/customer-invoice-notifications.css" asp-append-version="true" />
+<main class="in-root" id="invoiceNotifications" data-base="@Url.Content("~/admin/customer-service/invoice-notifications")" data-reply="@Model.Staff.CanReply.ToString().ToLowerInvariant()" data-enabled="@Model.Enabled.ToString().ToLowerInvariant()">
+    @Html.AntiForgeryToken()
+    <header class="in-heading"><div><p>@Model.StoreName · Chăm sóc khách hàng</p><h2>Người nhận &amp; thông báo hóa đơn</h2><p>Xác minh đúng hồ sơ, chọn đúng chứng từ và theo dõi kết quả từng phần.</p></div><a class="btn btn-outline-primary" href="@Url.Content("~/admin/customer-service")">Mở hộp thư</a></header>
+    @if(!Model.Enabled){<div class="in-banner" role="status"><strong>Gửi thông báo đang tắt trên máy chủ.</strong> Bạn có thể kiểm tra hồ sơ và liên kết. Chỉ tạo lượt gửi khi quản trị viên đã bật chức năng.</div>}
+    <p id="inNotice" class="in-notice" role="status" aria-live="polite"></p>
+    <div class="in-workspace">
+        <section class="in-card" aria-labelledby="inCustomerTitle">
+            <div class="in-section-heading"><span>01</span><div><h3 id="inCustomerTitle">Chọn hồ sơ khách</h3><p>Tìm bằng mã khách hoặc số đã lưu trong cửa hàng.</p></div></div>
+            <form id="inCustomerSearch" class="in-search"><label class="visually-hidden" for="inCustomerQuery">Mã khách hoặc số điện thoại</label><input id="inCustomerQuery" type="search" minlength="3" maxlength="50" placeholder="Mã khách hoặc số điện thoại" required /><button type="submit" class="btn btn-primary">Tìm khách</button></form>
+            <div id="inCustomers" class="in-choice-list" aria-live="polite"><p class="in-empty">Chưa chọn hồ sơ khách.</p></div>
+            <p class="in-help">Số điện thoại và tên Zalo chỉ giúp đối chiếu. Hai thông tin này không tự xác minh danh tính.</p>
+            <div id="inCustomerSelected" class="in-selected" hidden></div>
+        </section>
+        <section class="in-card" aria-labelledby="inBindingTitle">
+            <div class="in-section-heading"><span>02</span><div><h3 id="inBindingTitle">Xác minh người nhận Zalo</h3><p>Chỉ dùng hội thoại cá nhân đã nhận qua SDK, thuộc đúng kết nối của cửa hàng.</p></div></div>
+            <label class="in-field">Kết nối Zalo<select id="inConnection"><option value="">Đang tải kết nối…</option></select></label>
+            <form id="inThreadSearch" class="in-search"><label class="visually-hidden" for="inThreadQuery">Tìm hội thoại đã đồng bộ</label><input id="inThreadQuery" type="search" maxlength="80" placeholder="Tên hiển thị trong hộp thư" /><button type="submit" class="btn btn-outline-primary">Tải hội thoại</button></form>
+            <div id="inThreads" class="in-choice-list" aria-live="polite"><p class="in-empty">Chọn kết nối để đọc hội thoại đã đồng bộ.</p></div>
+            <div id="inEvidence" class="in-evidence" aria-live="polite" hidden></div>
+            <form id="inVerifyForm">
+                <label class="in-field">Cách đối chiếu danh tính<select id="inMethod" required><option value="">Chọn cách đã thực hiện</option><option value="in_person">Đối chiếu trực tiếp với khách</option><option value="verified_callback">Gọi lại theo quy trình xác minh của cửa hàng</option></select></label>
+                <label class="in-field">Tham chiếu xác minh<textarea id="inReference" rows="2" minlength="8" maxlength="240" required placeholder="Ghi mã hồ sơ / lần đối chiếu để người khác kiểm tra lại. Không ghi mật khẩu hoặc mã OTP."></textarea></label>
+                <label class="in-check"><input id="inAttested" type="checkbox" required />Tôi đã trực tiếp đối chiếu hồ sơ khách với người trong hội thoại này; không chỉ dựa vào tên hiển thị hoặc số điện thoại.</label>
+                <button id="inVerify" type="submit" class="btn btn-primary" disabled>Lưu người nhận đã xác minh</button>
+            </form>
+            <div class="in-subheading"><h4>Liên kết của hồ sơ đang chọn</h4><button id="inRefreshBindings" type="button" class="btn btn-sm btn-outline-secondary">Tải lại</button></div>
+            <div id="inBindings" aria-live="polite"><p class="in-empty">Chọn hồ sơ khách để xem liên kết.</p></div>
+        </section>
+        <section class="in-card in-wide" aria-labelledby="inSendTitle">
+            <div class="in-section-heading"><span>03</span><div><h3 id="inSendTitle">Chọn chứng từ để gửi</h3><p>Hiển thị 10 đơn hoàn tất gần nhất của hồ sơ. Mỗi hóa đơn và chủ thể pháp lý là một nguồn riêng; không tự chọn hóa đơn mới nhất thay bạn.</p></div></div>
+            <form id="inSourceSearch" class="in-search"><label class="visually-hidden" for="inSourceQuery">Mã đơn hoặc số hóa đơn chính xác</label><input id="inSourceQuery" type="search" minlength="1" maxlength="50" placeholder="Tìm đơn cũ bằng mã đơn / số hóa đơn chính xác" required /><button type="submit" class="btn btn-outline-primary">Tìm chứng từ</button><button id="inRecentSources" type="button" class="btn btn-outline-secondary">10 đơn gần nhất</button></form>
+            <p class="in-help">Kết quả tìm kiếm tối đa 10 đơn phù hợp thuộc hồ sơ đang chọn, kèm từng hóa đơn của các chủ thể pháp lý.</p>
+            <div id="inSources" class="in-sources" aria-live="polite"><p class="in-empty">Chọn hồ sơ khách để xem nguồn chứng từ.</p></div>
+            <div id="inSendReview" class="in-review" hidden></div>
+            <button id="inReloadPreview" type="button" class="btn btn-sm btn-outline-secondary" disabled>Đọc lại chứng từ đã chọn</button>
+            <label class="in-check"><input id="inSendAttested" type="checkbox" />Tôi đã kiểm tra đúng khách, người nhận và chứng từ được chọn.</label>
+            <button id="inSend" type="button" class="btn btn-primary" disabled>Kiểm tra &amp; tạo lượt gửi</button>
+            @if(!Model.Staff.CanReply){<p class="in-help">Tài khoản cần thêm quyền trả lời CSKH để tạo lượt gửi.</p>}
+            <p class="in-help">Một lượt gửi dùng một mã yêu cầu cố định. Nếu chưa rõ kết quả, kiểm tra hàng chờ trước khi tạo lại. Thu hồi liên kết không thu hồi tin đã gửi.</p>
+        </section>
+    </div>
+    <section class="in-card in-monitor" aria-labelledby="inOutboxTitle">
+        <div class="in-monitor-heading"><div><h3 id="inOutboxTitle">Theo dõi thông báo</h3><p>Nguồn chứng từ, mã Job và kết quả từng phần được giữ để đối chiếu.</p></div><div class="in-filter"><label class="visually-hidden" for="inState">Lọc trạng thái</label><select id="inState"><option value="">Mọi trạng thái</option><option value="Pending">Chờ xử lý</option><option value="Accepted">Đã tiếp nhận tại ZaloMarketing</option><option value="Sent">Đã gửi</option><option value="Blocked">Bị chặn</option><option value="Failed">Thất bại</option><option value="NeedsReview">Chưa rõ kết quả · cần kiểm tra</option><option value="PartiallySent">Đã gửi một phần</option><option value="Cancelled">Đã dừng</option></select><button id="inRefreshOutbox" type="button" class="btn btn-outline-primary">Tải lại</button></div></div>
+        <div id="inOutbox" aria-live="polite"><p class="in-empty">Đang đọc hàng chờ…</p></div>
+        <div class="in-pagination"><button id="inPrevious" type="button" class="btn btn-sm btn-outline-secondary" disabled>Trang trước</button><span id="inPage">Trang 1</span><button id="inNext" type="button" class="btn btn-sm btn-outline-secondary" disabled>Trang sau</button></div>
+        <section id="inDetail" class="in-detail" aria-live="polite" hidden></section>
+        <p class="in-help">“Đã gửi” là kết quả kênh gửi xác nhận, không có nghĩa khách đã nhận hoặc đã đọc. Phần đã gửi không bị đặt lại; màn hình này không có thao tác gửi lại cả gói khi kết quả còn chưa rõ.</p>
+    </section>
+</main>
+@section PageScripts { <script src="~/Admin/js/customer-invoice-notifications.js" asp-append-version="true"></script> }

@@ -8,12 +8,25 @@
     const escape = value => String(value ?? '').replace(/[&<>"']/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[x]));
     const money = value => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 2 });
     const text = (value, max) => String(value ?? '').slice(0, max);
+    function paymentDisplayReferences(payments = []) {
+        const isTransfer = payment => [1, '1', 'BankTransfer'].includes(payment.method);
+        const transferCount = payments.filter(isTransfer).length;
+        let transferNumber = 0;
+        // Keep the full reference on the payment for bank matching and offline sync.
+        return payments.map(payment => {
+            const reference = String(payment.reference ?? '');
+            if (!isTransfer(payment)) return reference;
+            const number = ++transferNumber;
+            const qr = /^(QR-\d+)-[a-f0-9]{32}$/i.exec(reference);
+            return qr ? qr[1] + (transferCount > 1 ? '-' + number : '') : reference;
+        });
+    }
     function normalize(input = {}) {
         return { name: text(input.name || 'Hiện đại · 80 mm', 100), layout: layouts[input.layout] ? input.layout : 'modern',
             paperSize: paperSizes(input.layout).includes(input.paperSize) ? input.paperSize : '80', accentColor: '#000000',
             title: text(input.title || 'HÓA ĐƠN BÁN HÀNG', 100), headerText: text(input.headerText, 300),
             footerText: text(input.footerText ?? 'Cảm ơn quý khách. Hẹn gặp lại!', 400),
-            showCustomer: input.showCustomer !== false, showCashier: input.showCashier !== false,
+            showCustomer: input.showCustomer !== false, showCustomerPoints: input.showCustomerPoints !== false, showCashier: input.showCashier !== false,
             showSku: input.showSku === true, showPayments: input.showPayments !== false };
     }
     function builtIns() {
@@ -23,10 +36,12 @@
     function render(receipt, input, options = {}) {
         const d = normalize(input), size = sizes[d.paperSize], narrow = d.paperSize === '45', thermal = !size.height;
         const e = escape, m = money, order = receipt || {}, lines = order.lines || [], payments = order.payments || [];
+        const paymentReferences = paymentDisplayReferences(payments);
         const deposit = Math.max(0, Number(order.depositAmount) || 0);
         const afterDeposit = Math.max(0, Number(order.grandTotal || 0) - deposit);
-        const date = new Date(order.finalizedAtUtc || order.completedAtUtc || order.createdAtUtc || Date.now());
-        const dateText = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN');
+        const saleAt = order.finalizedAtUtc || order.completedAtUtc || order.createdAtUtc || Date.now();
+        const date = new Date(typeof saleAt === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(saleAt) ? saleAt + 'Z' : saleAt);
+        const dateText = Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
         const label = order.orderNumber || '#' + (order.orderId || 'XEM-TRƯỚC');
         const methods = { 0: 'Tiền mặt', 1: 'Chuyển khoản', 2: 'Thẻ', Cash: 'Tiền mặt', BankTransfer: 'Chuyển khoản', Card: 'Thẻ' };
         const statuses = { 0: 'Đơn đang lập', 1: 'Đơn đang giữ', 2: 'Hoàn tất', 3: 'Đã hủy', 4: 'Đã hủy sau chốt', 5: 'Đã hoàn trả',
@@ -90,6 +105,9 @@
             .itemwide .offline-note{margin-top:1.5mm;padding:1mm}
             .itemwide .invoice-buyer-qr{margin-top:2mm;padding-top:1.5mm}
             .itemwide .invoice-buyer-qr-title{margin-bottom:1mm}.itemwide .invoice-buyer-qr img{margin-bottom:1mm}
+            .item-group{break-inside:avoid;page-break-inside:avoid}
+            .discount-price{display:inline-block;vertical-align:top}.original-price,.discounted-price{display:block;white-space:nowrap}
+            .original-price{font-weight:600;text-decoration-thickness:1px}.discounted-price{font-weight:800}
             .amount{white-space:nowrap}.amount-label{text-align:left}.receipt[data-paper-size="45"] .items td,.receipt[data-paper-size="45"] .items th{padding-left:0;padding-right:0}.receipt[data-paper-size="45"] .totals .num{margin-top:1mm}
             @page{size:${size.height ? size.width + 'mm ' + size.height + 'mm' : size.width + 'mm 300mm'};margin:0}
             @media print{html,body{width:${size.width}mm}.receipt{width:${size.width}mm}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
@@ -97,12 +115,30 @@
             ? `<tr class="${cls}"><td colspan="2"><div class="amount-label">${e(title)}</div><div class="num">${m(value)}</div></td></tr>`
             : `<tr class="${cls}"><td>${e(title)}</td><td class="num">${m(value)}</td></tr>`;
         const meta = (title, value) => `<tr><td>${e(title)}</td><td>${e(value)}</td></tr>`;
+        const isWholesale = String(order.customerPriceTier || order.customer?.priceTier || order.priceTier || '').trim().toUpperCase() === 'WHOLESALE';
+        const customerPoints = !isWholesale && d.showCustomer && d.showCustomerPoints && Number(order.customerId) > 0
+            ? options.offline ? meta('Điểm hiện tại', 'Chờ đồng bộ')
+                : order.customerCurrentPoints != null && Number.isFinite(Number(order.customerCurrentPoints))
+                    ? meta('Điểm hiện tại', m(order.customerCurrentPoints)) : ''
+            : '';
+        function promotionalUnitPrice(line) {
+            const quantity = Number(line.quantity), price = Number(line.unitPrice), discount = Number(line.promotionDiscount);
+            if (![quantity, price, discount].every(Number.isFinite) || quantity <= 0 || price <= 0 || discount <= 0) return null;
+            // PromotionDiscount is the saved discount for the entire line, not for one unit.
+            return Math.max(0, price - discount / quantity);
+        }
+        function unitPrice(line) {
+            const discounted = promotionalUnitPrice(line);
+            return discounted === null ? m(line.unitPrice)
+                : `<span class="discount-price"><s class="original-price">${m(line.unitPrice)}</s><strong class="discounted-price">${m(discounted)}</strong></span>`;
+        }
         function wideValues() {
             const width = (size.width - size.margin * 2) * 96 / 25.4;
             // Conservative widths for the renderer's 12 px bold Arial/Helvetica digits and separators.
             // Static sizing also works in sandboxed previews and QZ/offline HTML without executing scripts.
             const numberWidth = (value, bold = false) => [...m(value)].reduce((sum, character) => sum + (/\d/.test(character) ? (bold ? 9 : 7) : (bold ? 5 : 4)), 0);
-            const needed = line => [Math.max(30, numberWidth(line.quantity, true) + 5), 42, Math.max(52, numberWidth(line.unitPrice) + 5), Math.max(75, numberWidth(line.lineTotal, true) + 5)];
+            const priceWidth = line => Math.max(numberWidth(line.unitPrice), promotionalUnitPrice(line) === null ? 0 : numberWidth(promotionalUnitPrice(line), true));
+            const needed = line => [Math.max(30, numberWidth(line.quantity, true) + 5), 42, Math.max(52, priceWidth(line) + 5), Math.max(75, numberWidth(line.lineTotal, true) + 5)];
             const ratios = [.15, .17, .31, .37];
             let columns = ratios.map(ratio => ratio * width);
             const compactLines = lines.filter(line => needed(line).reduce((sum, value) => sum + value, 0) <= width);
@@ -113,8 +149,8 @@
             const values = line => {
                 const unit = e(line.sellingUnitName || line.unitName || '—');
                 if (fitsColumns(line))
-                    return `<tr class="item-values"><td class="num item-quantity" data-item-value="quantity">${m(line.quantity)}</td><td class="item-unit" data-item-value="unit">${unit}</td><td class="num" data-item-value="price">${m(line.unitPrice)}</td><td class="num" data-item-value="total"><strong>${m(line.lineTotal)}</strong></td></tr>`;
-                const detail = (label, key, value, numeric, bold = false) => `<div class="${numeric && numberWidth(value, bold) + 5 > (width - 3 * 96 / 25.4) / 2 ? 'wide-detail-full' : ''}"><span class="wide-detail-label">${label}</span><div class="${numeric ? 'num' : ''}" data-item-value="${key}">${bold ? '<strong>' : ''}${numeric ? m(value) : unit}${bold ? '</strong>' : ''}</div></div>`;
+                    return `<tr class="item-values"><td class="num item-quantity" data-item-value="quantity">${m(line.quantity)}</td><td class="item-unit" data-item-value="unit">${unit}</td><td class="num" data-item-value="price">${unitPrice(line)}</td><td class="num" data-item-value="total"><strong>${m(line.lineTotal)}</strong></td></tr>`;
+                const detail = (label, key, value, numeric, bold = false) => `<div class="${numeric && (key === 'price' ? priceWidth(line) : numberWidth(value, bold)) + 5 > (width - 3 * 96 / 25.4) / 2 ? 'wide-detail-full' : ''}"><span class="wide-detail-label">${label}</span><div class="${numeric ? 'num' : ''}" data-item-value="${key}">${bold ? '<strong>' : ''}${key === 'price' ? unitPrice(line) : numeric ? m(value) : unit}${bold ? '</strong>' : ''}</div></div>`;
                 return `<tr class="item-values item-expanded"><td colspan="4"><div class="wide-details">${detail('SL', 'quantity', line.quantity, true, true)}${detail('ĐVT', 'unit', null, false)}${detail('Đơn giá', 'price', line.unitPrice, true)}${detail('Thành tiền', 'total', line.lineTotal, true, true)}</div></td></tr>`;
             };
             return { columns: columns.map(value => `<col style="width:${value / width * 100}%">`).join(''), values, showHead: !lines.length || lines.some(fitsColumns) };
@@ -122,9 +158,7 @@
         const wide = d.layout === 'itemwide' ? wideValues() : null;
         const invoiceBuyerQrExpiry =
     options.invoiceBuyerQrExpiresAtUtc
-        ? new Date(
-            options.invoiceBuyerQrExpiresAtUtc
-        )
+        ? new Date(typeof options.invoiceBuyerQrExpiresAtUtc === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(options.invoiceBuyerQrExpiresAtUtc) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(options.invoiceBuyerQrExpiresAtUtc) ? options.invoiceBuyerQrExpiresAtUtc + 'Z' : options.invoiceBuyerQrExpiresAtUtc)
         : null;
 
 const invoiceBuyerQrExpiryText =
@@ -133,7 +167,7 @@ const invoiceBuyerQrExpiryText =
         invoiceBuyerQrExpiry.getTime()
     )
         ? invoiceBuyerQrExpiry
-            .toLocaleString('vi-VN')
+            .toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })
         : '';
 
 const invoiceBuyerQr =
@@ -163,10 +197,12 @@ const invoiceBuyerQr =
         : '';
         const wideItems = wide ? `<table class="items"><colgroup>${wide.columns}</colgroup>
             ${wide.showHead ? '<thead><tr><th class="num" scope="col">SL</th><th class="item-unit" scope="col">ĐVT</th><th class="num" scope="col">Đơn giá</th><th class="num" scope="col">Thành tiền</th></tr></thead>' : ''}
-            ${lines.map(line => `<tbody class="item-group"><tr class="item-heading"><td colspan="4"><div class="item-name">${e(line.productVariantName || line.itemName || line.productName)}</div>
+            ${lines.map(line => {
+                return `<tbody class="item-group"><tr class="item-heading"><td colspan="4"><div class="item-name">${e(line.productVariantName || line.itemName || line.productName)}</div>
             ${d.showSku && line.sku ? `<div class="muted">${e(line.sku)}</div>` : ''}
             ${Number(line.lineDiscount) > 0 ? `<div class="muted">Giảm ${m(line.lineDiscount)}</div>` : ''}</td></tr>
-            ${wide.values(line)}</tbody>`).join('') || '<tbody><tr><td colspan="4">Chưa có sản phẩm</td></tr></tbody>'}</table>` : '';
+            ${wide.values(line)}</tbody>`;
+            }).join('') || '<tbody><tr><td colspan="4">Chưa có sản phẩm</td></tr></tbody>'}</table>` : '';
         const body = `<article class="receipt ${d.layout}" data-paper-size="${d.paperSize}">
             <header class="brand"><div class="store">${e(order.storeName || 'GaoApp POS')}</div>
             ${order.storeAddress ? `<div class="store-address" style="white-space:pre-line">${e(order.storeAddress)}</div>` : ''}${order.storePhone ? `<div>Điện thoại: ${e(order.storePhone)}</div>` : ''}
@@ -174,19 +210,21 @@ const invoiceBuyerQr =
             <h1 class="title">${e(d.title)}</h1><div class="number">${e(label)}</div>
             <table class="meta">${meta('Ngày bán', dateText)}${order.status != null ? meta('Trạng thái', statuses[order.status] || order.status) : ''}${d.showCashier ? meta('Thu ngân', order.cashierName || order.userName || '—') : ''}
             ${order.terminalName ? meta('Quầy', order.terminalName) : ''}${d.showCustomer ? meta('Khách hàng', order.customerName || order.customer?.name || 'Khách lẻ') : ''}
-            ${d.showCustomer && order.customerPhone ? meta('Điện thoại', order.customerPhone) : ''}${order.note ? meta('Ghi chú', order.note) : ''}</table>
+            ${d.showCustomer && order.customerPhone ? meta('Điện thoại', order.customerPhone) : ''}${customerPoints}${order.note ? meta('Ghi chú', order.note) : ''}</table>
             ${d.layout === 'itemwide' ? wideItems : `<table class="items"><colgroup><col style="width:${narrow ? '48' : thermal ? '33' : '40'}%">${narrow ? '' : `<col style="width:${thermal ? '12' : '10'}%"><col style="width:24%">`}<col style="width:${narrow ? '52' : thermal ? '31' : '26'}%"></colgroup>
-            <thead><tr><th>Sản phẩm</th>${narrow ? '' : '<th class="num">SL</th><th class="num">Đơn giá</th>'}<th class="num">Thành tiền</th></tr></thead><tbody>
-            ${lines.map(line => `<tr><td><div class="item-name">${e(line.productVariantName || line.itemName || line.productName)}</div>
+            <thead><tr><th>Sản phẩm</th>${narrow ? '' : '<th class="num">SL</th><th class="num">Đơn giá</th>'}<th class="num">Thành tiền</th></tr></thead>
+            ${lines.map(line => {
+                return `<tbody class="item-group"><tr class="item-main"><td><div class="item-name">${e(line.productVariantName || line.itemName || line.productName)}</div>
             ${d.showSku && line.sku ? `<div class="muted">${e(line.sku)}</div>` : ''}
-            ${narrow ? `<div class="muted">${m(line.quantity)} ${e(line.sellingUnitName || line.unitName || '')} × <span class="amount">${m(line.unitPrice)}</span></div>` : ''}
+            ${narrow ? `<div class="muted">${m(line.quantity)} ${e(line.sellingUnitName || line.unitName || '')} × <span class="amount">${unitPrice(line)}</span></div>` : ''}
             ${Number(line.lineDiscount) > 0 ? `<div class="muted">Giảm ${m(line.lineDiscount)}</div>` : ''}</td>
-            ${narrow ? '' : `<td class="num">${m(line.quantity)}<div class="muted">${e(line.sellingUnitName || line.unitName || '')}</div></td><td class="num">${m(line.unitPrice)}</td>`}
-            <td class="num"><strong>${m(line.lineTotal)}</strong></td></tr>`).join('') || '<tr><td>Chưa có sản phẩm</td></tr>'}</tbody></table>`}
+            ${narrow ? '' : `<td class="num">${m(line.quantity)}<div class="muted">${e(line.sellingUnitName || line.unitName || '')}</div></td><td class="num">${unitPrice(line)}</td>`}
+            <td class="num"><strong>${m(line.lineTotal)}</strong></td></tr></tbody>`;
+            }).join('') || '<tbody><tr><td>Chưa có sản phẩm</td></tr></tbody>'}</table>`}
             <table class="totals">${row('Tạm tính', order.subtotal)}${row('Giảm giá', order.discountTotal)}${row('TỔNG CỘNG', order.grandTotal, 'grand')}
             ${deposit > 0 ? row('Trừ tiền cọc', deposit, 'deposit-applied') + row('Cần trả sau cọc', afterDeposit, 'settlement') : ''}
             ${row(deposit > 0 ? 'Đã thanh toán (gồm cọc)' : 'Đã thanh toán', order.paidTotal, 'settlement')}${Number(order.balanceDue) > 0 ? row('Còn thiếu', order.balanceDue, 'settlement') : ''}${row('Tiền thừa', order.changeDue, 'settlement')}</table>
-            ${d.showPayments && (payments.length || deposit > 0) ? `<section class="payment"><strong>Thanh toán</strong>${deposit > 0 ? `<div class="payment-line"><span>Tiền cọc đã dùng</span><span>${m(deposit)}</span></div>` : ''}${payments.map(p => `<div class="payment-line"><span>${e(methods[p.method] || p.method || 'Khác')}${p.reference ? `<br><small class="muted">${e(p.reference)}</small>` : ''}</span><span>${m(p.amount)}</span></div>`).join('')}</section>` : ''}
+            ${d.showPayments && (payments.length || deposit > 0) ? `<section class="payment"><strong>Thanh toán</strong>${deposit > 0 ? `<div class="payment-line"><span>Tiền cọc đã dùng</span><span>${m(deposit)}</span></div>` : ''}${payments.map((p, index) => `<div class="payment-line"><span>${e(methods[p.method] || p.method || 'Khác')}${paymentReferences[index] ? `<br><small class="muted">${e(paymentReferences[index])}</small>` : ''}</span><span>${m(p.amount)}</span></div>`).join('')}</section>` : ''}
            ${options.offline ? '' : invoiceBuyerQr}
            ${options.offline && order.invoiceIntent ? `<div class="offline-note">${order.invoiceIntent.route === 2
                 ? 'Đã ghi nhận yêu cầu hóa đơn thủ công tại quầy. QR nhập thông tin chờ kết nối; vui lòng liên hệ cửa hàng. Thời hạn tự nhập thông tin là 2 giờ từ lúc hoàn tất đơn.'
@@ -196,6 +234,6 @@ const invoiceBuyerQr =
             <footer class="footer">${e(d.footerText)}</footer></article>`;
         return { design: d, size, css, body, html: `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu ${e(label)}</title><style>${css}</style></head><body>${body}</body></html>` };
     }
-    root.ReceiptTemplates = { sizes, layouts, paperSizes, normalize, builtIns, render, escape, money };
+    root.ReceiptTemplates = { sizes, layouts, paperSizes, normalize, builtIns, render, escape, money, paymentDisplayReferences };
     if (typeof module === 'object' && module.exports) module.exports = root.ReceiptTemplates;
 })(typeof window === 'object' ? window : globalThis);

@@ -10,10 +10,10 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   const number = value => value == null ? 'Chưa xác định' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 }).format(value);
   const compact = value => value == null ? '—' : new Intl.NumberFormat('vi-VN', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
-  const money = value => `<span title="${esc(number(value))} VND">${esc(number(value))}</span>`;
+  const money = (value, exact) => `<span title="${esc(exact ?? number(value))} VND">${esc(exact ?? number(value))}</span>`;
   const localDay = value => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(value || new Date());
-  const date = value => value ? new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(value.endsWith('Z') ? value : value + 'Z')) : 'Chưa có';
-  const time = value => new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value.endsWith('Z') ? value : value + 'Z'));
+  const date = value => value ? new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z')) : 'Chưa có';
+  const time = value => new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z'));
   const guid = () => crypto.randomUUID();
   const fundName = key => ({ cash: 'Tiền mặt', bank: 'Chuyển khoản', other: 'Thẻ, ví & khác' }[key] || key);
   const agingName = key => ({ current: 'Chưa quá hạn', '1-30': 'Quá hạn 1–30 ngày', '31-60': 'Quá hạn 31–60 ngày', '61-90': 'Quá hạn 61–90 ngày', '90+': 'Quá hạn trên 90 ngày', unknown: 'Chưa có hạn', settled: 'Đã hết nợ' }[key] || key);
@@ -92,8 +92,8 @@
   form.addEventListener('submit', event => { event.preventDefault(); load(); });
   root.querySelectorAll('[data-refresh]').forEach(button => button.addEventListener('click', load));
 
-  function kpi(title, value, caption, icon = 'bx-wallet', isMoney = true) {
-    return `<article class="mr-kpi"><div class="mr-kpi-title"><i class="bx ${icon}" aria-hidden="true"></i>${esc(title)}</div><strong title="${esc(number(value))}${isMoney ? ' VND' : ''}">${isMoney ? compact(value) : number(value)}</strong><small>${esc(caption)}</small></article>`;
+  function kpi(title, value, caption, icon = 'bx-wallet', isMoney = true, exact) {
+    return `<article class="mr-kpi"><div class="mr-kpi-title"><i class="bx ${icon}" aria-hidden="true"></i>${esc(title)}</div><strong title="${esc(exact ?? number(value))}${isMoney ? ' VND' : ''}">${exact != null ? esc(exact) : isMoney ? compact(value) : number(value)}</strong><small>${esc(caption)}</small></article>`;
   }
   function table(headers, rows, caption = '') {
     if (!rows.length) return '<div class="mr-empty">Không có dữ liệu phù hợp trong kỳ này.</div>';
@@ -136,12 +136,13 @@
     const outgoing = -external.reduce((sum, x) => sum + Math.min(0, x.amount), 0);
     const balances = data.summary.filter(x => x.fund !== 'other');
     const closing = balances.length > 0 && balances.every(x => x.closing != null) ? balances.reduce((sum, x) => sum + x.closing, 0) : null;
-    $('[data-kpis]').innerHTML = kpi('Thực thu', incoming, 'Không gồm chuyển giữa hai quỹ', 'bx-trending-up') + kpi('Thực chi', outgoing, 'Hoàn tiền, chi phí và các phiếu chi', 'bx-trending-down') + kpi('Dòng tiền thuần', incoming - outgoing, 'Thực thu − thực chi', 'bx-transfer') + kpi('Số dư cuối kỳ', closing, closing == null ? 'Cần số dư đầu kỳ và dữ liệu đủ căn cứ' : 'Các quỹ đang chọn', 'bx-wallet');
-    const fundRows = data.summary.filter(x => x.fund !== 'other' || x.inflow || x.outflow).map(x => [esc(x.name), money(x.opening), money(x.inflow), money(x.outflow), money(x.closing)]);
+    $('[data-kpis]').innerHTML = kpi('Thực thu', incoming, 'Không gồm chuyển giữa hai quỹ', 'bx-trending-up', true, data.externalInflowText) + kpi('Thực chi', outgoing, 'Hoàn tiền, chi phí và các phiếu chi', 'bx-trending-down', true, data.externalOutflowText) + kpi('Dòng tiền thuần', incoming - outgoing, 'Thực thu − thực chi', 'bx-transfer', true, data.externalNetText) + kpi('Số dư cuối kỳ', closing, closing == null ? 'Cần số dư đầu kỳ và dữ liệu đủ căn cứ' : 'Các quỹ đang chọn', 'bx-wallet', true, data.selectedClosingText);
+    const fundRows = data.summary.filter(x => x.fund !== 'other' || x.inflow || x.outflow).map(x => [esc(x.name), money(x.opening,x.openingText), money(x.inflow,x.inflowText), money(x.outflow,x.outflowText), money(x.closing,x.closingText)]);
     $('[data-panels]').innerHTML = '<div class="mr-grid">' +
-      panel('or-cash-trend', 'Thu và chi theo thời gian', 'Tách thực thu, thực chi; loại chuyển quỹ', table(['Kỳ', 'Thu', 'Chi', 'Thuần'], data.trend.map(x => [esc(x.label), money(x.inflow), money(x.outflow), money(x.net)]))) +
+      panel('or-cash-trend', 'Thu và chi theo thời gian', 'Tách thực thu, thực chi; loại chuyển quỹ', table(['Kỳ', 'Thu', 'Chi', 'Thuần'], data.trend.map(x => [esc(x.label), money(x.inflow,x.inflowText), money(x.outflow,x.outflowText), money(x.net,x.netText)]))) +
       `<section class="mr-panel"><div class="or-fund-actions"><div><h2>Tình hình từng quỹ</h2><p class="mr-caption">Đầu kỳ + thu − chi = cuối kỳ</p></div>${canManage ? '<button class="mr-button" type="button" data-opening>Số dư ban đầu</button>' : ''}</div><div class="mr-table-wrap or-fund-table">${table(['Quỹ', 'Đầu kỳ', 'Thu', 'Chi', 'Cuối kỳ'], fundRows)}</div><p class="mr-caption" style="margin-top:18px">Chênh lệch kiểm đếm các ca đóng trong kỳ: <strong>${number(data.closingShiftDifference)} VND</strong></p><p class="mr-caption">Thu/chi từng quỹ có cả chuyển quỹ. Chênh lệch kiểm đếm dùng để đối chiếu, chưa tự hạch toán vào số dư.</p></section></div>`;
-    chart('or-cash-trend', { chart: { type: 'line' }, series: [{ name: 'Thực thu', type: 'column', data: data.trend.map(x => x.inflow) }, { name: 'Thực chi', type: 'column', data: data.trend.map(x => x.outflow) }, { name: 'Thuần', type: 'line', data: data.trend.map(x => x.net) }], xaxis: { categories: data.trend.map(x => x.label) }, stroke: { width: [0, 0, 3] }, plotOptions: { bar: { columnWidth: '45%', borderRadius: 3 } } }, data.items.length > 0);
+    if (data.bankReceiptReviews?.length) $('[data-panels]').insertAdjacentHTML('beforeend', '<section class="mr-panel" data-bank-receipt-reviews><h2>Bằng chứng cần đối soát</h2><p>Chưa cộng vào quỹ. Ngày tiếp nhận chứng cứ không thay thế ngày ngân hàng; bằng chứng chưa xác minh có thể ảnh hưởng cả kỳ lịch sử.</p>' + table(['Mã', 'Toàn bộ số tiền', 'Ngày ngân hàng', 'Lý do'], data.bankReceiptReviews.map(x => [esc(x.id), money(x.amount,x.amountText), esc(x.bankDay || 'Chưa xác minh'), esc(x.reason)])) + '</section>');
+    chart('or-cash-trend', { chart: { type: 'line' }, series: [{ name: 'Thực thu', type: 'column', data: data.trend.map(x => x.inflow) }, { name: 'Thực chi', type: 'column', data: data.trend.map(x => x.outflow) }, { name: 'Thuần', type: 'line', data: data.trend.map(x => x.net) }], tooltip: { y: { formatter: (value, opts) => data.trend[opts.dataPointIndex]?.[['inflowText','outflowText','netText'][opts.seriesIndex]] ?? number(value) } }, xaxis: { categories: data.trend.map(x => x.label) }, stroke: { width: [0, 0, 3] }, plotOptions: { bar: { columnWidth: '45%', borderRadius: 3 } } }, data.items.length > 0);
     $('[data-state]').innerHTML = '<option value="all">Tất cả giao dịch</option><option value="in">Tiền vào</option><option value="out">Tiền ra</option><option value="transfer">Chuyển quỹ</option><option value="manual">Phiếu nhập tay / liên kết</option>';
   }
   function renderStock() {
@@ -188,7 +189,7 @@
     let headers, rows;
     if (section === 'cashflow') {
       headers = ['Nội dung', 'Ngày UTC+7', 'Quỹ', 'Thu', 'Chi', 'Nguồn', 'Thao tác'];
-      rows = items.map(x => [esc(x.name) + `<small>${esc(x.id)}${x.reference ? ' · ' + esc(x.reference) : ''}</small>`, esc(time(x.atUtc)), esc(fundName(x.fund)), money(x.amount > 0 ? x.amount : 0), money(x.amount < 0 ? -x.amount : 0), esc(x.source), canManage && x.canReverse ? `<button class="mr-button" type="button" data-reverse="${x.manualId}">${x.source === 'Liên kết phiếu ca' ? 'Hủy liên kết' : 'Đảo phiếu'}</button>` : '—']);
+      rows = items.map(x => [esc(x.name) + `<small>${esc(x.id)}${x.reference ? ' · ' + esc(x.reference) : ''}</small>`, esc(x.timeText ?? time(x.atUtc)), esc(fundName(x.fund)), money(x.amount > 0 ? x.amount : 0,x.inflowText), money(x.amount < 0 ? -x.amount : 0,x.outflowText), esc(x.source), canManage && x.canReverse ? `<button class="mr-button" type="button" data-reverse="${x.manualId}">${x.source === 'Liên kết phiếu ca' ? 'Hủy liên kết' : 'Đảo phiếu'}</button>` : '—']);
     } else if (section === 'inventory') {
       headers = ['Sản phẩm', 'Kho', 'ĐVT gốc', 'Đầu kỳ', 'Nhập', 'Xuất', 'Cuối kỳ', 'Giá trị tồn', 'Đủ bán (ngày)', 'Tình trạng'];
       rows = items.map(x => [esc(x.name) + `<small>${esc(x.sku)}</small>`, esc(x.warehouse), esc(x.unit), number(x.opening), number(x.inbound), number(x.outbound), number(x.closing), money(x.closingValue), number(x.daysCover), badge(stateName(x.state), x.state === 'negative' ? 'danger' : x.state !== 'normal' ? 'warning' : '') + (x.isProvisional ? ' ' + badge('Giá vốn tạm', 'warning') : '') + (x.isIncomplete && x.state !== 'incomplete' ? ' ' + badge('Thiếu dữ liệu', 'warning') : '')]);
@@ -303,7 +304,7 @@
       $('[data-action-description]').textContent = isDue ? row.party + ' · ' + row.document : linked ? `${row.name}. Hủy liên kết thanh toán với chứng từ, phiếu tiền mặt của ca vẫn giữ nguyên. Công nợ liên quan được ghi ngược chiều vào ngày chọn.` : `${row.name} · ${number(row.amount)} VND. Xác nhận tiền được ghi ngược chiều vào ngày chọn; phiếu gốc vẫn được giữ lại.`;
       $('[data-action-date-label]').firstChild.textContent = isDue ? 'Hạn thanh toán (để trống nếu chưa có)' : 'Ngày đảo phiếu';
       $('[data-action-reason-label]').hidden = isDue; f.elements.reason.required = !isDue; f.elements.date.required = !isDue;
-      f.elements.date.value = isDue ? row.dueDate?.slice(0, 10) || '' : localDay(); f.elements.date.max = isDue ? '2100-12-31' : localDay(); f.elements.date.min = isDue ? '2000-01-01' : localDay(new Date(row.atUtc.endsWith('Z') ? row.atUtc : row.atUtc + 'Z'));
+      f.elements.date.value = isDue ? row.dueDate?.slice(0, 10) || '' : localDay(); f.elements.date.max = isDue ? '2100-12-31' : localDay(); f.elements.date.min = isDue ? '2000-01-01' : localDay(new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(row.atUtc) ? row.atUtc : row.atUtc + 'Z'));
       dialog.showModal();
     }
   });

@@ -6,6 +6,7 @@ using GaoApp.Application.Services.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Repositories.Inventory;
+using GaoApp.Infrastructure.Repositories.Purchases;
 using GaoApp.Tests.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,58 @@ namespace GaoApp.Tests.Purchases;
 
 public sealed class PurchaseReceiptAuditWorkflowTests
 {
+    [Fact]
+    public async Task Intake_repository_line_creation_and_accumulation_persist_physical_review_evidence()
+    {
+        await using var db = CreateContext();
+        var document = await SeedReceiptAsync(db);
+        var repository = new StockDocumentProvisionalItemRepository(db);
+        var line = NewLine(document);
+        document.Lines.Add(line);
+
+        await repository.SaveChangesAsync();
+        var added = await SingleEventAsync(db, PurchaseReceiptAuditEventType.PhysicalLineAdded);
+        added.StockDocumentLineId.Should().Be(line.Id);
+        ReadObject(added.NewValuesJson).GetProperty(nameof(StockDocumentLine.Quantity))
+            .GetDecimal().Should().Be(2m);
+
+        line.Quantity = 5m;
+        line.BaseQuantity = 25m;
+        await repository.SaveChangesAsync();
+        var changed = await SingleEventAsync(db, PurchaseReceiptAuditEventType.PhysicalLineChanged);
+        changed.StockDocumentLineId.Should().Be(line.Id);
+        ReadObject(changed.OldValuesJson).GetProperty(nameof(StockDocumentLine.Quantity))
+            .GetDecimal().Should().Be(2m);
+        ReadObject(changed.NewValuesJson).GetProperty(nameof(StockDocumentLine.Quantity))
+            .GetDecimal().Should().Be(5m);
+    }
+
+    [Fact]
+    public async Task Explicit_soft_delete_and_restore_record_line_existence_evidence()
+    {
+        await using var db = CreateContext();
+        var document = await SeedReceiptAsync(db);
+        var line = NewLine(document);
+        document.Lines.Add(line);
+        await db.SaveChangesAsync();
+        var repository = new StockDocumentRepository(db);
+
+        line.IsDeleted = true;
+        await repository.SaveChangesAsync();
+        var deleted = await SingleEventAsync(db, PurchaseReceiptAuditEventType.PhysicalLineDeleted);
+        ReadObject(deleted.OldValuesJson).GetProperty(nameof(StockDocumentLine.IsDeleted))
+            .GetBoolean().Should().BeFalse();
+        ReadObject(deleted.NewValuesJson).EnumerateObject().Should().BeEmpty();
+
+        line.IsDeleted = false;
+        await repository.SaveChangesAsync();
+        var restored = await SingleEventAsync(db, PurchaseReceiptAuditEventType.PhysicalLineChanged);
+        ReadObject(restored.OldValuesJson).GetProperty(nameof(StockDocumentLine.IsDeleted))
+            .GetBoolean().Should().BeTrue();
+        ReadObject(restored.NewValuesJson).GetProperty(nameof(StockDocumentLine.IsDeleted))
+            .GetBoolean().Should().BeFalse();
+    }
+
     [Fact]
     public async Task Line_add_update_delete_persists_allowlisted_before_after_evidence()
     {

@@ -173,6 +173,7 @@ public static class DependencyInjection
         services.AddScoped<IStockDocumentSplitService, StockDocumentSplitService>();
         services.AddScoped<IInvoiceReadService, InvoiceReadService>();
         services.AddScoped<IInvoiceCommandService, InvoiceCommandService>();
+        services.AddScoped<IInvoiceOrderDraftService, InvoiceOrderDraftService>();
         services.AddScoped<IDraftInvoiceReturnSyncService, DraftInvoiceReturnSyncService>();
         services.AddScoped<IInvoiceBuyerService, InvoiceBuyerService>();
         services.AddScoped<IInvoiceService, InvoiceService>();

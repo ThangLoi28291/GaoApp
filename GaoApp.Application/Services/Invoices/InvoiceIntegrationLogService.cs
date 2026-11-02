@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
@@ -22,8 +23,7 @@ public class InvoiceIntegrationLogService : IInvoiceIntegrationLogService
         InvoiceIntegrationLogQueryDto query,
         CancellationToken ct = default)
     {
-        query.Page = query.Page <= 0 ? 1 : query.Page;
-        query.PageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        query.NormalizeAndValidate();
 
         var (items, total) = await _logRepository.QueryAsync(query, ct);
 
@@ -78,9 +78,9 @@ public class InvoiceIntegrationLogService : IInvoiceIntegrationLogService
             ActionType = entity.ActionType,
             ActionName = GetActionName(entity.ActionType),
             IsSuccess = entity.IsSuccess,
-            ErrorCode = entity.ErrorCode,
-            ErrorMessage = entity.ErrorMessage,
-            RequestUrl = entity.RequestUrl,
+            ErrorCode = InvoiceLogReadSanitizer.Code(entity.ErrorCode),
+            ErrorMessage = InvoiceLogReadSanitizer.Error(entity.ErrorMessage),
+            RequestUrl = InvoiceLogReadSanitizer.Url(entity.RequestUrl),
             StartedAtUtc = entity.StartedAtUtc,
             FinishedAtUtc = entity.FinishedAtUtc,
             DurationMs = entity.DurationMs
@@ -100,11 +100,11 @@ public class InvoiceIntegrationLogService : IInvoiceIntegrationLogService
             ActionType = entity.ActionType,
             ActionName = GetActionName(entity.ActionType),
             IsSuccess = entity.IsSuccess,
-            ErrorCode = entity.ErrorCode,
-            ErrorMessage = entity.ErrorMessage,
-            RequestUrl = entity.RequestUrl,
-            RequestBody = entity.RequestBody,
-            ResponseBody = entity.ResponseBody,
+            ErrorCode = InvoiceLogReadSanitizer.Code(entity.ErrorCode),
+            ErrorMessage = InvoiceLogReadSanitizer.Error(entity.ErrorMessage),
+            RequestUrl = InvoiceLogReadSanitizer.Url(entity.RequestUrl),
+            RequestBody = InvoiceLogReadSanitizer.Body(entity.RequestBody),
+            ResponseBody = InvoiceLogReadSanitizer.Body(entity.ResponseBody),
             StartedAtUtc = entity.StartedAtUtc,
             FinishedAtUtc = entity.FinishedAtUtc,
             DurationMs = entity.DurationMs

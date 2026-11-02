@@ -7,10 +7,10 @@
     const money = value => Number(value || 0).toLocaleString('vi-VN') + ' đ';
     const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
     const utcDate = value => new Date(typeof value==='string' && !/Z$|[+-]\d\d:\d\d$/.test(value) ? value+'Z' : value);
-    const date = value => value ? utcDate(value).toLocaleString('vi-VN') : '—';
+    const date = value => value ? utcDate(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
     const day = value => {
         const d = utcDate(value);
-        return Number.isNaN(d.getTime()) ? '' : `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        return Number.isNaN(d.getTime()) ? '' : new Date(d.getTime() + 7 * 3600000).toISOString().slice(0,10);
     };
     const method = value => ({ Cash:'Tiền mặt', BankTransfer:'Chuyển khoản', Card:'Thẻ', EWallet:'Ví điện tử', Other:'Khác' }[value] || value || 'Không phát sinh tiền');
     const status = value => ({ Draft:'Chưa chốt', OnHold:'Đang giữ', Completed:'Hoàn tất', Refunded:'Đã hoàn tiền', Voided:'Hủy sau chốt',
@@ -22,7 +22,7 @@
     const orderLink = id => `<a href="/admin/pos/order-detail/${Number(id)}" target="_blank" rel="noopener">Mở đơn #${Number(id)}</a>`;
     const requestLink = (id, shiftId) => `/admin/pos-shift/requests?tab=cash&shiftId=${Number(shiftId)}&transactionId=${Number(id)}`;
     const paymentTable = payments => `<div class="recon-table-wrap"><table class="recon-table"><thead><tr><th>Phương thức</th><th>Số tiền</th><th>Đối chiếu</th><th></th></tr></thead><tbody>${payments.map(p =>
-        `<tr><td>${esc(method(p.method))}${p.isDebtCollection ? '<small>Thu công nợ</small>' : ''}${p.cancelled ? badge('Đã hủy','danger') : ''}</td><td class="money">${money(p.amount)}</td><td>${p.reference?esc(p.reference):''}${p.method==='BankTransfer'?'<small>'+esc(p.confirmation)+'</small>':''}<details class="recon-evidence"><summary>Thông tin gốc</summary>${esc(date(p.paidAtUtc))}<br>${esc(p.actor)}<br>${esc(p.provider||'')}</details></td><td>
+        `<tr><td>${esc(method(p.method))}${p.isDebtCollection ? '<small>Thu công nợ</small>' : ''}${p.cancelled ? badge('Đã hủy','danger') : ''}</td><td class="money">${money(p.amount)}</td><td>${p.reference?esc(p.reference):''}${p.method==='BankTransfer'?'<small>'+esc(p.confirmation)+'</small>':''}<details class="recon-evidence"><summary>Thông tin gốc</summary>${esc(p.sourceReceivedAtText || date(p.paidAtUtc))}<br>${esc(p.actor)}<br>${esc(p.provider||'')}</details></td><td>
         ${p.pendingRequestId ? `<a href="/admin/pos-shift/requests?tab=payment&requestId=${Number(p.pendingRequestId)}" target="_blank" rel="noopener">Xem yêu cầu</a>` : p.canRequest ? `<a href="/admin/pos-shift/requests?tab=payment&paymentId=${Number(p.id)}" target="_blank" rel="noopener">Đổi phương thức</a>` : ''}</td></tr>`).join('') || '<tr><td colspan="4">Chưa có khoản thanh toán.</td></tr>'}</tbody></table></div>`;
     function orderFlags(o) {
         const live = o.payments.filter(p => !p.cancelled && !p.isDebtCollection);
@@ -39,7 +39,7 @@
     }
     function rowsFor(data, tab) {
         const source = { orders:data.orders, cash:data.cashTransactions, refunds:data.refunds, other:data.otherMovements,
-            qrs:data.qrs, adjustments:[...(data.adjustments || []),...(data.paymentAdjustments || []).map(x=>({...x,kind:'Payment'}))].sort((a,b)=>new Date(b.createdAtUtc)-new Date(a.createdAtUtc)) }[tab] || [];
+            qrs:data.qrs, adjustments:[...(data.adjustments || []),...(data.paymentAdjustments || []).map(x=>({...x,kind:'Payment'}))].sort((a,b)=>new Date(typeof b.createdAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(b.createdAtUtc) ? b.createdAtUtc + 'Z' : b.createdAtUtc)-new Date(typeof a.createdAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(a.createdAtUtc) ? a.createdAtUtc + 'Z' : a.createdAtUtc)) }[tab] || [];
         return source.map(x => {
             const payments = x.payments || [];
             const flags = tab === 'orders' ? orderFlags(x) : tab === 'cash' ? (x.pendingRequestId ? ['Chờ duyệt điều chỉnh'] : x.cancelled && !x.depositEntryId ? ['Phiếu đã hủy'] : []) :
@@ -61,8 +61,8 @@
     function renderOrder(o, flags) {
         const lines = `<div class="recon-table-wrap"><table class="recon-table"><thead><tr><th>Sản phẩm</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>${o.lines.map(l =>
             `<tr><td>${esc(l.name)}</td><td>${esc(l.quantity)}</td><td class="money">${money(l.unitPrice)}</td><td class="money">${money(l.total)}</td></tr>`).join('')}</tbody></table></div>`;
-        return item(o.number, `${date(o.completedAtUtc || o.createdAtUtc)} · ${o.customer}`, [amount('Tổng đơn',o.grandTotal), ...(o.cashReceived?[amount('Tiền mặt',o.cashReceived)]:[]),
-            ...(o.bankReceived?[amount('Chuyển khoản',o.bankReceived)]:[])], [badge(status(o.status)),...(flags.length?[badge(flags[0],'warning')]:[])],
+        return item(o.number, `${date(o.completedAtUtc || o.createdAtUtc)} · ${o.customer}`, [amount('Tổng đơn',o.grandTotal), ...(o.cashReceived?[amount(o.nativeStorefrontSource?'Phần bán từ nguồn tiền mặt':'Tiền mặt',o.cashReceived)]:[]),
+            ...(o.bankReceived?[amount(o.nativeStorefrontSource?'Phần bán từ nguồn ngân hàng':'Chuyển khoản',o.bankReceived)]:[])], [badge(status(o.status)),...(o.nativeStorefrontSource?[badge('Nguồn website · không thu mới tại ca')]:[]),...(flags.length?[badge(flags[0],'warning')]:[])],
             `${flags.length?'<p>'+flags.map(f=>badge(f,'warning')).join(' ')+'</p>':''}${paymentTable(o.payments)}
             <details class="recon-evidence"><summary>Chi tiết đơn và cách tính vào quỹ</summary><p>Người tạo: <strong>${esc(o.actor)}</strong> · ${esc(date(o.createdAtUtc))}${o.note ? '<br>Ghi chú: '+esc(o.note) : ''}</p>
             <div class="recon-amounts">${amount('Cọc sử dụng',o.deposit)}${amount('Thẻ / ví / khác',o.otherReceived)}${amount(o.isCreditSale ? 'Công nợ lúc chốt đơn' : 'Còn thiếu',o.remaining)}${amount('Tiền nhận dư',o.surplus)}${amount('Tiền mặt tính vào tiền bán của ca',o.cashApplied)}${amount('Không tiền mặt tính vào tiền bán của ca',o.nonCashApplied)}</div>
@@ -205,3 +205,4 @@
     }
     return { init, orderFlags, rowsFor, filterRows, renderRow, esc };
 });
+

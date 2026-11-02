@@ -5,6 +5,7 @@ namespace GaoApp.Application.Interfaces.Services.Invoices;
 
 public interface IInvoiceCommandService
 {
+    Task<Result<InvoiceHeadDto>> UpdateRevenueTaxAsync(UpdateInvoiceRevenueTaxRequest request, CancellationToken ct = default);
     Task<Result<InvoiceHeadDto>> CreateInvoiceHeadFromOrderAsync(
         int orderId,
         CancellationToken ct = default);
@@ -27,6 +28,14 @@ public interface IInvoiceCommandService
 
     Task<Result<InvoiceHeadDto>> UpdateManualDetailAsync(
         UpdateManualInvoiceDetailRequest request,
+        CancellationToken ct = default);
+
+    Task<Result<InvoiceHeadDto>> UpdateDetailAsync(
+        UpdateManualInvoiceDetailRequest request,
+        CancellationToken ct = default);
+
+    Task<Result<InvoiceHeadDto>> DeleteDetailAsync(
+        int invoiceDetailId,
         CancellationToken ct = default);
 
     Task<Result<InvoiceHeadDto>> LockInvoiceAsync(

@@ -1,10 +1,11 @@
-﻿(function () {
+(function () {
     "use strict";
 
     const modalElement = document.getElementById("manualDetailModal");
     const modalContent = document.getElementById("manualDetailModalContent");
     const openButton = document.getElementById("btnOpenManualDetailModal");
     const summaryBox = document.getElementById("invoiceSummaryBox");
+    const autoLinesBox = document.getElementById("autoLinesBox");
     const manualLinesBox = document.getElementById("manualLinesBox");
     const deleteModalElement = document.getElementById("deleteManualDetailModal");
 
@@ -20,6 +21,50 @@
     let searchSeq = 0;
     let activeIndex = -1;
     let currentItems = [];
+    let searchController = null, selectionController = null, productBindings = null, selectedProduct = null, pickerBlocked = false;
+    const stockNumber = value => Number(value).toLocaleString("vi-VN", { maximumFractionDigits: 4 });
+
+    function cancelProductLookups() {
+        clearTimeout(searchTimer); searchSeq++;
+        searchController?.abort(); searchController = null;
+        selectionController?.abort(); selectionController = null;
+    }
+
+    function clearProductSelection() {
+        const id = document.getElementById("manualProductVariantId");
+        if (id) id.value = "";
+        if (selectedProduct) {
+            for (const key of ["manualItemName", "manualUnitName", "manualUnitPrice"]) {
+                const field = document.getElementById(key); if (field) field.value = "";
+            }
+        }
+        selectedProduct = null;
+        const box = document.getElementById("manualProductStock");
+        if (box) { box.hidden = true; box.textContent = ""; delete box.dataset.kind; }
+    }
+
+    function showSelectedStock(item) {
+        const box = document.getElementById("manualProductStock");
+        if (!box) return;
+        if (item.availableQuantity == null) { box.hidden = true; return; }
+        const unit = item.unitName || "đơn vị gốc";
+        let text = `Còn khả dụng: ${stockNumber(item.availableQuantity)} ${unit} · ${item.warehouseName || "Kho hóa đơn"}`;
+        if (item.alreadyOnInvoiceQuantity > 0) text += ` · Đã có trong HĐ: ${stockNumber(item.alreadyOnInvoiceQuantity)} · Có thể thêm: ${stockNumber(item.maximumAdditionalQuantity)} ${unit}`;
+        const exceeds = Number(document.getElementById("manualQuantity")?.value || 0) > item.maximumAdditionalQuantity;
+        if (exceeds) text += ` · Số lượng nhập vượt mức có thể thêm.`;
+        box.textContent = text; box.hidden = false; box.dataset.kind = exceeds ? "error" : "available";
+    }
+
+    async function readPickerReply(response) {
+        if (response.status === 401 || response.status === 403) {
+            pickerBlocked = true;
+            throw new Error("Phiên đăng nhập hoặc quyền đã thay đổi. Tải lại trang để tiếp tục.");
+        }
+        if (response.redirected || !response.headers.get("content-type")?.includes("application/json")) throw new Error("Không tải được dữ liệu tồn. Vui lòng thử lại.");
+        const data = await response.json();
+        if (!response.ok) throw new Error(response.status < 500 && typeof data.message === "string" ? data.message : "Không tải được dữ liệu tồn. Vui lòng thử lại.");
+        return data;
+    }
 
     function isInvoiceLocked() {
         const page = document.getElementById("invoiceDetailPage");
@@ -568,7 +613,7 @@
         document.querySelectorAll("[data-delete-manual-detail-id]").forEach(function (btn) {
             btn.onclick = function () {
                 if (isInvoiceLocked()) {
-                    showError("Hóa đơn đã khóa, không thể xóa dòng manual.");
+                    showError("Hóa đơn đã khóa, không thể xóa dòng hóa đơn.");
                     return;
                 }
 
@@ -588,7 +633,7 @@
 
     async function deleteManualDetail() {
         if (isInvoiceLocked()) {
-            showError("Hóa đơn đã khóa, không thể xóa dòng manual.");
+            showError("Hóa đơn đã khóa, không thể xóa dòng hóa đơn.");
             return;
         }
 
@@ -618,7 +663,7 @@
                 formData.append("__RequestVerificationToken", tokenInput.value);
             }
 
-            const response = await fetch("/Admin/Invoice/DeleteManualDetail", {
+            const response = await fetch("/Admin/Invoice/DeleteDetail", {
                 method: "POST",
                 body: formData,
                 headers: {
@@ -629,22 +674,21 @@
             const data = await readResponseOnce(response);
 
             if (!response.ok) {
-                showError(data.message || "Không xóa được dòng manual.");
+                showError(data.message || "Không xóa được dòng hóa đơn.");
                 return;
             }
 
             if (!data.json?.success) {
-                showError(data.json?.message || "Xóa manual line thất bại.");
+                showError(data.json?.message || "Xóa dòng hóa đơn thất bại.");
                 return;
             }
 
             deleteModal?.hide();
 
-            await reloadInvoiceSummary(data.json.invoiceHeadId);
-            await reloadManualLines(data.json.invoiceHeadId);
+            await reloadInvoiceContent(data.json.invoiceHeadId);
         } catch (err) {
             console.error(err);
-            showError("Lỗi kết nối khi xóa dòng manual.");
+            showError("Lỗi kết nối khi xóa dòng hóa đơn.");
         } finally {
             if (btn) {
                 btn.disabled = false;
@@ -655,16 +699,17 @@
 
     async function loadCreateManualModal() {
         if (isInvoiceLocked()) {
-            showError("Hóa đơn đã khóa, không thể thêm dòng manual.");
+            showError("Hóa đơn đã khóa, không thể thêm dòng hóa đơn.");
             return;
         }
 
         if (!modalElement || !modalContent || !modal) {
-            showError("Không tìm thấy popup thêm dòng manual.");
+            showError("Không tìm thấy popup thêm dòng hóa đơn.");
             return;
         }
 
         const invoiceHeadId = getInvoiceHeadId();
+        cancelProductLookups(); clearProductSelection(); productBindings?.abort();
 
         const response = await fetch(`/Admin/Invoice/CreateManualDetail?invoiceHeadId=${encodeURIComponent(invoiceHeadId)}`, {
             method: "GET",
@@ -674,7 +719,7 @@
         });
 
         if (!response.ok) {
-            showError("Không tải được popup thêm dòng manual.");
+            showError("Không tải được popup thêm dòng hóa đơn.");
             return;
         }
 
@@ -701,6 +746,8 @@
 
     function bindManualEditRows() {
         document.querySelectorAll(".manual-detail-row").forEach(function (row) {
+            const editButton = row.querySelector("[data-edit-manual-detail-id]");
+            if (editButton) editButton.onclick = function () { startEditManualRow(row); };
             row.ondblclick = function (e) {
                 if (isInvoiceLocked()) return;
                 if (row.classList.contains("is-locked")) return;
@@ -713,6 +760,7 @@
 
     function startEditManualRow(row) {
         if (!row || row.classList.contains("is-editing")) return;
+        if (isInvoiceLocked() || row.classList.contains("is-locked")) return;
 
         cancelOtherEditingRows();
 
@@ -782,7 +830,7 @@
             `;
         }
 
-        const actionCell = row.querySelector("td:last-child");
+        const actionCell = row.querySelector("[data-manual-actions]") || row.querySelector("td:last-child");
 
         if (actionCell) {
             actionCell.innerHTML = `
@@ -835,8 +883,9 @@
     }
 
     async function saveManualEditRow(row) {
+        if (row.classList.contains("is-saving")) return;
         if (isInvoiceLocked()) {
-            showError("Hóa đơn đã khóa, không thể sửa dòng manual.");
+            showError("Hóa đơn đã khóa, không thể sửa dòng hóa đơn.");
             return;
         }
 
@@ -851,6 +900,11 @@
         const unitPrice = Number(row.querySelector("[data-manual-edit-field='unitPrice']")?.value || 0);
         const vatRate = Number(row.querySelector("[data-manual-edit-field='vatRate']")?.value || 0);
         const note = row.querySelector("[data-manual-edit-field='note']")?.value || "";
+
+        if (![quantity, unitPrice, vatRate].every(Number.isFinite)) {
+            showError("Số lượng, đơn giá và VAT phải là số hợp lệ.");
+            return;
+        }
 
         if (quantity === 0) {
             showError("Số lượng không được bằng 0.");
@@ -867,8 +921,8 @@
             return;
         }
 
-        if (vatRate < 0) {
-            showError("VAT không được âm.");
+        if (vatRate < 0 || vatRate > 100) {
+            showError("VAT phải nằm trong khoảng từ 0 đến 100.");
             return;
         }
 
@@ -888,7 +942,7 @@
         row.classList.add("is-saving");
 
         try {
-            const response = await fetch("/Admin/Invoice/UpdateManualDetail", {
+            const response = await fetch("/Admin/Invoice/UpdateDetail", {
                 method: "POST",
                 body: formData,
                 headers: {
@@ -899,20 +953,19 @@
             const data = await readResponseOnce(response);
 
             if (!response.ok) {
-                showError(data.message || "Không cập nhật được dòng manual.");
+                showError(data.message || "Không cập nhật được dòng hóa đơn.");
                 return;
             }
 
             if (!data.json?.success) {
-                showError(data.json?.message || "Cập nhật dòng manual thất bại.");
+                showError(data.json?.message || "Cập nhật dòng hóa đơn thất bại.");
                 return;
             }
 
-            await reloadInvoiceSummary(data.json.invoiceHeadId);
-            await reloadManualLines(data.json.invoiceHeadId);
+            await reloadInvoiceContent(data.json.invoiceHeadId);
         } catch (err) {
             console.error(err);
-            showError("Lỗi kết nối khi cập nhật dòng manual.");
+            showError("Lỗi kết nối khi cập nhật dòng hóa đơn.");
         } finally {
             row.classList.remove("is-saving");
         }
@@ -943,7 +996,7 @@
             e.preventDefault();
 
             if (isInvoiceLocked()) {
-                showError("Hóa đơn đã khóa, không thể thêm dòng manual.");
+                showError("Hóa đơn đã khóa, không thể thêm dòng hóa đơn.");
                 return;
             }
 
@@ -954,6 +1007,13 @@
             const quantity = Number(quantityInput?.value || 0);
             const unitPrice = Number(unitPriceInput?.value || 0);
             const vatRate = Number(vatRateInput?.value || 0);
+
+            if (selectionController) { showError("Đang kiểm tra tồn sản phẩm. Vui lòng đợi kết quả."); return; }
+            if (selectedProduct?.maximumAdditionalQuantity != null && quantity > selectedProduct.maximumAdditionalQuantity) {
+                showSelectedStock(selectedProduct);
+                showError(`Có thể thêm tối đa ${stockNumber(selectedProduct.maximumAdditionalQuantity)} ${selectedProduct.unitName || "đơn vị gốc"}.`);
+                quantityInput?.focus(); return;
+            }
 
             if (quantity === 0) {
                 showError("Số lượng không được bằng 0.");
@@ -999,22 +1059,40 @@
                 const data = await readResponseOnce(response);
 
                 if (!response.ok) {
-                    showError(data.message || "Không thêm được dòng manual.");
+                    if (selectedProduct) {
+                        const oldId = selectedProduct.productVariantId;
+                        selectedProduct = null;
+                        const stockBox = document.getElementById("manualProductStock");
+                        if (stockBox) { stockBox.textContent = data.message || "Chưa xác nhận được số lượng. Tìm lại sản phẩm để cập nhật tồn."; stockBox.dataset.kind = "error"; }
+                        const operation = new AbortController(); selectionController = operation;
+                        const timer = setTimeout(() => operation.abort(), 15000);
+                        try {
+                            const updated = await fetch(`/Admin/Invoice/ProductStock?invoiceHeadId=${encodeURIComponent(getInvoiceHeadId())}&productVariantId=${oldId}`, {
+                                signal: operation.signal, cache: "no-store", credentials: "same-origin", redirect: "error", headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }
+                            });
+                            const stock = await readPickerReply(updated);
+                            if (selectionController === operation && form.isConnected && stock.productVariantId === oldId
+                                && document.getElementById("manualProductVariantId")?.value === String(oldId)) {
+                                selectedProduct = stock; showSelectedStock(stock);
+                            }
+                        } catch (_) { /* Keep the server's failure message; never restore stale amounts. */ }
+                        finally { clearTimeout(timer); if (selectionController === operation) selectionController = null; }
+                    }
+                    showError(data.message || "Không thêm được dòng hóa đơn.");
                     return;
                 }
 
                 if (!data.json?.success) {
-                    showError(data.json?.message || "Thêm dòng manual thất bại.");
+                    showError(data.json?.message || "Thêm dòng hóa đơn thất bại.");
                     return;
                 }
 
                 modal?.hide();
 
-                await reloadInvoiceSummary(data.json.invoiceHeadId);
-                await reloadManualLines(data.json.invoiceHeadId);
+                await reloadInvoiceContent(data.json.invoiceHeadId);
             } catch (err) {
                 console.error(err);
-                showError("Lỗi kết nối khi thêm dòng manual.");
+                showError("Lỗi kết nối khi thêm dòng hóa đơn.");
             } finally {
                 if (submitButton) {
                     submitButton.disabled = false;
@@ -1029,9 +1107,15 @@
         const menu = document.getElementById("manualProductAutocomplete");
 
         if (!input || !menu) return;
+        productBindings?.abort(); productBindings = new AbortController();
+        const options = { signal: productBindings.signal };
+        const correction = document.getElementById("invoiceDetailPage")?.dataset.isCorrectionInvoice === "true";
+        const hint = document.getElementById("manualProductSearchHint");
+        if (hint) hint.textContent = correction ? "Hóa đơn điều chỉnh/thay thế giữ danh sách chọn hiện có; không tiêu tồn đầu vào lần hai." : "Chỉ hiện hàng còn khả dụng tại kho của hóa đơn. Số lượng theo ĐVT gốc.";
+        document.getElementById("manualQuantity")?.addEventListener("input", () => { if (selectedProduct) showSelectedStock(selectedProduct); }, options);
 
         input.addEventListener("input", function () {
-            clearTimeout(searchTimer);
+            cancelProductLookups(); clearProductSelection(); hideMenu();
 
             const keyword = input.value.trim();
 
@@ -1043,7 +1127,7 @@
             searchTimer = setTimeout(function () {
                 searchProducts(keyword);
             }, 250);
-        });
+        }, options);
 
         input.addEventListener("keydown", function (e) {
             if (!currentItems.length) return;
@@ -1073,7 +1157,7 @@
             if (e.key === "Escape") {
                 hideMenu();
             }
-        });
+        }, options);
 
         menu.addEventListener("click", function (e) {
             const row = e.target.closest("[data-invoice-product-index]");
@@ -1083,12 +1167,12 @@
             if (index < 0 || index >= currentItems.length) return;
 
             selectItem(currentItems[index]);
-        });
+        }, options);
 
         document.addEventListener("click", function (e) {
             if (input.contains(e.target) || menu.contains(e.target)) return;
             hideMenu();
-        }, { once: false });
+        }, options);
     }
 
     async function searchProducts(keyword) {
@@ -1096,6 +1180,12 @@
         if (!menu) return;
 
         const seq = ++searchSeq;
+        if (pickerBlocked) { renderPickerError("Phiên đăng nhập hoặc quyền đã thay đổi. Tải lại trang để tiếp tục."); return; }
+        searchController?.abort();
+        const operation = new AbortController(); searchController = operation;
+        const timer = setTimeout(() => operation.abort(), 15000);
+        const input = document.getElementById("manualProductSearch");
+        const owns = () => seq === searchSeq && document.getElementById("manualProductSearch") === input && input?.value.trim() === keyword;
 
         menu.innerHTML = `
             <div class="invoice-ac-loading">
@@ -1106,31 +1196,29 @@
         menu.style.display = "block";
 
         try {
-            const response = await fetch(`/Admin/Invoice/SearchProductVariants?keyword=${encodeURIComponent(keyword)}`, {
+            const response = await fetch(`/Admin/Invoice/SearchProductVariants?invoiceHeadId=${encodeURIComponent(getInvoiceHeadId())}&keyword=${encodeURIComponent(keyword)}`, {
                 method: "GET",
+                signal: operation.signal, cache: "no-store", credentials: "same-origin", redirect: "error",
                 headers: {
-                    "X-Requested-With": "XMLHttpRequest"
+                    "X-Requested-With": "XMLHttpRequest", "Accept": "application/json"
                 }
             });
 
-            if (seq !== searchSeq) return;
-
-            if (!response.ok) {
-                renderEmpty(keyword);
-                return;
-            }
-
-            const items = await response.json();
-
-            if (seq !== searchSeq) return;
-
-            currentItems = Array.isArray(items) ? items : [];
+            if (!owns()) return;
+            const page = await readPickerReply(response);
+            if (!owns()) return;
+            if (!Array.isArray(page.items) || typeof page.stockFilterApplied !== "boolean") throw new Error("Dữ liệu tìm sản phẩm không hợp lệ.");
+            if (!page.stockFilterApplied && document.getElementById("invoiceDetailPage")?.dataset.isCorrectionInvoice !== "true") throw new Error("Chưa xác nhận được bộ lọc tồn của hóa đơn.");
+            if (page.stockFilterApplied && page.items.some(item => typeof item.availableQuantity !== "number" || !Number.isFinite(item.availableQuantity)
+                || item.availableQuantity <= 0 || typeof item.maximumAdditionalQuantity !== "number" || !Number.isFinite(item.maximumAdditionalQuantity) || item.maximumAdditionalQuantity <= 0)) throw new Error("Dữ liệu tồn sản phẩm không hợp lệ.");
+            currentItems = page.items;
             activeIndex = -1;
 
             renderItems(keyword);
-        } catch {
-            if (seq !== searchSeq) return;
-            renderEmpty(keyword);
+        } catch (error) {
+            if (owns()) renderPickerError(error.message || "Không tải được tồn. Vui lòng thử lại.");
+        } finally {
+            clearTimeout(timer); if (searchController === operation) searchController = null;
         }
     }
 
@@ -1160,6 +1248,8 @@
                             <span>Barcode: <strong>${escapeHtml(item.barcode || "-")}</strong></span>
                             <span>ĐVT: <strong>${escapeHtml(item.unitName || "-")}</strong></span>
                         </div>
+                        ${item.availableQuantity == null ? "" : `<div class="invoice-ac-stock">Còn khả dụng: <strong>${stockNumber(item.availableQuantity)} ${escapeHtml(item.unitName || "đơn vị gốc")}</strong> · ${escapeHtml(item.warehouseName || "Kho hóa đơn")}</div>`}
+                        ${item.alreadyOnInvoiceQuantity > 0 ? `<div class="invoice-ac-meta">Đã có trong HĐ: ${stockNumber(item.alreadyOnInvoiceQuantity)} · Có thể thêm: <strong>${stockNumber(item.maximumAdditionalQuantity)}</strong></div>` : ""}
                     </div>
 
                     <div class="invoice-ac-price">${price}</div>
@@ -1180,9 +1270,17 @@
 
         menu.innerHTML = `
             <div class="invoice-ac-empty">
-                Không tìm thấy sản phẩm cho: <strong>${escapeHtml(keyword)}</strong>
+                ${document.getElementById("invoiceDetailPage")?.dataset.isCorrectionInvoice === "true" ? "Không tìm thấy sản phẩm cho:" : "Không có sản phẩm phù hợp còn khả dụng tại kho của hóa đơn cho:"} <strong>${escapeHtml(keyword)}</strong>
             </div>
         `;
+        menu.style.display = "block";
+    }
+
+    function renderPickerError(message) {
+        const menu = document.getElementById("manualProductAutocomplete");
+        if (!menu) return;
+        currentItems = []; activeIndex = -1;
+        menu.innerHTML = `<div class="invoice-ac-empty text-danger" role="status">${escapeHtml(message)}</div>`;
         menu.style.display = "block";
     }
 
@@ -1210,7 +1308,27 @@
         rows[index].scrollIntoView({ block: "nearest" });
     }
 
-    function selectItem(item) {
+    async function selectItem(item) {
+        if (pickerBlocked) { renderPickerError("Tải lại trang để xác minh quyền truy cập."); return; }
+        const form = document.getElementById("manualDetailForm");
+        const id = Number(item.productVariantId || item.id);
+        if (!form || !Number.isInteger(id) || id <= 0) return;
+        cancelProductLookups(); clearProductSelection(); hideMenu();
+        const operation = new AbortController(); selectionController = operation;
+        const timer = setTimeout(() => operation.abort(), 15000);
+        const owns = () => selectionController === operation && document.getElementById("manualDetailForm") === form;
+        const box = document.getElementById("manualProductStock");
+        if (box) { box.hidden = false; box.textContent = "Đang kiểm tra số lượng hiện tại…"; }
+        try {
+            const response = await fetch(`/Admin/Invoice/ProductStock?invoiceHeadId=${encodeURIComponent(getInvoiceHeadId())}&productVariantId=${id}`, {
+                signal: operation.signal, cache: "no-store", credentials: "same-origin", redirect: "error", headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }
+            });
+            const stock = await readPickerReply(response);
+            if (!owns()) return;
+            const requiresStock = document.getElementById("invoiceDetailPage")?.dataset.isCorrectionInvoice !== "true";
+            if (stock.productVariantId !== id || (requiresStock && (typeof stock.availableQuantity !== "number" || !Number.isFinite(stock.availableQuantity)
+                || stock.availableQuantity <= 0 || typeof stock.maximumAdditionalQuantity !== "number" || !Number.isFinite(stock.maximumAdditionalQuantity) || stock.maximumAdditionalQuantity <= 0))) throw new Error("Sản phẩm đã hết lượng khả dụng để thêm. Tìm lại sản phẩm để cập nhật.");
+            item = stock; selectedProduct = stock;
         const variantIdInput = document.getElementById("manualProductVariantId");
         const productSearchInput = document.getElementById("manualProductSearch");
         const itemNameInput = document.getElementById("manualItemName");
@@ -1228,9 +1346,14 @@
         hideMenu();
 
         setTimeout(function () {
+            if (!form.isConnected || selectedProduct !== stock) return;
             document.getElementById("manualQuantity")?.focus();
             document.getElementById("manualQuantity")?.select();
         }, 50);
+            showSelectedStock(stock);
+        } catch (error) {
+            if (owns() && box) { box.textContent = error.message || "Không kiểm tra được tồn. Vui lòng chọn lại sản phẩm."; box.dataset.kind = "error"; box.hidden = false; }
+        } finally { clearTimeout(timer); if (selectionController === operation) selectionController = null; }
     }
 
     function hideMenu() {
@@ -1243,47 +1366,38 @@
         activeIndex = -1;
     }
 
-    async function reloadInvoiceSummary(invoiceHeadId) {
-        if (!summaryBox) {
+    async function reloadInvoiceContent(invoiceHeadId) {
+        const oldTax = document.querySelector("[data-invoice-tax-relief]");
+        const pendingTax = oldTax?.dataset.taxDirty === "true" ? {
+            enabled: oldTax.querySelector("[data-tax-enabled]").checked,
+            rate: oldTax.querySelector("[data-tax-percentage]").value
+        } : null;
+        const sections = [
+            { element: document.getElementById("invoiceTaxBox"), action: "RevenueTaxPartial" },
+            { element: summaryBox, action: "InvoiceSummaryPartial" },
+            { element: autoLinesBox, action: "AutoLinesPartial" },
+            { element: manualLinesBox, action: "ManualLinesPartial" }
+        ].filter(section => section.element);
+        let loaded;
+        try {
+            loaded = await Promise.all(sections.map(async function (section) {
+                const response = await fetch(`/Admin/Invoice/${section.action}?id=${encodeURIComponent(invoiceHeadId)}`, {
+                    method: "GET",
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                });
+                if (!response.ok) throw new Error("Không cập nhật được nội dung hóa đơn. Vui lòng tải lại trang.");
+                return { element: section.element, html: await response.text() };
+            }));
+        } catch (error) {
+            console.error(error);
+            showError("Đã lưu thay đổi nhưng chưa tải lại được nội dung hóa đơn. Vui lòng tải lại trang để xem dữ liệu mới.");
             return;
         }
-
-        const response = await fetch(`/Admin/Invoice/InvoiceSummaryPartial?id=${encodeURIComponent(invoiceHeadId)}`, {
-            method: "GET",
-            headers: {
-                "X-Requested-With": "XMLHttpRequest"
-            }
-        });
-
-        if (!response.ok) {
-            showError("Không cập nhật được tổng tiền hóa đơn.");
-            return;
-        }
-
-        summaryBox.innerHTML = await response.text();
-    }
-
-    async function reloadManualLines(invoiceHeadId) {
-        if (!manualLinesBox) {
-            return;
-        }
-
-        const response = await fetch(`/Admin/Invoice/ManualLinesPartial?id=${encodeURIComponent(invoiceHeadId)}`, {
-            method: "GET",
-            headers: {
-                "X-Requested-With": "XMLHttpRequest"
-            }
-        });
-
-        if (!response.ok) {
-            showError("Không cập nhật được danh sách manual line.");
-            return;
-        }
-
-        manualLinesBox.innerHTML = await response.text();
-
+        loaded.forEach(section => { section.element.innerHTML = section.html; });
         bindManualDeleteButtons();
         bindManualEditRows();
+        // Both line tables must be replaced before the stock script reads their cells.
+        document.dispatchEvent(new CustomEvent("invoice:lines-changed", { detail: { pendingTax } }));
     }
 
     async function postInvoiceLockAction(url, reason) {
@@ -1339,7 +1453,7 @@
             e.preventDefault();
 
             if (isInvoiceLocked()) {
-                showError("Hóa đơn đã khóa, không thể thêm dòng manual.");
+                showError("Hóa đơn đã khóa, không thể thêm dòng hóa đơn.");
                 return;
             }
 
@@ -1351,7 +1465,7 @@
             e.preventDefault();
 
             if (isInvoiceLocked()) {
-                showError("Hóa đơn đã khóa, không thể thêm dòng manual.");
+                showError("Hóa đơn đã khóa, không thể thêm dòng hóa đơn.");
                 return;
             }
 
@@ -1366,6 +1480,11 @@
     });
 
     openButton?.addEventListener("click", loadCreateManualModal);
+    modalElement?.addEventListener("hidden.bs.modal", () => { cancelProductLookups(); productBindings?.abort(); clearProductSelection(); hideMenu(); });
+    window.addEventListener("pagehide", cancelProductLookups);
+    document.addEventListener("click", function (event) {
+        if (event.target.closest("[data-add-invoice-detail]")) loadCreateManualModal();
+    });
 
     document
         .getElementById("btnConfirmDeleteManualDetail")

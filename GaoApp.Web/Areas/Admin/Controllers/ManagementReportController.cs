@@ -24,12 +24,34 @@ public sealed class ManagementReportController(IManagementReportService reports)
         return View("Workspace");
     }
     [HttpGet("management/data")]
-    public async Task<IActionResult> GetData([FromQuery] ManagementReportQueryDto query, CancellationToken ct)
+    public async Task<IActionResult> GetData([FromQuery] ManagementReportQueryDto query, CancellationToken ct,
+        [FromQuery] string? view = null)
     {
-        if (!ModelState.IsValid) return BadRequest(new { message = "Bộ lọc báo cáo không hợp lệ." });
-        try { return Ok(await reports.ReadAsync(query, ct)); }
+        if (!ModelState.IsValid || view is not (null or "overview"))
+            return BadRequest(new { message = "Bộ lọc báo cáo không hợp lệ." });
+        try {
+            var result = view == "overview" ? await reports.ReadOverviewAsync(query, ct) : await reports.ReadAsync(query, ct);
+            // Calculate from the complete snapshot, then return only the rows this overview displays.
+            // The default data endpoint and CSV exports retain every dimension row.
+            return Ok(view == "overview" ? Overview(result) : result);
+        }
         catch (ArgumentException ex) { return BadRequest(new { message = ex.Message }); }
     }
+    private static ManagementReportDto Overview(ManagementReportDto report) => new() {
+        GeneratedAtUtc = report.GeneratedAtUtc, Period = report.Period, ComparisonPeriod = report.ComparisonPeriod,
+        Terminals = report.Terminals, ExpensesAreStoreWide = report.ExpensesAreStoreWide,
+        Current = OverviewPeriod(report.Current, true),
+        Comparison = report.Comparison is null ? null : OverviewPeriod(report.Comparison, false)
+    };
+    private static ManagementPeriodDto OverviewPeriod(ManagementPeriodDto period, bool current) => new() {
+        CostDiagnostics = period.CostDiagnostics,
+        Summary = period.Summary, OperatingExpenses = period.OperatingExpenses, OperatingProfit = period.OperatingProfit,
+        DraftExpenses = period.DraftExpenses, InferredCustomerOrders = period.InferredCustomerOrders,
+        SalesOrders = period.SalesOrders, Trend = period.Trend, GroupTrend = period.GroupTrend,
+        ExpenseTrend = period.ExpenseTrend, CustomerGroups = period.CustomerGroups, ExpenseCategories = period.ExpenseCategories,
+        Products = current ? period.Products.Where(x => x.Summary.NetSales.Available).Take(6).ToList() : [],
+        Customers = current ? period.Customers.Where(x => x.Id != 0).Take(5).ToList() : []
+    };
     [HttpGet("management/export")]
     [Authorize(Policy = PermissionCodes.Report.Profit.Export)]
     public async Task<IActionResult> Export([FromQuery] ManagementReportQueryDto query, string dimension = "profit", CancellationToken ct = default)

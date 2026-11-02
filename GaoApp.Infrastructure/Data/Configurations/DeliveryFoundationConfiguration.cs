@@ -1,6 +1,7 @@
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Delivery;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Storefront;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -51,7 +52,6 @@ public sealed class DeliveryFoundationConfiguration :
             t.HasTrigger("TR_DeliveryOrders_SourceShift");
         });
         b.HasAlternateKey(x => new { x.StoreId, x.Id });
-        b.HasAlternateKey(x => new { x.StoreId, x.Id, x.SourceCartId });
         b.HasAlternateKey(x => new { x.StoreId, x.Id, x.SourceWarehouseId, x.SourceLegalEntityId });
         b.Property(x => x.Code).HasMaxLength(40).IsRequired();
         b.Property(x => x.LookupToken).HasMaxLength(64).IsRequired();
@@ -62,16 +62,20 @@ public sealed class DeliveryFoundationConfiguration :
         b.Property(x => x.QuotedTotal).HasPrecision(18, 2);
         b.HasIndex(x => new { x.StoreId, x.Code }).IsUnique();
         b.HasIndex(x => new { x.StoreId, x.LookupToken }).IsUnique();
-        b.HasIndex(x => new { x.StoreId, x.SourceCartId }).IsUnique();
+        b.HasIndex(x => new { x.StoreId, x.SourceCartId }).IsUnique().HasFilter("[SourceCartId] IS NOT NULL");
+        b.HasIndex(x => new { x.StoreId, x.StorefrontFulfillmentSourceId }).IsUnique().HasFilter("[StorefrontFulfillmentSourceId] IS NOT NULL");
         b.HasIndex(x => new { x.StoreId, x.State, x.CreatedAtUtc });
         b.ToTable(t => {
             t.HasCheckConstraint("CK_DeliveryOrders_State", "[State] BETWEEN 0 AND 10 AND [Revision] > 0");
-            t.HasCheckConstraint("CK_DeliveryOrders_Total", "[QuotedTotal] > 0 AND [QuotedTotal] = ROUND([QuotedTotal], 0)");
+            t.HasCheckConstraint("CK_DeliveryOrders_Total", "(([SourceKind]=0 AND [QuotedTotal]>0) OR ([SourceKind]=1 AND [QuotedTotal]>=0)) AND [QuotedTotal] = ROUND([QuotedTotal], 0)");
+            t.HasCheckConstraint("CK_DeliveryOrders_NativeOrigin", "([SourceKind]=0 AND [SourceCartId] IS NOT NULL AND [CreatedTerminalId] IS NOT NULL AND [CreatedShiftId] IS NOT NULL AND [StorefrontOrderId] IS NULL AND [StorefrontFulfillmentSourceId] IS NULL AND [StorefrontAllowNegativeInventory] IS NULL) OR ([SourceKind]=1 AND [SourceCartId] IS NULL AND [CreatedTerminalId] IS NULL AND [CreatedShiftId] IS NULL AND [StorefrontOrderId] IS NOT NULL AND [StorefrontFulfillmentSourceId] IS NOT NULL AND [StorefrontAllowNegativeInventory] IS NOT NULL)");
         });
         b.HasOne<Warehouse>().WithMany().HasForeignKey(x => new { x.StoreId, x.SourceWarehouseId, x.SourceLegalEntityId })
             .HasPrincipalKey(x => new { x.StoreId, x.Id, x.LegalEntityId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<Order>().WithMany().HasForeignKey(x => new { x.StoreId, x.SourceCartId })
             .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<StorefrontFulfillmentSource>().WithMany().HasForeignKey(x => new { x.StoreId, x.StorefrontOrderId, x.StorefrontFulfillmentSourceId })
+            .HasPrincipalKey(x => new { x.StoreId, x.StorefrontOrderId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<POSShift>().WithMany().HasForeignKey(x => new { x.StoreId, x.CreatedShiftId, x.CreatedTerminalId })
             .HasPrincipalKey(x => new { x.StoreId, x.Id, x.TerminalId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<UserInStore>().WithMany().HasForeignKey(x => new { x.StoreId, x.CreatedByUserId })
@@ -86,7 +90,7 @@ public sealed class DeliveryFoundationConfiguration :
             t.HasTrigger("TR_DeliveryOrderLines_Immutable");
             t.HasTrigger("TR_DeliveryOrderLines_Root");
             t.HasCheckConstraint("CK_DeliveryOrderLines_Identity",
-                "([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0)");
+                "([StorefrontOrderId] IS NULL AND [StorefrontOrderLineId] IS NULL AND [SourceCartId] IS NOT NULL AND (([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0))) OR ([StorefrontOrderId] IS NOT NULL AND [StorefrontOrderLineId] IS NOT NULL AND [SourceCartId] IS NULL AND [SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL)");
         });
         b.HasOne<DeliveryOrderLine>().WithMany().HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.OriginalRootLineId })
             .HasPrincipalKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id }).OnDelete(DeleteBehavior.Restrict);
@@ -99,8 +103,10 @@ public sealed class DeliveryFoundationConfiguration :
         b.HasAlternateKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id });
         b.HasAlternateKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id, x.VariantId });
         b.HasOne(x => x.DeliveryOrder).WithMany(x => x.Lines)
-            .HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.SourceCartId })
-            .HasPrincipalKey(x => new { x.StoreId, x.Id, x.SourceCartId }).OnDelete(DeleteBehavior.Restrict);
+            .HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<StorefrontOrderLine>().WithMany().HasForeignKey(x => new { x.StoreId, x.StorefrontOrderId, x.StorefrontOrderLineId })
+            .HasPrincipalKey(x => new { x.StoreId, x.StorefrontOrderId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<OrderLine>().WithMany().HasForeignKey(x => new { x.StoreId, x.SourceCartId, x.SourceOrderLineId })
             .HasPrincipalKey(x => new { x.StoreId, x.OrderId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<ProductVariant>().WithMany().HasForeignKey(x => new { x.StoreId, x.VariantId })
@@ -110,6 +116,7 @@ public sealed class DeliveryFoundationConfiguration :
         b.Property(x => x.BaseUnitName).HasMaxLength(100).IsRequired();
         b.Property(x => x.OrderedQuantity).HasPrecision(18, 4);
         b.Property(x => x.BaseMultiplier).HasPrecision(18, 6);
+        b.Property(x => x.StorefrontBaseQuantity).HasPrecision(18, 4);
         b.Property(x => x.UnitPrice).HasPrecision(18, 2);
         foreach (var name in new[] { "Gross", "LineDiscount", "AllocatedOrderDiscount", "Net" }) b.Property<decimal>(name).HasPrecision(18, 2);
         b.HasIndex(x => new { x.StoreId, x.DeliveryOrderId, x.SourceOrderLineId }).IsUnique().HasFilter("[SourceOrderLineId] IS NOT NULL");
@@ -157,15 +164,19 @@ public sealed class DeliveryFoundationConfiguration :
         b.HasAlternateKey(x => new { x.StoreId, x.DeliveryOrderId, x.DeliveryOrderLineId, x.Id, x.SourceWarehouseId, x.SourceLegalEntityId, x.VariantId });
         b.ToTable(t => t.HasTrigger("TR_DeliveryDispatchCostFragments_StockSource"));
         b.ToTable(t => t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_Positive", "[BaseQuantity]>0"));
-        b.HasIndex(x => new { x.StoreId, x.InventoryCostBudgetDebitId }).IsUnique();
+        b.Property(x => x.IsProvisional).HasDefaultValue(false);
+        b.ToTable(t => t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_CostProof", "([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)"));
+        b.HasIndex(x => new { x.StoreId, x.InventoryCostBudgetDebitId }).IsUnique().HasFilter("[InventoryCostBudgetDebitId] IS NOT NULL");
         b.HasOne<DeliveryJournalEntry>().WithMany().HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.DeliveryJournalEntryId, x.SourceWarehouseId, x.SourceLegalEntityId })
             .HasPrincipalKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id, x.SourceWarehouseId, x.SourceLegalEntityId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<InventoryCostBudgetDebit>().WithMany().HasForeignKey(x => new { x.StoreId, x.InventoryCostBudgetDebitId, x.SourceWarehouseId, x.VariantId, x.SourceLegalEntityId, x.InventoryCostLayerId, x.InventoryTransactionId, x.InventoryValuationEntryId, x.InventoryCostLayerAllocationId })
             .HasPrincipalKey(x => new { x.StoreId, x.Id, x.WarehouseId, x.ProductVariantId, x.SourceLegalEntityId, x.InventoryCostLayerId, x.InventoryTransactionId, x.InventoryValuationEntryId, x.InventoryCostLayerAllocationId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<DeliveryOrderLine>().WithMany().HasForeignKey(x => new { x.StoreId, x.DeliveryOrderId, x.DeliveryOrderLineId })
             .HasPrincipalKey(x => new { x.StoreId, x.DeliveryOrderId, x.Id }).OnDelete(DeleteBehavior.Restrict);
-        b.HasOne<InventoryCostLayerAllocation>().WithMany().HasForeignKey(x => new { x.StoreId, x.InventoryCostLayerAllocationId })
-            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<InventoryCostLayerAllocation>().WithMany().HasForeignKey(x => new { x.StoreId, x.InventoryCostLayerAllocationId, x.InventoryValuationEntryId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id, x.InventoryValuationEntryId }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<InventoryValuationEntry>().WithMany().HasForeignKey(x => new { x.StoreId, x.InventoryValuationEntryId, x.InventoryTransactionId, x.SourceWarehouseId, x.VariantId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id, x.InventoryTransactionId, x.WarehouseId, x.ProductVariantId }).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.StoreId, x.DeliveryOrderId, x.DeliveryOrderLineId, x.InventoryCostLayerAllocationId }).IsUnique();
     }
     public void Configure(EntityTypeBuilder<DeliveryCommandReceipt> b)

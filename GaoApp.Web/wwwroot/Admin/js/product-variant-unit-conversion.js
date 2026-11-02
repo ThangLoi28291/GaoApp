@@ -58,9 +58,9 @@ window.GaoVariantUnitConversion = (() => {
 
     function formatDateTime(value) {
         if (!value) return '';
-        const d = new Date(value);
+        const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
         if (Number.isNaN(d.getTime())) return value;
-        return d.toLocaleString('vi-VN');
+        return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function normalizeBarcodeType(value) {

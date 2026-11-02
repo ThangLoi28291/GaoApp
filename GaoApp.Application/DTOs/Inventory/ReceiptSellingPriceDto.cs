@@ -33,6 +33,7 @@ public sealed class UpdateReceiptSellingPricesRequest
     [Required] public string LineVersion { get; set; } = "";
     [Required] public string CatalogVersion { get; set; } = "";
     public int? ProductPriceUnitId { get; set; }
+    public bool UpdateProductPrice { get; set; } = true;
     public bool ReviewOnly { get; set; }
     [Range(typeof(decimal), "0.0001", "999999999999")]
     public decimal EstimatedBaseCost { get; set; }
@@ -60,4 +61,5 @@ public sealed record ReceiptPriceReviewLineDto(int LineId, bool HasChanges, bool
     decimal? ReviewedBaseCost, decimal? CurrentBaseCost)
 {
     public bool CatalogCurrent { get; init; }
+    public List<ReceiptSellingPriceUnitDto> Units { get; init; } = [];
 }

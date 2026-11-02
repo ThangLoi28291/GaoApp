@@ -1,0 +1,78 @@
+@media (max-width: 767.98px) {
+    body:has([data-warehouse-receiving-index][data-wr-phone]) [data-wr-index-header] { display: none; }
+    [data-warehouse-receiving-index][data-wr-phone] { gap: 12px; color: #203554; min-width: 0; }
+    .wr-mobile-top { display: flex; justify-content: flex-end; }
+    .wr-mobile-top .btn { min-height: 44px; border-radius: 14px; font-size: .88rem; background: #275bd8; border-color: #275bd8; }
+    [data-warehouse-receiving-index][data-wr-phone] > section:first-of-type .row { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 0; }
+    [data-warehouse-receiving-index][data-wr-phone] > section:first-of-type .col { padding: 0; width: auto; margin: 0; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-kpi-filter { min-height: 72px; padding: 11px 8px; border: 1px solid #dfe6f1 !important; border-radius: 16px; box-shadow: none !important; background: #fff; }
+    [data-warehouse-receiving-index][data-wr-phone] .gds-kpi-card__icon { display: none; }
+    [data-warehouse-receiving-index][data-wr-phone] .gds-kpi-card__body { display: grid; gap: 3px; }
+    [data-warehouse-receiving-index][data-wr-phone] .gds-kpi-card__label { display: block; margin: 0; font-size: .74rem; white-space: normal; }
+    [data-warehouse-receiving-index][data-wr-phone] .gds-kpi-card__value { display: block; font-size: 1.4rem; line-height: 1.25; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-kpi-filter[aria-pressed="true"] { border-color: #5984e7 !important; background: #eef4ff; }
+    [data-warehouse-receiving-index][data-wr-phone] > section.card { border: 1px solid #dfe6f1 !important; border-radius: 18px; box-shadow: none !important; }
+    [data-warehouse-receiving-index][data-wr-phone] > section.card > .card-header { display: none; }
+    [data-warehouse-receiving-index][data-wr-phone] > section.card > .card-body { padding: 12px !important; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-toolbar { padding: 0; margin: 0; box-shadow: none; border: 0; border-radius: 0; gap: 8px; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-toolbar .form-control, .wr-mobile-filter-fields .form-select { min-height: 46px; font-size: 16px; border-radius: 12px; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-toolbar .btn { width: 46px; min-width: 46px; height: 46px; border-radius: 12px; }
+    .wr-mobile-filters { margin-top: 10px; border-top: 1px solid #e5ebf4; }
+    .wr-mobile-filters > summary { padding: 12px 0 2px; min-height: 44px; cursor: pointer; font-size: .85rem; font-weight: 700; color: #35547d; }
+    .wr-mobile-filter-fields { display: grid; gap: 10px; padding-top: 10px; min-width: 0; }
+    .wr-mobile-filter-fields label { font-size: .77rem; font-weight: 700; margin-bottom: 5px; }
+    .wr-mobile-filter-fields .form-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+    .wr-mobile-filter-note { font-size: .73rem; color: #748399; margin: 10px 0 0; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-list-panel { background: transparent; border: 0; box-shadow: none; overflow: visible; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-list { gap: 12px; padding: 0; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card { display: grid; grid-template-columns: minmax(0,1fr); align-items: stretch; gap: 12px; padding: 14px; border: 1px solid #dfe6f1; border-radius: 19px; box-shadow: 0 4px 16px #213e6210; background: #fff; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card:hover { transform: none; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-icon { display: none; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-main, [data-warehouse-receiving-index][data-wr-phone] .wr-card-meta, [data-warehouse-receiving-index][data-wr-phone] .wr-card-actions { grid-column: 1; grid-row: auto; min-width: 0; }
+    .wr-mobile-card-heading { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; min-width: 0; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-code { margin: 0; background: #f0f4fa; color: #47648c; font-size: .76rem; padding: 5px 8px; overflow-wrap: anywhere; min-width: 0; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-badge { flex-shrink: 0; min-width: 0; font-size: .7rem; padding: 6px 8px; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-title { font-size: 1rem; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; overflow: visible; color: #203554; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-date { font-size: .73rem; margin-top: 5px; color: #748399; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-meta { display: block; white-space: normal; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-facts { display: grid; gap: 6px; font-size: .8rem; color: #6c7c92; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-facts strong { color: #344e73; overflow-wrap: anywhere; }
+    .wr-mobile-card-context { display: grid; gap: 6px; font-size: .77rem; overflow-wrap: anywhere; color: #6c7c92; }
+    .wr-mobile-source { color: #355781; font-weight: 700; }
+    .wr-mobile-workflow { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 6px 0 0; padding: 0; list-style: none; }
+    .wr-mobile-workflow li { padding-top: 7px; border-top: 3px solid #e7edf5; font-size: .71rem; }
+    .wr-mobile-workflow li[aria-current="step"] { color: #275bd8; border-color: #275bd8; font-weight: 700; }
+    .wr-mobile-workflow li.is-done { color: #277b5c; border-color: #7cbea3; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-actions { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)); max-width: none; gap: 8px !important; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-action, [data-warehouse-receiving-index][data-wr-phone] .wr-card-actions .btn { grid-column: auto; grid-row: auto; width: 100%; min-height: 44px; padding: 10px 12px; font-size: .86rem; border-radius: 12px; white-space: normal; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-action { grid-column: 1 / -1; background: #275bd8; box-shadow: none; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-action.is-view { background: #eef4ff; color: #275bd8; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-card-action.is-edit { background: #fff1e9; color: #b35d25; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-pagination { padding: 14px 0 0; gap: 10px; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-page-actions { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-page-actions .btn { min-height: 44px; font-size: .83rem; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-page-info { font-size: .78rem; }
+    [data-warehouse-receiving-index][data-wr-phone] #wrLoadStatus { padding: 12px !important; border-radius: 14px; background: #f0f4fb; margin-bottom: 10px; font-size: .83rem; }
+    [data-warehouse-receiving-index][data-wr-phone] #wrLoadStatus [data-wr-retry] { min-height: 44px; margin: 8px 0 0 !important; }
+    [data-warehouse-receiving-index][data-wr-phone] .wr-empty { padding: 28px 16px; border-radius: 18px; font-size: .9rem; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-dialog { margin: 8px; max-width: none; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-content { max-height: calc(var(--gao-mobile-visible-height,100dvh) - 24px); border-radius: 20px; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-header { align-items: flex-start; gap: 12px; padding: 16px 16px 0; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-title { font-size: 1.05rem; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-header .btn-close { position: static; transform: none; margin: 0; padding: 12px; min-width: 44px; width: 44px; height: 44px; box-sizing: border-box; flex-shrink: 0; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal :is(.form-control,.form-select) { font-size: 16px; min-height: 44px; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-footer > .wr-muted { display: none; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-footer { justify-content: flex-end !important; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #wrCreateModal .modal-footer .btn { min-height: 44px; }
+    body:has([data-warehouse-receiving-index][data-wr-phone]) #btnCreateReceiving { background: #275bd8; border-color: #275bd8; box-shadow: none; }
+    [data-warehouse-receiving-index][data-wr-phone] :is(summary,.wr-kpi-filter,.wr-card-action):focus-visible { outline: 3px solid #91b6ff; outline-offset: 2px; }
+    @media (prefers-reduced-motion: no-preference) {
+        [data-warehouse-receiving-index][data-wr-phone] .wr-card { animation: wr-list-phone-enter .16s ease-out; }
+        @keyframes wr-list-phone-enter { from { opacity: .5; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    }
+    @media (forced-colors: active) {
+        .wr-mobile-workflow li[aria-current="step"], [data-warehouse-receiving-index][data-wr-phone] .wr-kpi-filter[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+        [data-warehouse-receiving-index][data-wr-phone] .wr-card { border-color: CanvasText; }
+    }
+}

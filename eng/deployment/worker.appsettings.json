@@ -1,0 +1,12 @@
+{
+  "ConnectionStrings": { "DefaultConnection": "" },
+  "DataProtection": {
+    "KeysPath": "",
+    "RequirePortableKeys": false,
+    "CertificatePath": "",
+    "CertificatePassword": ""
+  },
+  "Logging": {
+    "LogLevel": { "Default": "Information", "Microsoft": "Warning" }
+  }
+}

@@ -37,9 +37,10 @@
 
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/admin-menu-index.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.menu-management.mobile.css" asp-append-version="true" />
 }
 
-<div class="admin-menu-index-page gds-page" data-gao-ui="modern" data-admin-menu-index>
+<div class="admin-menu-index-page gds-page" data-gao-ui="modern" data-admin-menu-index data-gao-theme="commerce">
     <div class="alert admin-menu-index-notice mb-0" role="note">
         <i class="bx bx-shield-quarter"></i>
         <div>
@@ -395,6 +396,10 @@
                             <span class="admin-menu-index-tree-line"><i class="bx bx-subdirectory-right"></i></span>
                             <span class="admin-menu-index-icon"><i class="icon-base @(child.Icon ?? "bx bx-radio-circle")"></i></span>
                             <div class="admin-menu-index-mobile-card__title"><strong>@child.Title</strong><span>Con của @parent.Title</span></div>
+                            @if (childHasChildren)
+                            {
+                                <button type="button" class="gao-menu-mobile-only admin-menu-index-collapse" data-admin-menu-collapse="@child.Id" aria-expanded="true" aria-label="Thu gọn hoặc mở rộng @child.Title"><i class="bx bx-chevron-down" aria-hidden="true"></i></button>
+                            }
                         </div>
                         <div class="admin-menu-index-mobile-card__badges">
                             <span class="admin-menu-index-type @(child.IsSystem ? "is-system" : "is-custom")"><i class="bx @(child.IsSystem ? "bx-lock-alt" : "bx-customize")"></i>@childType</span>
@@ -423,6 +428,10 @@
                             }
                         </div>
                     </article>
+                    @if (child.Children.Count > 0)
+                    {
+                        @await Html.PartialAsync("_MobileDescendants", GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminMenuMobileEntry.Flatten(child.Children, child.Id, child.Title, 2))
+                    }
                 }
             }
         </div>

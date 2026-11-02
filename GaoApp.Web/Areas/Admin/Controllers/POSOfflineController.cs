@@ -59,6 +59,7 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
             storeName = runtime.StoreName, terminalName = runtime.TerminalName, userName = runtime.UserName,
             shiftId = shift.Id, shiftCode = shift.ShiftCode, warehouseId = shift.WarehouseId,
             preparedAtUtc = DateTime.UtcNow, expiresAtUtc = DateTime.UtcNow.AddHours(24),
+            deviceBinding = User.FindFirst(PosDeviceSession.StampClaim)?.Value,
             permissions, accounts, screen = await pos.GetPOSScreenAsync(ct),
             receiptTemplates = await receiptTemplates.ListAsync(ct),
             receiptDefault = await receiptTemplates.GetDefaultAsync(ct),
@@ -72,7 +73,8 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
     {
         var shift = await RequireShift(ct);
         return Ok(new { storeId = runtime.StoreId, terminalId = runtime.TerminalId, userId = runtime.UserId,
-            shiftId = shift.Id, receiptStoreInfo = await receiptTemplates.GetStoreInfoAsync(ct),
+            shiftId = shift.Id, deviceBinding = User.FindFirst(PosDeviceSession.StampClaim)?.Value,
+            receiptStoreInfo = await receiptTemplates.GetStoreInfoAsync(ct),
             receiptDefault = await receiptTemplates.GetDefaultAsync(ct),
             antiForgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken });
     }
@@ -104,9 +106,13 @@ public sealed class POSOfflineController(AppDbContext db, IPOSRuntimeContextAcce
     [HttpGet("customers")]
     public async Task<IActionResult> Customers([FromQuery] int afterId = 0, CancellationToken ct = default)
     {
-        await RequireShift(ct);
-        var items = await db.Customers.AsNoTracking().Where(x => x.StoreId == runtime.StoreId && x.Id > afterId && x.IsActive)
-            .OrderBy(x => x.Id).Take(250).Select(x => new { customerId = x.Id, x.Name, x.Phone, x.Address, x.PriceTier, x.AskBeforePrintingReceipt }).ToListAsync(ct);
+        var shift = await RequireShift(ct);
+        // Offline search needs customers on unfinished orders, not the store's address book.
+        var items = await db.Customers.AsNoTracking().Where(x => x.StoreId == runtime.StoreId && x.Id > afterId && x.IsActive &&
+                db.Orders.Any(order => order.StoreId == runtime.StoreId && !order.IsDeleted &&
+                    order.POSShiftId == shift.Id && order.CustomerId == x.Id &&
+                    (order.Status == OrderStatus.Draft || order.Status == OrderStatus.OnHold)))
+            .OrderBy(x => x.Id).Take(250).Select(x => new { customerId = x.Id, x.Name, x.Phone, x.PriceTier, x.AskBeforePrintingReceipt }).ToListAsync(ct);
         return Ok(new { items, nextAfterId = items.Count == 250 ? (int?)items[^1].customerId : null });
     }
 

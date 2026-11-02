@@ -10,12 +10,18 @@ namespace GaoApp.Application.Common.Security;
 /// </summary>
 public static class PermissionCodes
 {
+    public static class CustomerService
+    {
+        public const string InvoiceNotifications = "customer.service.invoice-notifications";
+        public const string MarketingConsent = "customer.service.marketing-consent";
+    }
     public static class Delivery
     {
         public const string View = "delivery.order.view";
         public const string Create = "delivery.order.create";
         public const string Pick = "delivery.order.pick";
         public const string ApproveChanges = "delivery.order.approve-changes";
+        public const string EditSalePrice = "delivery.order.edit-sale-price";
         public const string Handover = "delivery.order.handover";
         public const string RecordDeparture = "delivery.order.depart";
         public const string ReportOwnOutcome = "delivery.order.report-own";

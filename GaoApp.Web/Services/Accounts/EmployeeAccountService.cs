@@ -58,6 +58,17 @@ public sealed class EmployeeAccountService(AppDbContext db, ITenantContext tenan
         member.User.PasswordHash = passwords.Hash(newPassword);
         member.User.UpdatedAtUtc = DateTime.UtcNow;
         member.User.UpdatedBy = member.UserId;
+        // The password and its evidence must succeed or roll back together.
+        var audit = new AuditLog
+        {
+            StoreId = member.StoreId, ActorUserId = member.UserId, ActorUserName = member.User.UserName,
+            Module = GaoApp.Domain.Enums.AuditModuleType.Authentication,
+            ActionType = GaoApp.Domain.Enums.AuditActionType.Update,
+            EntityName = nameof(User), EntityId = member.UserId.ToString(),
+            Summary = "Nhân viên tự đổi mật khẩu. Các phiên cũ cần đăng nhập lại.",
+            IsSuccess = true, CreatedAtUtc = DateTime.UtcNow
+        };
+        db.AuditLogs.Add(audit);
         try
         {
             // The user's rowversion prevents two requests verified against the old password from both succeeding.
@@ -66,6 +77,7 @@ public sealed class EmployeeAccountService(AppDbContext db, ITenantContext tenan
         }
         catch (DbUpdateConcurrencyException)
         {
+            db.Entry(audit).State = EntityState.Detached;
             db.Entry(member.User).State = EntityState.Detached;
             return PasswordChangeOutcome.Conflict;
         }

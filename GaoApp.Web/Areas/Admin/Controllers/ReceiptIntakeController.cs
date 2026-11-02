@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using GaoApp.Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using GaoApp.Web.Security;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
@@ -24,7 +25,7 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
         var context = await Context(documentId, ct);
         var update = await Has(context, "update"); var approve = await Has(context, "approve");
         if (!update && !approve && !await Has(context, "view")) return Forbid();
-        var state = await provisional.GetAsync(documentId, ct);
+        var state = await PublicState(await provisional.GetAsync(documentId, ct));
         var permissions = await CatalogPermissions();
         return Ok(new
         {
@@ -73,7 +74,7 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
         if (!await Has(context, "update") || (request.ApproveNow && !await Has(context, "approve"))) return Forbid();
         var state = await intake.CaptureIntakeAsync(documentId, request, await CatalogPermissions(), ct);
         state.RecentReceipts = await intake.GetRecentAsync(documentId, ct);
-        return Ok(state);
+        return Ok(await PublicState(state));
     });
 
     [HttpPost("known")]
@@ -83,7 +84,7 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
         if (!await Has(await Context(documentId, ct), "update")) return Forbid();
         var state = await intake.RecordKnownAsync(documentId, request, ct);
         state.RecentReceipts = await intake.GetRecentAsync(documentId, ct);
-        return Ok(state);
+        return Ok(await PublicState(state));
     });
 
     [HttpPost("{itemId:int}/review")]
@@ -99,14 +100,14 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
     public Task<IActionResult> Quantity(int documentId, int itemId, UpdateReceiptIntakeQuantityRequest request, CancellationToken ct) => Call(async () =>
     {
         if (!await Has(await Context(documentId, ct), "update")) return Forbid();
-        return Ok(await intake.UpdateQuantityAsync(documentId, itemId, request, ct));
+        return Ok(await PublicState(await intake.UpdateQuantityAsync(documentId, itemId, request, ct)));
     });
 
     [HttpPost("{itemId:int}/remove")]
     public Task<IActionResult> Remove(int documentId, int itemId, RemoveProvisionalItemRequest request, CancellationToken ct) => Call(async () =>
     {
         if (!await Has(await Context(documentId, ct), "update")) return Forbid();
-        return Ok(await provisional.RemoveAsync(documentId, itemId, request, false, ct));
+        return Ok(await PublicState(await provisional.RemoveAsync(documentId, itemId, request, false, ct)));
     });
 
     private Task<ReceiptBarcodeContext> Context(int documentId, CancellationToken ct)
@@ -149,6 +150,14 @@ public sealed class ReceiptIntakeController(IReceiptIntakeService intake,
         });
     }
     private async Task<bool> Has(string policy) => (await authorization.AuthorizeAsync(User, policy)).Succeeded;
+    private async Task<ProvisionalReceivingStateDto> PublicState(ProvisionalReceivingStateDto state)
+    {
+        var approvePolicy = state.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+            ? PermissionCodes.Purchase.Receipt.Approve : PermissionCodes.Inventory.StockDocument.Approve;
+        if (!await Has(approvePolicy) && !await Has(PermissionCodes.Purchase.Order.ViewCost))
+            ReceiptCommercialRedaction.Apply(state.Items);
+        return state;
+    }
     private async Task<ReceiptIntakePermissions> CatalogPermissions() => new(
         await Has(PermissionCodes.Catalog.Product.Create), await Has(PermissionCodes.Catalog.Product.Update),
         await Has(PermissionCodes.Catalog.Unit.Create), await Has(PermissionCodes.Catalog.Barcode.Create));

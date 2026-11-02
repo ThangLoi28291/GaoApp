@@ -1,0 +1,326 @@
+/* GaoApp Commerce v1. Load AFTER gaoapp.design-system.css.
+   Explicit opt-in: data-gao-ui="modern" data-gao-theme="commerce".
+   Existing modern pages, Bootstrap globals and application menus are untouched. */
+[data-gao-ui="modern"][data-gao-theme="commerce"] {
+    color-scheme: light;
+    --gds-font-family: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --gds-font-size-page-title: clamp(1.5rem, 1.2rem + 1vw, 2rem);
+    --gds-font-size-section-title: 1.125rem;
+    --gds-font-size-card-title: 1rem;
+    --gds-font-size-body: .9375rem;
+    --gds-font-size-label: .875rem;
+    --gds-font-size-secondary: .8125rem;
+    --gds-space-1: .25rem;
+    --gds-space-2: .5rem;
+    --gds-space-3: .75rem;
+    --gds-space-4: 1rem;
+    --gds-space-5: 1.5rem;
+    --gds-space-6: 2rem;
+    --gds-space-7: 3rem;
+    --gds-radius-control: .75rem;
+    --gds-radius-card: 1rem;
+    --gds-radius-panel: 1.25rem;
+    --gds-radius-pill: 50rem;
+    --gds-color-primary: #176b45;
+    --gds-color-primary-hover: #105334;
+    --gds-color-primary-soft: #eaf4ee;
+    --gds-color-heading: #192b23;
+    --gds-color-body: #34483e;
+    --gds-color-muted: #62736a;
+    --gds-color-surface: #fff;
+    --gds-color-canvas: #f5f7f5;
+    --gds-color-surface-subtle: #f1f4f1;
+    --gds-color-border: #dfe5df;
+    --gds-color-control-border: #84958b;
+    --gds-color-secondary: #62736a;
+    --gds-color-success: #176b45;
+    --gds-color-info: #245f9e;
+    --gds-color-warning: #805500;
+    --gds-color-danger: #b42332;
+    --gds-color-focus: #245fce;
+    --gds-shadow-card: 0 1px 3px rgb(25 43 35 / 4%);
+    --gds-shadow-floating: 0 20px 64px rgb(25 43 35 / 18%);
+    --gds-touch-target: 2.75rem;
+    --gds-motion-fast: 140ms;
+    --gds-motion-normal: 200ms;
+    --gds-layer-sticky: 10;
+    --gds-layer-floating: 20;
+    --bs-primary: var(--gds-color-primary);
+    --bs-primary-rgb: 23, 107, 69;
+    --bs-link-color: var(--gds-color-primary);
+    --bs-link-hover-color: var(--gds-color-primary-hover);
+    font: 400 var(--gds-font-size-body)/1.55 var(--gds-font-family);
+    color: var(--gds-color-body);
+    background: var(--gds-color-canvas);
+    accent-color: var(--gds-color-primary);
+    overflow-wrap: anywhere;
+}
+
+[data-gao-theme="commerce"] *,
+[data-gao-theme="commerce"] *::before,
+[data-gao-theme="commerce"] *::after { box-sizing: border-box; }
+[data-gao-theme="commerce"] [hidden] { display: none !important; }
+[data-gao-theme="commerce"] :is(h1,h2,h3,p) { margin-block-start: 0; }
+[data-gao-theme="commerce"] :is(h1,h2,h3) { color: var(--gds-color-heading); }
+[data-gao-theme="commerce"] :is(h2,h3) { font-weight: 650; line-height: 1.4; }
+[data-gao-theme="commerce"] h2 { font-size: var(--gds-font-size-section-title); }
+[data-gao-theme="commerce"] h3 { font-size: var(--gds-font-size-card-title); }
+[data-gao-theme="commerce"] :is(button,input,select,textarea) { font-family: inherit; }
+[data-gao-theme="commerce"] :is(a,button,input,select,textarea,summary,[tabindex]):focus-visible {
+    outline: 3px solid var(--gds-color-focus);
+    outline-offset: 3px;
+    box-shadow: none;
+}
+[data-gao-theme="commerce"] :is(button,a,input,select,textarea) { scroll-margin-block: 6rem; }
+[data-gao-theme="commerce"] .gds-muted { color: var(--gds-color-muted); }
+[data-gao-theme="commerce"] .gds-eyebrow {
+    margin-bottom: .5rem;
+    color: var(--gds-color-muted);
+    font-size: var(--gds-font-size-secondary);
+    font-weight: 650;
+    letter-spacing: .035em;
+}
+[data-gao-theme="commerce"] .gds-page { gap: 1.5rem; }
+[data-gao-theme="commerce"] .gds-page-header__title { line-height: 1.3; letter-spacing: -.04em; }
+[data-gao-theme="commerce"] .gds-page-header__description { margin: .625rem 0 0; color: var(--gds-color-muted); }
+[data-gao-theme="commerce"] .gds-section-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: 1rem;
+}
+[data-gao-theme="commerce"] .gds-section-heading :is(h2,h3,p) { margin: 0; }
+[data-gao-theme="commerce"] .gds-section,
+[data-gao-theme="commerce"] .gds-card { border-radius: var(--gds-radius-card); }
+[data-gao-theme="commerce"] .gds-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    min-block-size: var(--gds-touch-target);
+    min-inline-size: var(--gds-touch-target);
+    padding: .625rem 1rem;
+    border: 1px solid var(--gds-color-control-border);
+    border-radius: var(--gds-radius-control);
+    background: var(--gds-color-surface);
+    color: var(--gds-color-heading);
+    font-size: var(--gds-font-size-label);
+    font-weight: 650;
+    line-height: 1.4;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color var(--gds-motion-fast), border-color var(--gds-motion-fast);
+}
+[data-gao-theme="commerce"] .gds-button:hover:not(:disabled) { background: var(--gds-color-surface-subtle); }
+[data-gao-theme="commerce"] .gds-button--primary {
+    color: #fff;
+    border-color: var(--gds-color-primary);
+    background: var(--gds-color-primary);
+    box-shadow: 0 1px 2px rgb(25 43 35 / 12%);
+}
+[data-gao-theme="commerce"] .gds-button--primary:hover:not(:disabled) { background: var(--gds-color-primary-hover); border-color: var(--gds-color-primary-hover); }
+[data-gao-theme="commerce"] .gds-button--quiet { background: transparent; border-color: transparent; color: var(--gds-color-primary); }
+[data-gao-theme="commerce"] .gds-button--danger { background: var(--gds-color-danger); border-color: var(--gds-color-danger); color: #fff; }
+[data-gao-theme="commerce"] .gds-button--danger:hover:not(:disabled) { background: #941d29; }
+[data-gao-theme="commerce"] .gds-button--icon { padding: .625rem; flex: 0 0 auto; }
+[data-gao-theme="commerce"] .gds-button:disabled { opacity: .55; cursor: not-allowed; }
+[data-gao-theme="commerce"] .gds-button[aria-busy="true"] { cursor: wait; }
+[data-gao-theme="commerce"] .gds-button[aria-busy="true"]::before {
+    content: "";
+    inline-size: 1rem;
+    block-size: 1rem;
+    flex: 0 0 1rem;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: 50%;
+    animation: gao-commerce-spin .8s linear infinite;
+}
+[data-gao-theme="commerce"] .gds-icon { inline-size: 1.25rem; block-size: 1.25rem; flex: 0 0 auto; }
+
+[data-gao-theme="commerce"] .gds-status { border: 0; font-size: .75rem; line-height: 1.5; padding: .3rem .625rem; white-space: normal; }
+[data-gao-theme="commerce"] .gds-status.is-success { color: #176b45; background: #eaf4ee; }
+[data-gao-theme="commerce"] .gds-status.is-info { color: #245f9e; background: #edf3fc; }
+[data-gao-theme="commerce"] .gds-status.is-warning { color: #805500; background: #fff3d6; }
+[data-gao-theme="commerce"] .gds-status.is-danger { color: #b42332; background: #fff0f1; }
+[data-gao-theme="commerce"] .gds-status.is-neutral { color: #526359; background: #eff2ef; }
+[data-gao-theme="commerce"] .gds-chip-group { display: flex; flex-wrap: wrap; gap: .5rem; }
+[data-gao-theme="commerce"] .gds-chip {
+    min-block-size: var(--gds-touch-target);
+    padding: .5rem .875rem;
+    border: 1px solid var(--gds-color-border);
+    border-radius: var(--gds-radius-pill);
+    background: var(--gds-color-surface);
+    color: var(--gds-color-body);
+    font-size: .8125rem;
+    font-weight: 550;
+    cursor: pointer;
+}
+[data-gao-theme="commerce"] .gds-chip[aria-pressed="true"] { color: var(--gds-color-primary); background: var(--gds-color-primary-soft); border-color: var(--gds-color-primary); font-weight: 650; }
+[data-gao-theme="commerce"] .gds-chip__count { margin-inline-start: .375rem; font-variant-numeric: tabular-nums; }
+[data-gao-theme="commerce"] .gds-filter-bar { align-items: center; margin-bottom: 1rem; }
+[data-gao-theme="commerce"] .gds-filter-bar__search { min-inline-size: 0; flex: 1 1 16rem; }
+[data-gao-theme="commerce"] .gds-search { display: flex; align-items: center; padding-inline: .875rem .25rem; gap: .5rem; border: 1px solid var(--gds-color-control-border); border-radius: var(--gds-radius-control); background: #fff; }
+[data-gao-theme="commerce"] .gds-search:focus-within { outline: 3px solid var(--gds-color-focus); outline-offset: 2px; }
+[data-gao-theme="commerce"] .gds-search input { border: 0; outline: 0; box-shadow: none; padding: .625rem 0; inline-size: 100%; min-inline-size: 0; min-block-size: var(--gds-touch-target); background: transparent; color: var(--gds-color-heading); font-size: 1rem; }
+[data-gao-theme="commerce"] .gds-search input:focus-visible { outline: none; }
+[data-gao-theme="commerce"] input::placeholder,
+[data-gao-theme="commerce"] textarea::placeholder { color: var(--gds-color-muted); opacity: 1; }
+
+/* A single record DOM rearranges into cards; no duplicated desktop/mobile controls. */
+[data-gao-theme="commerce"] .gds-record-list { display: grid; gap: .75rem; }
+[data-gao-theme="commerce"] .gds-record {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr) minmax(8rem, auto) auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid var(--gds-color-border);
+    border-radius: var(--gds-radius-control);
+    background: var(--gds-color-surface);
+}
+[data-gao-theme="commerce"] .gds-record__avatar { display: grid; place-items: center; inline-size: 2.75rem; block-size: 2.75rem; background: var(--gds-color-surface-subtle); border-radius: .875rem; color: var(--gds-color-primary); font-size: .8125rem; font-weight: 700; }
+[data-gao-theme="commerce"] .gds-record__title { display: inline-block; color: var(--gds-color-heading); font-weight: 650; margin-bottom: .25rem; }
+[data-gao-theme="commerce"] .gds-record__meta { margin: 0; color: var(--gds-color-muted); font-size: .8125rem; }
+[data-gao-theme="commerce"] .gds-record__value { display: grid; justify-items: end; gap: .375rem; min-inline-size: 0; }
+[data-gao-theme="commerce"] .gds-amount { color: var(--gds-color-heading); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.025em; overflow-wrap: anywhere; }
+[data-gao-theme="commerce"] .gds-metric-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 1rem; }
+[data-gao-theme="commerce"] .gds-metric { display: grid; align-content: start; gap: .5rem; padding: 1.25rem; min-inline-size: 0; }
+[data-gao-theme="commerce"] .gds-metric__label { color: var(--gds-color-muted); font-size: .8125rem; font-weight: 550; }
+[data-gao-theme="commerce"] .gds-metric__value { font-size: clamp(1.375rem, 1.1rem + .6vw, 1.875rem); line-height: 1.3; }
+[data-gao-theme="commerce"] .gds-metric__note { color: var(--gds-color-muted); font-size: .75rem; }
+[data-gao-theme="commerce"] .gds-metric--featured { background: var(--gds-color-primary); border-color: var(--gds-color-primary); }
+[data-gao-theme="commerce"] .gds-metric--featured :is(.gds-metric__label,.gds-metric__value,.gds-metric__note) { color: #fff; }
+
+[data-gao-theme="commerce"] .gds-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.25rem; }
+[data-gao-theme="commerce"] .gds-field { display: grid; align-content: start; gap: .5rem; min-inline-size: 0; }
+[data-gao-theme="commerce"] .gds-field--wide { grid-column: 1 / -1; }
+[data-gao-theme="commerce"] .gds-field label { color: var(--gds-color-heading); font-size: .875rem; font-weight: 650; }
+[data-gao-theme="commerce"] .gds-input { inline-size: 100%; min-inline-size: 0; min-block-size: var(--gds-touch-target); padding: .6875rem .875rem; border: 1px solid var(--gds-color-control-border); border-radius: var(--gds-radius-control); background: var(--gds-color-surface); color: var(--gds-color-heading); font-size: 1rem; line-height: 1.5; }
+[data-gao-theme="commerce"] textarea.gds-input { resize: vertical; min-block-size: 6rem; }
+[data-gao-theme="commerce"] .gds-input[aria-invalid="true"] { border-color: var(--gds-color-danger); }
+[data-gao-theme="commerce"] .gds-field__help { margin: 0; color: var(--gds-color-muted); font-size: .8125rem; }
+[data-gao-theme="commerce"] .gds-field__error { margin: 0; color: var(--gds-color-danger); font-size: .8125rem; font-weight: 550; }
+[data-gao-theme="commerce"] .gds-notice { display: flex; gap: .75rem; padding: 1rem; border: 1px solid var(--gds-color-border); border-radius: var(--gds-radius-control); background: var(--gds-color-primary-soft); color: var(--gds-color-heading); }
+[data-gao-theme="commerce"] .gds-notice p { margin: .25rem 0 0; font-size: .875rem; }
+[data-gao-theme="commerce"] .gds-notice--error { border-color: #e4a5ac; color: var(--gds-color-danger); background: #fff0f1; }
+[data-gao-theme="commerce"] .gds-detail-list { display: grid; gap: .75rem; margin: 0; }
+[data-gao-theme="commerce"] .gds-detail-list > div { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.5fr); gap: 1rem; padding-block-end: .75rem; border-block-end: 1px solid var(--gds-color-border); }
+[data-gao-theme="commerce"] .gds-detail-list dt { font-weight: 400; color: var(--gds-color-muted); }
+[data-gao-theme="commerce"] .gds-detail-list dd { margin: 0; text-align: end; color: var(--gds-color-heading); font-weight: 550; }
+
+/* Native dialog lives in the top layer; Bootstrap modal z-indices are not overridden. */
+[data-gao-theme="commerce"] .gds-dialog {
+    inline-size: min(36rem, calc(100% - 2rem));
+    max-inline-size: none;
+    max-block-size: calc(100vh - 2rem);
+    max-block-size: calc(100dvh - 2rem);
+    margin: auto;
+    padding: 0;
+    border: 1px solid var(--gds-color-border);
+    border-radius: var(--gds-radius-panel);
+    background: var(--gds-color-surface);
+    color: var(--gds-color-body);
+    box-shadow: var(--gds-shadow-floating);
+    overflow: hidden;
+}
+[data-gao-theme="commerce"] .gds-dialog::backdrop { background: rgb(14 29 21 / 42%); }
+[data-gao-theme="commerce"] .gds-dialog__frame { display: flex; flex-direction: column; max-block-size: inherit; min-block-size: 0; }
+[data-gao-theme="commerce"] .gds-dialog__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; border-block-end: 1px solid var(--gds-color-border); flex: 0 0 auto; }
+[data-gao-theme="commerce"] .gds-dialog__header h2 { margin: 0; }
+[data-gao-theme="commerce"] .gds-dialog__body { overflow-y: auto; overscroll-behavior: contain; padding: 1.5rem; min-block-size: 0; }
+[data-gao-theme="commerce"] .gds-dialog__footer,
+[data-gao-theme="commerce"] .gds-action-dock { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .75rem; padding: 1rem 1.5rem max(1rem, env(safe-area-inset-bottom)); border-block-start: 1px solid var(--gds-color-border); background: var(--gds-color-surface); flex: 0 0 auto; }
+[data-gao-theme="commerce"] .gds-action-dock { position: sticky; inset-block-end: 0; z-index: var(--gds-layer-sticky); box-shadow: 0 -4px 16px rgb(25 43 35 / 4%); }
+[data-gao-theme="commerce"] .gds-action-dock__summary { margin-inline-end: auto; min-inline-size: 0; }
+[data-gao-theme="commerce"] .gds-dialog__footer .gds-button--primary { min-inline-size: 9rem; }
+
+[data-gao-theme="commerce"] .gds-state { padding: 2rem 1.25rem; text-align: center; border: 1px dashed var(--gds-color-border); border-radius: var(--gds-radius-control); color: var(--gds-color-muted); }
+[data-gao-theme="commerce"] .gds-state strong { display: block; margin-top: .75rem; color: var(--gds-color-heading); }
+[data-gao-theme="commerce"] .gds-state p { margin: .5rem auto 0; max-inline-size: 26rem; font-size: .875rem; }
+[data-gao-theme="commerce"] .gds-state__icon { display: inline-grid; place-items: center; inline-size: 2.5rem; block-size: 2.5rem; border-radius: 50%; background: var(--gds-color-surface-subtle); color: var(--gds-color-muted); font-size: 1.375rem; }
+[data-gao-theme="commerce"] .gds-state--error { border-color: #e4a5ac; }
+[data-gao-theme="commerce"] .gds-state--error .gds-state__icon { background: #fff0f1; color: var(--gds-color-danger); }
+[data-gao-theme="commerce"] .gds-skeleton-group { display: grid; gap: .625rem; max-inline-size: 20rem; margin: 0 auto; }
+[data-gao-theme="commerce"] .gds-skeleton { display: block; block-size: .75rem; border-radius: .25rem; background: #e5ebe6; animation: gao-commerce-pulse 1.4s ease-in-out infinite alternate; }
+[data-gao-theme="commerce"] .gds-skeleton:last-child { inline-size: 65%; }
+[data-gao-theme="commerce"] .gds-skip-link { position: fixed; inset-block-start: .5rem; inset-inline-start: 1rem; transform: translateY(-150%); z-index: var(--gds-layer-floating); }
+[data-gao-theme="commerce"] .gds-skip-link:focus { transform: none; }
+
+/* Pinned items are supplied by the caller; the last slot opens the configured menu. */
+[data-gao-theme="commerce"] .gds-bottom-nav { display: none; }
+
+@keyframes gao-commerce-spin { to { transform: rotate(360deg); } }
+@keyframes gao-commerce-pulse { to { opacity: .4; } }
+@media (max-width: 767.98px) {
+    [data-gao-ui="modern"][data-gao-theme="commerce"] { --gds-touch-target: 3rem; }
+    [data-gao-theme="commerce"] .gds-page { gap: 1rem; }
+    [data-gao-theme="commerce"] .gds-metric-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; }
+    [data-gao-theme="commerce"] .gds-metric { padding: 1rem; }
+    [data-gao-theme="commerce"] .gds-metric__value { font-size: clamp(1rem, 4.5vw, 1.375rem); }
+    [data-gao-theme="commerce"] .gds-record { grid-template-columns: 2.75rem minmax(0,1fr) auto; gap: .75rem; padding: .875rem; }
+    [data-gao-theme="commerce"] .gds-record__value { grid-column: 2 / -1; justify-items: start; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .5rem; }
+    [data-gao-theme="commerce"] .gds-record > .gds-button { grid-column: 3; grid-row: 1; }
+    [data-gao-theme="commerce"] .gds-form-grid { grid-template-columns: minmax(0,1fr); }
+    [data-gao-theme="commerce"] .gds-dialog { inline-size: calc(100% - 1rem); max-block-size: calc(100dvh - 1rem); border-radius: 1rem; }
+    [data-gao-theme="commerce"] .gds-dialog--sheet { inset: auto 0 0; inline-size: 100%; margin: 0; border-radius: 1.25rem 1.25rem 0 0; max-block-size: 88dvh; }
+    [data-gao-theme="commerce"] .gds-dialog__header { padding: 1rem; }
+    [data-gao-theme="commerce"] .gds-dialog__body { padding: 1rem; }
+    [data-gao-theme="commerce"] .gds-dialog__footer,
+    [data-gao-theme="commerce"] .gds-action-dock { padding-inline: 1rem; gap: .5rem; }
+    [data-gao-theme="commerce"] .gds-dialog__footer > .gds-button { flex: 1 1 auto; }
+    [data-gao-theme="commerce"] .gds-action-dock__summary { flex-basis: 100%; }
+    [data-gao-theme="commerce"] .gds-bottom-nav {
+        position: fixed;
+        inset-inline: 0;
+        inset-block-end: 0;
+        z-index: var(--gds-layer-sticky);
+        display: grid;
+        grid-template-columns: repeat(var(--gds-nav-count, 5), minmax(0, 1fr));
+        padding: 0 max(.25rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.25rem, env(safe-area-inset-left));
+        border-block-start: 1px solid var(--gds-color-border);
+        background: var(--gds-color-surface);
+        box-shadow: 0 -4px 20px rgb(25 43 35 / 3%);
+    }
+    [data-gao-theme="commerce"] .gds-bottom-nav__item {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: .375rem;
+        min-inline-size: 0;
+        min-block-size: 4.5rem;
+        padding: .75rem .125rem .625rem;
+        border: 0;
+        border-radius: 0;
+        color: var(--gds-color-muted);
+        background: transparent;
+        font-size: .6875rem;
+        font-weight: 450;
+        line-height: 1.35;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    [data-gao-theme="commerce"] .gds-bottom-nav__item::before { content: ""; position: absolute; inset-block-start: -1px; inline-size: 1.5rem; block-size: 3px; border-radius: 1rem; background: transparent; }
+    [data-gao-theme="commerce"] .gds-bottom-nav__item:is([aria-current="location"],[aria-expanded="true"]) { color: var(--gds-color-primary); font-weight: 700; }
+    [data-gao-theme="commerce"] .gds-bottom-nav__item:is([aria-current="location"],[aria-expanded="true"])::before { background: var(--gds-color-primary); }
+    [data-gao-theme="commerce"] .gds-bottom-nav__item:focus-visible { outline-offset: -4px; border-radius: .5rem; }
+    [data-gao-theme="commerce"] .gds-bottom-nav__label { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-inline-size: 100%; overflow: hidden; overflow-wrap: anywhere; }
+}
+@media (pointer: coarse) {
+    [data-gao-ui="modern"][data-gao-theme="commerce"] { --gds-touch-target: 3rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+    [data-gao-ui="modern"][data-gao-theme="commerce"] { --gds-motion-fast: 0ms; --gds-motion-normal: 0ms; }
+    [data-gao-theme="commerce"] .gds-skeleton,
+    [data-gao-theme="commerce"] .gds-button[aria-busy="true"]::before { animation: none; }
+}
+@media (forced-colors: active) {
+    [data-gao-theme="commerce"] :is(.gds-status,.gds-chip,.gds-button,.gds-notice) { border: 1px solid ButtonText; }
+    [data-gao-theme="commerce"] .gds-chip[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -3px; }
+    [data-gao-theme="commerce"] .gds-skeleton { border: 1px solid CanvasText; }
+}

@@ -28,7 +28,7 @@ public sealed class RolePermissionEditorSqlServerTests
     {
         await using var app = await FullApplicationFixture.StartAsync();
         var store = app.Stores[0];
-        var admin = await app.AddAccountAsync(store, "*");
+        var admin = await SecurityAdministrationPlanATests.MakeAdmin(app, await app.AddAccountAsync(store, "*"));
         var employee = await app.AddAccountAsync(store, PermissionCodes.Pos.Order.View);
         var foreign = await app.AddAccountAsync(app.Stores[1], PermissionCodes.Pos.Order.View);
         int roleId, original;
@@ -47,7 +47,8 @@ public sealed class RolePermissionEditorSqlServerTests
         Assert.Contains("SelectedPermissionIds", matrix);
         Assert.Contains("system.productlabel.print", matrix);
         async Task<HttpResponseMessage> Post(int id, string permission) => await client.Http.PostAsync("/Admin/RolePermissions/Save",
-            new FormUrlEncodedContent(new Dictionary<string, string> { ["RoleId"] = id.ToString(), ["SelectedPermissionIds"] = permission }));
+            new FormUrlEncodedContent(new Dictionary<string, string> { ["RoleId"] = id.ToString(), ["SelectedPermissionIds"] = permission,
+                ["AdministratorPassword"] = admin.Password, ["Reason"] = "Kiểm tra phân quyền" }));
         // Tampered ID and malformed form must never turn a validation failure into removal of existing grants.
         using var invalid = await Post(roleId, int.MaxValue.ToString()); Assert.Equal(HttpStatusCode.Redirect, invalid.StatusCode);
         using var malformed = await Post(roleId, "not-a-number"); Assert.Equal(HttpStatusCode.Redirect, malformed.StatusCode);

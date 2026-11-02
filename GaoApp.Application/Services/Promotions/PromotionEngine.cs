@@ -301,16 +301,8 @@ public sealed partial class PromotionEngine : IPromotionEngine
         if (promotion.DiscountValue <= 0)
             return 0m;
 
-        return promotion.DiscountType switch
-        {
-            PromotionDiscountType.Percentage =>
-                lineAmount * promotion.DiscountValue / 100m,
-
-            PromotionDiscountType.FixedAmount =>
-                promotion.DiscountValue * quantity,
-
-            _ => 0m
-        };
+        return (unitPrice - ProductPromotionPrice.SalePrice(
+            unitPrice, promotion.DiscountType, promotion.DiscountValue)) * quantity;
     }
 
     private static decimal CalculateAverageUnitPriceAfterProductPromotion(

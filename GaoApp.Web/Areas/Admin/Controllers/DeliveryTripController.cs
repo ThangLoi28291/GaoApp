@@ -11,6 +11,13 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Authorize(Policy = PermissionCodes.Delivery.View)]
 public sealed class DeliveryTripController(IDeliveryTripService trips) : ControllerBase
 {
+    [HttpPost("dispatch"), Authorize(Policy = PermissionCodes.Delivery.Handover)]
+    [Authorize(Policy = PermissionCodes.Delivery.RecordDeparture), ValidateAntiForgeryToken]
+    public Task<IActionResult> Dispatch([FromBody] DeliveryDispatchRequest request, CancellationToken ct)
+        => Execute(() => trips.DispatchAsync(request, ct));
+    [HttpPost("{id:int}/orders/{orderId:int}/counter-issue"), Authorize(Policy = PermissionCodes.Delivery.Finalize), ValidateAntiForgeryToken]
+    public Task<IActionResult> CounterIssue(int id, int orderId, [FromBody] DeliveryCounterIssueRequest request, CancellationToken ct)
+        => Execute(() => trips.RecordCounterIssueAsync(id, orderId, request, ct));
     [HttpGet("")]
     public Task<IActionResult> List([FromQuery] int take = 30, [FromQuery] int? beforeId = null,
         [FromQuery] string? state = null, [FromQuery] int? courierUserId = null, CancellationToken ct = default)

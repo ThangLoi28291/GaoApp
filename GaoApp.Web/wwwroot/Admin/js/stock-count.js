@@ -43,7 +43,7 @@ stockCountUiState.index = {
     state: 'open'
 };
 
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', async function () {
     if (!window.stockCountPage) return;
 
     initStockCountModalInstances();
@@ -55,8 +55,12 @@ document.addEventListener('DOMContentLoaded', function () {
     if (window.stockCountPage.mode === 'detail') {
         bindStockCountDetailEvents();
         initStockCountQuickLookupSelect2();
-        initStockCountWarehouseSelect();
-        loadStockCountDetail();
+        try {
+            await initStockCountWarehouseSelect();
+            await loadStockCountDetail();
+        } catch {
+            scToast('danger', 'Không tải được phiếu', 'Vui lòng tải lại trang để tiếp tục.');
+        }
     }
 });
 
@@ -93,9 +97,9 @@ function stockCountEscapeHtml(value) {
 
 function stockCountFormatDateTime(value) {
     if (!value) return '';
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '';
-    return d.toLocaleString('vi-VN');
+    return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function stockCountFormatNumber(value) {
@@ -108,10 +112,10 @@ function stockCountFormatNumber(value) {
 function stockCountToLocalInputValue(value) {
     if (!value) return '';
 
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '';
 
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    return new Date(d.getTime() + 7 * 3600000)
         .toISOString()
         .slice(0, 16);
 }
@@ -496,7 +500,7 @@ function renderStockCountIndexRows() {
             <td class="text-end">
                 <a href="/admin/stock-counts/${x.id}"
                    class="btn btn-sm btn-primary"
-                   onclick="event.stopPropagation();">
+                   data-csp-action="stop">
                     Mở
                 </a>
             </td>
@@ -667,7 +671,7 @@ function resetCreateStockCountForm() {
 
     if (dateInput) {
         const now = new Date();
-        dateInput.value = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        dateInput.value = new Date(now.getTime() + 7 * 3600000)
             .toISOString()
             .slice(0, 16);
     }
@@ -699,7 +703,7 @@ async function createStockCountDocument() {
             body: JSON.stringify({
                 documentName,
                 warehouseId: Number(warehouseId),
-                documentDate: documentDate ? new Date(documentDate).toISOString() : null,
+                documentDate: documentDate ? new Date(documentDate + '+07:00').toISOString() : null,
                 note
             })
         });
@@ -902,8 +906,10 @@ async function initStockCountWarehouseSelect() {
         items.map(x => `<option value="${x.id}">${stockCountEscapeHtml(x.text)}</option>`).join('');
 }
 
-async function loadStockCountDetail() {
+async function loadStockCountDetail(preserveHeaderEdits = false) {
     const documentId = window.stockCountPage.stockCountDocumentId;
+    const headerEdits = preserveHeaderEdits ? ['DocumentName', 'DocumentDate', 'DocumentNote']
+        .map(id => ({ id, value: document.getElementById(id)?.value })) : [];
 
     const response = await fetch(`/admin/api/stock-counts/${documentId}`);
     const api = await readStockCountApiResponse(response);
@@ -917,6 +923,13 @@ async function loadStockCountDetail() {
     stockCountUiState.currentDetail = detail;
 
     renderStockCountDetailHeader(detail);
+    if ((Number(detail.status) === 1 || Number(detail.status) === 4) &&
+        getStockCountPermissions().canUpdate === true) {
+        headerEdits.forEach(({ id, value }) => {
+            const input = document.getElementById(id);
+            if (input && value !== undefined) input.value = value;
+        });
+    }
     rerenderStockCountDetailTables();
     renderStockCountDetailSummary(detail.lines || []);
     applyStockCountReadonlyState(detail.status);
@@ -932,7 +945,12 @@ function renderStockCountDetailHeader(detail) {
     const documentName = document.getElementById('DocumentName');
     if (documentName) documentName.value = detail.documentName || '';
 
-    document.getElementById('WarehouseId').value = detail.warehouseId || '';
+    const warehouse = document.getElementById('WarehouseId');
+    const warehouseId = String(detail.warehouseId || '');
+    if (warehouseId && !Array.from(warehouse.options).some(option => option.value === warehouseId)) {
+        warehouse.add(new Option(detail.warehouseName || 'Kho hiện tại', warehouseId));
+    }
+    warehouse.value = warehouseId;
     document.getElementById('DocumentNote').value = detail.note || '';
     document.getElementById('DocumentStatusBadge').innerHTML = stockCountStatusBadge(detail.status, true);
 
@@ -1173,7 +1191,10 @@ function applyStockCountReadonlyState(status) {
     if (documentName) documentName.disabled = !canEdit;
 
     const warehouse = document.getElementById('WarehouseId');
-    if (warehouse) warehouse.disabled = !canEdit;
+    const hasLines = (stockCountUiState.currentDetail?.lines?.length || 0) > 0;
+    if (warehouse) warehouse.disabled = !canEdit || hasLines;
+    const warehouseLockHint = document.getElementById('StockCountWarehouseLockHint');
+    if (warehouseLockHint) warehouseLockHint.hidden = !(canEdit && hasLines);
 
     const documentDate = document.getElementById('DocumentDate');
     if (documentDate) documentDate.disabled = !canEdit;
@@ -1261,6 +1282,7 @@ async function saveStockCountHeader(showToast) {
     const note = document.getElementById('DocumentNote')?.value || '';
 
     if (!stockCountDocumentId || !warehouseId) return;
+    const warehouseChanged = warehouseId !== Number(stockCountUiState.currentDetail?.warehouseId || 0);
 
     const response = await fetch('/admin/api/stock-counts/update-header', {
         method: 'POST',
@@ -1269,12 +1291,19 @@ async function saveStockCountHeader(showToast) {
             stockCountDocumentId,
             documentName,
             warehouseId,
-            documentDate: documentDate ? new Date(documentDate).toISOString() : null,
+            documentDate: documentDate ? new Date(documentDate + '+07:00').toISOString() : null,
             note
         })
     });
 
     const api = await readStockCountApiResponse(response);
+
+    // A different tab may have added a line or changed the warehouse since load.
+    // Reload the saved warehouse/lines on both success and rejection; keep edits
+    // to the other header inputs while the document is still editable.
+    if (warehouseChanged || (!api.ok && (api.status === 400 || api.status === 409))) {
+        await loadStockCountDetail(true);
+    }
 
     if (!api.ok) {
         scToast('danger', 'Lưu phiếu thất bại', api.data?.message || 'Không thể lưu thông tin phiếu.');
@@ -2332,8 +2361,8 @@ function hideStockCountIndexImageHoverPreview() {
 
 function stockCountFormatDateOnly(value) {
     if (!value) return '—';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+    const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function stockCountIndexStatusClass(status) {

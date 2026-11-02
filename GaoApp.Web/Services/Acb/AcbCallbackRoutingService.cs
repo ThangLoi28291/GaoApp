@@ -49,6 +49,7 @@ public sealed class AcbCallbackRoutingService(AppDbContext db, IOptions<AcbCallb
     public async Task SaveAsync(ClaimsPrincipal user, AcbCallbackRouteForm form, CancellationToken ct)
     {
         if (!await CanManageAsync(user, ct)) throw new UnauthorizedAccessException();
+        await using var routeTx=await db.Database.BeginTransactionAsync(ct);
         var host = form.Host?.Trim().ToLowerInvariant() ?? "";
         if (!options.Value.Handles(host)) throw new InvalidOperationException("URL callback này chưa nằm trong cấu hình máy chủ.");
         if (form.TargetStoreId.HasValue)
@@ -70,10 +71,13 @@ public sealed class AcbCallbackRoutingService(AppDbContext db, IOptions<AcbCallb
                 .OrderByDescending(x => x.Id).Select(x => x.TargetStoreId).FirstOrDefaultAsync(ct);
         if (lastAssignedStoreId is int previous && form.TargetStoreId.HasValue && previous != form.TargetStoreId)
         {
+            await GaoApp.Infrastructure.Services.Banking.GlobalBankReceiptLedger.LockAsync(db,"GaoApp:Storefront:Configuration:"+previous,ct);
             var outstanding = await db.Set<AcbQrSession>().IgnoreQueryFilters().AnyAsync(x => !x.IsDeleted && x.StoreId == previous &&
                 x.Status != AcbSessionStatus.Completed && x.Status != AcbSessionStatus.Cancelled, ct);
             var queued = await db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().AnyAsync(x => !x.IsDeleted && x.StoreId == previous && x.ProcessedAtUtc == null, ct);
-            if (outstanding || queued) throw new InvalidOperationException("Cửa hàng đang nhận còn QR hoặc callback chưa xử lý xong. Hãy xử lý trước khi chuyển URL sang cửa hàng khác.");
+            var webOutstanding=await db.Set<GaoApp.Domain.Storefront.StorefrontPaymentIntent>().IgnoreQueryFilters().AnyAsync(x=>!x.IsDeleted&&x.StoreId==previous&&x.IsActive,ct);
+            var webReview=await db.Set<BankVerifiedReceipt>().AsNoTracking().AnyAsync(x=>x.OriginStoreId==previous&&x.NeedsReview,ct);
+            if (outstanding || queued||webOutstanding||webReview) throw new InvalidOperationException("Cửa hàng đang nhận còn QR, tiền cần đối soát hoặc callback chưa xử lý xong. Hãy xử lý trước khi chuyển URL sang cửa hàng khác.");
         }
         var oldStoreId = route?.TargetStoreId;
         if (route == null) { route = new AcbCallbackRoute { Host = host }; db.Add(route); }
@@ -82,6 +86,7 @@ public sealed class AcbCallbackRoutingService(AppDbContext db, IOptions<AcbCallb
             ActorUserId = int.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!), ChangedAtUtc = DateTime.UtcNow });
         // One SaveChanges commits routing and its history together; rowversion/unique host prevent lost updates.
         await db.SaveChangesAsync(ct);
+        await routeTx.CommitAsync(ct);
     }
 
     public async Task<string[]> UrlsForStoreAsync(int storeId, CancellationToken ct)

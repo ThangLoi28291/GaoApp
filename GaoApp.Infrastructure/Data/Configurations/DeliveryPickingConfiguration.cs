@@ -30,7 +30,8 @@ public sealed class DeliveryPickingConfiguration : IEntityTypeConfiguration<Deli
         b.Property(x => x.CustomerConfirmationNote).HasMaxLength(1000);
         b.Property(x => x.ApprovedTotal).HasPrecision(18, 2);
         b.ToTable(t => t.HasCheckConstraint("CK_DeliveryPickingWorks_Approval",
-            "([ApprovedRevision] IS NULL AND [ApprovedByUserId] IS NULL AND [ApprovedAtUtc] IS NULL AND [ApprovedTotal] IS NULL) OR ([ApprovedRevision] IS NOT NULL AND [ApprovedRevision]>0 AND [ApprovedByUserId] IS NOT NULL AND [ApprovedAtUtc] IS NOT NULL AND [ApprovedTotal] IS NOT NULL AND [ApprovedTotal]>0 AND [ApprovedTotal]=ROUND([ApprovedTotal],0))"));
+            "([ApprovedRevision] IS NULL AND [ApprovedByUserId] IS NULL AND [ApprovedAtUtc] IS NULL AND [ApprovedTotal] IS NULL) OR ([ApprovedRevision] IS NOT NULL AND [ApprovedRevision]>0 AND [ApprovedByUserId] IS NOT NULL AND [ApprovedAtUtc] IS NOT NULL AND [ApprovedTotal] IS NOT NULL AND [ApprovedTotal]>=0 AND [ApprovedTotal]=ROUND([ApprovedTotal],0))"));
+        b.ToTable(t => t.HasTrigger("TR_DeliveryPickingWorks_NativeSource"));
     }
     public void Configure(EntityTypeBuilder<DeliveryPickingLine> b)
     {

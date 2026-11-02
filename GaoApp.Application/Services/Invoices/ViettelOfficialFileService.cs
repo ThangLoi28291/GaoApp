@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
@@ -177,7 +177,7 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
                     "Viettel trả file rỗng, không thể lưu."));
         }
 
-        var now = DateTime.Now;
+        var now = VietnamTime.Now;
         var folder = $"invoices/viettel/{now:yyyy}/{now:MM}";
         var safeInvoiceNo = MakeSafeFileName(invoiceNo);
 
@@ -233,6 +233,8 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
             invoice.OfficialPdfStatus = InvoiceFileDownloadStatus.Downloaded;
             invoice.OfficialPdfDownloadedAtUtc = DateTime.UtcNow;
             invoice.OfficialPdfFileName = fileName;
+            invoice.OfficialPdfSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file.FileBytes));
+            invoice.OfficialPdfByteLength = file.FileBytes.LongLength;
         }
         else
         {
@@ -240,6 +242,8 @@ public class ViettelOfficialFileService : IViettelOfficialFileService
             invoice.OfficialZipXmlStatus = InvoiceFileDownloadStatus.Downloaded;
             invoice.OfficialZipXmlDownloadedAtUtc = DateTime.UtcNow;
             invoice.OfficialZipXmlFileName = fileName;
+            invoice.OfficialZipXmlSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(file.FileBytes));
+            invoice.OfficialZipXmlByteLength = file.FileBytes.LongLength;
         }
 
         // Sau Phase 21.9:

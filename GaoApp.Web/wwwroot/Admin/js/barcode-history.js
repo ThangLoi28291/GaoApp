@@ -56,9 +56,9 @@
 
     function formatDate(value) {
         if (!value) return '';
-        const date = new Date(value);
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
         if (Number.isNaN(date.getTime())) return value;
-        return date.toLocaleString('vi-VN');
+        return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function renderItems(items) {
@@ -149,8 +149,10 @@
         const formData = new FormData(filterForm);
         state.keyword = (formData.get('Keyword') || '').toString().trim();
         state.actionType = (formData.get('ActionType') || '').toString().trim();
-        state.fromUtc = (formData.get('FromUtc') || '').toString().trim();
-        state.toUtc = (formData.get('ToUtc') || '').toString().trim();
+        const from = (formData.get('FromUtc') || '').toString().trim();
+        const to = (formData.get('ToUtc') || '').toString().trim();
+        state.fromUtc = from ? new Date(from + '+07:00').toISOString() : '';
+        state.toUtc = to ? new Date(to + '+07:00').toISOString() : '';
     }
 
     filterForm.addEventListener('submit', async function (e) {

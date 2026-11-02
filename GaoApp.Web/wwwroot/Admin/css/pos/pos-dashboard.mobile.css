@@ -1,0 +1,80 @@
+/* UI-07d — phone only; leave the desktop stylesheet and chart owner intact. */
+@media (max-width: 767.98px) {
+    .pos-dashboard-page-head {padding: 16px; gap: 14px; border-radius: 20px; background: #172d4d; color: #fff; margin-bottom: 12px;}
+    .pos-dashboard-page-head .pos-dashboard-eyebrow {color: #c7d7ef; font-size: .65rem; letter-spacing: .09em;}
+    .pos-dashboard-page-head .pos-dashboard-title {font-size: 1.35rem; line-height: 1.3; color: #fff;}
+    .pos-dashboard-page-head .pos-dashboard-subtitle {font-size: .82rem; line-height: 1.5; color: #d5e2f4;}
+    .pos-dashboard-page-head .pos-dashboard-live-tools {display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px;}
+    .pos-dashboard-page-head .pos-dashboard-live-pill {grid-column: 1; width: 100%; min-height: 44px; padding: 8px; font-size: .72rem; white-space: normal; border: 1px solid #6280a6;}
+    .pos-dashboard-page-head .pos-dashboard-refresh-meta {display: flex; grid-column: 1; align-items: flex-start; gap: 2px;}
+    .pos-dashboard-page-head .pos-dashboard-refresh-label, .pos-dashboard-page-head #dashboardLastRefreshText {color: #d5e2f4; font-size: .72rem;}
+    .pos-dashboard-page-head #btnRefreshDashboard {grid-column: 2; grid-row: 1 / span 2; min-width: 86px; min-height: 44px; border: 1px solid #6280a6; border-radius: 12px; color: #fff; font-size: .82rem; box-shadow: none; background: #ffffff0b;}
+    .pos-dashboard-page-head #btnRefreshDashboard:disabled {opacity: .7;}
+    #posDashboardV2 {--posdash-text: #172d4d; --posdash-border: #dce5f0; --posdash-primary: #2463eb; --posdash-radius: 16px; padding-bottom: 16px;}
+    #posDashboardV2 *, .pos-dashboard-page-head * {min-width: 0; box-sizing: border-box;}
+    #posDashboardV2 [hidden] {display: none !important;}
+    #posDashboardV2 .pos-dashboard-content, #posDashboardV2 .pos-dashboard-skeleton {gap: 12px;}
+    #posDashboardV2 .pos-dashboard-shift-strip {padding: 14px; border-radius: 16px; background: #eaf0fa; box-shadow: none; gap: 12px;}
+    #posDashboardV2 .pos-dashboard-shift-status-icon {width: 36px; height: 36px; flex-basis: 36px; background: #fff;}
+    #posDashboardV2 .pos-dashboard-shift-title-row > strong {font-size: .95rem; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-shift-facts {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: 100%; gap: 10px;}
+    #posDashboardV2 .pos-dashboard-shift-fact {padding: 10px 0 0; border-color: #cddbef;}
+    #posDashboardV2 .pos-dashboard-shift-fact strong {font-size: .78rem; line-height: 1.45; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-kpi-grid {grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px;}
+    #posDashboardV2 .pos-dashboard-kpi-card {padding: 13px 11px; border-radius: 16px; box-shadow: none; background: #fff;}
+    #posDashboardV2 .pos-dashboard-kpi-card.is-primary {background: #edf3ff; border-color: #c7d9fb;}
+    #posDashboardV2 .pos-dashboard-kpi-card.is-cash-position {background: #edf9f3; border-color: #c8e8d8;}
+    #posDashboardV2 .pos-dashboard-kpi-card.is-primary {order: 0;}
+    #posDashboardV2 .pos-dashboard-kpi-card.is-cash-position {order: 1;}
+    #posDashboardV2 .pos-dashboard-kpi-card:not(.is-primary):not(.is-cash-position) {order: 2;}
+    #posDashboardV2 .pos-dashboard-kpi-icon {display: none;}
+    #posDashboardV2 .pos-dashboard-kpi-label {font-size: .7rem; text-transform: none; letter-spacing: 0; line-height: 1.4;}
+    #posDashboardV2 .pos-dashboard-kpi-value {font-size: clamp(1.15rem,4.9vw,1.8rem); margin-top: 10px; line-height: 1.25; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-kpi-note {font-size: .7rem; margin-top: 5px; line-height: 1.5;}
+    #posDashboardV2 .pos-dashboard-card {box-shadow: none; border-radius: 16px;}
+    #posDashboardV2 .pos-dashboard-card-head, #posDashboardV2 .pos-dashboard-card-body {padding: 14px;}
+    #posDashboardV2 .pos-dashboard-card-head {flex-wrap: wrap; gap: 8px;}
+    #posDashboardV2 .pos-dashboard-card-title {font-size: .95rem; line-height: 1.4;}
+    #posDashboardV2 .pos-dashboard-card-subtitle {font-size: .76rem; line-height: 1.5;}
+    #posDashboardV2 .pos-dashboard-mix-total {display: grid; gap: 6px;}
+    #posDashboardV2 .pos-dashboard-mix-total strong {font-size: 1.35rem; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-mix-row {gap: 8px;}
+    #posDashboardV2 .pos-dashboard-mix-label {font-size: .78rem;}
+    #posDashboardV2 .pos-dashboard-mix-value {text-align: right; overflow-wrap: anywhere; max-width: 60%;}
+    #posDashboardV2 .pos-dashboard-chart-summary {font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-attention {display: grid; grid-template-columns: minmax(0,1fr); padding: 14px; gap: 12px; border-radius: 16px; box-shadow: none;}
+    #posDashboardV2 .pos-dashboard-attention-copy {gap: 10px;}
+    #posDashboardV2 .pos-dashboard-attention-icon {width: 34px; height: 34px; flex-basis: 34px;}
+    #posDashboardV2 .pos-dashboard-attention-title {font-size: .9rem; line-height: 1.4;}
+    #posDashboardV2 .pos-dashboard-attention-message {font-size: .76rem; line-height: 1.5; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-section-eyebrow {font-size: .65rem;}
+    #posDashboardV2 .pos-dashboard-attention-metrics {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px;}
+    #posDashboardV2 .pos-dashboard-attention-metric {padding: 10px; border-radius: 12px; min-width: 0;}
+    #posDashboardV2 .pos-dashboard-attention-metric strong {font-size: .82rem; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-actions {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); padding: 12px; gap: 8px;}
+    #posDashboardV2 .pos-dashboard-actions:empty {display: none;}
+    #posDashboardV2 .pos-dashboard-actions .btn, #posDashboardV2 .pos-dashboard-state-actions .btn {min-height: 44px; padding: 10px; font-size: .8rem; white-space: normal; border-radius: 12px; box-shadow: none; overflow-wrap: anywhere;}
+    #posDashboardV2 .btn-primary {background: #2463eb; border-color: #2463eb;}
+    #posDashboardV2 .btn-outline-primary {color: #1c50bb; border-color: #b9cef6;}
+    #posDashboardV2 .pos-dashboard-phone-group {border: 1px solid #dce5f0; border-radius: 16px; background: #fff; overflow: hidden;}
+    #posDashboardV2 .pos-dashboard-phone-group > summary {min-height: 48px; padding: 14px; font-weight: 750; color: #172d4d; font-size: .9rem; cursor: pointer;}
+    #posDashboardV2 .pos-dashboard-phone-group[open] > summary {border-bottom: 1px solid #e6edf5;}
+    #posDashboardV2 .pos-dashboard-phone-group > .pos-dashboard-card {border: 0; border-radius: 0;}
+    #posDashboardV2 .pos-dashboard-phone-group .pos-dashboard-main-grid,
+    #posDashboardV2 .pos-dashboard-phone-group .pos-dashboard-secondary-grid {grid-template-columns: minmax(0,1fr); padding: 0 10px 10px; gap: 12px;}
+    #posDashboardV2 .pos-dashboard-phone-hint {margin: 0; padding: 12px 14px; font-size: .75rem; color: #667085; line-height: 1.5;}
+    #posDashboardV2 .pos-dashboard-chart {max-width: 100%; min-height: 292px; overscroll-behavior-x: contain;}
+    #posDashboardV2 .pos-dashboard-chart.is-compact {min-height: 258px;}
+    #posDashboardV2 .pos-dashboard-health-row {padding: 12px 14px; gap: 12px;}
+    #posDashboardV2 .pos-dashboard-health-row span {font-size: .78rem;}
+    #posDashboardV2 .pos-dashboard-health-row strong {font-size: .82rem; max-width: 60%; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-state-panel {padding: 24px 16px; border-radius: 16px; box-shadow: none;}
+    #posDashboardV2 .pos-dashboard-state-title {font-size: 1.1rem;}
+    #posDashboardV2 .pos-dashboard-state-message {font-size: .85rem; overflow-wrap: anywhere;}
+    #posDashboardV2 .pos-dashboard-state-actions {display: grid; grid-template-columns: minmax(0,1fr); width: 100%; gap: 8px;}
+    #posDashboardV2 :focus-visible, .pos-dashboard-page-head :focus-visible {outline: 3px solid #9ab8ff; outline-offset: 2px;}
+    @media (prefers-reduced-motion: reduce) {
+        #posDashboardV2 *, .pos-dashboard-page-head * {scroll-behavior: auto !important;}
+        #posDashboardV2 .posdash-bar {transition: none;}
+    }
+}

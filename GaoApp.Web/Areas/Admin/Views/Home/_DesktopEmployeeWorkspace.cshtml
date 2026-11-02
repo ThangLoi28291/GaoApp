@@ -1,0 +1,94 @@
+@model GaoApp.Web.Services.AdminNavigationSnapshot
+@using GaoApp.Web.Areas.Admin.ViewModels.Commerce
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService EmployeeAuthorization
+@{
+    var canShift = (await EmployeeAuthorization.AuthorizeAsync(User, null, PermissionCodes.Pos.Shift.View)).Succeeded;
+    var canReceive = (await EmployeeAuthorization.AuthorizeAsync(User, null, AppPermissions.InventoryStockDocumentCreate)).Succeeded;
+    AdminNavigationNode? Find(params string[] paths) => paths.Select(path => Model.Destinations.FirstOrDefault(item =>
+        string.Equals(Model.LocalPath(item), path, StringComparison.OrdinalIgnoreCase))).FirstOrDefault(item => item is not null);
+    var actions = new[] {
+        new { Key = "shift", Label = "Ca làm việc", Description = "Xem ca hiện tại và bàn giao", Icon = "bx bx-time-five", Menu = canShift ? Find("/admin/pos-shift") : null },
+        new { Key = "sales", Label = "Bán hàng", Description = "Mở quầy và tạo đơn bán", Icon = "bx bx-cart", Menu = Find("/admin/pos", "/admin/pos/v3", "/admin/pos/legacy") },
+        new { Key = "orders", Label = "Đơn hàng", Description = "Tra cứu và xử lý đơn bán", Icon = "bx bx-receipt", Menu = Find("/admin/pos/orders-page") },
+        new { Key = "receiving", Label = "Nhận hàng", Description = "Tiếp nhận phiếu mua vào kho", Icon = "bx bx-package", Menu = canReceive ? Find("/admin/warehouse-receiving") : null }
+    }.Where(action => action.Menu is not null).ToArray();
+    var fullName = User.FindFirst("full_name")?.Value;
+}
+<main class="dwh-workspace" data-desktop-home data-employee-home data-employee-user="@Model.UserId" aria-labelledby="employeeHomeTitle">
+    <header class="dwh-header">
+        <div><p class="dwh-eyebrow">KHÔNG GIAN LÀM VIỆC</p><h1 id="employeeHomeTitle">Ca làm việc của bạn</h1>
+            <p class="dwh-subtitle">@(string.IsNullOrWhiteSpace(fullName) ? "Chào bạn." : $"Chào {fullName}.") Theo dõi ca và bắt đầu công việc tại đây.</p></div>
+        <div class="dwh-header-tools"><span class="dwh-date"><i class="bx bx-calendar" aria-hidden="true"></i><time data-employee-today>Hôm nay</time></span></div>
+    </header>
+
+    <section class="dwh-employee-shift dwh-panel" aria-labelledby="employeeShiftTitle" data-employee-shift
+        data-current-url="@(canShift ? Url.Action("Current", "POSShift", new { area = "Admin" }) : null)"
+        data-summary-url="@(canShift ? Url.Action("GetSummary", "POSShift", new { area = "Admin" }) : null)" aria-busy="false">
+        <div class="dwh-section-heading"><div><h2 id="employeeShiftTitle">Ca hiện tại</h2><p>Số liệu trong ca do bạn phụ trách · Giờ Việt Nam</p></div>
+            @if (canShift) { <button type="button" class="dwh-menu-button" data-employee-refresh><i class="bx bx-refresh" aria-hidden="true"></i>Làm mới ca</button> }
+        </div>
+        <div class="dwh-employee-state" data-employee-state role="status" aria-live="polite">
+            <i class="bx bx-time-five" aria-hidden="true"></i><div><strong data-employee-state-title>@(canShift ? "Đang tải ca làm việc…" : "Chưa có quyền xem ca làm việc")</strong>
+                <p data-employee-state-message>@(canShift ? "Kiểm tra ca trên máy POS hiện tại." : "Liên hệ quản lý để được cấp quyền xem ca khi cần.")</p></div>
+            <button type="button" class="dwh-menu-button" data-employee-reload data-csp-action="reload" hidden>Tải lại trang</button>
+        </div>
+        <div class="dwh-employee-overview" data-employee-overview hidden>
+            <div><span class="dwh-employee-badge"><span></span>Đang làm việc</span><h3 data-employee-code>—</h3><p data-employee-owner>—</p></div>
+            <dl class="dwh-employee-meta"><div><dt>Bắt đầu ca</dt><dd data-employee-opened>—</dd></div><div><dt>Quầy bán hàng</dt><dd data-employee-terminal>—</dd></div><div><dt>Kho làm việc</dt><dd data-employee-warehouse>—</dd></div></dl>
+        </div>
+    </section>
+
+    @if (actions.Length > 0)
+    {
+        <section aria-labelledby="employeeActionsTitle"><div class="dwh-section-heading"><h2 id="employeeActionsTitle">Công việc trong ca</h2></div>
+            <div class="dwh-employee-actions">
+                @foreach (var action in actions)
+                {
+                    <a class="dwh-quick-card" href="@action.Menu!.Href" data-menu-id="@action.Menu.Id" data-employee-action="@action.Key">
+                        <span class="dwh-quick-icon"><i class="@action.Icon" aria-hidden="true"></i></span><span>@action.Label</span><small>@action.Description</small><i class="bx bx-up-arrow-alt dwh-open-arrow" aria-hidden="true"></i>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (canShift)
+    {
+        <section data-employee-statistics hidden aria-labelledby="employeeStatsTitle">
+            <div class="dwh-section-heading"><div><h2 id="employeeStatsTitle">Thống kê ca của bạn</h2><p>Tính từ lúc mở ca đến lần cập nhật gần nhất.</p></div><span class="dwh-section-tag">Cập nhật <time data-employee-updated>—</time></span></div>
+            <div class="dwh-kpis">
+                <article class="dwh-kpi dwh-kpi--primary"><span><i class="bx bx-line-chart" aria-hidden="true"></i>Doanh số đã chốt</span><strong data-employee-metric="completedSalesTotal">—</strong><small>Tổng giá trị đơn hoàn tất trong ca</small></article>
+                <article class="dwh-kpi"><span><i class="bx bx-receipt" aria-hidden="true"></i>Đơn hoàn tất</span><strong data-employee-metric="completedOrders">—</strong><small>Trong <span data-employee-metric="totalOrders">—</span> đơn của ca</small></article>
+                <article class="dwh-kpi"><span><i class="bx bx-money" aria-hidden="true"></i>Tiền mặt dự kiến trong két</span><strong data-employee-metric="closingCashExpected">—</strong><small>Theo tiền đầu ca, bán hàng, hoàn và thu/chi</small></article>
+                <article class="dwh-kpi"><span><i class="bx bx-undo" aria-hidden="true"></i>Hoàn trả trong ca</span><strong data-employee-metric="refundTotal">—</strong><small><span data-employee-metric="refundCount">—</span> lượt hoàn · <span data-employee-metric="voidCount">—</span> đơn hủy sau chốt</small></article>
+            </div>
+            <div class="dwh-employee-detail-grid">
+                <article class="dwh-panel"><div class="dwh-panel-heading"><h3>Thu tiền &amp; két tiền</h3><span>Trong ca hiện tại</span></div>
+                    <dl class="dwh-employee-money">
+                        <div><dt>Tiền mặt đầu ca</dt><dd data-employee-metric="openingCash">—</dd></div>
+                        <div><dt>Thu bán hàng · Tiền mặt</dt><dd data-employee-metric="cashSalesTotal">—</dd></div>
+                        <div><dt>Thu bán hàng · Không tiền mặt</dt><dd data-employee-metric="nonCashSalesTotal">—</dd></div>
+                        <div><dt>Hoàn trả · Tiền mặt</dt><dd data-employee-metric="cashRefundTotal">—</dd></div>
+                        <div><dt>Hoàn trả · Không tiền mặt</dt><dd data-employee-metric="nonCashRefundTotal">—</dd></div>
+                        <div><dt>Thu thêm vào két</dt><dd data-employee-metric="cashInTotal">—</dd></div>
+                        <div><dt>Chi / rút khỏi két</dt><dd data-employee-metric="cashOutTotal">—</dd></div>
+                    </dl>
+                </article>
+                <article class="dwh-panel"><div class="dwh-panel-heading"><h3>Tình trạng đơn hàng</h3><span>Tất cả đơn trong ca</span></div><div class="dwh-employee-order-counts">
+                    <div><span>Đang soạn</span><strong data-employee-metric="draftOrders">—</strong></div>
+                    <div><span>Đơn đang giữ</span><strong data-employee-metric="heldOrders">—</strong></div>
+                    <div><span>Đã hoàn tất</span><strong data-employee-metric="completedOrders">—</strong></div>
+                    <div><span>Hủy trước chốt</span><strong data-employee-metric="cancelledOrders">—</strong></div>
+                    <div><span>Hủy sau chốt</span><strong data-employee-metric="voidCount">—</strong></div>
+                    <div><span>Đơn hoàn tiền</span><strong data-employee-metric="refundedOrders">—</strong></div>
+                </div></article>
+            </div>
+            <div class="dwh-employee-detail-grid">
+                <article class="dwh-panel"><div class="dwh-panel-heading"><h3>Đơn gần đây trong ca</h3><span>Tối đa 6 đơn mới nhất</span></div><div class="dwh-table-scroll"><table class="dwh-employee-table"><thead><tr><th>Mã đơn</th><th>Trạng thái</th><th>Giá trị</th></tr></thead><tbody data-employee-orders></tbody></table></div></article>
+                <article class="dwh-panel"><div class="dwh-panel-heading"><h3>Thu / chi gần đây</h3><span>Tối đa 6 giao dịch mới nhất</span></div><ul class="dwh-employee-transactions" data-employee-transactions></ul></article>
+            </div>
+        </section>
+    }
+</main>

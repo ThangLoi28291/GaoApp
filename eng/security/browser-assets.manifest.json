@@ -1,0 +1,471 @@
+{
+  "format": 1,
+  "assets": [
+    {
+      "file": "lib/jquery/dist/jquery.min.js",
+      "package": "jquery",
+      "version": "3.7.1",
+      "source": "dist/jquery.min.js",
+      "registry": "https://registry.npmjs.org/jquery",
+      "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a"
+    },
+    {
+      "file": "vendor/libs/jquery/jquery.js",
+      "package": "jquery",
+      "version": "3.7.1",
+      "source": "dist/jquery.min.js",
+      "registry": "https://registry.npmjs.org/jquery",
+      "sha256": "fc9a93dd241f6b045cbff0481cf4e1901becd0e12fb45166a8f17f95823f0b1a"
+    },
+    {
+      "file": "lib/bootstrap/dist/js/bootstrap.bundle.min.js",
+      "package": "bootstrap",
+      "version": "5.3.8",
+      "source": "dist/js/bootstrap.bundle.min.js",
+      "registry": "https://registry.npmjs.org/bootstrap",
+      "sha256": "e4fd49181388c48ec5040bd3fe66f57c29c8e67fcd8502b3354b96ec7ab47cc7"
+    },
+    {
+      "file": "vendor/js/bootstrap.js",
+      "package": "bootstrap",
+      "version": "5.3.8",
+      "source": "dist/js/bootstrap.bundle.min.js",
+      "registry": "https://registry.npmjs.org/bootstrap",
+      "sha256": "e4fd49181388c48ec5040bd3fe66f57c29c8e67fcd8502b3354b96ec7ab47cc7"
+    },
+    {
+      "file": "lib/bootstrap/dist/css/bootstrap.min.css",
+      "package": "bootstrap",
+      "version": "5.3.8",
+      "source": "dist/css/bootstrap.min.css",
+      "registry": "https://registry.npmjs.org/bootstrap",
+      "sha256": "d85327d99c7a3ee1f9b5d0500d1370acea3ad2db39c163c2f51f232baedbdede"
+    },
+    {
+      "file": "vendor/libs/popper/popper.js",
+      "package": "@popperjs/core",
+      "version": "2.11.8",
+      "source": "dist/umd/popper.min.js",
+      "registry": "https://registry.npmjs.org/@popperjs/core",
+      "sha256": "c212f4b505a86352aed62b24a8f16f999f821ecbe6456c7f3c8a04bc87968782"
+    },
+    {
+      "file": "lib/signalr/signalr.min.js",
+      "package": "@microsoft/signalr",
+      "version": "8.0.29",
+      "source": "dist/browser/signalr.min.js",
+      "registry": "https://registry.npmjs.org/@microsoft/signalr",
+      "sha256": "b052d8d2d37dce0e911792322f3b2472b736a6658c0870a44ec2a4274fa189f7"
+    },
+    {
+      "file": "lib/toastr/toastr.min.js",
+      "package": "toastr",
+      "version": "2.1.4",
+      "source": "build/toastr.min.js",
+      "registry": "https://registry.npmjs.org/toastr",
+      "sha256": "1e0c2ad4e069276efa1d43fd1f7549912bfd64219119037e26574f27ca4d7143"
+    },
+    {
+      "file": "lib/toastr/toastr.min.css",
+      "package": "toastr",
+      "version": "2.1.4",
+      "source": "build/toastr.min.css",
+      "registry": "https://registry.npmjs.org/toastr",
+      "sha256": "47dd690f8f315bea076e92581a7e7147443bb4c847e313ab5a7d50a8c44836d0"
+    },
+    {
+      "file": "lib/select2/select2.min.js",
+      "package": "select2",
+      "version": "4.1.0",
+      "source": "dist/js/select2.min.js",
+      "registry": "https://registry.npmjs.org/select2",
+      "sha256": "15692c266649fbc8acb4ebfb345e7e9499486d9551148241a235c9d62eea2f55"
+    },
+    {
+      "file": "lib/select2/select2.min.css",
+      "package": "select2",
+      "version": "4.1.0",
+      "source": "dist/css/select2.min.css",
+      "registry": "https://registry.npmjs.org/select2",
+      "sha256": "5d5e14d587308b5d1ad79f51e9aea2f8f469b0a02b335f559f5a4bb756b81737"
+    },
+    {
+      "file": "lib/select2/select2-bootstrap-5-theme.min.css",
+      "package": "select2-bootstrap-5-theme",
+      "version": "1.3.0",
+      "source": "dist/select2-bootstrap-5-theme.min.css",
+      "registry": "https://registry.npmjs.org/select2-bootstrap-5-theme",
+      "sha256": "5cb35411fccf18705e4ad112d836cb514459ddeefddc169b970cc99588fa5b64"
+    },
+    {
+      "file": "lib/filepond/filepond.min.js",
+      "package": "filepond",
+      "version": "4.32.12",
+      "source": "dist/filepond.min.js",
+      "registry": "https://registry.npmjs.org/filepond",
+      "sha256": "15b4da486dba7b7d93687ac3dfa2ce64c00f1a0b5138b425ca55137b0508f6de"
+    },
+    {
+      "file": "lib/filepond/filepond.min.css",
+      "package": "filepond",
+      "version": "4.32.12",
+      "source": "dist/filepond.min.css",
+      "registry": "https://registry.npmjs.org/filepond",
+      "sha256": "5de23a498a59d08711ccba32f0288b35cdabf8ce0e3bb6c11af2ed7191742b7d"
+    },
+    {
+      "file": "lib/filepond/filepond-plugin-image-preview.min.js",
+      "package": "filepond-plugin-image-preview",
+      "version": "4.6.12",
+      "source": "dist/filepond-plugin-image-preview.min.js",
+      "registry": "https://registry.npmjs.org/filepond-plugin-image-preview",
+      "sha256": "d6f407cad32ba4eb0a1725143ee11587178d1fa521317dee35eb4346f952a705"
+    },
+    {
+      "file": "lib/filepond/filepond-plugin-image-preview.min.css",
+      "package": "filepond-plugin-image-preview",
+      "version": "4.6.12",
+      "source": "dist/filepond-plugin-image-preview.min.css",
+      "registry": "https://registry.npmjs.org/filepond-plugin-image-preview",
+      "sha256": "62c3bc68c236d2f4a2cdd99cda6996c760d4d70a1fe2feb4370cbb84806f74cf"
+    },
+    {
+      "file": "lib/jquery-validation/dist/jquery.validate.min.js",
+      "package": "jquery-validation",
+      "version": "1.22.1",
+      "source": "dist/jquery.validate.min.js",
+      "registry": "https://registry.npmjs.org/jquery-validation",
+      "sha256": "d48b8fee4fe0f9df7cfebe7e0f52365f6c3ec61055249fac853ec3d645d7898b"
+    },
+    {
+      "file": "lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js",
+      "package": "jquery-validation-unobtrusive",
+      "version": "4.0.0",
+      "source": "dist/jquery.validate.unobtrusive.min.js",
+      "registry": "https://registry.npmjs.org/jquery-validation-unobtrusive",
+      "sha256": "44558558820fb230780ee711e23ab0c535b0d77666b48facead551d8b2666579"
+    },
+    {
+      "file": "lib/sweetalert2/sweetalert2.all.min.js",
+      "package": "sweetalert2",
+      "version": "11.26.25",
+      "source": "dist/sweetalert2.all.min.js",
+      "registry": "https://registry.npmjs.org/sweetalert2",
+      "sha256": "4e86f0e22e4771b5b8aac24c613c661806a678b1afa284d03cf6ad03d3e21a0a"
+    },
+    {
+      "file": "lib/jsbarcode/JsBarcode.all.min.js",
+      "package": "jsbarcode",
+      "version": "3.11.6",
+      "source": "dist/JsBarcode.all.min.js",
+      "registry": "https://registry.npmjs.org/jsbarcode",
+      "sha256": "52e032534c3f98976ad95cb8c20baf80ed0cc83d42590602a8cf1db16e2e22ed"
+    },
+    {
+      "file": "Admin/js/printing/qz-tray.js",
+      "package": "qz-tray",
+      "version": "2.2.6",
+      "source": "qz-tray.js",
+      "registry": "https://registry.npmjs.org/qz-tray",
+      "sha256": "b0a0afde74511e5284195cc875bc862b1ea4233f6c6aecb3ad485430a56bf4a6"
+    },
+    {
+      "file": "lib/zxing-browser/0.1.5/zxing-browser.min.js",
+      "package": "@zxing/browser",
+      "version": "0.1.5",
+      "source": "umd/zxing-browser.min.js",
+      "registry": "https://registry.npmjs.org/@zxing/browser",
+      "sha256": "b5ad3df920738ca7adcb74508d7e6b6a5b9024993fb9a0c702da1ad8964eca07"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-300-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-300-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "5961cd1e157b67ce3b5288dd0076014624ca30022304b127976f09bc7ee929e9"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-300-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-300-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "02f963afc7d44cb9c483811998afd5907f48f9bd5d367ffaeef6b9d2ae317e12"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-400-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-400-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "f1c77775b365f4e78a6566f50c9b7bbbc89e17db85c000897050d34c68bc40ff"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-400-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-400-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "61d4903622aba0a9471b0a5a32d4f8d3c496a575baac0600217df10627e05d95"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-500-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-500-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "9a5c116b66e335254e3220ba08dffe292d900366bd1962111c78c6e781924260"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-500-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-500-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "d80d0279e0099f6f3bfd476c69c8e115781943a14d15a083c82a403e96677fa1"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-600-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-600-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "80d02b23f2b0c071ad2409a8a1c51fd498b95685030fd1d8916782921670bd15"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-600-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-600-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "8274774d436651ef8e907c24d4ef40a5de6d0ba056c48ed950fb64c4b8de2221"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-700-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-700-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "1d1239d7cec98d8be6bc97447ee4c176eae3c59129c40f0425ca15b233235188"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-vietnamese-700-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-vietnamese-700-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "626270077a192111c93c7c85a432db149d2f1db50069bd5cd8b55aa35c3132c6"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-300-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-300-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "234ec2cc2a608cdec6b422fb7ec7669421e88818e958f8030f8a958c715f8901"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-300-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-300-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "0f689cb35a0a8e2dcc2a2fa75b18926b1d8d0f132efe7c4fa47d7aa10f76a20d"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-400-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-400-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "812efcc8f7784063692076be1d14318767646847de8974a89d18074596141a54"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-400-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-400-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "e6222552947514482967d4785b869b1612b6ef47bb35fd8647c304e1d755940b"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-500-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-500-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "1787aa45adfb870a086cec11215051e3af11f3e6f3dd8e17b3d7bfc81c3521a7"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-500-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-500-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "577e0a24b98124baade65f0296d3545ed098f41256843a8815916cbb8f9f3c36"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-600-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-600-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "962979846a2c91c474023dc6280864e468d512eff2b26844dffdfdb9f4a54a4f"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-600-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-600-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "10c6f64b387c0a4f8a8869e5774bb49c11a2f7180181a688b36156db3f9ae091"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-700-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-700-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "dd2078a57ba3674bd8cc99488857606e47560a4555511c33d301afbdac580ab3"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-ext-700-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-ext-700-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "c27770b8b3d36f9b56683915a04b2b8b20faf0ec277e03fd140053100e5ddfbd"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-300-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-300-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "9974c98111d8937efb6c21b3d26a81daca5ccb92b12d03a365a813d14bbe3651"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-300-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-300-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "fdd3f21a6a2a1733fdd3ac5282abbb8ce4b808a4b4f08c7d19ab016432a5d8ef"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-400-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-400-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "36274b5787b4f03b27e65ae971d6c808a96838ccd60c9dabaee154889b6bba82"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-400-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-400-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "e9110763c65b780c1282c9ee7c7acf152b16aec93d75ba2e6e8831f74c7233a7"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-500-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-500-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "55e866a00caa197bc9fafa52c907f4dfe88e51bbb3f585c777931d03eb961e96"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-500-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-500-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "ed521ae192296bfd28e908e99debc0a6d4850cfcc2f6acae6b548b78916ff6a2"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-600-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-600-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "c7842f97346df1b3b470e9d71acde90f132dd858508ec5ae6606401e5d0938f7"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-600-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-600-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "d0b9de995bc3cca0dd0dedbddf54ad4b5519cbe73bdd1fc168354953bdcac5fc"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-700-normal.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-700-normal.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "dace741613696827f61dbee2d984e8685f14a2846136783f3ad1c8950914bf1d"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans-latin-700-italic.woff2",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "source": "files/public-sans-latin-700-italic.woff2",
+      "registry": "https://registry.npmjs.org/@fontsource/public-sans",
+      "sha256": "8e0990d15e994ed1c52a5c8e9912f7a900578cff18ced1ca3885ce7476a7d5f7"
+    },
+    {
+      "file": "lib/fonts/public-sans/public-sans.css",
+      "package": "@fontsource/public-sans",
+      "version": "5.3.0",
+      "sha256": "960af0b9536892073ca92e5cf33b169a1e73be31e80918153da0aad081b9b541"
+    },
+    {
+      "file": "vendor/js/helpers.js",
+      "originalSha256": "81ca40868e5df4d700c3729d6d2f24b41d7374e42c83bf20e61f4b7014e7afaf",
+      "source": "Existing repository template bundle; webpack eval literals parsed into ordinary module code",
+      "sha256": "ed8e5b155d788e0e686a1bf6e7d306a6e3a529bb5b0e05317bce24d095066802"
+    },
+    {
+      "file": "vendor/js/menu.js",
+      "originalSha256": "0f79dca3acfcaacb7677e0a23fb6488aa79c97b4b225e748b0cd8a454c85b621",
+      "source": "Existing repository template bundle; webpack eval literals parsed into ordinary module code",
+      "sha256": "325babaf3c21875ebea0ff4578edc9df76c220bce5d2b63bbf13dcbde4ab2855"
+    },
+    {
+      "file": "vendor/libs/perfect-scrollbar/perfect-scrollbar.js",
+      "package": "perfect-scrollbar",
+      "version": "1.5.6",
+      "originalSha256": "b5ee1c29427e147ec0448b67d2c0f7850e01576eddd77a3c1fedfd8245bea4e2",
+      "source": "Existing repository template bundle; webpack eval literals parsed into ordinary module code",
+      "sha256": "ae318f877f59b087b17aa761cb4f50be25277ad488c9d073628ba8c1981f1639"
+    },
+    {
+      "file": "vendor/libs/apex-charts/apexcharts.js",
+      "package": "apexcharts",
+      "version": "4.2.0",
+      "originalSha256": "f4243e83e334e29b8ddafa63d1630388de01a90738a71f1a70e073fb26e0bdf1",
+      "source": "Existing repository template bundle; webpack eval literals parsed into ordinary module code",
+      "sha256": "807545f6fd60ca3e66fba288988b9668afde7a51e2716128263e9b411791c04a"
+    },
+    {
+      "file": "vendor/libs/masonry/masonry.js",
+      "package": "masonry-layout",
+      "version": "4.2.2",
+      "originalSha256": "4ed69fc25c88ceac60a19b0b8eeecc3ca3608ef55da34f17fff5a63c739beb80",
+      "source": "Existing repository template bundle; webpack eval literals parsed into ordinary module code",
+      "sha256": "d94e98226fd2c606de5618bd45047ac9b703372070a6c5e9963dea07c0e1d535"
+    },
+    {
+      "file": "vendor/libs/highlight/highlight.js",
+      "package": "highlight.js",
+      "version": "11.10.0",
+      "originalSha256": "9c0ed2f023fd5523b81deda7b7b8c28e3c6208862cc3bf72d94c49a06c74e9ad",
+      "source": "Existing repository template bundle; webpack eval literals parsed into ordinary module code",
+      "sha256": "1ae83f73e61771930467399e4b51b582184b3c19f9241314f01d4002aca9f5cf"
+    }
+  ]
+}

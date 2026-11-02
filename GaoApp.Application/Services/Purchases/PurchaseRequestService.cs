@@ -148,6 +148,8 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
             var row = 1;
             foreach (var input in request.Lines)
             {
+                if (input.Note?.Length > 1000)
+                    throw new BusinessRuleException($"Dòng {row}: ghi chú sản phẩm không được vượt quá 1000 ký tự.");
                 var quantity = PurchasePricingPolicy.RoundQuantity(input.Quantity);
                 if (quantity <= 0) throw new BusinessRuleException($"Dòng {row}: số lượng phải lớn hơn 0.");
 
@@ -210,6 +212,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 }
 
                 line.RequestedQuantity = quantity;
+                line.Note = NormalizeNote(input.Note);
                 line.ApprovedQuantity = null;
                 line.ConvertedQuantity = 0m;
                 if (!input.Id.HasValue) entity.Lines.Add(line);
@@ -374,6 +377,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                 .Where(x => (x.ApprovedQuantity ?? 0m) > 0m)
                 .Select(x => new PurchaseRequestPreparationLineDto
                 {
+                    Note = x.Note,
                     PurchaseRequestLineId = x.Id,
                     ItemKind = x.ItemKind,
                     ProductVariantId = x.ProductVariantId,
@@ -585,6 +589,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                         TaxId = null,
                         ProductNameSnapshot = sourceLine.ProductNameSnapshot,
                         SkuSnapshot = sourceLine.SkuSnapshot,
+                        Note = sourceLine.Note,
                         UnitNameSnapshot = sourceLine.UnitNameSnapshot,
                         TaxNameSnapshot = null,
                         ConversionFactor = sourceLine.ConversionFactor,
@@ -941,6 +946,7 @@ public sealed class PurchaseRequestService : IPurchaseRequestService
                     : null;
                 return new PurchaseRequestLineDto
                 {
+                    Note = l.Note,
                     Id = l.Id,
                     LineNo = l.LineNo,
                     ItemKind = l.ItemKind,

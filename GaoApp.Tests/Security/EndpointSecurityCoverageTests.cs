@@ -37,6 +37,9 @@ public sealed class EndpointSecurityCoverageTests
             // purchase/inventory policies in Rights, Has or Execute before mutations/returns.
             "ReceiptDocumentActions.Get", "ReceiptDocumentActions.Rename", "ReceiptDocumentActions.RequestTitle",
             "ReceiptDocumentActions.Review", "ReceiptDocumentActions.Delete",
+            // Supplier correction uses the same source-specific approve gate in Rights;
+            // ReceiptSupplierCorrectionSqlServerTests verifies forbidden and cross-source requests.
+            "ReceiptDocumentActions.CorrectSupplier",
             "ReceiptInvoiceFollowUp.Get", "ReceiptInvoiceFollowUp.EndWaiting", "ReceiptInvoiceFollowUp.Review",
             "ReceiptInvoiceBackfill.Preview", "ReceiptInvoiceBackfill.Confirm",
             "PurchaseReceiptXmlMapping.Confirm",
@@ -73,7 +76,16 @@ public sealed class EndpointSecurityCoverageTests
             "StockDocuments.RequestRevision", "StockDocuments.ResolveRevisionRequest"
         };
         // Password self-service derives identity from the principal and verifies current credentials.
-        var authenticationOnly = new HashSet<string> { "Account.Logout", "EmployeeAccount.ChangePassword" };
+        var authenticationOnly = new HashSet<string>
+        {
+            "Account.Logout", "EmployeeAccount.ChangePassword",
+            // Any authenticated store member can read printable templates/store receipt details.
+            // All writes separately require Manage plus a persisted store ADMIN membership.
+            "ReceiptTemplates.Index", "ReceiptTemplates.Data", "ReceiptTemplates.StoreInfo", "ReceiptTemplates.Default",
+            // A signed-in employee may report only their own current-store online presence.
+            // Reading the roster/snapshot still requires StoreMonitorView.
+            "StoreActivity.Online"
+        };
         var anonymous = new HashSet<string> { "Account.Login", "Account.AccessDenied" };
         var findings = new List<string>();
         var inventory = new List<object>();

@@ -17,7 +17,7 @@ public class AppDbContextTenantIsolationTests
 
         await using (var seedContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin()))
+            tenant => tenant.SetHostAdminForTest()))
         {
             var activeStoreOne = NewCategory(
                 1,
@@ -102,7 +102,7 @@ public class AppDbContextTenantIsolationTests
 
         await using var verifyContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         var savedCategory = await verifyContext.Categories
             .IgnoreQueryFilters()
@@ -162,7 +162,7 @@ public class AppDbContextTenantIsolationTests
 
         await using var verifyContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         var savedCategory = await verifyContext.Categories
             .IgnoreQueryFilters()
@@ -748,7 +748,7 @@ public class AppDbContextTenantIsolationTests
 
         await using (var hostAdminContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin()))
+            tenant => tenant.SetHostAdminForTest()))
         {
             var categoryToUpdate = NewCategory(
                 2,
@@ -818,7 +818,7 @@ public class AppDbContextTenantIsolationTests
 
         await using var verifyContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         var mappingStillExists = await verifyContext
             .ProductVariantAttributeValues
@@ -839,7 +839,7 @@ public class AppDbContextTenantIsolationTests
 
         await using (var seedContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin()))
+            tenant => tenant.SetHostAdminForTest()))
         {
             seedContext.ProductVariantAttributeValues.Add(
                 new ProductVariantAttributeValue
@@ -878,7 +878,7 @@ public class AppDbContextTenantIsolationTests
 
         await using var verifyContext = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         var mappingStillExists = await verifyContext
             .ProductVariantAttributeValues
@@ -992,7 +992,7 @@ public class AppDbContextTenantIsolationTests
     {
         await using var context = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         var category = NewCategory(
             storeId,
@@ -1015,7 +1015,7 @@ public class AppDbContextTenantIsolationTests
     {
         await using var context = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         var category = await context.Categories
             .IgnoreQueryFilters()
@@ -1053,7 +1053,7 @@ public class AppDbContextTenantIsolationTests
     {
         await using var context = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         return await context.Categories
             .IgnoreQueryFilters()
@@ -1066,7 +1066,7 @@ public class AppDbContextTenantIsolationTests
     {
         await using var context = CreateContext(
             options,
-            tenant => tenant.SetHostAdmin());
+            tenant => tenant.SetHostAdminForTest());
 
         return await context.Categories
             .IgnoreQueryFilters()

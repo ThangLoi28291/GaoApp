@@ -42,7 +42,7 @@ public sealed class ReceiptInvoiceFollowUpService(AppDbContext db, ITenantContex
         var state = ReceiptInvoiceFollowUp.Resolve(receipt.WaitForInputInvoice, map != null, reconciliation?.OverallState, reviewed);
         return new(state, map != null, receipt.Status == StockDocumentStatus.Confirmed,
             Convert.ToBase64String(receipt.RowVersion), state == "Waiting" && receipt.ApprovedAtUtc.HasValue
-                ? Math.Max(0, (DateTime.UtcNow.Date - receipt.ApprovedAtUtc.Value.Date).Days) : 0, receipt.ReceiptSource)
+                ? Math.Max(0, (VietnamTime.Today - receipt.ApprovedAtUtc.Value.ToVietnamTime().Date).Days) : 0, receipt.ReceiptSource)
         {
             MapId = map?.Id, EvidenceFingerprint = reconciliation?.EvidenceFingerprint,
             ReceiptGoodsTotal = reconciliation?.ReceiptGoodsTotal, XmlPaymentAmount = reconciliation?.XmlPaymentAmount,

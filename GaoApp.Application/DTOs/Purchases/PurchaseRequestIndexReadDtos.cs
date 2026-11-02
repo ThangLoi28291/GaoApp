@@ -104,6 +104,7 @@ public sealed class PurchaseRequestIndexQuickViewDto
 
 public sealed class PurchaseRequestIndexLineDto
 {
+    public string? Note { get; set; }
     public int LineNo { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public string? Sku { get; set; }

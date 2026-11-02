@@ -1,0 +1,270 @@
+/* UI-18: phone presentation for the native sales, profit detail and cost activity reports. */
+@media screen and (max-width: 767.98px) {
+    body[data-report-detail-phone] { background: #f3f6fb; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] {
+        --rd-navy: #172d4d;
+        --rd-blue: #2463eb;
+        --rd-line: #dce5f0;
+        --rd-muted: #52647c;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        color: var(--rd-navy);
+        font-variant-numeric: tabular-nums;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-heading],
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-heading {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+        padding: 20px 16px;
+        margin-bottom: 16px;
+        border: 1px solid #243e60;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #172d4d, #203e65);
+        color: #fff;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-heading] .gds-page-header__title,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-heading h1 {
+        margin: 5px 0 8px;
+        color: #fff;
+        font-size: 23px;
+        line-height: 1.3;
+        letter-spacing: -.35px;
+        overflow-wrap: anywhere;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-heading] .sales-report-eyebrow,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-eyebrow {
+        color: #abc9ff;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 1.3px;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-heading] .gds-page-header__subtitle,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-heading p:not(.profit-eyebrow) {
+        color: #d4dfef;
+        font-size: 13px;
+        line-height: 1.65;
+        margin: 0;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-heading] .gds-page-header__actions,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-actions {
+        display: flex;
+        flex-wrap: wrap;
+        width: 100%;
+        gap: 8px;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-heading] .btn,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-actions .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 1 1 120px;
+        gap: 6px;
+        min-height: 44px;
+        padding: 9px 11px;
+        border: 1px solid #6983a5;
+        border-radius: 12px;
+        background: #fff;
+        color: #172d4d;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: normal;
+        text-align: center;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(input:not([type=hidden]), select, textarea) {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        min-height: 46px;
+        padding: 10px 11px;
+        border: 1px solid var(--rd-line);
+        border-radius: 11px;
+        background-color: #fff;
+        color: var(--rd-navy);
+        font-size: 16px;
+        line-height: 1.4;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(button, a.btn, summary) {
+        min-height: 44px;
+        touch-action: manipulation;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(button, a.btn) {
+        border-radius: 11px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(button, a, input, select, summary):focus-visible,
+    body[data-report-detail-phone] [data-report-detail-phone-heading] :is(a, button):focus-visible {
+        outline: 3px solid #8cb8ff;
+        outline-offset: 3px;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.card, .profit-panel, .profit-kpi, .profit-filters) {
+        min-width: 0;
+        max-width: 100%;
+        border: 1px solid var(--rd-line) !important;
+        border-radius: 16px;
+        background: #fff;
+        box-shadow: 0 3px 15px #172d4d05 !important;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .card-body,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-panel { padding: 16px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(h2, h5) { color: var(--rd-navy); font-size: 16px; line-height: 1.45; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.profit-muted, .text-muted, .profit-context, .profit-live, .profit-delta) {
+        color: var(--rd-muted) !important;
+        font-size: 12px;
+        line-height: 1.65;
+        overflow-wrap: anywhere;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-filter-bar:not([hidden]):not(.d-none),
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-filters:not([hidden]):not(.d-none) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 10px;
+        align-items: end;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-filters { padding: 16px; margin-bottom: 14px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.sales-detail-filter-bar > div, .profit-filters label, .profit-detail-filters label) {
+        width: auto;
+        min-width: 0;
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--rd-muted);
+        font-weight: 600;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-report-filter-card .form-label { margin-bottom: 6px; color: var(--rd-muted); font-size: 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-filters > button { align-self: end; min-height: 46px; background: var(--rd-blue); border-color: var(--rd-blue); color: #fff; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-tabs:not([hidden]):not(.d-none) {
+        display: flex;
+        gap: 8px;
+        max-width: 100%;
+        margin: 0 0 14px;
+        padding: 2px 1px 8px;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-tabs button {
+        flex: 0 0 auto;
+        padding: 10px 15px;
+        border: 1px solid var(--rd-line);
+        border-radius: 12px;
+        background: #fff;
+        color: var(--rd-muted);
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-tabs button.is-active { background: var(--rd-blue); border-color: var(--rd-blue); color: #fff; box-shadow: 0 4px 10px #2463eb22; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-summary-grid:not([hidden]):not(.d-none),
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-kpis:not([hidden]):not(.d-none) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-kpi { padding: 15px 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-summary-grid .card-body { padding: 15px 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-kpi h2,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-summary-grid article span { color: var(--rd-muted); font-size: 12px; font-weight: 600; line-height: 1.5; margin-bottom: 6px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-value,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-summary-grid article strong {
+        width: 100%;
+        max-width: 100%;
+        padding: 0;
+        color: var(--rd-navy);
+        font-size: 21px;
+        line-height: 1.4;
+        letter-spacing: -.4px;
+        text-align: left;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-value.profit-negative { color: #a32a30; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-badge { max-width: 100%; white-space: normal; line-height: 1.5; font-size: 11px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-delta { margin: 7px 0 0; font-size: 11px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-panels:not([hidden]):not(.d-none) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-panel { margin-bottom: 14px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-panel dl { gap: 12px; font-size: 13px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-panel dd { text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.profit-notice, .profit-error, .sales-detail-drill-context) {
+        border-radius: 12px;
+        padding: 12px;
+        margin: 12px 0;
+        font-size: 13px;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-drill-context { background: #edf3ff; border: 1px solid #d6e4ff; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-drill-chip { white-space: normal; line-height: 1.55; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-bridge:not([hidden]):not(.d-none) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-bridge span { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; padding: 12px; font-size: 13px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-bridge strong { margin: 0; overflow-wrap: anywhere; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.sales-detail-table-toolbar, .profit-chart-heading) { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-table-controls:not([hidden]):not(.d-none),
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-detail-filters:not([hidden]):not(.d-none) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        width: 100%;
+        min-width: 0;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-table-controls > input,
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-detail-filters > label:first-child { grid-column: 1 / -1; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-detail-filters { padding: 12px; margin: 14px 0; background: #f7f9fc; box-shadow: none; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-detail-filters > button { width: 100%; min-height: 46px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.profit-pagination, .sales-detail-pagination) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-pagination > span { flex-basis: 100%; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-pagination .btn-group { width: 100%; gap: 8px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-pagination .btn { flex: 1; margin: 0; border-radius: 11px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] [data-profit-page] { order: -1; width: 100%; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-pagination button { flex: 1; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.profit-table-wrap, #salesDetailTableWrap) { max-width: 100%; overflow: visible; }
+    body[data-report-detail-phone] [data-report-detail-phone-table]:not([hidden]):not(.d-none) { display: block; width: 100%; max-width: 100%; min-width: 0; border: 0; background: transparent; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] caption { display: block; padding: 10px 0; color: #52647c; font-size: 12px; line-height: 1.6; text-align: left; white-space: normal; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] thead:not([hidden]):not(.d-none) { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); white-space: nowrap; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] tbody:not([hidden]):not(.d-none) { display: grid; gap: 12px; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] tbody > tr:not([hidden]):not(.d-none) {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-width: 0;
+        padding: 0 12px 6px;
+        border: 1px solid #dce5f0;
+        border-radius: 14px;
+        background: #fff;
+        overflow-wrap: anywhere;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-table] tbody > tr > :is(td, th):not([hidden]):not(.d-none) {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 0;
+        padding: 11px 5px;
+        border: 0;
+        border-bottom: 1px solid #edf1f7;
+        background: transparent;
+        font-size: 13px;
+        line-height: 1.55;
+        text-align: left !important;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+        box-shadow: none;
+    }
+    body[data-report-detail-phone] [data-report-detail-phone-table] [data-report-detail-phone-label]::before { content: attr(data-report-detail-phone-label); color: #71839a; font-size: 11px; font-weight: 500; line-height: 1.5; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] [data-report-detail-phone-wide] { grid-column: 1 / -1; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] [data-report-detail-phone-lead] { padding-top: 14px; font-size: 14px; font-weight: 700; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] :is(a.btn, button) { align-self: stretch; display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%; }
+    body[data-report-detail-phone] [data-report-detail-phone-table] .sales-detail-return-badge { align-self: flex-start; max-width: 100%; white-space: normal; line-height: 1.6; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] :is(.sales-detail-reconcile-ok, .sales-detail-reconcile-bad) { font-weight: 700; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-reconcile-ok { color: var(--bs-success) !important; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .sales-detail-reconcile-bad { color: var(--bs-danger) !important; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] [data-profit-chart] { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border-radius: 10px; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] details > summary { display: flex; align-items: center; gap: 8px; padding: 10px 0; color: var(--rd-blue); font-size: 13px; font-weight: 600; cursor: pointer; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] details > summary::before { content: "+"; width: 20px; flex: 0 0 20px; font-size: 20px; line-height: 1; text-align: center; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] details[open] > summary::before { content: "−"; }
+    body[data-report-detail-phone] [data-report-detail-phone-root] .profit-help p { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+    body[data-report-detail-phone] :is([data-report-detail-phone-root], [data-report-detail-phone-heading])[hidden],
+    body[data-report-detail-phone] :is([data-report-detail-phone-root], [data-report-detail-phone-heading]) [hidden] { display: none !important; }
+}

@@ -45,7 +45,7 @@ public sealed class DeliveryD05SqlServerTests(DeliveryD02Fixture fixture, ITestO
     }
 
     [Fact]
-    public async Task T02_Two_actual_SQL_workers_compete_for_last_stock_and_only_one_saved_report_has_a_hold()
+    public async Task T02_Two_actual_SQL_workers_save_physical_holds_beyond_available_stock_without_changing_physical_stock()
     {
         using var first = await DeliveryD05Case.CreateAsync(fixture, ordered: 1, stock: [(1m, 10m)]);
         var variant = await first.VariantAsync();
@@ -67,17 +67,37 @@ public sealed class DeliveryD05SqlServerTests(DeliveryD02Fixture fixture, ITestO
             catch (BusinessRuleException ex) { return ex; }
         }
         var results = await WithBalanceGate<Exception?>(first, variant, workers, () => [Save(first, dbA, a), Save(second, dbB, b)]);
-        Assert.Single(results, x => x is null);
-        var error = Assert.Single(results, x => x is not null);
-        Assert.Equal("INSUFFICIENT_STOCK", Assert.IsType<DeliveryFoundationException>(error).Code);
+        Assert.All(results, Assert.Null);
         await using var verify = first.Picking.Source.Context();
         var balance = await verify.InventoryBalances.SingleAsync(x => x.ProductVariantId == variant && x.WarehouseId == first.Picking.Account.Store.WarehouseId);
-        Assert.Equal(1m, balance.OnHandQty); Assert.Equal(1m, balance.ReservedQty);
+        Assert.Equal(1m, balance.OnHandQty); Assert.Equal(2m, balance.ReservedQty);
         var holds = await verify.InventoryReservations.Where(x => x.DeliveryOrderId == first.Id || x.DeliveryOrderId == second.Id).ToArrayAsync();
-        Assert.Single(holds, x => x.Status == InventoryReservationStatus.Active);
-        Assert.Equal(5, await verify.DeliveryCommandReceipts.CountAsync(x => x.DeliveryOrderId == first.Id || x.DeliveryOrderId == second.Id));
+        Assert.Equal(2, holds.Count(x => x.Status == InventoryReservationStatus.Active));
+        Assert.Equal(6, await verify.DeliveryCommandReceipts.CountAsync(x => x.DeliveryOrderId == first.Id || x.DeliveryOrderId == second.Id));
         var reports = await verify.DeliveryPickingLines.Where(x => x.DeliveryOrderId == first.Id || x.DeliveryOrderId == second.Id).ToArrayAsync();
-        Assert.Single(reports, x => x.ReportedQuantity == 1); Assert.Single(reports, x => x.ReportedQuantity is null);
+        Assert.Equal(2, reports.Length); Assert.All(reports, x => Assert.Equal(1m, x.ReportedQuantity));
+        var finance = await first.FinanceAsync();
+        await first.Picking.SubmitAsync(); await second.Picking.SubmitAsync();
+        var ready = await first.Picking.GetAsync();
+        var request = new DeliveryInventoryDispatchRequest(Guid.NewGuid(), ready.Delivery.Version, ready.ApprovedRevision!.Value);
+        Assert.False((await first.DispatchAsync(request)).Replayed);
+        var afterFirst = await verify.InventoryBalances.AsNoTracking().SingleAsync(x => x.ProductVariantId == variant &&
+            x.WarehouseId == first.Picking.Account.Store.WarehouseId);
+        Assert.Equal(0m, afterFirst.OnHandQty); Assert.Equal(1m, afterFirst.ReservedQty);
+        var remaining = Assert.Single(await verify.InventoryReservations.AsNoTracking()
+            .Where(x => x.DeliveryOrderId == second.Id && x.Status == InventoryReservationStatus.Active).ToArrayAsync());
+        Assert.Equal(1m, remaining.ReservedQty);
+        Assert.False((await second.DispatchAsync()).Replayed);
+        var afterBoth = await verify.InventoryBalances.AsNoTracking().SingleAsync(x => x.ProductVariantId == variant &&
+            x.WarehouseId == first.Picking.Account.Store.WarehouseId);
+        Assert.Equal(-1m, afterBoth.OnHandQty); Assert.Equal(0m, afterBoth.ReservedQty);
+        var exported = await verify.DeliveryJournalEntries.AsNoTracking().Where(x => x.DeliveryOrderId == first.Id || x.DeliveryOrderId == second.Id).ToArrayAsync();
+        Assert.Equal(2, exported.Length); Assert.Single(exported, x => x.DeliveryOrderId == first.Id); Assert.Single(exported, x => x.DeliveryOrderId == second.Id);
+        Assert.All(exported, x => { Assert.Equal(1m, x.BaseQuantity); Assert.Equal(0m, x.MoneyAmount); Assert.Null(x.SaleOrderId); });
+        Assert.False(await verify.InventoryReservations.AnyAsync(x => (x.DeliveryOrderId == first.Id || x.DeliveryOrderId == second.Id) && x.Status == InventoryReservationStatus.Active));
+        var final = await first.SnapshotAsync();
+        Assert.True((await first.DispatchAsync(request)).Replayed); Assert.Equal(final, await first.SnapshotAsync());
+        Assert.Equal(finance, await first.FinanceAsync());
     }
 
     [Fact]
@@ -213,19 +233,45 @@ public sealed class DeliveryD05SqlServerTests(DeliveryD02Fixture fixture, ITestO
         Assert.True(again.Replayed);
     }
 
-    [Fact]
-    public async Task T07_POS_negative_override_cannot_cross_delivery_floor_but_can_consume_unheld_remainder()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task T07_Negative_stock_policy_applies_to_delivery_holds_without_releasing_them(bool requestAllowsNegative, bool warehouseAllowsNegative)
     {
         using var c = await DeliveryD05Case.CreateAsync(fixture, stock: [(10m, 10m)]);
         await c.Picking.ClaimAsync(); await c.Picking.ReportAsync("8"); var variant = await c.VariantAsync();
-        var before = await c.SnapshotAsync();
-        var factory = new InventoryMovementFactory();
-        var denied = factory.CreateSaleFinalize(c.Picking.Account.Store.WarehouseId, variant, 90501, 1, "D05 protected", 3m, 10m);
-        denied.AllowNegativeBalance = true;
         await using (var db = c.Picking.Source.Context())
         {
-            var ex = await Assert.ThrowsAsync<BusinessRuleException>(() => InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(denied));
-            Assert.Contains("DELIVERY_STOCK_PROTECTED", ex.Message, StringComparison.Ordinal);
+            var warehouse = await db.Warehouses.SingleAsync(x => x.Id == c.Picking.Account.Store.WarehouseId);
+            warehouse.AllowNegativeInventory = warehouseAllowsNegative; await db.SaveChangesAsync();
+        }
+        var before = await c.SnapshotAsync();
+        var factory = new InventoryMovementFactory();
+        var sale = factory.CreateSaleFinalize(c.Picking.Account.Store.WarehouseId, variant, 90501, 1, "D05 protected", 3m, 10m);
+        sale.AllowNegativeBalance = requestAllowsNegative;
+        await using (var db = c.Picking.Source.Context())
+        {
+            if (requestAllowsNegative || warehouseAllowsNegative)
+            {
+                var movement = await InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(sale);
+                Assert.True(movement.IsCreated);
+            }
+            else
+            {
+                var ex = await Assert.ThrowsAsync<BusinessRuleException>(() => InventoryPosPostingContractTests.CreateRealMovementService(db).CreateAsync(sale));
+                Assert.Contains("DELIVERY_STOCK_PROTECTED", ex.Message, StringComparison.Ordinal);
+            }
+        }
+        if (requestAllowsNegative || warehouseAllowsNegative)
+        {
+            await using var allowedDb = c.Picking.Source.Context();
+            var allowedBalance = await allowedDb.InventoryBalances.SingleAsync(x => x.ProductVariantId == variant);
+            Assert.Equal(7m, allowedBalance.OnHandQty); Assert.Equal(8m, allowedBalance.ReservedQty);
+            var hold = await allowedDb.InventoryReservations.SingleAsync(x => x.DeliveryOrderId == c.Id && x.Status == InventoryReservationStatus.Active);
+            Assert.Equal(8m, hold.ReservedQty); Assert.Null(hold.ReleasedAtUtc);
+            return;
         }
         Assert.Equal(before, await c.SnapshotAsync());
         await using (var db = c.Picking.Source.Context())
@@ -244,7 +290,7 @@ public sealed class DeliveryD05SqlServerTests(DeliveryD02Fixture fixture, ITestO
     [InlineData("missing-final")]
     [InlineData("missing-layer")]
     [InlineData("unknown-earlier")]
-    public async Task T08_Strict_dispatch_rejects_unknown_FIFO_without_skipping_or_leaking_partial_posts(string fault)
+    public async Task T08_Corrupt_FIFO_source_proof_is_rejected_without_partial_posts(string fault)
     {
         using var c = await DeliveryD05Case.CreateAsync(fixture); await c.ReadyAsync();
         var variant = await c.VariantAsync();

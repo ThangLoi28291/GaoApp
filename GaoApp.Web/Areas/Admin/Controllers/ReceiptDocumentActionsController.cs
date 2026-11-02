@@ -21,8 +21,10 @@ public sealed class ReceiptDocumentActionsController(IReceiptDocumentActionsServ
         if (!rights.Edit && !rights.Manage && !rights.Delete) return Forbid();
         return Ok(new { document, canRename = rights.Manage || rights.Edit && document.NeverSubmitted,
             canRequest = rights.Edit && document.Status == StockDocumentStatus.PendingApproval && document.Proposal == null,
-            canDelete = rights.Delete && document.NeverSubmitted,
+            canDelete = rights.Delete && document.CanDelete,
             canCorrect = document.Status == StockDocumentStatus.Confirmed && (rights.Edit || rights.Manage),
+            canCorrectSupplier = document.CanCorrectSupplier && rights.Manage,
+            supplierCorrectionBlockedReason = rights.Manage ? document.SupplierCorrectionBlockedReason : null,
             canManage = rights.Manage });
     });
 
@@ -51,9 +53,15 @@ public sealed class ReceiptDocumentActionsController(IReceiptDocumentActionsServ
         if (!(await Rights(await service.GetAsync(id, ct))).Delete) return Forbid();
         await service.DeleteDraftAsync(id, request, ct); return Ok(new { ok = true });
     });
+    [HttpPost("correct-supplier")]
+    public Task<IActionResult> CorrectSupplier(int id, CorrectReceiptSupplierRequest request, CancellationToken ct) => Call(async () =>
+    {
+        if (!(await Rights(await service.GetAsync(id, ct))).Manage) return Forbid();
+        await service.CorrectSupplierAsync(id, request, ct); return Ok(new { ok = true });
+    });
     private async Task<(bool Edit, bool Manage, bool Delete)> Rights(ReceiptDocumentActionsDto document)
     {
-        var prefix = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder ? "purchase.receipt." : "inventory.stockdocument.";
+        var prefix = document.HasPurchaseOrder ? "purchase.receipt." : "inventory.stockdocument.";
         return ((await authorization.AuthorizeAsync(User, prefix + "update")).Succeeded,
             (await authorization.AuthorizeAsync(User, prefix + "approve")).Succeeded,
             (await authorization.AuthorizeAsync(User, prefix + "delete")).Succeeded);

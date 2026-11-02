@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -38,7 +38,7 @@ public partial class InvoiceController
         if (!invoiceResult.IsSuccess)
         {
             FlashError(
-                invoiceResult.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(invoiceResult.Error),
                 "Không tìm thấy hóa đơn.");
 
             return RedirectToInvoiceIndexPage();
@@ -65,7 +65,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Không thể chuyển phương thức phát hành.");
 
             return RedirectToInvoiceDetailPage(id);

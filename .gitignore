@@ -25,6 +25,7 @@ publish-migrator/
 /publish-phase8/
 
 # Generated archives, review patches, and runtime uploads
+/GaoApp.Web/ClientPackages/*.zip
 /.artifacts/
 /Logs/receiving-mobile-deps/
 /Logs/chonthanh-redirect-publish/
@@ -111,3 +112,6 @@ App_Data/Logs/
 /GaoApp.LabelPrintServer/Properties/PublishProfiles/FolderProfile.pubxml
 /GaoApp.Migrator/Properties/PublishProfiles/FolderProfile1.pubxml
 /GaoApp.Web/Properties/PublishProfiles/FolderProfile2.pubxml
+
+# Assistant acceptance builds, runtime keys/databases and local catalog evidence
+/Logs/assistant-integration-*/

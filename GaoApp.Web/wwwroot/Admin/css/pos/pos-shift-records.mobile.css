@@ -1,0 +1,154 @@
+/* UI-07b — phone presentation only. Desktop/tablet >=768 retain their original sheets. */
+@media (max-width: 767.98px) {
+    :is(.shift-history-shell,.handover-shell) { color: #172d4d; scroll-margin-top: 84px; padding-bottom: 16px; }
+    :is(.shift-history-shell,.handover-shell) * { min-width: 0; }
+    .shift-records-disclosure { margin-bottom: 14px; border: 1px solid #dce5f0; background: #fff; border-radius: 14px; }
+    .shift-records-disclosure > summary { min-height: 48px; padding: 14px; color: #526780; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .shift-records-disclosure .pos-context-bar.pos-context-bar { margin: 0; border: 0; background: #fff; padding: 0 10px 10px; }
+    .shift-records-disclosure .pos-context-grid.pos-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .shift-records-disclosure .pos-context-item.pos-context-item { padding: 12px; border-radius: 12px; min-height: 0; box-shadow: none; }
+    .shift-records-disclosure .pos-context-item:first-child { grid-column: 1 / -1; }
+    .shift-records-disclosure .pos-context-label { font-size: 10px; margin-bottom: 6px; }
+    .shift-records-disclosure .pos-context-value { font-size: 13px; overflow-wrap: anywhere; }
+    .shift-records-disclosure .pos-context-inline-meta { font-size: 11px; padding: 2px 6px; }
+    .shift-records-disclosure .pos-shift-pill { font-size: 12px; line-height: 1.4; white-space: normal; }
+    .shift-records-disclosure .pos-context-item.shift-card { grid-column: 1 / -1; }
+    :is(.shift-history-shell,.handover-shell) .card { border: 1px solid #dce5f0; box-shadow: none; border-radius: 16px; }
+    :is(.shift-history-shell,.handover-shell) .card-body { padding: 14px; }
+    .shift-records-disclosure .filter-shell { border: 0; margin-bottom: 0 !important; }
+    .shift-records-disclosure .shift-section-head { display: none; }
+    :is(.shift-history-shell,.handover-shell) .form-control, :is(.shift-history-shell,.handover-shell) .form-select { min-height: 48px; font-size: 16px; border-radius: 10px; border-color: #c6d3e3; }
+    :is(.shift-history-shell,.handover-shell) .btn { min-height: 44px; font-size: 14px; white-space: normal; border-radius: 11px; }
+    :is(.shift-history-shell,.handover-shell) .btn-primary { background: #2463eb; border-color: #2463eb; box-shadow: none; }
+    :is(.shift-history-shell,.handover-shell) .btn-outline-primary { color: #2463eb; border-color: #a5bff5; }
+    .shift-history-shell .quick-filter-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .shift-history-shell .quick-filter-btn { width: 100%; }
+    .shift-history-shell .shift-section-title { font-size: 18px; color: #172d4d; }
+    .shift-history-shell > .row > div:last-child { display: none; }
+    .shift-history-phone-bar { display: none; }
+    .shift-history-shell[data-phone-history-view="detail"] > .shift-records-disclosure,
+    .shift-history-shell[data-phone-history-view="detail"] > .row > div:first-child { display: none; }
+    .shift-history-shell[data-phone-history-view="detail"] > .row > div:last-child { display: block; }
+    .shift-history-shell[data-phone-history-view="detail"] > .shift-history-phone-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 8px; background: #fff; border: 1px solid #dce5f0; border-radius: 14px; }
+    .shift-history-shell[data-phone-history-view="detail"] > .row > div:last-child > .card > .card-body > .shift-section-head { display: none; }
+    .shift-history-phone-bar .btn { color: #174cae; background: #edf4ff; border-color: #d5e3fc; box-shadow: none; }
+    :is(.shift-history-shell,.handover-shell,.shift-history-modal) .table-responsive { overflow: visible; }
+    :is(.shift-history-shell,.handover-shell) .history-table-wrap,
+    .handover-shell .shift-table-wrap { overflow: visible; border: 0; background: transparent; }
+    :is(.shift-history-shell,.handover-shell,.shift-history-modal) table { width: 100%; min-width: 0; table-layout: fixed; }
+    :is(#historyBody,#handoverSlipBody,#ordersModalBody,#cashTxnsModalBody) { display: grid; gap: 12px; }
+    :is(.shift-history-shell,.handover-shell,.shift-history-modal) table:has(> tbody:is(#historyBody,#handoverSlipBody,#ordersModalBody,#cashTxnsModalBody)) > thead { display: none; }
+    :is(#historyBody,#handoverSlipBody,#ordersModalBody,#cashTxnsModalBody) > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; padding: 14px; background: #fff; border: 1px solid #dce5f0; border-radius: 16px; }
+    :is(#historyBody,#handoverSlipBody,#ordersModalBody,#cashTxnsModalBody) > tr > td { width: auto; padding: 0; border: 0; display: block; white-space: normal; overflow-wrap: anywhere; text-align: left !important; box-shadow: none; font-size: 13px; }
+    :is(#historyBody,#handoverSlipBody,#ordersModalBody,#cashTxnsModalBody) > tr > td::before { display: block; margin-bottom: 4px; color: #60728a; font-size: 11px; font-weight: 500; }
+    :is(#historyBody,#handoverSlipBody,#ordersModalBody,#cashTxnsModalBody) > tr > td[colspan] { grid-column: 1 / -1; }
+    #historyBody > tr { cursor: pointer; }
+    #historyBody > tr.active { border-color: #2463eb; background: #f1f6ff; }
+    #historyBody > tr > td:first-child { grid-column: 1; }
+    #historyBody > tr > td:nth-child(2) { justify-self: end; }
+    #historyBody > tr > td:nth-child(3)::before { content: 'Mở lúc'; }
+    #historyBody > tr > td:nth-child(4)::before { content: 'Đóng lúc'; }
+    #historyBody > tr > td:nth-child(5)::before { content: 'Tiền đầu ca'; }
+    #historyBody > tr > td:nth-child(6)::before { content: 'Doanh thu tiền mặt'; }
+    #historyBody .history-main { font-size: 14px; white-space: normal; }
+    #historyBody .history-sub { color: #60728a; overflow-wrap: anywhere; }
+    #historyBody .history-money { font-size: 17px; font-variant-numeric: tabular-nums; }
+    .shift-history-shell .paging-bar, .shift-history-shell .paging-left { display: grid; gap: 12px; }
+    .shift-history-shell .paging-actions, .shift-history-shell .paging-page-size { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: center; }
+    .shift-history-shell .summary-selected-head { border: 0; padding: 16px; background: #172d4d; border-radius: 14px; }
+    .shift-history-shell .summary-selected-head :is(.summary-stat-value,.summary-selected-value,.summary-selected-label,.shift-section-sub) { color: #fff; overflow-wrap: anywhere; }
+    .shift-history-shell .summary-selected-item { background: #ffffff0c; border-color: #6f839e; }
+    .shift-history-shell .summary-selected-grid, .shift-history-shell .summary-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .shift-history-shell .summary-stat-box { border: 1px solid #dce5f0; padding: 12px; border-radius: 12px; }
+    .shift-history-shell .summary-stat-box.accent { background: #edf4ff; }
+    .shift-history-shell .summary-stat-value { font-size: 22px; color: #172d4d; overflow-wrap: anywhere; }
+    .shift-history-shell :is(.financial-snapshot-grid,.shift-note-grid,.summary-action-grid) { grid-template-columns: minmax(0, 1fr); }
+    .shift-history-shell :is(.financial-snapshot,.financial-group,.shift-note-card) { padding: 14px; border-radius: 14px; border-color: #dce5f0; box-shadow: none; }
+    .shift-history-shell .financial-row { gap: 10px; }
+    .shift-history-shell .financial-value { font-size: 17px; overflow-wrap: anywhere; }
+    .shift-history-shell .shift-note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .shift-history-shell .shift-report-toolbar, .shift-history-shell .shift-report-toolbar-actions { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .handover-shell .shift-hero-card { background: #172d4d; border: 0; border-radius: 18px; padding: 18px; }
+    .handover-shell .shift-hero-card__content { flex-direction: column; align-items: stretch; gap: 16px; }
+    .handover-shell .shift-hero-card__title { font-size: 19px; line-height: 1.4; color: #fff; }
+    .handover-shell .shift-action-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .handover-shell .shift-toolbar-btn { width: 100%; padding: 10px; }
+    .handover-shell #btnReloadSlips { color: #fff; border-color: #6f839e; background: transparent; }
+    .handover-shell .handover-filter { padding: 12px; background: #fff; border: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .handover-shell .handover-filter > :first-child, .handover-shell .handover-filter-actions { grid-column: 1 / -1; }
+    .handover-shell .handover-filter-actions { order: 2; }
+    .handover-shell .handover-filter-actions .btn { width: 100%; }
+    .handover-shell .handover-phone-filter[hidden] { display: none; }
+    #handoverSlipBody > tr > td:first-child { grid-column: 1 / -1; }
+    #handoverSlipBody .handover-code { color: #172d4d; font-size: 16px; }
+    #handoverSlipBody > tr > td:nth-child(2) { grid-column: 1 / -1; }
+    #handoverSlipBody > tr > td:nth-child(3)::before { content: 'Kho'; }
+    #handoverSlipBody > tr > td:nth-child(4)::before { content: 'Quầy nhận ca'; }
+    #handoverSlipBody > tr > td:nth-child(5)::before { content: 'Người nhận'; }
+    #handoverSlipBody > tr > td:nth-child(6)::before { content: 'Tổng tiền'; }
+    #handoverSlipBody > tr > td:nth-child(6) { font-size: 19px; color: #174cae; }
+    #handoverSlipBody > tr > td:nth-child(7)::before { content: 'Ngày tạo'; }
+    #handoverSlipBody > tr > td:nth-child(7), #handoverSlipBody > tr > td:nth-child(8) { grid-column: 1 / -1; }
+    #handoverSlipBody .handover-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 1px solid #edf1f7; padding-top: 12px; }
+    .handover-shell .shift-pager { display: grid; gap: 12px; }
+    .handover-shell .shift-pager-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    body[data-mobile-viewport] :is(.shift-history-modal,#createSlipModal,#slipDetailModal).modal.modal { top: var(--shift-records-top,0px); height: var(--shift-records-height,100dvh); padding: 0 !important; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-dialog { width: 100% !important; max-width: none !important; margin: 0 !important; min-height: 0; height: 100%; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-content { height: 100%; max-height: 100%; border: 0 !important; border-radius: 0 !important; overflow: hidden !important; box-shadow: none !important; background: #f3f6fb !important; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-header { height: auto; flex-shrink: 0; padding: max(14px,env(safe-area-inset-top)) 16px 14px !important; border-bottom: 1px solid #dce5f0; background: #fff; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-title { font-size: 18px !important; color: #172d4d; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .btn-close { width: 44px; min-width: 44px; height: 44px; padding: 0; margin: 0 -6px 0 8px; background-size: 12px; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-body { flex: 1 1 auto; min-height: 0; max-height: none !important; overflow: auto !important; overscroll-behavior: contain; padding: 14px 12px !important; background: #f3f6fb !important; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-footer { height: auto; flex-shrink: 0; padding: 10px 12px max(10px,env(safe-area-inset-bottom)) !important; gap: 8px; background: #fff; }
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal) .modal-footer .btn { min-height: 48px; margin: 0; white-space: normal; }
+    .shift-history-modal .modal-footer > .btn { width: 100%; }
+    .shift-history-modal :is(.history-table,.cash-txn-table) { min-width: 0; }
+    #ordersModal .history-table, #cashTxnsModal .cash-txn-table { min-width: 0; }
+    .shift-history-modal :is(.history-table-wrap,.cash-txn-table-wrap) { overflow: visible; }
+    .shift-history-modal .modal-paging-bar { display: grid; gap: 12px; }
+    .shift-history-modal .modal-paging-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .shift-history-modal .btn { min-height: 44px; white-space: normal; }
+    #ordersModalBody > tr > td:first-child { grid-column: 1 / -1; }
+    #ordersModalBody > tr > td:nth-child(2)::before { content: 'Mã đơn'; }
+    #ordersModalBody > tr > td:nth-child(3)::before { content: 'Trạng thái'; }
+    #ordersModalBody > tr > td:nth-child(4)::before { content: 'Thanh toán'; }
+    #ordersModalBody > tr > td:nth-child(5)::before { content: 'Tạo lúc'; }
+    #ordersModalBody > tr > td:nth-child(6)::before { content: 'Hoàn tất lúc'; }
+    #ordersModalBody > tr > td:nth-child(7)::before { content: 'Tổng tiền'; }
+    #cashTxnsModalBody > tr > td:first-child { grid-column: 1 / -1; }
+    #cashTxnsModalBody > tr > td:nth-child(2)::before { content: 'Loại'; }
+    #cashTxnsModalBody > tr > td:nth-child(3)::before { content: 'Số tiền'; }
+    #cashTxnsModalBody > tr > td:nth-child(4)::before { content: 'Lý do'; }
+    #cashTxnsModalBody > tr > td:nth-child(5)::before { content: 'Ghi chú'; }
+    #cashTxnsModalBody > tr > td:nth-child(4), #cashTxnsModalBody > tr > td:nth-child(5) { grid-column: 1 / -1; }
+    #createSlipModal .shift-open-cashier-layout { display: flex !important; flex-direction: column; gap: 14px !important; }
+    #createSlipModal .shift-open-cashier-layout > :is(.shift-open-left,.shift-open-right) { display: none !important; }
+    #createSlipModal .shift-open-cashier-layout > .shift-open-middle { display: block !important; }
+    #createSlipModal .shift-open-cashier-icon { width: 38px; height: 38px; font-size: 22px; background: #edf4ff; color: #2463eb; box-shadow: none; }
+    #createSlipModal .shift-open-cashier-title { gap: 10px; }
+    #createSlipModal .shift-open-cashier-layout > .shift-open-block:has(#createSlipTotalText) { background: #edf4ff; border-color: #d5e3fc; }
+    #createSlipModal :is(.shift-open-money-table-header,.shift-open-money-row) { min-width: 0; }
+    #createSlipModal .shift-open-money-row { grid-template-columns: minmax(0, 1fr) 150px 44px !important; gap: 4px 8px; padding: 12px 10px; }
+    #createSlipModal .shift-open-money-table-header { display: none; }
+    #createSlipModal .shift-open-line-total { text-align: left; font-size: 12px; color: #60728a; white-space: normal; }
+    #createSlipModal .shift-open-big-money { font-size: 28px; color: #174cae; overflow-wrap: anywhere; }
+    #createSlipModal .shift-open-note { font-size: 16px; }
+    #createSlipModal .shift-open-denom-label { font-size: 13px; white-space: normal; }
+    #createSlipModal .shift-open-cancel-btn { min-width: 0; width: auto; flex: 0 0 72px; }
+    #createSlipModal .shift-open-confirm-btn { min-width: 0; width: auto; flex: 1; background: #2463eb; border-color: #2463eb; box-shadow: none; font-size: 15px; }
+    #createSlipModal .shift-open-stepper { grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 2px; }
+    #createSlipModal .shift-open-stepper-btn { width: 44px; height: 48px; }
+    #createSlipModal .shift-open-stepper-input { width: 100%; height: 48px !important; padding: 4px !important; font-size: 16px !important; }
+    #createSlipModal .shift-open-line-clear { width: 44px; height: 48px; }
+    #slipDetailModal .handover-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    #slipDetailModal .handover-detail-item { padding: 12px; border: 1px solid #dce5f0; border-radius: 12px; background: #fff; }
+    #slipDetailModal .handover-detail-value { overflow-wrap: anywhere; font-size: 15px; }
+    #slipDetailModal .handover-denom-table { width: 100%; min-width: 0; font-size: 13px; }
+    #slipDetailModal .handover-denom-table :is(th,td) { padding: 10px 6px; }
+    #slipDetailModal .shift-note-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    :is(.shift-history-shell,.handover-shell,.shift-history-modal) :focus-visible { outline: 3px solid #80aaff; outline-offset: 2px; }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    :is(.shift-history-modal,#createSlipModal,#slipDetailModal).fade .modal-dialog { transition: none; }
+    .shift-records-disclosure .pos-context-item { transition: none; }
+}

@@ -118,8 +118,10 @@
             }
             const discount = promotions.find(p => p.type === 1 && p.items.some(i => matches(i, line)));
             if (discount?.discountValue > 0 && line.unitPrice > 0) {
-                const amount = discount.discountType === 1 ? line.quantity * line.unitPrice * discount.discountValue / 100
-                    : discount.discountType === 2 ? line.quantity * discount.discountValue : 0;
+                const sale = discount.discountType === 1
+                    ? Math.min(line.unitPrice, round(Math.max(0, line.unitPrice * (1 - Math.min(discount.discountValue, 100) / 100)) / 100) * 100)
+                    : discount.discountType === 2 ? Math.max(0, line.unitPrice - discount.discountValue) : line.unitPrice;
+                const amount = line.quantity * (line.unitPrice - sale);
                 if (amount > 0) {
                     line.promotionDiscount = round(Math.min(line.quantity * line.unitPrice, amount));
                     line.promotionId = discount.id; line.promotionName = discount.name; line.promotionType = 1;

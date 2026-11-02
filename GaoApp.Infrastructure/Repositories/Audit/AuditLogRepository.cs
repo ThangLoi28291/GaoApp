@@ -3,6 +3,7 @@ using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.Interfaces.Repositories.Audit;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Services.Audit;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Repositories.Audit;
@@ -18,13 +19,13 @@ public class AuditLogRepository : IAuditLogRepository
 
     public async Task AddAsync(AuditLog auditLog, CancellationToken ct = default)
     {
-        _context.AuditLogs.Add(auditLog);
+        _context.AuditOutbox.Add(AuditOutboxEvidence.Create(auditLog));
         await _context.SaveChangesAsync(ct);
     }
 
     public async Task AddRangeAsync(IEnumerable<AuditLog> auditLogs, CancellationToken ct = default)
     {
-        _context.AuditLogs.AddRange(auditLogs);
+        _context.AuditOutbox.AddRange(auditLogs.Select(AuditOutboxEvidence.Create));
         await _context.SaveChangesAsync(ct);
     }
 
@@ -35,8 +36,9 @@ public class AuditLogRepository : IAuditLogRepository
 
     public async Task<PagedResult<AuditLogListItemDto>> SearchAsync(int? storeId, AuditLogQueryDto query, CancellationToken ct = default)
     {
-        var page = query.Page <= 0 ? 1 : query.Page;
-        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        var offset = query.NormalizeAndValidate();
+        var page = query.Page;
+        var pageSize = query.PageSize;
 
         var q = _context.AuditLogs.AsNoTracking().AsQueryable();
 
@@ -76,10 +78,13 @@ public class AuditLogRepository : IAuditLogRepository
         }
 
         var totalItems = await q.CountAsync(ct);
+        if (offset >= totalItems)
+            return new PagedResult<AuditLogListItemDto>(page, pageSize, totalItems, []);
 
         var items = await q
             .OrderByDescending(x => x.CreatedAtUtc)
-            .Skip((page - 1) * pageSize)
+            .ThenByDescending(x => x.Id)
+            .Skip(offset)
             .Take(pageSize)
             .Select(x => new AuditLogListItemDto
             {

@@ -1,6 +1,10 @@
 @model GaoApp.Web.ViewComponents.EmployeeAccountMenuModel
+@inject GaoApp.Web.Services.AdminNavigationProvider Navigation
 @{
     var profile = Model.Profile;
+    var navigation = await Navigation.GetAsync(ViewContext);
+    var saleMenu = navigation.Destinations.FirstOrDefault(item => new[] { "/admin/pos", "/admin/pos/v3", "/admin/pos/legacy" }
+        .Contains(navigation.LocalPath(item), StringComparer.OrdinalIgnoreCase));
 }
 <div class="gao-account" data-employee-account>
     <div class="gao-account-control" data-account-control hidden>
@@ -20,13 +24,15 @@
             <div class="gao-account-store"><i class="bx bx-store" aria-hidden="true"></i><span>@profile.StoreName</span></div>
         </div>
         <div class="gao-account-menu-group" role="group" aria-label="Cá nhân">
+            <span class="gao-mobile-account-label" role="presentation">Cá nhân</span>
             <button type="button" role="menuitem" class="gao-account-item" data-account-panel="profile"><i class="bx bx-user" aria-hidden="true"></i><span>Hồ sơ của tôi</span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
             <button type="button" role="menuitem" class="gao-account-item" data-account-panel="password"><i class="bx bx-key" aria-hidden="true"></i><span>Đổi mật khẩu</span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
         </div>
         <div class="gao-account-menu-group" role="group" aria-label="Tiện ích">
-            @if (Model.CanUsePos)
+            <span class="gao-mobile-account-label" role="presentation">Tiện ích</span>
+            @if (Model.CanUsePos && saleMenu is not null)
             {
-                <a asp-area="Admin" asp-controller="POS" asp-action="Index" role="menuitem" class="gao-account-item"><i class="bx bx-store-alt" aria-hidden="true"></i><span>Đến quầy bán hàng</span><i class="bx bx-link-external" aria-hidden="true"></i></a>
+                <a href="@saleMenu.Href" data-menu-id="@saleMenu.Id" role="menuitem" class="gao-account-item"><i class="@saleMenu.Icon" aria-hidden="true"></i><span>@saleMenu.Title</span><i class="bx bx-link-external" aria-hidden="true"></i></a>
             }
             <button type="button" role="menuitem" class="gao-account-item" data-account-panel="help"><i class="bx bx-help-circle" aria-hidden="true"></i><span>Trợ giúp</span><i class="bx bx-chevron-right" aria-hidden="true"></i></button>
         </div>
@@ -38,6 +44,7 @@
 
     <div class="offcanvas offcanvas-end gao-account-drawer" tabindex="-1" id="employeeAccountDrawer" aria-labelledby="employeeAccountTitle">
         <div class="offcanvas-header">
+            <button type="button" class="gao-mobile-account-back" data-account-panel="profile" data-account-back hidden aria-label="Về hồ sơ của tôi"><i class="bx bx-arrow-back" aria-hidden="true"></i></button>
             <h2 class="offcanvas-title" id="employeeAccountTitle">Hồ sơ của tôi</h2>
             <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng"></button>
         </div>

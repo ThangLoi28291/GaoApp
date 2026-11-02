@@ -6,35 +6,64 @@
     string Money(decimal? value) => value.HasValue ? value.Value.ToString("N0") + " ₫" : "—";
     string Source(string code) => code == "TRANSACTION_HISTORY" ? "Cuối ngày T−1" : "Tức thời";
 }
-@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" /> }
-@section PageScripts { <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true"></script> }
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/Admin/css/bank-workspace.mobile.css" asp-append-version="true" /> }
+@section PageScripts {
+    <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/acb.callback-monitor.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/acb.reconciliation-bank.js" asp-append-version="true"></script>
+<script src="~/Admin/js/bank-workspace.mobile.js" asp-append-version="true"></script>
+}
 <section class="acb-lookup acb-reconcile">
     <header class="acb-heading">
-        <div><span class="acb-eyebrow">ACB · DANH SÁCH GIAO DỊCH QR</span><h1>Đối soát chuyển khoản</h1><p>Đối chiếu thông báo ngân hàng, kết quả xác minh và khoản thu trong hóa đơn.</p></div>
+        <div><span class="acb-eyebrow">ACB · DANH SÁCH GIAO DỊCH QR</span><h1>Đối soát chuyển khoản</h1><p>Tra cứu giao dịch trực tiếp từ ACB và đối chiếu thông báo ngân hàng đã gửi về.</p></div>
         <a href="/admin/pos/orders-page" class="acb-button">← Danh sách hóa đơn</a>
     </header>
     @if (TempData["AcbRetry"] is string message) { <div class="alert alert-info" role="status">@message</div> }
-    <form method="get" class="acb-report-filter">
+    @if (ViewBag.CallbackHealth is GaoApp.Web.Services.Acb.AcbCallbackHealth callbackHealth)
+    {
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <button type="button" class="acb-button" id="acb-refresh-status">Cập nhật callback</button>
+            <label class="d-flex align-items-center gap-2"><input type="checkbox" id="acb-live-status" /> Theo dõi mỗi 10 giây</label>
+            <span class="text-muted" role="status" id="acb-monitor-message"></span>
+        </div>
+        <div id="acb-callback-health" data-status-url="@Url.Action("CallbackStatus")"><partial name="_AcbCallbackHealth" model="callbackHealth" /></div>
+    }
+    <div class="d-flex flex-wrap gap-2 mb-3">
+        <a asp-action="Index" asp-route-from="@DateTime.UtcNow.ToVietnamTime().ToString("yyyy-MM-dd")" asp-route-to="@DateTime.UtcNow.ToVietnamTime().ToString("yyyy-MM-dd")" asp-route-source="ALL" class="acb-button">Hôm nay · Tất cả callback</a>
+        <a asp-action="Index" asp-route-from="@DateTime.UtcNow.ToVietnamTime().AddDays(-1).ToString("yyyy-MM-dd")" asp-route-to="@DateTime.UtcNow.ToVietnamTime().AddDays(-1).ToString("yyyy-MM-dd")" asp-route-source="TRANSACTION_HISTORY" class="acb-button">Hôm qua · Cuối ngày</a>
+    </div>
+    <form method="get" class="acb-report-filter" id="acb-report-filter">
         <div><label for="acbFrom">Ngày hiệu lực từ</label><input id="acbFrom" name="from" type="date" value="@Model.From.ToString("yyyy-MM-dd")" required /></div>
         <div><label for="acbTo">Đến ngày</label><input id="acbTo" name="to" type="date" value="@Model.To.ToString("yyyy-MM-dd")" required /></div>
-        <div><label for="acbSource">Loại thông báo</label><select id="acbSource" name="source">
+        <div><label for="acbSource">Loại callback</label><select id="acbSource" name="source">
+            <option value="ALL" selected="@(Model.Source == "ALL")">Tất cả</option>
             <option value="TRANSACTION_HISTORY" selected="@(Model.Source == "TRANSACTION_HISTORY")">Cuối ngày T−1</option>
             <option value="TRANSACTION_UPDATE" selected="@(Model.Source == "TRANSACTION_UPDATE")">Tức thời</option>
-            <option value="ALL" selected="@(Model.Source == "ALL")">Tất cả</option>
         </select></div>
-        <button type="submit" class="acb-button acb-primary">Xem đối soát</button>
+        <button type="submit" class="acb-button">Xem callback</button>
+        <button type="button" id="acb-bank-lookup" class="acb-button acb-primary">Tra cứu ACB</button>
+        <p class="acb-filter-note">Chọn khoảng ngày tối đa 31 ngày. Tra cứu ACB lấy tất cả giao dịch QR của điểm bán; loại callback chỉ áp dụng khi xem thông báo đã nhận.</p>
     </form>
+    <form asp-action="BankLookup" method="post" id="acb-bank-lookup-form" hidden></form>
+    <section class="acb-panel acb-bank-panel" aria-labelledby="acb-bank-heading">
+        <div class="acb-panel-head"><h2 id="acb-bank-heading">Tra cứu trực tiếp ACB <span class="acb-badge acb-info">Nguồn: API ngân hàng</span></h2></div>
+        <div id="acb-bank-results" aria-live="polite" aria-busy="false">
+            <div class="acb-empty"><span class="acb-empty-icon">⌕</span><strong>Chưa tra cứu ngân hàng</strong><p>Bấm “Tra cứu ACB” để lấy giao dịch theo khoảng ngày đã chọn, kể cả khi chưa nhận được callback.</p></div>
+        </div>
+    </section>
+    <div class="acb-source-heading"><h2>Callback đã nhận</h2><span class="acb-badge acb-success">Nguồn: thông báo ACB gửi về</span><p>Dữ liệu đã lưu từ callback, độc lập với kết quả tra cứu trực tiếp phía trên.</p></div>
     <div class="acb-overview">
         <div class="acb-metric"><span>Dòng thông báo trong khoảng ngày</span><strong>@Model.Total</strong></div>
         <div class="acb-metric acb-metric-accent"><span>Đã khớp / trang hiện tại</span><strong>@Model.Rows.Count(x => x.State == "Matched")</strong></div>
         <div class="acb-metric"><span>Cần theo dõi / trang hiện tại</span><strong>@Model.Rows.Count(x => x.State != "Matched")</strong></div>
     </div>
-    <p class="acb-status">Tra cứu theo ngày hiệu lực ACB, tối đa 31 ngày. Thông báo có thể lặp giữa tức thời và cuối ngày; mỗi khoản thu chỉ được ghi một lần vào hóa đơn.</p>
+    <p class="acb-status">Callback từ @Model.From.ToString("dd/MM/yyyy") đến @Model.To.ToString("dd/MM/yyyy") theo ngày hiệu lực ACB. Thông báo có thể lặp giữa tức thời và cuối ngày; mỗi khoản thu chỉ được ghi một lần vào hóa đơn.</p>
     <section class="acb-panel">
         <div class="acb-panel-head"><h2>Đối chiếu từng thông báo</h2><span class="acb-panel-note">50 dòng / trang</span></div>
         @if (Model.Rows.Count == 0)
         {
-            <div class="acb-empty"><span class="acb-empty-icon">↔</span><strong>Chưa nhận thông báo trong khoảng ngày này</strong><p>ACB cần kích hoạt gửi danh sách giao dịch về URL callback đã đăng ký. Trên localhost, có thể kiểm tra các luồng bằng bộ test riêng.</p></div>
+            <div class="acb-empty"><span class="acb-empty-icon">↔</span><strong>Chưa có dòng giao dịch phù hợp bộ lọc</strong><p>Xem biên nhận phía trên để biết callback đã tới hay chưa. Thông báo cuối ngày có thể là tập rỗng; callback ngày khác hoặc loại khác cũng không nằm trong bảng này.</p></div>
         }
         else
         {
@@ -44,7 +73,7 @@
                 @foreach (var row in Model.Rows)
                 {
                     <tr>
-                        <td class="acb-tx-content"><strong>@(string.IsNullOrWhiteSpace(row.ProviderOrderId) ? "Thiếu mã QR" : row.ProviderOrderId)</strong><span>@row.BusinessDate.ToString("dd/MM/yyyy") · @Source(row.RequestCode)</span><span class="acb-tx-description">@row.Content</span><small>Biên nhận #@row.ReceiptId · Trang @row.ReceiptPage · Nhận @row.ReceivedAtUtc.AddHours(7).ToString("dd/MM HH:mm:ss")</small></td>
+                        <td class="acb-tx-content"><strong>@(string.IsNullOrWhiteSpace(row.ProviderOrderId) ? "Thiếu mã QR" : row.ProviderOrderId)</strong><span>@row.BusinessDate.ToString("dd/MM/yyyy") · @Source(row.RequestCode)</span><span class="acb-tx-description">@row.Content</span><small>Biên nhận #@row.ReceiptId · Trang @row.ReceiptPage · Nhận @row.ReceivedAtUtc.ToVietnamTime().ToString("dd/MM HH:mm:ss")</small></td>
                         <td class="acb-number acb-tx-amount">@Money(row.NotifiedAmount)<small class="d-block text-muted">@(row.DebitOrCredit == "debit" ? "Báo nợ" : row.DebitOrCredit == "credit" ? "Báo có" : "Trạng thái QR")</small></td>
                         <td class="acb-number">@Money(row.VerifiedAmount)</td><td class="acb-number">@Money(row.PostedAmount)</td>
                         <td class="acb-report-result"><span class="acb-badge @(row.State == "Matched" ? "acb-success" : row.State is "Review" or "Mismatch" ? "acb-danger" : "acb-warning")">@labels[row.State]</span><small>@row.Reason</small></td>
@@ -76,7 +105,7 @@
         <div class="acb-table-scroll"><table class="acb-ledger"><thead><tr><th>Loại / Mã đợt ACB</th><th>Trang đã nhận</th><th>Đã xử lý</th><th>Cần đối chiếu</th><th>Nhận gần nhất</th></tr></thead><tbody>
         @foreach (var batch in Model.Batches)
         {
-            <tr><td><strong>@Source(batch.RequestCode)</strong><small class="d-block">@batch.ClientRequestId</small></td><td><span class="acb-badge @(batch.ReceivedPages == batch.TotalPages ? "acb-success" : "acb-warning")">@batch.ReceivedPages / @batch.TotalPages trang</span>@if (batch.ReceivedPages < batch.TotalPages) { <small class="d-block">Thiếu trang: cần ACB gửi bổ sung.</small> }</td><td>@batch.ProcessedPages</td><td>@batch.ReviewPages</td><td>@batch.LastReceivedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</td></tr>
+            <tr><td><strong>@Source(batch.RequestCode)</strong><small class="d-block">@batch.ClientRequestId</small></td><td><span class="acb-badge @(batch.ReceivedPages == batch.TotalPages ? "acb-success" : "acb-warning")">@batch.ReceivedPages / @batch.TotalPages trang</span>@if (batch.ReceivedPages < batch.TotalPages) { <small class="d-block">Thiếu trang: cần ACB gửi bổ sung.</small> }</td><td>@batch.ProcessedPages</td><td>@batch.ReviewPages</td><td>@batch.LastReceivedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</td></tr>
         }
         @if (Model.Batches.Count == 0) { <tr><td colspan="5" class="text-muted">Chưa có đợt thông báo phù hợp.</td></tr> }
         </tbody></table></div>

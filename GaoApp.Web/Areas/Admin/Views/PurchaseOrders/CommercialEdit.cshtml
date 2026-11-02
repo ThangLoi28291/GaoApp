@@ -9,10 +9,10 @@
     var selectedSupplier = options.Suppliers.FirstOrDefault(x => x.Id == request.SupplierId);
 }
 @section VendorStyles {
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="~/lib/select2/select2.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/lib/select2/select2-bootstrap-5-theme.min.css" rel="stylesheet"  asp-append-version="true" />
 }
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-commercial-edit.css" asp-append-version="true" /> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-commercial-edit.css" asp-append-version="true" /> <link rel="stylesheet" href="~/Admin/css/purchasing.mobile.css" asp-append-version="true" /> }
 
 <div class="poc-page" id="purchaseOrderCommercialPage" data-supplier-lookup-url="@Url.Content("~/admin/purchase-orders/supplier-lookup")">
     <header class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4"><div class="d-flex gap-3 align-items-start"><a class="btn btn-icon btn-label-secondary rounded-pill" asp-action="Details" asp-route-id="@order.Id"><i class="bx bx-arrow-back"></i></a><div><div class="small fw-bold text-primary">ĐƠN TỪ YÊU CẦU MUA</div><h4 class="mb-1">Sửa thông tin đặt hàng</h4><p class="mb-0 text-muted">@order.OrderNumber · @order.Title</p></div></div><span class="badge bg-label-warning">Sản phẩm &amp; số lượng đã khóa</span></header>
@@ -43,5 +43,6 @@
         <div class="poc-summary"><div><strong>@order.Lines.Count</strong> mặt hàng · Tổng SL <strong>@PurchaseQuantityFormatter.Display(order.Lines.Sum(x=>x.OrderedQuantity))</strong></div><div class="d-flex gap-2"><a class="btn btn-label-secondary" asp-action="Details" asp-route-id="@order.Id">Hủy</a><button class="btn btn-primary" type="submit" id="saveCommercial"><i class="bx bx-save me-1"></i>Lưu thông tin <kbd>Ctrl S</kbd></button></div></div>
     </form>
 </div>
-@section VendorScripts { <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> }
-@section PageScripts { <script src="~/Admin/js/purchase-order-commercial-edit.js" asp-append-version="true"></script> }
+@section VendorScripts { <script src="~/lib/select2/select2.min.js" asp-append-version="true"></script> }
+@section PageScripts { <script src="~/Admin/js/purchase-order-commercial-edit.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/purchasing.mobile.js" asp-append-version="true"></script> }

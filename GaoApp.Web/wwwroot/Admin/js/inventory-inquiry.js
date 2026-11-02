@@ -681,7 +681,7 @@
             ? new Date(/(Z|[+-]\d{2}:\d{2})$/i.test(timestamp) ? timestamp : `${timestamp}Z`)
             : null;
         const dateText = date && !Number.isNaN(date.getTime())
-            ? date.toLocaleString("vi-VN") : "Chưa có lần nhập kho";
+            ? date.toLocaleString("vi-VN", { timeZone: 'Asia/Ho_Chi_Minh' }) : "Chưa có lần nhập kho";
         const fifoQuantity = cost.nextFifoRemainingQuantity == null
             ? "Chưa có lô FIFO còn hàng"
             : `Lô đầu còn ${formatQuantity(cost.nextFifoRemainingQuantity)} ${unit}`;

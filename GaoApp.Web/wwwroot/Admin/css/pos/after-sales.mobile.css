@@ -1,0 +1,170 @@
+/* UI-08: styles apply only to phones; source data and desktop tables stay intact. */
+@media (max-width: 767.98px) {
+    [data-after-sales-phone] {
+        --after-navy: #172d4d;
+        --after-blue: #2463eb;
+        --after-border: #dce5f0;
+        color: var(--after-navy);
+        min-width: 0;
+        overflow-wrap: anywhere;
+        font-size: 14px;
+    }
+    [data-after-sales-phone].card,
+    #posPendingRestock > .card {
+        border: 1px solid var(--after-border);
+        border-radius: 18px;
+        box-shadow: 0 5px 18px rgb(23 45 77 / 5%);
+        overflow: hidden;
+    }
+    #posPendingRestock > .d-flex:first-child,
+    [data-after-sales-phone] > .card-header {
+        display: flex !important;
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 16px !important;
+        padding: 20px 16px;
+        background: var(--after-navy);
+        color: white;
+        border-radius: 18px;
+    }
+    [data-after-sales-phone] > .card-header { border-radius: 17px 17px 0 0; }
+    [data-after-sales-phone] h1,
+    #posPendingRestock h3 {
+        margin: 0 !important;
+        color: white;
+        font-size: 23px;
+        line-height: 1.3;
+        font-weight: 700;
+        letter-spacing: -.4px;
+    }
+    #posPendingRestock h3 .badge {
+        display: table;
+        margin-top: 12px;
+        background: #fff0ce !important;
+        color: #71521b !important;
+        border-radius: 8px;
+        font-size: 12px;
+        letter-spacing: 0;
+    }
+    #posPendingRestock > .d-flex:first-child p,
+    [data-after-sales-phone] > .card-header .text-muted {
+        margin: 10px 0 0 !important;
+        color: #d5e1f3 !important;
+        line-height: 1.6;
+    }
+    [data-after-sales-phone] > .card-header > a { color: #d5e1f3; }
+    [data-after-sales-phone] a:not(.btn) {
+        min-height: 44px;
+        display: inline-flex;
+        align-items: center;
+        font-weight: 600;
+        max-width: 100%;
+    }
+    [data-after-sales-phone] .btn {
+        min-height: 48px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        font-size: 14px;
+        white-space: normal;
+        line-height: 1.4;
+    }
+    [data-after-sales-phone] .btn.btn-primary { background: var(--after-blue); border-color: var(--after-blue); color: white; }
+    [data-after-sales-phone] tbody a:not(.btn),
+    [data-after-sales-phone] .card-footer a:not(.btn) { color: var(--after-blue); }
+    [data-after-sales-phone] .text-success { color: #16613b !important; }
+    [data-after-sales-phone] .text-warning { color: #8a4e0f !important; }
+    #pendingRestockMessage.alert-success { color: #16613b; background: #e8f5ed; border-color: #c8e7d3; }
+    #pendingRestockMessage.alert-warning { color: #775013; background: #fff4df; border-color: #eed8ad; }
+    #posPendingRestock > .d-flex:first-child > .d-flex { display: grid !important; grid-template-columns: 1fr 1fr; }
+    #posPendingRestock > .d-flex:first-child .btn {
+        color: white;
+        background: rgb(255 255 255 / 9%);
+        border-color: rgb(255 255 255 / 25%);
+    }
+    #posPendingRestock > .card[data-return-id] { display: flex; padding: 16px !important; gap: 14px; }
+    #posPendingRestock > .card[data-return-id] > .d-flex { display: contents !important; }
+    #posPendingRestock > .card[data-return-id] > .d-flex > div:first-child { order: 0; }
+    #posPendingRestock > .card[data-return-id] > .d-flex > div:last-child { order: 2; }
+    #posPendingRestock .js-complete-restock { width: 100%; }
+    #posPendingRestock .js-complete-restock:disabled { opacity: .55; }
+    #posPendingRestock > .card[data-return-id] > .table-responsive { order: 1; }
+    #posPendingRestock .small { line-height: 1.7; }
+    #posPendingRestock .after-sales-source { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 12px; margin: 12px 0 0; font-size: 12px; font-weight: 400; }
+    #posPendingRestock .after-sales-source dt { color: #61718a; font-weight: 400; }
+    #posPendingRestock .after-sales-source dd { margin: 0; font-weight: 600; }
+    [data-after-sales-phone] .table-responsive { overflow: visible; }
+    [data-after-sales-phone] table,
+    [data-after-sales-phone] tbody { display: block; width: 100%; margin: 0; }
+    [data-after-sales-phone] thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+    [data-after-sales-phone] tbody tr {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 16px;
+        border: 1px solid var(--after-border);
+        border-radius: 14px;
+        background: #f3f6fb;
+        margin: 0 0 12px;
+    }
+    [data-after-sales-phone] tbody tr:last-child { margin-bottom: 0; }
+    [data-after-sales-phone] tbody td {
+        display: grid;
+        grid-template-columns: minmax(82px, 36%) minmax(0, 1fr);
+        align-items: start;
+        gap: 12px;
+        width: 100%;
+        min-width: 0 !important;
+        max-width: none !important;
+        padding: 0 !important;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        color: var(--after-navy);
+        text-align: start !important;
+        line-height: 1.65;
+    }
+    [data-after-sales-phone] td[data-after-sales-label]::before {
+        content: attr(data-after-sales-label);
+        color: #61718a;
+        font-weight: 400;
+        font-size: 12px;
+    }
+    [data-after-sales-phone] td[colspan] { display: block; }
+    [data-after-sales-phone] tbody td:first-child { font-weight: 650; }
+    #posPendingRestock tbody td:first-child { display: block; font-size: 15px; }
+    #posPendingRestock tbody td:first-child::before { display: none; }
+    #posPendingRestock tbody td:nth-child(3) { padding: 10px 0 !important; border-block: 1px solid var(--after-border); }
+    #posPendingRestock tbody td:nth-child(4) { display: block; font-size: 13px; }
+    #posPendingRestock tbody td:nth-child(4)::before { display: block; margin-bottom: 4px; }
+    #posLegacyReturns > .table-responsive { padding: 16px; }
+    [data-after-sales-phone] .card-footer {
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        gap: 8px 16px !important;
+        border-top: 1px solid var(--after-border);
+        background: white;
+    }
+    [data-after-sales-phone] .card-footer > span { flex: 1 0 100%; color: #61718a; font-size: 12px; }
+    #posLegacyReturns form { flex-direction: column; }
+    #posLegacyReturns .form-control { min-height: 48px; font-size: 16px; border-radius: 12px; background: white; color: var(--after-navy); }
+    #posLegacyReturnDetail .card-body { padding: 16px; }
+    #posLegacyReturnDetail dl.row { display: block; margin: 0 0 24px; }
+    #posLegacyReturnDetail dt { width: 100%; padding: 0; margin: 16px 0 4px; font-weight: 400; font-size: 12px; color: #61718a; }
+    #posLegacyReturnDetail dd { width: 100%; padding: 0; margin: 0; font-weight: 600; line-height: 1.65; }
+    #posLegacyReturnDetail h2 { margin-bottom: 16px; font-size: 17px; }
+    #posLegacyReturnDetail summary { min-height: 48px; padding-block: 12px; font-weight: 600; color: var(--after-blue); }
+    #posLegacyReturnDetail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; padding: 12px; border-radius: 12px; background: #f3f6fb; }
+    #pendingRestockMessage { border-radius: 14px; line-height: 1.65; }
+    @media (prefers-reduced-motion: reduce) {
+        [data-after-sales-phone] *, [data-after-sales-phone] *::before { animation: none !important; transition: none !important; }
+    }
+}

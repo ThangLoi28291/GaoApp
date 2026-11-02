@@ -102,7 +102,9 @@ public sealed class POSTerminalsController(AppDbContext db) : BaseAdminControlle
         if (device is null) return NotFound();
         device.IsActive = false;
         await db.SaveChangesAsync(ct);
-        ToastSuccess("Đã thu hồi khóa máy. Khóa này không thể dùng để đăng nhập lại.");
+        HttpContext.RequestServices.GetService<GaoApp.Web.Hubs.RevocablePosHubLifetimeManager>()?
+            .RevokeDevice(CurrentStoreId, device.Id);
+        ToastSuccess("Đã thu hồi khóa và chặn các phiên dùng khóa này. Các khóa thiết bị khác không bị ảnh hưởng.");
         return RedirectToAction(nameof(Index));
     }
 

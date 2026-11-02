@@ -64,6 +64,7 @@ public sealed class RewardVoucherIndexReadService : IRewardVoucherIndexReadServi
             RewardVoucherIndexStatuses.Cancelled => RewardVoucherIndexStatuses.Cancelled,
             RewardVoucherIndexStatuses.Expired => RewardVoucherIndexStatuses.Expired,
             RewardVoucherIndexStatuses.Locked => RewardVoucherIndexStatuses.Locked,
+            RewardVoucherIndexStatuses.ReservedForDelivery => RewardVoucherIndexStatuses.ReservedForDelivery,
             _ => RewardVoucherIndexStatuses.All
         };
 }

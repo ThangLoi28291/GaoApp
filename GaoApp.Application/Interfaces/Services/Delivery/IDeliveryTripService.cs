@@ -4,6 +4,8 @@ namespace GaoApp.Application.Interfaces.Services.Delivery;
 
 public interface IDeliveryTripService
 {
+    Task<DeliveryTripCommandAck> DispatchAsync(DeliveryDispatchRequest request, CancellationToken ct = default);
+    Task<DeliveryTripCommandAck> RecordCounterIssueAsync(int id, int orderId, DeliveryCounterIssueRequest request, CancellationToken ct = default);
     Task<DeliveryHandoverWorkspaceDto> GetHandoverAsync(int id, CancellationToken ct = default);
     Task<DeliveryHandoverPreviewDto> PreviewHandoverAsync(int id, int orderId,
         DeliveryHandoverPreviewRequest request, CancellationToken ct = default);

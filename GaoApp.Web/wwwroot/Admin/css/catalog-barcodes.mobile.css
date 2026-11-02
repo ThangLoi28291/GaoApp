@@ -1,0 +1,71 @@
+/* UI-14: phone layout for the existing barcode history and normalization owners. */
+@media (max-width: 767.98px) {
+    body[data-catalog-barcodes-phone] { --barcode-phone-ink: #172d4d; --barcode-phone-blue: #2463eb; --barcode-phone-line: #dce5f0; background: #f3f6fb; }
+    body[data-catalog-barcodes-phone] :is([data-catalog-barcodes-phone-root], #barcodeResolveModal) { font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; }
+    body[data-catalog-barcodes-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    [data-catalog-barcodes-phone-root] { width: 100%; min-width: 0; max-width: 100%; padding: 0 0 20px; color: var(--barcode-phone-ink); }
+    [data-catalog-barcodes-phone-root] :is(.row > *, .card, .card-body, .card-header > *, .d-flex > *) { min-width: 0; }
+    [data-catalog-barcodes-phone-root] :is(h3, h5, strong, .fw-bold, .fw-semibold, .badge, .small, .text-muted) { overflow-wrap: anywhere; white-space: normal; }
+    [data-catalog-barcodes-phone-root] > .row { margin: 0; gap: 16px; }
+    [data-catalog-barcodes-phone-root] > .row > div { width: 100%; margin: 0 !important; padding: 0; }
+    [data-catalog-barcodes-phone-root] .card { border: 1px solid var(--barcode-phone-line); border-radius: 18px; background: #fff; box-shadow: 0 3px 14px #172d4d05 !important; }
+    [data-catalog-barcodes-phone-root] .card-header { padding: 16px; background: #fff; border-color: var(--barcode-phone-line); border-radius: 18px 18px 0 0; gap: 12px; flex-wrap: wrap; }
+    [data-catalog-barcodes-phone-root] .card-header h5 { color: var(--barcode-phone-ink); font-size: 17px; font-weight: 700; line-height: 1.45; }
+    [data-catalog-barcodes-phone-root] .card-body { padding: 16px; }
+    [data-catalog-barcodes-phone-root] .form-label { font-size: 13px; font-weight: 650; color: #405572; }
+    body[data-catalog-barcodes-phone] :is([data-catalog-barcodes-phone-root], #barcodeResolveModal) :is(.form-control, .form-select) { width: 100%; min-width: 0; max-width: 100%; min-height: 48px; border-color: #cfdbea; border-radius: 12px; font-size: 16px !important; }
+    body[data-catalog-barcodes-phone] :is([data-catalog-barcodes-phone-root], #barcodeResolveModal) .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; min-width: 44px; max-width: 100%; border-radius: 12px; font-size: 14px; line-height: 1.5; white-space: normal; }
+    body[data-catalog-barcodes-phone] :is([data-catalog-barcodes-phone-root], #barcodeResolveModal) .btn-primary { background: var(--barcode-phone-blue); border-color: var(--barcode-phone-blue); }
+    body[data-catalog-barcodes-phone] :is(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #2463eb70; outline-offset: 3px; }
+    .barcode-phone-filters { margin-bottom: 16px; border: 1px solid var(--barcode-phone-line); border-radius: 12px; background: #f8faff; }
+    .barcode-phone-filters > summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 48px; padding: 12px; color: #405572; font-size: 13px; font-weight: 650; list-style: none; cursor: pointer; }
+    .barcode-phone-filters > summary::-webkit-details-marker { display: none; }
+    .barcode-phone-filters > summary::after { content: '+'; font-size: 20px; font-weight: 400; }
+    .barcode-phone-filters[open] > summary::after { content: '−'; }
+    .barcode-phone-filter-fields { padding: 4px 12px 0; }
+    #barcodeHistoryFilterForm > .d-flex { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; }
+    #barcodeHistoryList { max-height: min(68dvh, 640px) !important; min-height: 80px; overflow-y: auto; overscroll-behavior: contain; border-radius: 0 0 18px 18px; }
+    #barcodeHistorySummary { padding: 6px 10px; border-radius: 10px; background: #edf4ff; color: #2463eb !important; font-size: 12px; font-weight: 650; }
+    #barcodeHistoryList .barcode-history-item { padding: 16px !important; border-color: var(--barcode-phone-line) !important; }
+    #barcodeHistoryList .barcode-history-item > .d-flex { flex-direction: column; gap: 10px !important; }
+    #barcodeHistoryList .barcode-history-item .fw-semibold { color: var(--barcode-phone-ink); font-size: 15px; line-height: 1.55; }
+    #barcodeHistoryList .barcode-history-item .small { line-height: 1.65; }
+    #barcodeHistoryList .barcode-history-item .text-nowrap { white-space: normal !important; padding-top: 8px; border-top: 1px solid #eef2f8; font-size: 12px; }
+    #barcodeHistoryList .badge { border-radius: 8px; padding: 6px 8px; font-size: 11px; line-height: 1.4; }
+    [data-catalog-barcodes-phone-root="normalization"] > .d-flex:first-child { flex-direction: column; align-items: stretch !important; gap: 14px; margin-bottom: 16px !important; padding: 16px; border: 1px solid var(--barcode-phone-line); border-radius: 18px; background: #fff; }
+    [data-catalog-barcodes-phone-root="normalization"] h3 { color: var(--barcode-phone-ink); font-size: 22px; font-weight: 750 !important; line-height: 1.4; }
+    [data-catalog-barcodes-phone-root="normalization"] > .d-flex .text-muted { font-size: 13px; line-height: 1.6; }
+    [data-catalog-barcodes-phone-root="normalization"] .row.g-2 { row-gap: 12px !important; }
+    [data-catalog-barcodes-phone-root="normalization"] .row.g-2 > div { width: 100%; }
+    [data-catalog-barcodes-phone-root] .table-responsive:has([data-barcode-phone-table]) { overflow: visible; }
+    [data-barcode-phone-table] { display: block; min-width: 0; width: 100%; margin: 0; }
+    [data-barcode-phone-table] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); clip-path: inset(50%); white-space: nowrap; }
+    [data-barcode-phone-table] tbody { display: grid; gap: 12px; padding: 12px; }
+    [data-barcode-phone-table] tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; padding: 16px; border: 1px solid var(--barcode-phone-line); border-radius: 16px; background: #fff; }
+    [data-barcode-phone-table] tbody > tr > td:not([hidden]):not(.d-none) { display: grid; gap: 5px; min-width: 0; padding: 0; border: 0; background: transparent; box-shadow: none; white-space: normal; overflow-wrap: anywhere; text-align: left !important; color: var(--barcode-phone-ink); font-size: 14px; line-height: 1.6; }
+    [data-barcode-phone-table] [data-barcode-phone-label]::before { content: attr(data-barcode-phone-label); color: #627591; font-size: 12px; font-weight: 600; line-height: 1.5; }
+    [data-barcode-phone-table] [data-barcode-phone-wide] { grid-column: 1 / -1; }
+    [data-barcode-phone-table] tbody > tr > td:nth-child(2) { grid-row: 1; padding-bottom: 12px; border-bottom: 1px solid #eef2f8; }
+    [data-barcode-phone-table] tbody > tr > td:nth-child(5) { padding: 12px; border-radius: 12px; background: #f3f7ff; }
+    [data-barcode-phone-table] tbody > tr > td:nth-child(5) .text-primary { font-size: 16px; letter-spacing: .02em; }
+    [data-barcode-phone-table] [data-barcode-phone-actions] { display: flex !important; flex-wrap: wrap; gap: 10px; padding-top: 12px !important; border-top: 1px solid #eef2f8 !important; }
+    [data-barcode-phone-table] [data-barcode-phone-actions]::before { display: none; }
+    [data-barcode-phone-table] [data-barcode-phone-actions] .btn { flex: 1 1 0; }
+    [data-barcode-phone-table] .badge { justify-self: start; max-width: 100%; padding: 7px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal { padding: 0 !important; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-dialog:not(.modal-fullscreen) { display: flex; align-items: flex-end; width: 100%; max-width: none; height: var(--gao-mobile-visible-height, 100dvh); min-height: 0; margin: 0; padding-top: max(12px, env(safe-area-inset-top)); box-sizing: border-box; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-content { display: flex; width: 100%; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); border: 0; border-radius: 22px 22px 0 0; overflow: hidden; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal :is(.modal-header, .modal-footer) { flex-shrink: 0; gap: 12px; padding: 16px; border-color: var(--barcode-phone-line); }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-header { align-items: flex-start; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-title { flex: 1; min-width: 0; color: var(--barcode-phone-ink); font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-header .btn-close,
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-header .btn-close:hover { position: static; inset: auto; flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; transform: none !important; box-sizing: border-box; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-body { flex: 1 1 auto; min-height: 0; padding: 16px; overflow: auto; overscroll-behavior: contain; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-body :is(.fw-bold, .small) { overflow-wrap: anywhere; line-height: 1.6; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-body .fw-bold { font-size: 15px; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-footer { display: flex; flex-wrap: nowrap; padding-bottom: calc(16px + env(safe-area-inset-bottom)); background: #fff; }
+    body[data-catalog-barcodes-phone] #barcodeResolveModal .modal-footer > .btn { flex: 1 1 0; margin: 0; }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    body[data-catalog-barcodes-phone] :is(.modal-dialog, .btn) { animation: none !important; transition: none !important; }
+}

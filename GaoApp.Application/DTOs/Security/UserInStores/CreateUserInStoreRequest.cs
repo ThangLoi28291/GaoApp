@@ -5,7 +5,7 @@ namespace GaoApp.Application.DTOs.Security.UserInStores;
 /// <summary>
 /// Request tạo mới UserInStore cho store hiện tại.
 /// </summary>
-public class CreateUserInStoreRequest
+public class CreateUserInStoreRequest : GaoApp.Application.DTOs.Security.SecurityActionConfirmation
 {
     [Required(ErrorMessage = "Người dùng là bắt buộc.")]
     public int UserId { get; set; }

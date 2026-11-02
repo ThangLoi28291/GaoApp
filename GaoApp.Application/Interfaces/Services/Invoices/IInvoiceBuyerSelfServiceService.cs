@@ -5,6 +5,9 @@ namespace GaoApp.Application.Interfaces.Services.Invoices;
 
 public interface IInvoiceBuyerSelfServiceService
 {
+    Task<Result<InvoiceBuyerSelfServiceLinkDto>> ReplaceLinkAsync(
+        int orderId, CancellationToken ct = default);
+
     Task<Result<InvoiceBuyerSelfServiceLinkDto>> CreateLinkAsync(
         int orderId,
         CancellationToken ct = default);

@@ -8,6 +8,7 @@ namespace GaoApp.Domain.Entities;
 [Table("InvoiceDetails")]
 public class InvoiceDetail : BaseStoreEntity
 {
+    public int? StorefrontServiceRevenueId { get; set; }
     public long? LegacySourceId { get; set; }
     public decimal? LegacyUnitFactor { get; set; }
     public string? LegacySnapshotJson { get; set; }

@@ -28,8 +28,10 @@ public sealed class FullWorkflowSqlServerTests
         using var senderClient = await app.LoginAsync(sender);
         await using var targetSocket = await PosWebSocketClient.ConnectAsync(targetClient, store.StoreId, store.TerminalId);
         await using var senderSocket = await PosWebSocketClient.ConnectAsync(senderClient, store.StoreId, store.TerminalId);
-        await senderSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_payment_preview", payload = new { value = "synthetic" } });
-        await targetSocket.WaitForEventAsync("customer_payment_preview");
+        await senderSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_payment_refresh", payload = new { value = "synthetic" } });
+        await targetSocket.WaitForEventAsync("customer_payment_display_changed");
+        targetSocket.Events.Clear();
+        senderSocket.Events.Clear();
         await using (var db = app.Database.CreateTenantContext(store.StoreId))
         {
             var membership = await db.UserInStores.Include(x => x.User).Include(x => x.Role).SingleAsync(x => x.UserId == target.UserId);
@@ -52,13 +54,13 @@ public sealed class FullWorkflowSqlServerTests
         }
         if (change != "idle")
         {
-            await senderSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_payment_hide", payload = new { secret = "must-not-reach-target" } });
-            await senderSocket.WaitForEventAsync("customer_payment_hide");
+            await senderSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_payment_refresh", payload = new { secret = "must-not-reach-target" } });
+            await senderSocket.WaitForEventAsync("customer_payment_display_changed");
         }
         await targetSocket.WaitForCloseAsync();
-        Assert.False(targetSocket.HasEvent("customer_payment_hide"));
-        await senderSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_display_reset", payload = new { } });
-        await senderSocket.WaitForEventAsync("customer_display_reset");
+        Assert.False(targetSocket.HasEvent("customer_payment_display_changed"));
+        await senderSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_payment_refresh", payload = new { } });
+        await senderSocket.WaitForEventAsync("customer_payment_display_changed");
     }
 
     [Fact]
@@ -79,8 +81,8 @@ public sealed class FullWorkflowSqlServerTests
         using var logout = await client.Http.PostAsync("/admin/account/logout", null);
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         await socket.WaitForCloseAsync();
-        await writerSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_display_reset", payload = new { } });
-        await writerSocket.WaitForEventAsync("customer_display_reset");
+        await writerSocket.InvokeAsync("BroadcastTerminalEvent", new { eventType = "customer_payment_refresh", payload = new { } });
+        await writerSocket.WaitForEventAsync("customer_payment_display_changed");
     }
 
     [Theory]

@@ -46,6 +46,8 @@ public sealed class PosOfflineSqlServerTests
     public async Task Retried_cart_mutations_and_checkout_commit_once_with_durable_responses()
     {
         await using var app = await FullApplicationFixture.StartAsync();
+        // This test exercises SQL/idempotency concurrency itself. Admission/retry behavior has a separate HTTP test.
+        await app.ConfigureResourceProtectionAsync(new Dictionary<string,string> { ["Limits__OfflineSync__CallerConcurrency"] = "8" });
         var store = app.Stores[0];
         using var client = await app.LoginAsync(await app.AddAccountAsync(store, "*"));
         await client.JsonAsync(HttpMethod.Post, "/admin/pos/shift/open", new { openingCash = 0, warehouseId = store.WarehouseId });
@@ -120,6 +122,7 @@ public sealed class PosOfflineSqlServerTests
     public async Task Existing_automatic_QR_can_be_manually_received_offline_and_late_confirmation_cannot_duplicate_it()
     {
         await using var app = await FullApplicationFixture.StartAsync();
+        await app.ConfigureResourceProtectionAsync(new Dictionary<string,string> { ["Limits__OfflineSync__CallerConcurrency"] = "8" });
         var store = app.Stores[0];
         var account = await app.AddAccountAsync(store, "*");
         using var client = await app.LoginAsync(account);
@@ -162,7 +165,7 @@ public sealed class PosOfflineSqlServerTests
     [Theory]
     [InlineData(InvoiceIssuanceRoute.Automatic)]
     [InlineData(InvoiceIssuanceRoute.Manual)]
-    public async Task Invoice_intent_replay_is_idempotent_for_completed_order_after_current_cart_advances(InvoiceIssuanceRoute route)
+    public async Task Legacy_unselected_invoice_intent_replay_is_idempotent_after_current_cart_advances(InvoiceIssuanceRoute route)
     {
         await using var app = await FullApplicationFixture.StartAsync();
         var store = app.Stores[0];
@@ -181,6 +184,11 @@ public sealed class PosOfflineSqlServerTests
             var order = await db.Orders.SingleAsync(x => x.Id == orderId);
             // A delayed replay must not restart the public two-hour information window.
             order.CompletedAtUtc = DateTime.UtcNow.AddHours(-3);
+            // Current checkout selects Automatic at commit. This initial-route replay case
+            // deliberately models an older completed order that has no route selection yet.
+            order.InvoiceIssuanceRoute = InvoiceIssuanceRoute.Unselected;
+            order.InvoiceIssuanceRouteSelectedAtUtc = null;
+            order.InvoiceIssuanceRouteSelectedByUserId = null;
             await db.SaveChangesAsync(); completedAt = order.CompletedAtUtc;
         }
         var nextId = (await client.JsonAsync(HttpMethod.Post, "/admin/pos/cart/current/new", new { })).GetProperty("orderId").GetInt32();
@@ -189,7 +197,7 @@ public sealed class PosOfflineSqlServerTests
         for (var retry = 0; retry < 2; retry++)
         {
             var response = await Send(client, $"/admin/pos/{orderId}/invoice-route", new { route }, operationId, shiftId);
-            Assert.Equal(HttpStatusCode.OK, response.Status);
+            Assert.True(response.Status == HttpStatusCode.OK, response.Body.GetRawText());
             Assert.Equal(orderId, response.Body.GetProperty("orderId").GetInt32());
             Assert.Equal(route.ToString(), response.Body.GetProperty("route").GetString());
         }

@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Options;
 using GaoApp.Domain.Entities;
@@ -66,7 +66,7 @@ public class TenantResolutionMiddleware
             context.Request.Scheme,
             context.Request.Host.Value,
             context.Connection.RemoteIpAddress?.ToString(),
-            context.Request.Path.Value);
+            GaoApp.Application.Common.Security.SensitiveRequestData.Redact(context.Request.Path.Value));
 
         if (string.IsNullOrWhiteSpace(host))
         {
@@ -113,6 +113,12 @@ public class TenantResolutionMiddleware
 
                 tenantContextWriter.SetStore(localStore.Id, normalized);
                 BindStoreItems(context, localStore);
+            }
+            else
+            {
+                await WriteProblemAsync(context, StatusCodes.Status400BadRequest,
+                    "Chưa xác định cửa hàng. Cấu hình Tenant:DevelopmentDefaultSubdomain hoặc chọn tenant hợp lệ.");
+                return;
             }
 
             await _next(context);

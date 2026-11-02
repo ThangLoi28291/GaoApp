@@ -1,0 +1,66 @@
+/* New phone-only branding stays absent from the current desktop skin. */
+.gao-login-mobile-brand, .gao-login-mobile-context-label { display: none; }
+
+@media (max-width: 767.98px) {
+    html:has(> body[data-mobile-login]) { color-scheme: light; scroll-padding-block: 20px; scroll-behavior: auto; }
+    body[data-mobile-login] { margin: 0; background: #f4f6fa; color: #192c4a; font-family: system-ui,-apple-system,"Segoe UI",sans-serif; }
+    body[data-mobile-login] #loginHalloween {
+        --login-ink: #192c4a; --login-muted: #647188; --login-panel: #fff; --login-input: #fff; --login-line: #ccd5e4; --login-accent: #3858df;
+        display: block; min-height: 100vh; min-height: var(--login-mobile-height,100dvh);
+        padding: max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(max(24px,env(safe-area-inset-bottom)) + var(--login-mobile-occlusion,0px)) max(16px,env(safe-area-inset-left));
+        overflow: visible; color: var(--login-ink); background: transparent;
+    }
+    body[data-mobile-login] :is(.halloween-backdrop,.halloween-dawn,.halloween-atmosphere,.halloween-effects,.halloween-props,.halloween-owl,.password-light-reveal,.login-brand) { display: none; }
+    body[data-mobile-login] #loginHalloween .login-shell { display: flex; flex-direction: column; gap: 0; width: 100%; max-width: 440px; min-height: 0; margin-inline: auto; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+    body[data-mobile-login] .gao-login-mobile-brand { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 8px 4px 24px; }
+    body[data-mobile-login] .gao-login-mobile-brand > span { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; border-radius: 15px; color: #fff; background: #3858df; font-size: 30px; font-weight: 750; line-height: 1; }
+    body[data-mobile-login] .gao-login-mobile-brand > div { min-width: 0; }
+    body[data-mobile-login] .gao-login-mobile-brand strong { display: block; color: #192c4a; font-size: 22px; font-weight: 750; letter-spacing: -.04em; }
+    body[data-mobile-login] .gao-login-mobile-brand > div > span { display: block; margin-top: 3px; color: #647188; font-size: 11px; line-height: 1.6; }
+    body[data-mobile-login] #loginHalloween .login-panel { display: block; padding: 0; border: 0; border-radius: 0; background: transparent; transition: none; }
+    body[data-mobile-login] .login-card { width: 100%; max-width: none; padding: 24px 20px; border: 1px solid #e5eaf1; border-radius: 24px; background: #fff; box-shadow: 0 10px 40px #192c4a08; }
+    body[data-mobile-login] .mobile-store { display: block; margin-bottom: 24px; padding: 14px; border: 1px solid #e5eaf1; border-radius: 15px; background: #f4f6fa; }
+    body[data-mobile-login] .mobile-store > .gao-login-mobile-context-label { display: block; margin: 0 0 7px; color: #647188; font-size: 10px; line-height: 1.5; font-weight: 600; letter-spacing: .025em; }
+    body[data-mobile-login] .mobile-store strong { display: block; color: #192c4a; font-size: 16px; line-height: 1.5; font-weight: 700; overflow-wrap: anywhere; }
+    body[data-mobile-login] .mobile-store > span:last-child { display: block; margin-top: 5px; color: #647188; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-mobile-login] .login-title { margin: 0; color: #192c4a; font-size: 27px; line-height: 1.3; font-weight: 750; letter-spacing: -.035em; overflow-wrap: anywhere; }
+    body[data-mobile-login] .login-desc { margin: 12px 0 26px; color: #647188; font-size: 14px; line-height: 1.7; }
+    body[data-mobile-login] .form-group { margin-bottom: 22px; }
+    body[data-mobile-login] .form-group label { margin-bottom: 9px; color: #192c4a; font-size: 13px; line-height: 1.6; font-weight: 600; }
+    body[data-mobile-login] #loginHalloween :is(.form-control,.form-select) { min-height: 52px; padding: 12px 14px; border: 1px solid #ccd5e4; border-radius: 13px; color: #192c4a; background-color: #fff; font-size: 16px; line-height: 1.5; color-scheme: light; scroll-margin-block: 20px; }
+    body[data-mobile-login] #loginHalloween .form-select { padding-right: 38px; }
+    body[data-mobile-login] #loginHalloween :is(.form-control,.form-select)::placeholder { color: #8794aa; opacity: 1; }
+    body[data-mobile-login] #loginHalloween :is(.form-control,.form-select):focus { color: #192c4a; background-color: #fff; border-color: #3858df; box-shadow: 0 0 0 3px #3858df20; }
+    body[data-mobile-login] #loginHalloween .form-control:-webkit-autofill,
+    body[data-mobile-login] #loginHalloween .form-control:-webkit-autofill:focus { -webkit-text-fill-color: #192c4a; -webkit-box-shadow: 0 0 0 1000px #fff inset; caret-color: #192c4a; }
+    body[data-mobile-login] .form-text { margin-top: 8px; color: #647188; font-size: 12px; line-height: 1.65; }
+    body[data-mobile-login] #loginHalloween .password-wrap .form-control { padding-right: 76px; }
+    body[data-mobile-login] .btn-eye { top: 4px; right: 5px; min-width: 60px; min-height: 44px; padding: 8px; border-radius: 10px; color: #3858df; background: #edf1ff; font-size: 13px; font-weight: 600; }
+    body[data-mobile-login] .btn-eye-label { display: inline !important; }
+    body[data-mobile-login] .btn-eye .login-flashlight { display: none !important; }
+    body[data-mobile-login] .btn-eye[aria-pressed="true"] { color: #2945c3; background: #e2e9ff; }
+    body[data-mobile-login] #loginHalloween :is(.text-danger,.field-validation-error) { color: #a52e40 !important; font-size: 12px; line-height: 1.65; }
+    body[data-mobile-login] .field-validation-error { display: block; margin-top: 8px; }
+    body[data-mobile-login] #loginHalloween :is(.input-validation-error,[aria-invalid="true"]) { border-color: #be4555; }
+    body[data-mobile-login] #loginValidationSummary.validation-summary-valid { display: none; }
+    body[data-mobile-login] #loginValidationSummary.validation-summary-errors { margin-bottom: 20px; padding: 14px; border: 1px solid #f0cdd3; border-radius: 14px; color: #a52e40 !important; background: #fff2f4; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-mobile-login] .validation-summary-errors ul { margin: 0; padding-left: 18px; }
+    body[data-mobile-login] #loginHalloween .alert { padding: 14px; border-radius: 14px; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-mobile-login] #loginHalloween .alert-warning { border-color: #efdbac; color: #805519; background: #fff7e7; }
+    body[data-mobile-login] #loginHalloween .alert-success { border-color: #bde2d3; color: #176448; background: #eef9f3; }
+    body[data-mobile-login] .btn-login { min-height: 52px; margin-top: 26px; padding: 13px 16px; border: 1px solid #3858df; border-radius: 14px; color: #fff; background: #3858df; font-size: 15px; line-height: 1.5; font-weight: 650; box-shadow: none; transition: background .15s ease; }
+    body[data-mobile-login] .btn-login:hover { color: #fff; background: #2945c3; box-shadow: none; transform: none; }
+    body[data-mobile-login] .btn-login:disabled { cursor: wait; opacity: .7; }
+    body[data-mobile-login] [data-mobile-login-busy] .btn-login::before { content: ""; display: inline-block; flex: 0 0 15px; width: 15px; height: 15px; margin-right: 9px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: gao-login-mobile-spin .7s linear infinite; }
+    body[data-mobile-login] .login-management-link { margin-top: 20px; font-size: 13px; line-height: 1.65; }
+    body[data-mobile-login] .login-management-link a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 8px 4px; border-radius: 9px; color: #3858df; overflow-wrap: anywhere; }
+    body[data-mobile-login] :is(button,a,[tabindex]):focus-visible { outline: 3px solid #b2c0ff; outline-offset: 3px; }
+    @keyframes gao-login-mobile-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+        body[data-mobile-login] .btn-login { transition: none; }
+        body[data-mobile-login] [data-mobile-login-busy] .btn-login::before { animation: none; }
+    }
+    @media (forced-colors: active) {
+        body[data-mobile-login] :is(.login-card,.mobile-store,.btn-login,.btn-eye) { border: 1px solid CanvasText; }
+    }
+}

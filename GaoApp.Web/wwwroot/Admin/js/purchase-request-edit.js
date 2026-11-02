@@ -1,5 +1,6 @@
 (function () {
     'use strict';
+    const cspScriptNonce = document.currentScript?.nonce || '';
 
     const page = document.getElementById('purchaseRequestPage');
     const form = document.getElementById('purchaseRequestForm');
@@ -371,6 +372,7 @@
             row.querySelector('.product-name-input').value = item.text;
             row.querySelector('.unit-name-input').value = item.unitName;
             row.querySelector('.pr-product-name').textContent = item.text;
+            row.querySelector('.line-note').setAttribute('aria-label', 'Ghi chú sản phẩm ' + item.text);
             row.querySelector('.pr-product-sku').textContent = freeText ? '' : (item.sku ? 'SKU: ' + item.sku : '');
             row.querySelector('.pr-free-text-badge').classList.toggle('d-none', !freeText);
             row.querySelector('.pr-open-request-badge').classList.toggle('d-none', freeText || !item.hasOpenRequest);
@@ -395,6 +397,7 @@
             row.remove(); isDirty = true; renumberLines(); updateCounters(); updateEmptyState();
         });
         row.querySelector('.quantity').addEventListener('input', () => { isDirty = true; updateCounters(); });
+        row.querySelector('.line-note').addEventListener('input', () => { isDirty = true; });
     }
 
     function renumberLines() {
@@ -408,6 +411,7 @@
             row.querySelector('.product-name-input').name = prefix + 'ProductName';
             row.querySelector('.unit-name-input').name = prefix + 'UnitName';
             row.querySelector('.quantity').name = prefix + 'Quantity';
+            row.querySelector('.line-note').name = prefix + 'Note';
         });
     }
 
@@ -524,7 +528,7 @@
         if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
         if (!cameraDecoderPromise) cameraDecoderPromise = new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = page.dataset.decoderUrl; script.async = true;
+            script.src = page.dataset.decoderUrl; const decoderSource = new URL(script.src, location.href); if (decoderSource.origin !== location.origin || !decoderSource.pathname.endsWith('/lib/zxing-browser/0.1.5/zxing-browser.min.js')) throw new Error('Invalid local decoder source'); script.nonce = cspScriptNonce; script.async = true;
             script.onload = () => window.ZXingBrowser ? resolve(window.ZXingBrowser) : reject(new Error('Không khởi tạo được bộ quét.'));
             script.onerror = () => { script.remove(); cameraDecoderPromise = null; reject(new Error('Không tải được bộ quét barcode.')); };
             document.head.append(script);

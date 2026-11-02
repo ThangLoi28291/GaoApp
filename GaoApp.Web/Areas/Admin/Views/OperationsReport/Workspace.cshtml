@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="~/vendor/libs/apex-charts/apex-charts.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/reports/management-report.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/reports/operations-report.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/reports-operations.mobile.css" asp-append-version="true" />
 }
 <div class="mr-workspace" data-management-report data-operations-report data-section="@(section)"
      data-can-manage="@canManage.ToString().ToLowerInvariant()" data-can-export="@canExport.ToString().ToLowerInvariant()" aria-busy="true">
@@ -113,4 +114,4 @@
     }
 </div>
 @section VendorScripts { <script src="~/vendor/libs/apex-charts/apexcharts.js" asp-append-version="true"></script> }
-@section PageScripts { <script src="~/Admin/js/reports/operations-report.page.js" asp-append-version="true"></script> }
+@section PageScripts { <script src="~/Admin/js/reports/operations-report.page.js" asp-append-version="true"></script><script src="~/Admin/js/reports-operations.mobile.js" asp-append-version="true"></script> }

@@ -35,12 +35,13 @@ public sealed class CustomerReceiptPrintPreferenceSqlServerTests
         }
         await SetPreference(true);
         await client.JsonAsync(HttpMethod.Post, "/admin/pos/shift/open", new { openingCash = 0, warehouseId = store.WarehouseId });
-        var customers = await client.JsonAsync(HttpMethod.Get, "/admin/pos/offline/customers");
-        Assert.True(customers.GetProperty("items").EnumerateArray().Single(x => x.GetProperty("customerId").GetInt32() == customerId).GetProperty("askBeforePrintingReceipt").GetBoolean());
         var first = await client.JsonAsync(HttpMethod.Post, "/admin/pos/cart/current/new", new { });
         int id = first.GetProperty("orderId").GetInt32();
         var draft = await client.JsonAsync(HttpMethod.Post, $"/admin/pos/cart/current/customer/{customerId}", new { repriceExistingLines = false });
         Assert.True(draft.GetProperty("askBeforePrintingReceipt").GetBoolean());
+        // Privacy policy only exports customers attached to an active POS journal.
+        var customers = await client.JsonAsync(HttpMethod.Get, "/admin/pos/offline/customers");
+        Assert.True(customers.GetProperty("items").EnumerateArray().Single(x => x.GetProperty("customerId").GetInt32() == customerId).GetProperty("askBeforePrintingReceipt").GetBoolean());
         await client.JsonAsync(HttpMethod.Post, $"/admin/pos/{id}/items?variantId={store.VariantId}&qty=1", new { });
         await client.JsonAsync(HttpMethod.Post, "/admin/pos/cart/current/payment-and-finalize", new { orderId = id, clientRequestId = Guid.NewGuid(), method = 0, amount = 20 });
         var next = await client.JsonAsync(HttpMethod.Post, "/admin/pos/cart/current/new", new { });

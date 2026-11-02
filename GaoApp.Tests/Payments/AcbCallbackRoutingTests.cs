@@ -23,9 +23,12 @@ public sealed partial class AcbPaymentTests
 {
     private static async Task AddRoutingStores(Fixture f, bool targetActive = true)
     {
+        var targetStore = await f.Db.Stores.SingleAsync(x => x.Id == 1);
+        targetStore.Name = "Target store"; targetStore.SubDomain = "DoanTL";
+        targetStore.SubDomainNormalized = "doantl"; targetStore.IsActive = targetActive;
+        await f.Db.SaveChangesAsync();
         f.Tenant.SetStore(2, "www"); // Seed each store under its own tenant, never weaken the production ownership guard.
         f.Db.AddRange(
-            new Store { Id = 1, Name = "Target store", SubDomain = "DoanTL", SubDomainNormalized = "doantl", IsActive = targetActive },
             new Store { Id = 2, Name = "Original www store", SubDomain = "www", SubDomainNormalized = "www", IsActive = true },
             new StoreAcbSettings { StoreId = 2, CallbackApiKeyProtected = f.Protocol.Protect(2, "other-store-key") });
         await f.Db.SaveChangesAsync();
@@ -128,8 +131,12 @@ public sealed partial class AcbPaymentTests
         client.DefaultRequestHeaders.Add("x-api-key", "other-store-key");
         using var result = await client.PostAsJsonAsync("/Admin/api-callback", Notification("unknown"));
         Assert.Equal(HttpStatusCode.ServiceUnavailable, result.StatusCode);
-        Assert.Empty(await f.Db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().ToListAsync());
         Assert.Contains(f.CallbackLogs.Entries, x => x.Contains("CALLBACK_STORE_NOT_FOUND") && x.Contains("RoutedStoreId=" + target));
+        foreach (var storeId in new[] { 1, 2 })
+        {
+            f.Tenant.SetStore(storeId, storeId == 1 ? "doantl" : "www");
+            Assert.Empty(await f.Db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().Where(x => x.StoreId == storeId).ToListAsync());
+        }
     }
 
     [Fact]
@@ -154,7 +161,11 @@ public sealed partial class AcbPaymentTests
         using var admin = await client.GetAsync("/admin/routing-test");
         Assert.Equal(HttpStatusCode.OK, admin.StatusCode);
         Assert.True(f.Tenant.IsHostAdmin);
-        Assert.Empty(await f.Db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().ToListAsync());
+        foreach (var storeId in new[] { 1, 2 })
+        {
+            f.Tenant.SetStore(storeId, storeId == 1 ? "doantl" : "www");
+            Assert.Empty(await f.Db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().Where(x => x.StoreId == storeId).ToListAsync());
+        }
     }
 
     [Theory]
@@ -172,7 +183,11 @@ public sealed partial class AcbPaymentTests
         client.DefaultRequestHeaders.Add("X-Forwarded-Host", "www.gaomart.com.vn");
         using var result = await client.PostAsJsonAsync("/Admin/api-callback?tenant=doantl", Notification("unknown"));
         Assert.Equal(expected, result.StatusCode);
-        Assert.Empty(await f.Db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().ToListAsync());
+        foreach (var storeId in new[] { 1, 2 })
+        {
+            f.Tenant.SetStore(storeId, storeId == 1 ? "doantl" : "www");
+            Assert.Empty(await f.Db.Set<AcbCallbackReceipt>().IgnoreQueryFilters().Where(x => x.StoreId == storeId).ToListAsync());
+        }
     }
 
     [Fact]

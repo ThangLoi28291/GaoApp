@@ -1,0 +1,104 @@
+/* UI-06e. Phone-only presentation of the existing offline, privacy, delivery and
+   configured-display surfaces. Never grant readiness, writer or action state. */
+@media (max-width: 767.98px) {
+    #posShell[data-pos-phone] #posNetworkStateBanner {
+        flex: 0 0 auto;
+        min-width: 0;
+        max-width: 100%;
+        margin: 0 0 10px;
+        padding: 0;
+        border: 1px solid #d9e4f3;
+        border-radius: 16px;
+        background: #fff;
+        overflow: hidden;
+    }
+    #posShell[data-pos-phone] .pos-network-banner {
+        display: grid;
+        gap: 5px;
+        margin: 0;
+        padding: 12px 14px;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+    }
+    #posShell[data-pos-phone] .pos-network-banner__title { margin: 0; color: #172d4d; font-size: 13px; line-height: 1.5; font-weight: 750; white-space: normal; }
+    #posShell[data-pos-phone] .pos-network-banner__message { display: block; margin: 0; color: #52647c; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; white-space: normal; }
+    #posShell[data-pos-phone] .pos-network-banner--offline { background: #fff6e4; }
+    #posShell[data-pos-phone] .pos-network-banner--blocked { background: #fff0ed; }
+    #posShell[data-pos-phone] .pos-network-banner--reconnecting { background: #edf4ff; }
+    #posShell[data-pos-phone] #posNetworkStateBanner > .d-flex { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px !important; gap: 8px !important; }
+    #posShell[data-pos-phone] #posNetworkStateBanner .btn {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 10px 8px;
+        border: 1px solid #cddcf3;
+        border-radius: 12px;
+        color: #244f9d;
+        background: #f3f7ff;
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.5;
+        white-space: normal;
+        touch-action: manipulation;
+    }
+    #posShell[data-pos-phone] [data-configured-customer-display] { min-height: 44px; min-width: 44px; white-space: normal; overflow-wrap: anywhere; touch-action: manipulation; }
+    #posShell[data-pos-phone] ~ #deliveryModal {
+        top: var(--pos-session-visible-top, 0px);
+        height: var(--pos-session-visible-height, 100dvh);
+        padding: 0 !important;
+        overflow: hidden;
+        color: #172d4d;
+    }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-dialog { width: 100%; max-width: none; min-height: 0; height: 100%; margin: 0; padding: 0; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-content { display: flex; flex-direction: column; width: 100%; height: 100%; max-height: none; min-height: 0; border: 0; border-radius: 0; background: #f3f6fb; overflow: hidden; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-header { flex: 0 0 auto; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; border-bottom: 1px solid #dce5f0; background: #fff; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-header > div { flex: 1; min-width: 0; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-title { margin: 0 0 4px; color: #172d4d; font-size: 19px; font-weight: 800; line-height: 1.35; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-header small { display: block; color: #52647c; font-size: 12px; line-height: 1.5; }
+    #posShell[data-pos-phone] ~ #deliveryModal .btn-close { position: static; transform: none; flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; box-sizing: border-box; padding: 14px; margin: 0; background-color: #edf2f9; background-size: 12px; border-radius: 14px; opacity: 1; }
+    #posShell[data-pos-phone] ~ #deliveryModal #deliveryForm { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-body { flex: 1 1 auto; min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; scroll-padding: 14px; -webkit-overflow-scrolling: touch; }
+    #posShell[data-pos-phone] ~ #deliveryModal [hidden] { display: none !important; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-cart { max-height: none; overflow: visible; margin-bottom: 16px !important; padding: 14px; border: 1px solid #dce5f0; border-radius: 16px; background: #fff; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-cart:empty { display: none; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-cart > strong { display: block; margin-bottom: 10px; color: #244f9d; font-size: 12px; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-cart > div { padding: 10px 0; border-top: 1px solid #e8edf5; color: #172d4d; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-fields { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 14px; margin: 0; padding: 16px; border: 1px solid #dce5f0; border-radius: 16px; background: #fff; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-fields label { min-width: 0; gap: 6px; color: #52647c; font-size: 12px; font-weight: 650; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-wide { grid-column: auto; }
+    #posShell[data-pos-phone] ~ #deliveryModal :is(input, textarea) { min-width: 0; max-width: 100%; min-height: 48px; padding: 12px; border-radius: 12px; font-size: 16px; color: #172d4d; line-height: 1.5; }
+    #posShell[data-pos-phone] ~ #deliveryModal :is(input, textarea):focus { border-color: #78a6ed; box-shadow: 0 0 0 3px #2563eb24; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-footer { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.3fr); flex: 0 0 auto; max-height: 50%; overflow-y: auto; gap: 8px; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #dce5f0; background: #fff; box-shadow: 0 -6px 22px #172d4d08; overscroll-behavior: contain; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-footer > * { min-width: 0; margin: 0; }
+    #posShell[data-pos-phone] ~ #deliveryModal #deliveryMessage { grid-column: 1 / -1; max-height: 88px; overflow-y: auto; margin: 0; padding: 10px 12px; border-radius: 12px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #deliveryModal .modal-body > a[href="/admin/deliveries"] { display: flex; align-items: center; justify-content: center; min-height: 44px; margin-top: 12px; padding: 8px; border-radius: 10px; color: #244f9d; font-size: 12px; text-align: center; }
+    #posShell[data-pos-phone] ~ #deliveryModal .btn { min-height: 46px; min-width: 44px; padding: 10px 12px; border-radius: 12px; font-size: 13px; font-weight: 700; line-height: 1.5; white-space: normal; touch-action: manipulation; }
+    #posShell[data-pos-phone] ~ #deliveryModal .btn-primary { color: #fff; border-color: #2463eb; background: #2463eb; }
+    #posShell[data-pos-phone] ~ #deliveryModal .btn-outline-primary { color: #2463eb; border-color: #b7cef7; background: #f3f7ff; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-success { padding: 16px; border-radius: 16px; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-success > strong { display: block; margin-bottom: 10px; color: #216448; font-size: 17px; }
+    #posShell[data-pos-phone] ~ #deliveryModal .delivery-success .btn { display: flex; align-items: center; justify-content: center; margin-top: 10px; }
+    #posShell[data-pos-phone] :is(button, a):focus-visible,
+    #posShell[data-pos-phone] ~ #deliveryModal :is(button, a, input, textarea):focus-visible { outline: 3px solid #78a6ed; outline-offset: 2px; }
+    body:has(#posShell[data-pos-phone]) > dialog[aria-label="Phiên POS đã khóa"] {
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100dvh !important;
+        max-width: none !important;
+        max-height: none !important;
+        margin: 0 !important;
+        padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)) !important;
+        border: 0 !important;
+        border-radius: 0;
+        background: #f3f6fb !important;
+        color: #172d4d;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        text-align: left;
+    }
+    body:has(#posShell[data-pos-phone]) > dialog[aria-label="Phiên POS đã khóa"][open] { display: flex; flex-direction: column; align-items: stretch; }
+    body:has(#posShell[data-pos-phone]) > dialog[aria-label="Phiên POS đã khóa"] h2 { flex: 0 0 auto; width: 100%; max-width: 400px; margin: auto auto 12px; color: #172d4d; font-size: 25px; font-weight: 800; line-height: 1.3; }
+    body:has(#posShell[data-pos-phone]) > dialog[aria-label="Phiên POS đã khóa"] p { flex: 0 0 auto; width: 100%; max-width: 400px; margin: 0 auto 24px; color: #52647c; font-size: 14px; line-height: 1.75; overflow-wrap: anywhere; }
+    body:has(#posShell[data-pos-phone]) > dialog[aria-label="Phiên POS đã khóa"] a { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 100%; max-width: 400px; min-height: 50px; margin: 0 auto auto; padding: 12px; border-radius: 14px; color: #fff; background: #2463eb; font-size: 15px; font-weight: 700; text-decoration: none; }
+    body:has(#posShell[data-pos-phone]) > dialog[aria-label="Phiên POS đã khóa"] a:focus-visible { outline: 3px solid #78a6ed; outline-offset: 3px; }
+}

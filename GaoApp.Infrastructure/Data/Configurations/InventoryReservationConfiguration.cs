@@ -1,6 +1,8 @@
 ﻿using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Domain.Delivery;
+using GaoApp.Domain.Storefront;
+using GaoApp.Infrastructure.Data.Migrations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -12,8 +14,20 @@ public class InventoryReservationConfiguration : IEntityTypeConfiguration<Invent
     {
         builder.ToTable("InventoryReservations", t => {
             t.HasTrigger("TR_InventoryReservations_DeliverySource");
-            t.HasCheckConstraint("CK_InventoryReservations_DeliverySource", "([ReferenceType]<>11 AND [DeliveryOrderId] IS NULL AND [DeliveryOrderLineId] IS NULL AND [SourceLegalEntityId] IS NULL AND [DeliveryRevision] IS NULL AND [ReportedByUserId] IS NULL AND [ReportedAtUtc] IS NULL) OR ([ReferenceType]=11 AND [IsDeleted]=0 AND [DeliveryOrderId] IS NOT NULL AND [DeliveryOrderLineId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL AND [DeliveryRevision] IS NOT NULL AND [DeliveryRevision]>0 AND [ReportedByUserId] IS NOT NULL AND [ReportedAtUtc] IS NOT NULL AND [ReservedQty]>0 AND [ReferenceLineId] IS NOT NULL AND [ReferenceLineId]=[DeliveryOrderLineId] AND [ReferenceId]=CONVERT(nvarchar(50),[DeliveryOrderId]) AND ([Status]=1 OR [Status]=2 OR [Status]=3))");
+            t.HasTrigger(StorefrontCheckoutSchemaSqlCatalog.ReservationTriggerName);
+            t.HasCheckConstraint("CK_InventoryReservations_DeliverySource", StorefrontCheckoutSchemaSqlCatalog.DeliveryConstraint);
+            t.HasCheckConstraint("CK_InventoryReservations_StorefrontSource", StorefrontCheckoutSchemaSqlCatalog.ReservationConstraint);
         });
+        builder.HasOne<StorefrontOrderLine>().WithMany()
+            .HasForeignKey(x => new { x.StoreId, x.StorefrontOrderId, x.StorefrontOrderLineId, x.ProductVariantId })
+            .HasPrincipalKey(x => new { x.StoreId, x.StorefrontOrderId, x.Id, x.VariantId }).OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("FK_InventoryReservations_StorefrontOrderLine");
+        builder.HasOne<StorefrontFulfillmentSource>().WithMany()
+            .HasForeignKey(x => new { x.StoreId, x.StorefrontOrderId, x.StorefrontFulfillmentSourceId, x.WarehouseId, x.SourceLegalEntityId })
+            .HasPrincipalKey(x => new { x.StoreId, x.StorefrontOrderId, x.Id, x.SourceWarehouseId, x.SourceLegalEntityId }).OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("FK_InventoryReservations_StorefrontFulfillmentSource");
+        builder.HasIndex(x => new { x.StoreId, x.StorefrontOrderLineId, x.StorefrontFulfillmentSourceId }).IsUnique()
+            .HasDatabaseName("UX_InventoryReservations_StorefrontLineSource").HasFilter("[ReferenceType]=12 AND [IsDeleted]=0");
 
         builder.Property(x => x.ReferenceId)
             .HasMaxLength(50)

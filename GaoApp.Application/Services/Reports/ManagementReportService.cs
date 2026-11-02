@@ -13,9 +13,11 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
     SalesReportingPeriodPolicy periods, ProfitReportAggregationPolicy aggregation, ProfitReportExecutionGate gate) : IManagementReportService
 {
     public Task<ManagementReportDto> ReadAsync(ManagementReportQueryDto query, CancellationToken ct = default)
-        => gate.ExecuteAsync(token => ReadCoreAsync(query, token), ct);
+        => gate.ExecuteAsync(token => ReadCoreAsync(query, false, token), ct);
+    public Task<ManagementReportDto> ReadOverviewAsync(ManagementReportQueryDto query, CancellationToken ct = default)
+        => gate.ExecuteAsync(token => ReadCoreAsync(query, true, token), ct);
 
-    private async Task<ManagementReportDto> ReadCoreAsync(ManagementReportQueryDto query, CancellationToken ct)
+    private async Task<ManagementReportDto> ReadCoreAsync(ManagementReportQueryDto query, bool overview, CancellationToken ct)
     {
         if (store.StoreId <= 0) throw new InvalidOperationException("Cửa hàng hiện tại chưa hợp lệ.");
         if (query.TerminalId is <= 0 || query.Compare is not (null or "none" or "previous") ||
@@ -28,12 +30,17 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
         var source = await repository.ReadAsync(store.StoreId, resolved, false, ct);
         if (source.StoreId != store.StoreId) throw new InvalidOperationException("Cửa hàng báo cáo đã thay đổi.");
         var lineCosts = new Dictionary<int, ProfitReportAggregationPolicy.CostResult>();
-        var costs = aggregation.EvaluateCosts(source, lineCosts, ct);
-        ManagementPeriodDto Build(SalesResolvedExecutiveQueryDto q) => BuildPeriod(source, q,
-            aggregation.Aggregate(source, q, costs, ct), lineCosts, ct);
+        var issues = new List<ProfitCostIssueDto>();
+        var costs = aggregation.EvaluateCosts(source, lineCosts, ct, issues);
+        ManagementPeriodDto Build(SalesResolvedExecutiveQueryDto q, bool comparison = false) {
+            var result = aggregation.Aggregate(source, q, costs, ct);
+            var period = BuildPeriod(source, q, result, lineCosts, ct, overview, comparison);
+            period.CostDiagnostics = ProfitCostDiagnosticsPolicy.ForPeriod(issues, result.Details);
+            return period;
+        }
         return new ManagementReportDto { GeneratedAtUtc = source.ReadAtUtc, Period = resolved.Current.Period,
             ComparisonPeriod = resolved.Comparison?.Period, Current = Build(resolved.Current),
-            Comparison = resolved.Comparison is null ? null : Build(resolved.Comparison), Terminals = source.Terminals };
+            Comparison = resolved.Comparison is null ? null : Build(resolved.Comparison, true), Terminals = source.Terminals };
     }
 
     private sealed record LineEvent(int VariantId, string Name, int CategoryId, string CategoryName, string? Sku,
@@ -41,17 +48,19 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
 
     public ManagementPeriodDto BuildPeriod(ProfitSourceSnapshot source, SalesResolvedExecutiveQueryDto query,
         ProfitReportAggregationPolicy.PeriodResult result,
-        Dictionary<int, ProfitReportAggregationPolicy.CostResult> lineCosts, CancellationToken ct = default)
+        Dictionary<int, ProfitReportAggregationPolicy.CostResult> lineCosts, CancellationToken ct = default,
+        bool overview = false, bool comparison = false)
     {
         var p = query.Period;
         var orders = source.Orders.ToDictionary(x => x.Id);
         var customers = source.Customers.ToDictionary(x => x.Id);
         var products = source.Products.ToDictionary(x => x.VariantId);
         var lines = source.Lines.Where(x => !x.IsDeleted).ToLookup(x => x.OrderId);
+        var lineIds = source.Lines.Where(x => !x.IsDeleted).Select(x => (x.OrderId, x.Id)).ToHashSet();
         var returns = source.ReturnLines.Where(x => !x.IsDeleted).ToLookup(x => x.SalesReturnId);
         var orphanCostOrders = source.Entries.Where(x => x.ReferenceType == InventoryReferenceType.Order)
             .Where(x => int.TryParse(x.ReferenceId, out var id) &&
-                (!x.ReferenceLineId.HasValue || !lines[id].Any(line => line.Id == x.ReferenceLineId.Value)))
+                (!x.ReferenceLineId.HasValue || !lineIds.Contains((id, x.ReferenceLineId.Value))))
             .Select(x => int.Parse(x.ReferenceId)).ToHashSet();
         string Tier(Order o) => o.CustomerPriceTierSnapshot is "WHOLESALE" or "RETAIL" ? o.CustomerPriceTierSnapshot :
             o.CustomerId is null ? "RETAIL" : customers.GetValueOrDefault(o.CustomerId.Value)?.PriceTier is "WHOLESALE" ? "WHOLESALE" :
@@ -70,6 +79,12 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
             ct.ThrowIfCancellationRequested();
             if (row.EventKind == "Void") continue;
             var order = orders[row.OrderId];
+            if (row.StorefrontServiceRevenueId.HasValue)
+            {
+                events.Add(new(0, row.ItemName ?? "Dịch vụ giao hàng", 0, "Dịch vụ giao hàng", null, order.Id, Tier(order), order.CustomerId ?? 0,
+                    CustomerName(order), false, 0, row.Summary));
+                continue;
+            }
             var saleLines = lines[row.OrderId].OrderBy(x => x.Id).ToList();
             var returnLines = row.SalesReturnId is int id ? returns[id].OrderBy(x => x.Id).ToList() : [];
             var parts = row.EventKind == "Trả hàng"
@@ -97,11 +112,25 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
                     line.Qty, ProfitReportAggregationPolicy.Summarize(revenue, [cost], true)));
             }
         }
-        List<ReportDimensionDto> Dimensions<TKey>(Func<LineEvent, TKey> key, Func<IGrouping<TKey, LineEvent>, (int Id, string Name, string? Group, string? Sku)> describe)
-            where TKey : notnull => events.GroupBy(key).Select(g => {
-                var d = describe(g); return new ReportDimensionDto(d.Id, d.Name, d.Group, d.Sku,
-                    g.Sum(x => x.Quantity), g.Where(x => x.Sale).Select(x => x.OrderId).Distinct().Count(), Combine(g.Select(x => x.Summary)));
-            }).OrderByDescending(x => x.Summary.NetSales.Value).ThenBy(x => x.Name).ThenBy(x => x.Id).ToList();
+        List<ReportDimensionDto> Dimensions<TKey>(Func<LineEvent, TKey> key,
+            Func<IGrouping<TKey, LineEvent>, (int Id, string Name, string? Group, string? Sku)> describe,
+            int? limit = null, bool namedOnly = false, bool availableOnly = false) where TKey : notnull
+        {
+            // Rank by complete revenue before computing cost summaries for the visible rows.
+            // Full detail/export callers still aggregate every dimension.
+            var ranked = events.GroupBy(key).Select(g => new { Rows = g, Description = describe(g),
+                Revenue = result.Summary.NetSales.Available && g.All(x => x.Summary.NetSales.Available)
+                    ? g.Sum(x => x.Summary.NetSales.Value!.Value) : (decimal?)null })
+                .Where(x => (!namedOnly || x.Description.Id != 0) && (!availableOnly || x.Revenue.HasValue))
+                .OrderByDescending(x => x.Revenue).ThenBy(x => x.Description.Name).ThenBy(x => x.Description.Id).AsEnumerable();
+            if (limit.HasValue) ranked = ranked.Take(limit.Value);
+            return ranked.Select(x => {
+                ct.ThrowIfCancellationRequested();
+                var d = x.Description; var g = x.Rows;
+                return new ReportDimensionDto(d.Id, d.Name, d.Group, d.Sku,
+                    g.Sum(row => row.Quantity), g.Where(row => row.Sale).Select(row => row.OrderId).Distinct().Count(), Combine(g.Select(row => row.Summary)));
+            }).ToList();
+        }
         var expenses = source.OperatingExpenses.Where(x => x.StoreId == source.StoreId && !x.IsDeleted &&
             x.RecognitionFrom.Date <= p.ToDate.Date && x.RecognitionTo.Date >= p.FromDate.Date).ToList();
         var confirmed = expenses.Where(x => x.Status == "confirmed").ToList();
@@ -125,9 +154,9 @@ public sealed class ManagementReportService(IProfitReportReadRepository reposito
             DraftExpenses = expenses.Count(x => x.Status == "draft"), Trend = result.Trend, ExpenseTrend = expenseTrend,
             SalesOrders = result.Details.Where(x => x.EventKind == "Bán hàng").Select(x => x.OrderId).Distinct().Count(),
             InferredCustomerOrders = result.Details.Select(x => orders[x.OrderId]).Where(x => x.CustomerPriceTierSnapshot is null && x.CustomerId.HasValue).DistinctBy(x => x.Id).Count(),
-            Products = Dimensions(x => x.VariantId, g => (g.Key, g.First().Name, g.First().CategoryName, g.First().Sku)),
-            Categories = Dimensions(x => x.CategoryId, g => (g.Key, g.First().CategoryName, null, null)),
-            Customers = Dimensions(x => (x.CustomerId, x.Tier), g => (g.Key.CustomerId, g.First().CustomerName, g.Key.Tier, null)),
+            Products = overview && comparison ? [] : Dimensions(x => x.VariantId, g => (g.Key, g.First().Name, g.First().CategoryName, g.First().Sku), overview ? 6 : null, availableOnly: overview),
+            Categories = overview ? [] : Dimensions(x => x.CategoryId, g => (g.Key, g.First().CategoryName, null, null)),
+            Customers = overview && comparison ? [] : Dimensions(x => (x.CustomerId, x.Tier), g => (g.Key.CustomerId, g.First().CustomerName, g.Key.Tier, null), overview ? 5 : null, namedOnly: overview),
             CustomerGroups = groups,
             ExpenseCategories = confirmed.GroupBy(x => x.Category).Select(g => new ExpenseCategoryDto(g.Key,
                 OperatingExpensePolicy.Categories.GetValueOrDefault(g.Key) ?? g.Key,

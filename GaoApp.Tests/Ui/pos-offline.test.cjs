@@ -45,6 +45,21 @@ test('cached product, gift and combo promotions preserve server calculation orde
     assert.notEqual(core.linesSignature(changed), core.linesSignature({ ...changed, lines: changed.lines.filter(l => !l.isPromotionGift) }));
     assert.equal(state.orders[state.currentId].lines.length, 2);
 });
+test('percentage shelf price is rounded per unit to 100 dong before multiplying offline quantities', () => {
+    for (const [retail,percent,sale] of [[37800,15,32100],[40000,19.625,32200],[40000,19.75,32100],[500,.1,500]]) {
+        const {catalog,act}=fixture();
+        catalog.products[0].units=catalog.products[0].units.slice(0,1);
+        catalog.products[0].units[0].price=retail;
+        catalog.promotions=[{id:1,type:1,name:'Shelf discount',priority:1,discountType:1,discountValue:percent,items:[{productId:11,minQuantity:1}]}];
+        const one=act('/admin/pos/cart/current/scan',{barcode:'123456',qty:1});
+        assert.equal(one.grandTotal,sale);
+        const two=act(`/admin/pos/lines/${one.lines[0].lineId}?qty=2`,{},'PATCH');
+        assert.equal(two.grandTotal,sale*2);
+        catalog.promotions[0].discountType=2;catalog.promotions[0].discountValue=100;
+        const fixed=act(`/admin/pos/lines/${one.lines[0].lineId}?qty=3`,{},'PATCH');
+        assert.equal(fixed.grandTotal,(retail-100)*3);
+    }
+});
 test('new offline customer is durable and later references use the server customer identity', () => {
     const { state, catalog, act } = fixture();
     const draft = act('/admin/pos/customers/quick-create', { name: 'Khách mới', phone: '0901234567', priceTier: 'WHOLESALE' });
@@ -234,44 +249,74 @@ test('invoice intent translates the completed order instead of the new cart and 
 async function intentTransportHarness(saved, controls = {}) {
     const f = fixture(), key = f.state.key;
     f.state.context.expiresAtUtc = new Date(Date.now() + 3600000).toISOString();
+    f.state.context.deviceBinding = 'device-generation-test';
+    f.state.privacyVersion = 1; f.state.privacyRevision = 'verified-test-session';
     f.state.context.permissions.push('pos.order.reprint');
-    f.state.context.screen = { currentDraft: core.clone(f.state.orders[f.state.currentId]), currentCart: { currentOrderId: f.state.currentId }, draftOrders: [], heldOrders: [] };
+    f.state.context.screen = { currentDraft: core.clone(f.state.orders[f.state.currentId]), currentCart: { currentOrderId: f.state.currentId }, draftOrders: [], heldOrders: controls.heldOrders || [] };
     const stores = saved || new Map([
         ['sessions', new Map([[key, core.clone(f.state)]])],
         ['catalogs', new Map([[key, { ...f.catalog, fetchedAtUtc: new Date().toISOString() }]])],
-        ['meta', new Map([['active', { key, expiresAt: f.state.context.expiresAtUtc }]])]
+        ['meta', new Map([['active', { key, expiresAt: f.state.context.expiresAtUtc, privacyVersion: 1, revision: f.state.privacyRevision }],
+            ['auth', { key, deviceBinding: f.state.context.deviceBinding, revision: f.state.privacyRevision, locked: false }]])]
     ]);
     const server = controls.backend?.server || fixture();
     if (!controls.backend) { server.state.orders = {}; server.state.currentId = null; server.state.nextId = 100; }
     const requests = [], receipts = controls.backend?.receipts || new Map(), prints = [], events = [], intervals = [];
     controls.backend = { server, receipts };
     controls.online ||= false;
-    const database = { close() {}, transaction(names, mode) {
-        const tx = {}, writes = [];
-        tx.objectStore = name => ({
-            get(k) { const q = {}; queueMicrotask(() => { q.result = structuredClone(stores.get(name)?.get(k)); q.onsuccess?.(); }); return q; },
-            getAll() { const q = {}; queueMicrotask(() => { q.result = structuredClone([...stores.get(name).values()]); q.onsuccess?.(); }); return q; },
-            put(value, k) { writes.push([name, k, structuredClone(value)]); }
-        });
-        if (mode === 'readwrite') queueMicrotask(() => {
-            if (controls.failSave) { tx.error = new Error('Disk full'); tx.onabort?.(); }
-            else { for (const [name, k, value] of writes) stores.get(name).set(k, value); tx.oncomplete?.(); }
-        });
-        return tx;
-    } };
+    const database = require('./helpers/pos-offline-indexeddb.cjs')(stores, controls);
+    const listeners = new Map();
     const window = {
         PosOfflineCore: core, isSecureContext: false, PosPrinting: { openLocal: order => prints.push(structuredClone(order)) },
-        addEventListener() {}, dispatchEvent: event => events.push(event.type),
+        addEventListener(name, callback) { const values = listeners.get(name) || []; values.push(callback); listeners.set(name, values); },
+        dispatchEvent(event) { events.push(event.type); for (const callback of listeners.get(event.type) || []) callback(event); },
         fetch: async (input, options = {}) => {
             if (!controls.online) throw new TypeError('Offline');
             const url = new URL(input, 'https://pos.local');
+            if (/\/offline\/(catalog|customers|promotions)$/.test(url.pathname)) {
+                if (controls.catalogGate) await controls.catalogGate;
+                controls.catalogRequests = (controls.catalogRequests || 0) + 1;
+                if (controls.catalogBusy && url.pathname.endsWith('/catalog')) {
+                    controls.catalogBusy = false;
+                    return Response.json({code:'resource_busy'}, {status:429,headers:{'Retry-After':'1'}});
+                }
+                return Response.json(url.pathname.endsWith('/promotions') ? [] :
+                    {items:url.pathname.endsWith('/catalog')?f.catalog.products:[],nextAfterId:null});
+            }
             if (url.pathname.endsWith('/offline/status') || url.pathname.endsWith('/offline/bootstrap')) {
+                if (controls.statusGate && url.pathname.endsWith('/offline/status')) await controls.statusGate;
+                if (controls.slowBootstrap && url.pathname.endsWith('/offline/bootstrap'))
+                    await new Promise(resolve => setTimeout(resolve, 80));
                 if (controls.stallStatusBody) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{')); } }), { headers: { 'Content-Type': 'application/json' } });
                 if (controls.authStatus) return Response.json({ message: 'Session rejected' }, { status: controls.authStatus });
                 return Response.json({ ...f.state.context, userId: controls.changedUserId || f.state.context.userId, antiForgeryToken: 'test' });
             }
+            if (url.pathname.endsWith('/screen')) {
+                controls.screenRequests = (controls.screenRequests || 0) + 1;
+                if (controls.slowScreen) await new Promise(resolve => setTimeout(resolve, 80));
+                if (controls.stallScreenBody) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{')); } }), { headers: { 'Content-Type': 'application/json' } });
+                return Response.json(controls.screenPayload || { ...f.state.context.screen, source: 'server' });
+            }
+            if (controls.heldDetail && url.pathname === `/admin/pos/${controls.heldDetail.orderId}`) {
+                controls.heldDetailRequested = true;
+                if (controls.heldDetailGate) await controls.heldDetailGate;
+                return Response.json(controls.heldDetail);
+            }
+            if (url.pathname.endsWith('/payment-qr') && controls.pendingQr)
+                return Response.json({ message: 'QR cũ chưa được xử lý.', errorCode: 'POS_QR_PENDING', metadata: { qrId: 30 } }, { status: 409 });
+            const history = url.pathname.match(/^\/admin\/acb\/payments\/orders\/(\d+)\/qrs(?:\/(\d+))?$/);
+            if (history) {
+                controls.historyRequests = (controls.historyRequests || 0) + 1;
+                if (controls.historyNetworkError) throw new TypeError('Failed to fetch');
+                if (controls.historyStalledBody) return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{')); } }), { headers: { 'Content-Type': 'application/json' } });
+                if (controls.historyStatus) return Response.json({ message: 'Lịch sử QR đang bận.' }, { status: controls.historyStatus });
+                if (controls.historyInvalidJson) return new Response('{invalid', { headers: { 'Content-Type': 'application/json' } });
+                if (controls.historyFailSave) controls.failSave = true;
+                return Response.json(controls.historyPayload || { orderId: Number(history[1]), items: [], latestQrId: null });
+            }
             const id = options.headers?.['X-POS-Operation-Id'];
             requests.push({ path: url.pathname, id, body: JSON.parse(options.body || '{}') });
+            if (controls.rateLimitedReplay) return Response.json({ code: 'resource_busy', retryAfterSeconds: 1 }, { status: 429, headers: { 'Retry-After': '1' } });
             if (controls.replayAuth) return Response.json({ message: 'Login expired' }, { status: 401 });
             if (controls.rejectRoute && url.pathname.endsWith('/invoice-route')) return Response.json({ message: 'Route conflict' }, { status: 409 });
             let result = receipts.get(id);
@@ -294,21 +339,23 @@ async function intentTransportHarness(saved, controls = {}) {
     const location = { origin: 'https://pos.local', href: 'https://pos.local/admin/pos', reload() {} };
     const qrContext = {};
     vm.runInNewContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/qrcodegen.js'), 'utf8'), qrContext);
-    vm.runInNewContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.offline.js'), 'utf8'), {
+    const runtime = vm.createContext({
         window, location, URL, Response, AbortController, DOMException, structuredClone, Date,
         crypto: require('node:crypto').webcrypto, TextEncoder,
         setTimeout: (fn, ms) => setTimeout(fn, controls.fastTimeout ? ms / 100 : ms), clearTimeout,
-        setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval() {}, navigator: { locks: { request: (_, __, callback) => Promise.resolve(callback({})) } },
+        setInterval: fn => { intervals.push(fn); return intervals.length; }, clearInterval() {}, navigator: { locks: { request: (_, __, callback) => Promise.resolve(callback(controls.noWriter ? null : {})) } },
         qrcodegen: qrContext.qrcodegen,
         document: { getElementById: () => ({ dataset: { storeId: '1', terminalId: '2', userId: '3' } }),
             createElement: () => ({ getContext: () => ({ fillRect() {} }), toDataURL: () => 'data:image/png;base64,offline' }) },
-        CustomEvent: class { constructor(type) { this.type = type; } },
+        CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options?.detail; } },
         indexedDB: { open() { const q = {}; queueMicrotask(() => { q.result = database; q.onsuccess?.(); }); return q; } }
     });
+    vm.runInContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.offline.privacy.js'), 'utf8'), runtime);
+    vm.runInContext(fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.offline.js'), 'utf8'), runtime);
     await window.PosOffline.init();
     await new Promise(resolve => setImmediate(resolve));
-    return { api: window.PosOffline, stores, controls, server, requests, receipts, prints, tick: () => intervals.at(-1)(),
-        state: () => stores.get('sessions').get(key),
+    return { api: window.PosOffline, apiFetch: (...args) => window.fetch(...args), stores, controls, server, requests, receipts, prints, tick: () => intervals.at(-1)(),
+        window, state: () => stores.get('sessions').get(key),
         post: async (url, body = {}) => { const response = await window.fetch(url, { method: 'POST', body: JSON.stringify(body) }); return { status: response.status, body: await response.json() }; }
     };
 }
@@ -320,6 +367,47 @@ async function sellOffline(h) {
     assert.equal(completed.status, 200);
     return created.body.orderId;
 }
+test('429 keeps offline operations and IDs, respects Retry-After and retries each payment once', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    const original = structuredClone(h.state().queue);
+    h.controls.online = true; h.controls.rateLimitedReplay = true;
+    await h.api.sync(true);
+    assert.deepEqual(h.state().queue.map(x => x.id), original.map(x => x.id));
+    assert.equal(h.state().conflict, null); assert.equal(h.state().quarantined.length, 0);
+    const before = h.requests.length; h.controls.rateLimitedReplay = false;
+    await h.api.sync(true); assert.equal(h.requests.length, before);
+    await new Promise(resolve => setTimeout(resolve, 1100)); await h.api.sync(true);
+    assert.equal(h.state().queue.length, 0); assert.equal(h.receipts.size, original.length);
+    assert.equal(h.requests[0].id, h.requests[1].id);
+    assert.deepEqual(h.requests[0].body, h.requests[1].body);
+});
+test('429 on offline status keeps authorization and the journal recoverable', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    const before = JSON.stringify(h.state().queue);
+    h.controls.online = true; h.controls.authStatus = 429; await h.api.sync(true);
+    assert.equal(JSON.stringify(h.state().queue), before); assert.equal(h.api.status().locked, false);
+    h.controls.authStatus = 0; await new Promise(resolve => setTimeout(resolve, 1100)); await h.api.sync(true);
+    assert.equal(h.state().queue.length, 0);
+});
+test('a foreground 429 acknowledges only the durable local journal, then replays with the same operation ID', async () => {
+    const h = await intentTransportHarness(); h.controls.online = true; await h.api.sync(true);
+    h.controls.rateLimitedReplay = true;
+    const result = await h.post('/admin/pos/cart/current/new'); assert.equal(result.status, 200);
+    const queued = h.state().queue.at(-1); assert.ok(queued); assert.equal(h.receipts.size, 0);
+    const attempted = h.requests.at(-1); assert.equal(queued.id, attempted.id);
+    h.controls.rateLimitedReplay = false;
+    await new Promise(resolve => setTimeout(resolve, 1100)); await h.api.sync(true);
+    assert.equal(h.state().queue.length, 0); assert.equal(h.receipts.size, 1);
+    assert.equal(h.requests.at(-1).id, queued.id);
+});
+test('initial catalog preparation retries a 429 after its delay without creating or discarding operations', async () => {
+    const seed = await intentTransportHarness(); seed.stores.get('catalogs').clear();
+    const h = await intentTransportHarness(seed.stores, {online:true,catalogBusy:true});
+    assert.equal(h.api.status().ready,false); assert.equal(h.state().queue.length,0);
+    await new Promise(resolve=>setTimeout(resolve,1900));
+    assert.equal(h.api.status().ready,true); assert.equal(h.state().queue.length,0);
+    assert.equal(h.controls.catalogRequests,6); assert.equal(h.receipts.size,0);
+});
 test('offline repeated create clicks and reload return the original pending QR conflict, and cancellation releases creation', async () => {
     const seed = await intentTransportHarness();
     seed.state().context.accounts = [{ id: 1, vietQrBankBin: '970416', accountNumber: '123456789', accountName: 'Test' }];
@@ -359,15 +447,86 @@ test('offline review-only bank QR cannot be bypassed with a new QR', async () =>
     assert.equal(Object.keys(h.state().qrs).length, 1);
 });
 
+for (const historyStatus of [500, 429])
+test(`pending QR conflict followed by history HTTP ${historyStatus} keeps the healthy POS online`, async () => {
+    const h = await intentTransportHarness(undefined, { online: true, pendingQr: true, historyStatus });
+    const before = JSON.stringify(h.state());
+    const pending = await h.post('/admin/pos/cart/current/payment-qr', { clientRequestId: randomUUID(), amount: 3000 });
+    assert.equal(pending.status, 409); assert.equal(pending.body.errorCode, 'POS_QR_PENDING');
+    const history = await h.apiFetch(`/admin/acb/payments/orders/${h.state().currentId}/qrs`);
+    assert.equal(history.status, historyStatus);
+    assert.equal(h.api.status().connected, true); assert.equal(h.api.localMode(), false);
+    if (historyStatus === 500) await h.tick(); // The status endpoint still responds 200.
+    assert.equal(h.api.status().connected, true); assert.equal(h.api.localMode(), false);
+    assert.equal(h.api.status().syncError, ''); assert.equal(JSON.stringify(h.state()), before);
+    assert.equal(h.requests.length, 0); assert.equal(h.receipts.size, 0);
+});
+
+for (const invalid of ['json', 'schema'])
+test(`invalid QR history ${invalid} is a feature error and leaves connectivity and the journal intact`, async () => {
+    const controls = { online: true };
+    const h = await intentTransportHarness(undefined, controls);
+    const before = JSON.stringify(h.state());
+    if (invalid === 'json') controls.historyInvalidJson = true;
+    else controls.historyPayload = { orderId: h.state().currentId, items: null };
+    const response = await h.apiFetch(`/admin/acb/payments/orders/${h.state().currentId}/qrs`);
+    assert.equal(response.status, 502); assert.equal((await response.json()).errorCode, 'POS_QR_HISTORY_INVALID');
+    assert.equal(h.api.status().connected, true); assert.equal(h.api.localMode(), false);
+    assert.equal(JSON.stringify(h.state()), before);
+    await h.tick(); assert.equal(h.api.status().connected, true);
+});
+
+test('QR history cache write failure keeps the server online and still blocks further writes', async () => {
+    const h = await intentTransportHarness(undefined, { online: true, historyFailSave: true });
+    const before = JSON.stringify(h.state());
+    const response = await h.apiFetch(`/admin/acb/payments/orders/${h.state().currentId}/qrs`);
+    assert.equal(response.status, 200); assert.deepEqual((await response.json()).items, []);
+    assert.equal(h.api.status().connected, true); assert.equal(h.api.localMode(), false);
+    assert.equal(h.api.canWork(), false); assert.match(h.api.status().message, /Không ghi được dữ liệu/);
+    assert.equal((await h.post('/admin/pos/cart/current/scan', { barcode: '123456' })).status, 409);
+    assert.equal(JSON.stringify(h.state()), before); assert.equal(h.requests.length, 0);
+});
+
+test('QR history server failure preserves a previously cached QR without changing online payment semantics', async () => {
+    const seed = await intentTransportHarness();
+    const orderId = seed.state().currentId;
+    seed.state().qrs[30] = { id: 30, orderId, status: 0, savedStatus: 'Pending', automaticConfirmation: true,
+        amount: 2000, requestCode: 'SAVED-QR', qrDataUrl: 'cached-image' };
+    const h = await intentTransportHarness(seed.stores, { online: true, historyStatus: 500 });
+    const list = await (await h.apiFetch(`/admin/acb/payments/orders/${orderId}/qrs`)).json();
+    assert.equal(list.cached, true); assert.equal(list.items[0].qrId, 30);
+    const detail = await (await h.apiFetch(`/admin/acb/payments/orders/${orderId}/qrs/30`)).json();
+    assert.equal(detail.qr.automaticConfirmation, true); assert.notEqual(detail.qr.manualRequested, true);
+    assert.equal(h.api.status().connected, true); assert.equal(h.api.localMode(), false);
+    assert.equal(h.state().queue.length, 0);
+});
+
+for (const failure of ['network', 'timeout'])
+test(`QR history ${failure} failure still detects loss of connectivity and recovers through status`, async () => {
+    const controls = { online: true, fastTimeout: true };
+    const h = await intentTransportHarness(undefined, controls);
+    controls[failure === 'network' ? 'historyNetworkError' : 'historyStalledBody'] = true;
+    const response = await h.apiFetch(`/admin/acb/payments/orders/${h.state().currentId}/qrs`);
+    assert.equal(response.status, 503); assert.equal(h.api.status().connected, false);
+    controls.historyNetworkError = controls.historyStalledBody = false;
+    await h.tick(); assert.equal(h.api.status().connected, true); assert.equal(h.state().queue.length, 0);
+});
+
+test('intentional QR history cancellation leaves connectivity unchanged', async () => {
+    const h = await intentTransportHarness(undefined, { online: true });
+    const controller = new AbortController(); controller.abort();
+    await assert.rejects(h.apiFetch(`/admin/acb/payments/orders/${h.state().currentId}/qrs`, { signal: controller.signal }), { name: 'AbortError' });
+    assert.equal(h.api.status().connected, true); assert.equal(h.api.localMode(), false);
+    assert.equal(h.state().queue.length, 0);
+});
+
 test('automatic retry resumes after authentication returns for the original cashier and shift', async () => {
     const h = await intentTransportHarness(); await sellOffline(h);
     const before = JSON.stringify(h.state().queue);
     h.controls.online = true; h.controls.authStatus = 401;
     await h.tick(); assert.equal(h.api.canWork(), false);
     assert.equal(JSON.stringify(h.state().queue), before);
-    h.controls.authStatus = 0; h.controls.changedUserId = 44;
-    await h.tick(); assert.equal(h.requests.length, 0);
-    h.controls.changedUserId = 0;
+    h.controls.authStatus = 0;
     await h.tick(); assert.equal(h.state().queue.length, 0);
     assert.equal(h.api.canWork(), true);
 });
@@ -376,10 +535,157 @@ test('401 during replay preserves the command and retries automatically after re
     const h = await intentTransportHarness(); await sellOffline(h);
     h.controls.online = true; h.controls.replayAuth = true;
     await h.tick(); const operationId = h.state().queue[0].id;
-    assert.ok(h.state().conflict.recoverable);
+    assert.equal(h.api.status().locked, true);
     h.controls.replayAuth = false;
     await h.tick(); assert.equal(h.state().queue.length, 0);
     assert.equal(h.requests[1].id, operationId);
+});
+
+test('changing cashier locks the old tab until reload even if the original account later returns', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    const original = JSON.stringify(h.state().queue);
+    h.controls.online = true; h.controls.changedUserId = 44;
+    await h.tick(); assert.equal(h.api.status().locked, true);
+    h.controls.changedUserId = 0; await h.tick();
+    assert.equal(h.api.canWork(), false); assert.equal(h.requests.length, 0);
+    assert.equal(JSON.stringify(h.state().queue), original);
+    const reloaded = await intentTransportHarness(h.stores, { online: true, backend: h.controls.backend });
+    for (let i = 0; i < 100 && reloaded.state().queue.length; i++) await new Promise(resolve => setImmediate(resolve));
+    await reloaded.api.sync(); assert.equal(reloaded.api.canWork(), true);
+    assert.equal(reloaded.state().queue.length, 0);
+});
+
+test('logout locks API, QR history, printing and export and keeps the pending journal', async () => {
+    const h = await intentTransportHarness(); await sellOffline(h);
+    const original = JSON.stringify(h.state().queue);
+    h.window.dispatchEvent({ type: 'pos:privacy-lock', detail: { reason: 'logout' } });
+    assert.equal(h.api.canWork(), false);
+    for (const url of ['/admin/pos/screen', '/admin/acb/payments/orders/123/qrs']) {
+        const result = await h.apiFetch(url); assert.equal(result.status, 401);
+    }
+    assert.equal(h.api.print(h.state().currentId), false);
+    assert.equal(h.api.exportPending(), undefined);
+    h.controls.online = true; await h.tick();
+    assert.equal(h.requests.length, 0); assert.equal(JSON.stringify(h.state().queue), original);
+});
+
+test('a cold server bootstrap can finish without falling back to the cached session', async () => {
+    const h = await intentTransportHarness(undefined, { online: true, fastTimeout: true, slowBootstrap: true });
+    assert.equal(h.api.status().connected, true);
+    assert.equal(h.api.canWork(), true);
+    assert.equal(h.api.localMode(), false);
+    assert.equal(h.api.status().syncError, '');
+    assert.equal(h.api.status().context.antiForgeryToken, 'test', 'Use the fresh bootstrap context rather than the cached session');
+    assert.equal(h.state().queue.length, 0);
+});
+
+test('validated bootstrap screen is cloned for first paint without a duplicate screen request', async () => {
+    const h = await intentTransportHarness(undefined, { online: true });
+    const first = h.api.initialScreen();
+    assert.equal(first.currentDraft.orderId, h.state().currentId);
+    first.currentDraft.note = 'mutated UI copy';
+    assert.notEqual(h.api.initialScreen().currentDraft.note, 'mutated UI copy');
+    assert.equal(h.controls.screenRequests || 0, 0);
+    h.window.dispatchEvent({ type: 'pos:privacy-lock', detail: { reason: 'logout' } });
+    assert.equal(h.api.initialScreen(), null);
+    const otherTab = await intentTransportHarness(undefined, { online: true, noWriter: true });
+    assert.equal(otherTab.api.initialScreen(), null);
+});
+
+test('initial screen keeps authorized pending local edits instead of the older online bootstrap snapshot', async () => {
+    const seed = await intentTransportHarness();
+    await seed.post('/admin/pos/cart/current/new');
+    await seed.post('/admin/pos/cart/current/scan', { barcode: '123456' });
+    const localOrderId = seed.state().currentId, before = JSON.stringify(seed.state().queue);
+    let releaseStatus;
+    const statusGate = new Promise(resolve => { releaseStatus = resolve; });
+    const h = await intentTransportHarness(seed.stores, { online: true, statusGate });
+    try {
+        const screen = h.api.initialScreen();
+        assert.equal(h.api.status().connected, true);
+        assert.equal(screen.currentDraft.orderId, localOrderId);
+        assert.equal(screen.currentDraft.grandTotal, 10000);
+        assert.notEqual(screen.currentDraft.orderId, h.api.status().context.screen.currentDraft.orderId);
+        assert.equal(JSON.stringify(h.state().queue), before);
+    } finally { releaseStatus(); }
+    for (let i = 0; i < 100 && h.api.status().syncing; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.state().queue.length, 0);
+    const replayed = h.api.initialScreen();
+    assert.equal(replayed.currentDraft.orderId, h.state().currentId);
+    assert.equal(replayed.currentDraft.grandTotal, 10000);
+    assert.notEqual(replayed.currentDraft.orderId, h.api.status().context.screen.currentDraft.orderId,
+        'After startup replay, never return the server snapshot captured before those writes');
+});
+
+test('first bootstrap screen remains available while the offline catalog downloads in the background', async () => {
+    const seed = await intentTransportHarness(); seed.stores.get('catalogs').clear();
+    let releaseCatalog;
+    const catalogGate = new Promise(resolve => { releaseCatalog = resolve; });
+    const h = await intentTransportHarness(seed.stores, { online: true, catalogGate });
+    try {
+        assert.equal(h.api.status().ready, false); assert.equal(h.api.status().preparing, true);
+        assert.ok(h.api.initialScreen()?.currentDraft);
+        assert.equal(h.controls.screenRequests || 0, 0);
+    } finally { releaseCatalog(); }
+    for (let i = 0; i < 100 && !h.api.status().ready; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.api.status().ready, true);
+});
+
+test('slow auxiliary held details do not block the foreground screen or overwrite edits made while preparing', async () => {
+    const seed = await intentTransportHarness(); seed.stores.get('catalogs').clear();
+    let releaseHeld;
+    const heldDetailGate = new Promise(resolve => { releaseHeld = resolve; });
+    const held = { orderId: 999, isCurrentTerminal: true, isCurrentShift: true, grandTotal: 5000 };
+    const h = await intentTransportHarness(seed.stores, { online: true, heldOrders: [held], heldDetailGate,
+        heldDetail: { orderId: 999, status: 1, lines: [], payments: [], grandTotal: 5000 } });
+    try {
+        for (let i = 0; i < 100 && !h.controls.heldDetailRequested; i++) await new Promise(resolve => setImmediate(resolve));
+        assert.equal(h.controls.heldDetailRequested, true);
+        let timer;
+        const response = await Promise.race([h.apiFetch('/admin/pos/screen'), new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error('Foreground screen waited for held details')), 250);
+        })]).finally(() => clearTimeout(timer));
+        assert.equal((await response.json()).source, 'server');
+        h.server.act('/admin/pos/cart/ensure');
+        const edited = await h.post('/admin/pos/cart/current/note', { note: 'new cashier edit' });
+        assert.equal(edited.status, 200);
+        h.controls.screenPayload = { currentDraft: edited.body, currentCart: { currentOrderId: edited.body.orderId }, draftOrders: [], heldOrders: [held] };
+    } finally { releaseHeld(); }
+    for (let i = 0; i < 100 && !h.api.status().ready; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(h.api.status().ready, true);
+    assert.equal(h.state().orders[h.state().currentId].note, 'new cashier edit');
+    assert.equal(h.state().orders[999], undefined, 'Do not merge a prefetched cart after foreground mutations');
+});
+
+test('a slow POS screen stays online instead of repeatedly falling back after a successful status check', async () => {
+    const h = await intentTransportHarness();
+    h.controls.online = true; h.controls.fastTimeout = true; h.controls.slowScreen = true;
+    await h.tick();
+    const response = await h.apiFetch('/admin/pos/screen');
+    assert.equal((await response.json()).source, 'server');
+    assert.equal(h.api.status().connected, true);
+    assert.equal(h.api.localMode(), false);
+    assert.equal(h.state().queue.length, 0);
+});
+
+test('a stalled POS screen body still falls back and recovers without changing the journal', async () => {
+    const h = await intentTransportHarness();
+    h.controls.online = true; h.controls.fastTimeout = true;
+    await h.tick();
+    const before = JSON.stringify(h.state());
+    h.controls.stallScreenBody = true;
+    const response = await h.apiFetch('/admin/pos/screen');
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).source, undefined);
+    assert.equal(h.api.status().connected, false);
+    assert.equal(h.api.status().syncing, false);
+    assert.match(h.api.status().syncError, /quá lâu/);
+    assert.equal(JSON.stringify(h.state()), before);
+    h.controls.stallScreenBody = false;
+    await h.tick();
+    assert.equal(h.api.status().connected, true);
+    assert.equal(h.api.status().syncError, '');
+    assert.equal((await (await h.apiFetch('/admin/pos/screen')).json()).source, 'server');
 });
 
 for (const stage of ['status', 'replay'])
@@ -473,7 +779,8 @@ test('invoice intent UI restores the pending order without opening another modal
     const app = fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.app.js'), 'utf8');
     const source = app.slice(app.indexOf('function restorePendingInvoiceIntent()'), app.indexOf('function openReceiptPrint('));
     const calls = [], context = { window: { PosOffline: { pendingInvoiceIntentOrderId: () => 123 } },
-        invoiceIntentBusy: false, pendingInvoiceIntentOrderId: null, openReceiptPrint: id => calls.push(id) };
+        posState: { network: { busyScopes: new Set() } }, postPaymentPrintOrders: new Set(),
+        invoiceIntentBusy: false, receiptPrintActive: false, pendingInvoiceIntentOrderId: null, openReceiptPrint: id => calls.push(id) };
     vm.runInNewContext(source, context); context.restorePendingInvoiceIntent();
     assert.deepEqual(calls, [123]); context.invoiceIntentBusy = true; context.restorePendingInvoiceIntent();
     assert.deepEqual(calls, [123]);

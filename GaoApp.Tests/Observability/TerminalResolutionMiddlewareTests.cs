@@ -118,6 +118,8 @@ public sealed class TerminalResolutionMiddlewareTests
     private sealed class ThrowingTerminalRepository(Exception exception)
         : IPOSTerminalRepository
     {
+        public Task<POSTerminalDevice?> GetActiveDeviceByKeyAsync(int storeId, string deviceKey, CancellationToken ct = default)
+            => throw new NotSupportedException();
         public Task<POSTerminal?> GetByIdAsync(
             int id,
             CancellationToken ct = default) =>

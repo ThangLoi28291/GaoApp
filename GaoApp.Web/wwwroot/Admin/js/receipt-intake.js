@@ -9,7 +9,7 @@
     let config, state, barcodeState, modal, reviewModal, $product;
     let tab = 'existing', product = null, units = [], selected = null, addingUnit = false;
     let saving = false, loading = false, allowClose = false, requestNumber = 0, reviewItem = null, command = null, commandPayload = null;
-    let pendingIntake = false, uncertainIntake = false;
+    let pendingIntake = false, uncertainIntake = false, pendingCapture = null;
     let scanFeedback = null;
     const values = name => byId(name).value.trim();
     const number = name => Number(values(name).replace(',', '.'));
@@ -19,16 +19,23 @@
             document.getElementById('receivingWorkbench')?.dataset.rowVersion || state?.documentRowVersion;
     }
     async function api(path = '', body) {
-        const response = await fetch(endpoint + path, {method:body === undefined ? 'GET':'POST', credentials:'same-origin', cache:'no-store',
+        const response = await (window.ReceivingDraftRecovery?.request || fetch)(endpoint + path, {method:body === undefined ? 'GET':'POST', credentials:'same-origin', cache:'no-store',
+            redirect:'error',
             headers:body === undefined ? {} : {'Content-Type':'application/json', RequestVerificationToken:root.querySelector('[name="__RequestVerificationToken"]').value},
             body:body === undefined ? undefined:JSON.stringify(body)});
         const result = await response.json().catch(() => ({}));
         if (!response.ok) { const error=new Error(result.message || 'Không lưu được hàng nhận. Hãy kiểm tra kết nối và thử lại.');error.status=response.status;throw error; }
+        const recoveryKey=window.ReceivingDraftRecovery?.key(response);
+        if(recoveryKey)Object.defineProperty(result,'receivingRecoveryKey',{value:recoveryKey});
         return result;
     }
+    function validateState(next) {
+        let validVersion=false;
+        try { validVersion=atob(next?.documentRowVersion || '').length===8; } catch { /* Preserve the last valid state. */ }
+        if (!validVersion || !Array.isArray(next?.items)) throw new Error('Không đọc được trạng thái phiếu. Vui lòng thử lại để xác nhận kết quả.');
+    }
     function applyState(next) {
-        state = next;
-        if (!next.documentRowVersion) throw new Error('Thiếu phiên bản phiếu. Vui lòng tải lại.');
+        validateState(next);state = next;
         window.stockDocumentRowVersion?.update(next.documentRowVersion);
         if (window.warehouseReceivingDetail) window.warehouseReceivingDetail.rowVersion = next.documentRowVersion;
         const workbench = document.getElementById('receivingWorkbench');
@@ -72,10 +79,10 @@
             update();
         });
     }
-    async function reload() {
+    async function reload({requireConfirmation = false, commandId = null} = {}) {
         try {
-            config = await api(); applyState(config.state);
-            window.WarehouseReceivingFeedback?.loadState(config.recentReceipts);
+            const nextConfig = await api();validateState(nextConfig.state);
+            config = nextConfig;applyState(config.state);
             const choices = config.options?.units || [];
             if (!byId('riBaseUnit').options.length) {
                 options(byId('riBaseUnit'), choices, 'Gõ tên đơn vị gốc…');
@@ -85,8 +92,16 @@
                 initAutocomplete();
             }
             window.ReceiptIntakeReview?.init(config, endpoint);
+            if (commandId && window.WarehouseReceivingFeedback && !window.WarehouseReceivingFeedback.matchesSnapshot(config.recentReceipts, commandId))
+                throw new Error('Nhật ký và danh sách hàng chưa khớp xác nhận. Vui lòng thử lại để kiểm tra kết quả.');
             byId('riPageMessage').textContent = '';
-        } catch (error) { byId('riPageMessage').textContent = error.message; }
+            window.WarehouseReceivingFeedback?.loadState(config.recentReceipts);
+            return true;
+        } catch (error) {
+            byId('riPageMessage').textContent = error.message;
+            if (requireConfirmation) throw error;
+            return false;
+        }
     }
     function renderPending() {
         const photos=(state?.items || []).filter(x=>x.hasPhoto && x.status!==2);
@@ -135,6 +150,7 @@
         if (!canApprove) byId('riApproveNow').checked = false;
         byId('riSave').disabled = saving || loading || !config?.canCapture || (tab === 'existing' && (!product || (!selected && !addingUnit)));
         byId('riSave').textContent = saving ? 'Đang lưu…' : byId('riApproveNow').checked ? 'Duyệt và nhận hàng' : 'Lưu và nhận hàng';
+        window.ReceivingDraftRecovery?.captureForms();
     }
     function switchTab(next) {
         if (saving) return;
@@ -204,8 +220,9 @@
     function open(code = '', options = {}) {
         if (!config?.canCapture || saving || dirtyQuantity() || window.ReceiptQuantityControls?.isBusy()) return false;
         if (pendingIntake) { modal.show(); return true; }
+        if (window.receivingHasPendingChanges?.()) return false;
         if (typeof options === 'function') options = {};
-        command = null; commandPayload = null; loading = false;
+        command = null; commandPayload = null; pendingCapture = null; loading = false;
         window.ReceiptIntakePhoto?.reset();
         byId('riBarcode').value = code; byId('riNewName').value = options.name || '';
         byId('riQuantity').value = '1'; byId('riFactor').value = '';
@@ -220,14 +237,17 @@
         if (pending) prefillItem(pending);
         return true;
     }
-    async function afterSave(next) {
+    async function afterSave(next, commandId = null) {
         applyState(next);
-        window.WarehouseReceivingFeedback?.loadState(next.recentReceipts);
         await window.ReceiptBarcodeProposals?.reload();
-        if (typeof window.refreshReceivingLines === 'function') await window.refreshReceivingLines();
+        if (typeof window.refreshReceivingLines === 'function') {
+            if (await window.refreshReceivingLines() === false)
+                throw new Error('Danh sách hàng đang tải lại. Vui lòng thử lại để xác nhận đủ kết quả.');
+        }
         else if (typeof window.refreshStockDocumentDetailUI === 'function') await window.refreshStockDocumentDetailUI();
         await window.GaoAppPurchaseReceiptApproval?.refreshAfterIntake?.();
-        await reload();
+        await reload({requireConfirmation:true, commandId});
+        window.ReceivingDraftRecovery?.confirm(next.receivingRecoveryKey);
     }
     async function save() {
         if (saving || loading) return;
@@ -237,15 +257,16 @@
         if (tab === 'existing' && (!product || (!addingUnit && !selected))) { byId('riError').textContent = 'Hãy chọn sản phẩm và đơn vị nhận.'; return; }
         if (tab === 'new' && !values('riNewName')) { byId('riError').textContent = 'Vui lòng nhập tên sản phẩm mới.'; return; }
         if (!pack.unitName || !pack.baseUnitName || !(pack.factor > 0) || !(qty > 0)) { byId('riError').textContent = 'Nhập đủ đơn vị gốc, đơn vị nhận, tỷ lệ quy đổi và số lượng lớn hơn 0.'; return; }
-        const known = tab === 'existing' && !addingUnit;
-        const payload = known ? {productUnitConversionId:selected.productUnitConversionId, factor:pack.factor, quantity:qty, barcode:values('riBarcode'), note:values('riNote')} :
+        const known = uncertainIntake ? pendingCapture.known : tab === 'existing' && !addingUnit;
+        const payload = uncertainIntake ? pendingCapture.payload : known ? {productUnitConversionId:selected.productUnitConversionId, factor:pack.factor, quantity:qty, barcode:values('riBarcode'), note:values('riNote')} :
             {name:tab === 'new' ? values('riNewName') : units[0].productName, productVariantId:tab === 'existing' ? Number(product.productVariantId):null,
                 ...pack, quantity:qty, barcode:values('riBarcode'), categoryId:Number(values('riCategory')) || null,
                 note:values('riNote'), approveNow:byId('riApproveNow').checked};
-        payload.photoDataUrl = window.ReceiptIntakePhoto?.current() || null;
+        if (!uncertainIntake) payload.photoDataUrl = window.ReceiptIntakePhoto?.current() || null;
         const identity = JSON.stringify({known, payload});
         if (identity !== commandPayload) {
             command = crypto.randomUUID(); commandPayload = identity;
+            pendingCapture = {known, payload};
             scanFeedback = window.WarehouseReceivingFeedback?.prepare({commandId:command,
                 conversionId:known ? selected.productUnitConversionId : null,
                 name:payload.name || units[0]?.productName || 'Hàng nhập', unitName:pack.unitName,
@@ -254,19 +275,20 @@
         saving = true; setBusy(true); update();
         pendingIntake = true;
         window.receivingSaveEvent?.('saving');
-        let committed = false;
+        let committed = false, acknowledged = false;
         try {
             const next = await api(known ? '/known':'', {...payload, commandId:command, leaseToken:lease(), documentRowVersion:rowVersion()});
+            acknowledged = true;
             applyState(next);
             byId('riPageMessage').textContent = '';
-            await afterSave(next);
+            await afterSave(next, command);
             committed = true; pendingIntake=false; uncertainIntake=false; allowClose = true; modal.hide(); allowClose = false;
             window.ReceiptIntakePhoto?.reset();
             window.receivingSaveEvent?.('saved',null,`${payload.name || units[0]?.productName || 'Hàng nhập'} · ${num(qty)} ${pack.unitName}`,
                 scanFeedback ? {...scanFeedback, next} : null);
             window.jQuery('#quickLookupInput').val(null).trigger('change');
             window.focusQuickLookup?.();
-        } catch (error) { uncertainIntake=!error.status || error.status>=500;byId('riError').textContent = uncertainIntake?'Chưa nhận đủ xác nhận lưu. Bấm Lưu và nhận hàng để kiểm tra, thử lại; số lượng không bị cộng hai lần.':error.message; byId('riPageMessage').textContent = byId('riError').textContent; }
+        } catch (error) { uncertainIntake=uncertainIntake || acknowledged || !error.status || error.status>=500;byId('riError').textContent = uncertainIntake?'Chưa nhận đủ xác nhận lưu. Bấm Lưu và nhận hàng để kiểm tra, thử lại; số lượng không bị cộng hai lần.':error.message; byId('riPageMessage').textContent = byId('riError').textContent; }
         finally { saving = false; setBusy(false); update(); if(!committed)window.receivingSaveEvent?.('error'); }
     }
     function setBusy(value) {
@@ -277,6 +299,7 @@
     }
     function dirtyQuantity() {
         return [...document.querySelectorAll('[data-intake-quantity]')].some(input=>{
+            if(input.dataset.receiptQuantityUncertain==='1')return true;
             const item=state?.items.find(x=>x.id===Number(input.dataset.intakeQuantity));
             return item && Number(input.value)!==item.quantity;
         });
@@ -293,20 +316,31 @@
         const identity=String(quantity);
         if (input.dataset.commandQuantity!==identity) {input.dataset.commandQuantity=identity;input.dataset.command=crypto.randomUUID();}
         saving=true;setBusy(true);message.textContent='';
-        let quantitySaved=false;
+        let quantitySaved=false, quantityAcknowledged=false;
         window.receivingSaveEvent?.('saving');
         try {
             const next=await api(`/${item.id}/quantity`,{quantity,commandId:input.dataset.command,
                 documentRowVersion:rowVersion(),itemRowVersion:item.rowVersion,leaseToken:lease()});
+            quantityAcknowledged=true;
             await afterSave(next);
             quantitySaved=true;
+            window.ReceivingDraftRecovery?.confirmQuantity(input,quantity);
             delete input.dataset.receiptQuantityUncertain;
             return true;
-        } catch(error) {input.dataset.receiptQuantityUncertain=!error.status || error.status>=500?'1':'0';message.textContent=error.message;byId('riPageMessage').textContent=error.message;return false;}
+        } catch(error) {
+            input.dataset.receiptQuantityUncertain=input.dataset.receiptQuantityUncertain==='1' || quantityAcknowledged || !error.status || error.status>=500?'1':'0';
+            const current=[...document.querySelectorAll('[data-intake-quantity]')].find(x=>x.dataset.intakeQuantity===String(item.id));
+            if(current && current!==input) {
+                for(const name of ['command','commandQuantity','receiptQuantityUncertain'])current.dataset[name]=input.dataset[name];
+                current.value=String(quantity);
+            }
+            message.textContent=error.message;byId('riPageMessage').textContent=error.message;return false;
+        }
         finally {saving=false;setBusy(false);update();window.receivingSaveEvent?.(quantitySaved?'saved':'error');}
     }
     function openReview(item, removeOnly = false) {
         if (saving) return;
+        if (pendingIntake) { modal.show(); return; }
         const supplier = window.GaoAppPurchaseReceiptApproval?.supplierForIntake?.();
         if (!removeOnly && !item.proposedProductVariantId && supplier?.busy) {
             byId('riPageMessage').textContent = 'Đang lưu nhà cung cấp. Vui lòng đợi rồi mở duyệt lại.'; return;
@@ -448,7 +482,34 @@
         if (window.ReceiptBarcodeProposals) window.ReceiptBarcodeProposals.open = open;
         reload();
     }
-    window.ReceiptIntake = {open,reload,saveQuantity,retryPending:()=>{if(!pendingIntake)return false;modal.show();return true;},hasDraft:()=>saving || pendingIntake || (byId('receiptIntakeModal').classList.contains('show') && !!(values('riNewName') || values('riNote') || window.ReceiptIntakePhoto?.current())),isSaving:()=>saving || pendingIntake || dirtyQuantity() || !!window.ReceiptQuantityControls?.isBusy(),
+    function draft(){
+        if(!byId('receiptIntakeModal').classList.contains('show') || saving || loading)return null;
+        const fields={};for(const name of ['riBarcode','riNewName','riQuantity','riFactor','riNote'])fields[name]=byId(name).value;
+        const choices={};for(const name of ['riBaseUnit','riReceiveUnit','riCategory'])choices[name]={value:byId(name).value,text:byId(name).selectedOptions[0]?.text||''};
+        return {tab,product,selected:selected?.productUnitConversionId||null,addingUnit,fields,choices,photo:window.ReceiptIntakePhoto?.current()||null};
+    }
+    async function restoreDraft(saved){
+        if(!saved || !['new','existing'].includes(saved.tab) || !saved.fields || !saved.choices || !open('',{tab:saved.tab}))throw new Error('Chưa mở được phần nhập đang giữ. Kiểm tra trạng thái phiếu trước.');
+        if(saved.product?.productVariantId){
+            $product.append(new Option(saved.product.productName||'Sản phẩm',String(saved.product.productVariantId),true,true)).trigger('change.select2');
+            await chooseProduct(saved.product);chooseUnit(saved.addingUnit?'new':String(saved.selected),false);
+        }
+        for(const name of ['riBarcode','riNewName','riQuantity','riFactor','riNote'])byId(name).value=String(saved.fields[name]||'');
+        for(const name of ['riBaseUnit','riReceiveUnit','riCategory']){
+            const choice=saved.choices[name];if(!choice?.value)continue;
+            if(![...byId(name).options].some(x=>x.value===choice.value))byId(name).add(new Option(choice.text,choice.value));
+            window.jQuery(byId(name)).val(choice.value).trigger('change.select2');
+        }
+        window.ReceiptIntakePhoto?.restore(saved.photo);byId('riApproveNow').checked=false;update();
+        const evidence=byId('receiptIntakeModal').querySelector('.wrc-evidence');
+        if(evidence&&(saved.fields.riNote||saved.photo))evidence.open=true;
+    }
+    function finishRecovery(){
+        if(saving)return;
+        if(pendingIntake){pendingIntake=false;uncertainIntake=false;command=null;pendingCapture=null;allowClose=true;modal.hide();allowClose=false;}
+    }
+    window.ReceiptIntake = {open,reload,saveQuantity,draft,restoreDraft,finishRecovery,isActivelySaving:()=>saving,
+        retryPending:()=>{if(!pendingIntake)return false;modal.show();return true;},hasDraft:()=>saving || pendingIntake || (byId('receiptIntakeModal').classList.contains('show') && !!(values('riNewName') || values('riNote') || window.ReceiptIntakePhoto?.current())),isSaving:()=>saving || pendingIntake || dirtyQuantity() || !!window.ReceiptQuantityControls?.isBusy() || !!window.ReceivingDraftRecovery?.hasPending(),
         noResults:()=>'<div>Không tìm thấy sản phẩm.</div><button type="button" class="btn btn-sm btn-outline-primary mt-2 ri-open-new">Ghi nhận hàng chưa có</button>'};
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

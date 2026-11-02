@@ -1,0 +1,54 @@
+@model GaoApp.Web.Areas.Admin.Controllers.CustomerMarketingConsentPage
+@{
+    ViewData["Title"] = "Đồng ý nhận quảng cáo Zalo";
+}
+<main class="container-fluid py-3">
+    <h1>Đồng ý nhận quảng cáo Zalo</h1>
+    <p class="text-muted">@Model.StoreName · Chỉ khách có trạng thái đồng ý mới đủ điều kiện vào chiến dịch quảng cáo. Việc gửi hóa đơn và tin giao dịch không phụ thuộc cài đặt này.</p>
+    @if (!string.IsNullOrWhiteSpace(Model.Notice)) { <div class="alert alert-success" role="status">@Model.Notice</div> }
+    <form method="get" class="d-flex gap-2 mb-3">
+        <label for="q" class="visually-hidden">Tìm khách hàng</label>
+        <input id="q" name="q" value="@Model.Query" class="form-control" maxlength="100" placeholder="Tên, số điện thoại hoặc mã khách" />
+        <button class="btn btn-outline-primary" type="submit">Tìm</button>
+    </form>
+    @if (Model.Items.Count == 0)
+    {
+        <div class="alert alert-info">Không có khách đủ thông tin để hiển thị. Tối đa 100 kết quả; hãy tìm theo tên, mã hoặc số điện thoại.</div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead><tr><th>Khách hàng</th><th>Nhóm</th><th>Trạng thái Zalo</th><th>Đã cập nhật (UTC)</th><th>Thay đổi</th></tr></thead>
+                <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    <tr>
+                        <td>@item.Name<br /><small class="text-muted">@item.Phone</small></td>
+                        <td>@item.Group</td>
+                        <td>@(item.Granted == true ? "Đồng ý" : item.Granted == false ? "Từ chối" : "Chưa có bằng chứng")</td>
+                        <td>@(item.ChangedAtUtc?.ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                        <td>
+                            <form method="post" action="/admin/customer-service/marketing-consent/@item.CustomerId" class="d-flex flex-wrap gap-2 align-items-center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="Channel" value="Zalo" />
+                                <select name="Source" class="form-select form-select-sm" aria-label="Nguồn bằng chứng" required>
+                                    <option value="CustomerRequest">Khách yêu cầu</option>
+                                    <option value="PaperForm">Phiếu giấy</option>
+                                    <option value="PhoneCall">Cuộc gọi</option>
+                                </select>
+                                <input name="EvidenceReference" maxlength="250" class="form-control form-control-sm" placeholder="Mã/ghi chú bằng chứng" aria-label="Mã hoặc ghi chú bằng chứng" />
+                                <label class="small"><input type="checkbox" name="ConfirmedEvidence" value="true" /> Đã kiểm tra bằng chứng</label>
+                                @if (!item.HasActiveBinding) { <small class="text-muted">Cần liên kết Zalo đã xác minh để bật nhận quảng cáo.</small> }
+                                <button class="btn btn-sm btn-success" name="IsGranted" value="true" type="submit" disabled="@(item.HasActiveBinding ? null : "disabled")">Cho phép</button>
+                                <button class="btn btn-sm btn-outline-danger" name="IsGranted" value="false" type="submit">Từ chối / ngừng nhận</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    }
+    <p class="text-muted small">Đường dẫn để tự cấu hình menu: <code>/admin/customer-service/marketing-consent</code>. Không tự thêm menu vào cấu hình cửa hàng.</p>
+</main>

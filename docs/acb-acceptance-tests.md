@@ -108,4 +108,4 @@ Sau khi build/chạy bản sửa, giữ đúng ca/máy tạo QR, mở **Thanh to
 Các H01–H10 cần xác nhận trên HTTPS public và cấu hình thông báo thực tế của ACB. Đừng gửi payload giả vào dữ liệu bán hàng thật để mô phỏng tiền đã về; các kịch bản giả lập đã có trong bộ test tách biệt.
 
 
-Bổ sung đếm ngược: đồng hồ dùng cùng thời điểm với lịch tra cứu thực tế, giữ kiểm tra trạng thái callback định kỳ và xử lý hub ngay. Không thêm migration. Tám ca JavaScript mới kiểm tra lịch 30/8 giây, bấm thủ công, lỗi mạng, nhiều QR, trạng thái dừng và quay lại tab nền; tổng JavaScript là 29 ca.
+Popup POS đã bỏ đồng hồ đếm ngược, giữ nút Kiểm tra ngay và phím F9. Lịch kiểm tra dự phòng 30/8 giây tiếp tục chạy nền và xử lý hub ngay. Các ca JavaScript kiểm tra thao tác thủ công, lỗi mạng, nhiều QR, trạng thái dừng và quay lại tab nền vẫn được giữ.

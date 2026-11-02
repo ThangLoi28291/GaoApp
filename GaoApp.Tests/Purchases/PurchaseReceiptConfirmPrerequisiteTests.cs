@@ -21,6 +21,153 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
 {
     private static readonly byte[] CurrentVersion = [1, 2, 3, 4];
 
+    [Theory]
+    [InlineData("submit", PurchaseReceiptSource.Direct)]
+    [InlineData("financial", PurchaseReceiptSource.Direct)]
+    [InlineData("commercial", PurchaseReceiptSource.Direct)]
+    [InlineData("generic", PurchaseReceiptSource.Direct)]
+    [InlineData("submit", PurchaseReceiptSource.LegacyDirect)]
+    [InlineData("financial", PurchaseReceiptSource.LegacyDirect)]
+    [InlineData("commercial", PurchaseReceiptSource.LegacyDirect)]
+    [InlineData("generic", PurchaseReceiptSource.LegacyDirect)]
+    public async Task Linked_purchase_order_with_wrong_raw_receipt_source_fails_before_mutation(
+        string operation, PurchaseReceiptSource rawSource)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        document.ReceiptSource = rawSource;
+        document.PurchaseOrderId = 99;
+        if (operation == "submit") document.Status = StockDocumentStatus.Draft;
+        var fixture = CreateFixture(document, supplier);
+        var before = ReceiptSnapshot.Capture(document);
+
+        Func<Task> action = operation switch
+        {
+            "submit" => () => fixture.Service.SubmitForApprovalAsync(document.Id, null, RowVersion(document)),
+            "financial" => () => fixture.Service.UpdatePurchaseReceiptApprovalAsync(document.Id,
+                new() { RowVersion = RowVersion(document), HasFreight = true, FreightTotal = 100m, FreightPayeeName = "Vận chuyển" }),
+            "commercial" => () => fixture.Service.ApproveCommercialAsync(document.Id, ValidCommercialRequest(supplier.Id)),
+            _ => () => fixture.Service.ApproveAsync(document.Id, null, RowVersion(document))
+        };
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*không khớp liên kết đơn mua*");
+        ReceiptSnapshot.Capture(document).Should().BeEquivalentTo(before);
+        document.HasFreight.Should().BeFalse();
+        document.ReceiptSource.Should().Be(rawSource);
+        fixture.Repository.GetSupplierCalls.Should().Be(0);
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Commercial_approval_cannot_mark_merchandise_or_freight_paid_without_treasury(
+        bool merchandisePaid, bool freightPaid)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+        var before = ReceiptSnapshot.Capture(document);
+        var request = ValidCommercialRequest(supplier.Id);
+        request.IsMerchandisePaid = merchandisePaid;
+        request.IsFreightPaid = freightPaid;
+
+        var action = () => fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*phiếu chi tại Thu/chi*");
+        ReceiptSnapshot.Capture(document).Should().BeEquivalentTo(before);
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Generic_approval_cannot_bypass_treasury_for_legacy_paid_flags(
+        bool merchandisePaid, bool freightPaid)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        document.IsMerchandisePaid = merchandisePaid;
+        document.IsFreightPaid = freightPaid;
+        var fixture = CreateFixture(document, supplier);
+        var before = ReceiptSnapshot.Capture(document);
+
+        var action = () => fixture.Service.ApproveAsync(document.Id, null, RowVersion(document));
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*phiếu chi tại Thu/chi*");
+        ReceiptSnapshot.Capture(document).Should().BeEquivalentTo(before);
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Fact]
+    public async Task Legacy_freight_update_cannot_mark_freight_paid_without_treasury()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        var fixture = CreateFixture(document, supplier);
+
+        var action = () => fixture.Service.UpdatePurchaseReceiptApprovalAsync(document.Id,
+            new() { RowVersion = RowVersion(document), HasFreight = true, FreightTotal = 10m, IsFreightPaid = true });
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*phiếu chi tại Thu/chi*");
+        document.HasFreight.Should().BeFalse();
+        document.IsFreightPaid.Should().BeFalse();
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Every_confirmation_entry_rejects_an_unresolved_revision_before_mutation(bool commercial)
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        document.HasRevisionRequest = true;
+        document.RevisionRequestNote = "Nhân viên báo thiếu hàng";
+        var fixture = CreateFixture(document, supplier);
+        var before = ReceiptSnapshot.Capture(document);
+
+        Func<Task> action = commercial
+            ? () => fixture.Service.ApproveCommercialAsync(document.Id, ValidCommercialRequest(supplier.Id))
+            : () => fixture.Service.ApproveAsync(document.Id, null, RowVersion(document));
+
+        await action.Should().ThrowAsync<BusinessRuleException>().WithMessage("*yêu cầu xin sửa chưa được giải quyết*");
+        document.HasRevisionRequest.Should().BeTrue();
+        document.RevisionRequestNote.Should().Be("Nhân viên báo thiếu hàng");
+        ReceiptSnapshot.Capture(document).Should().BeEquivalentTo(before);
+        fixture.AssertNoMutationOrPosting();
+    }
+
+    [Fact]
+    public async Task Explicit_commercial_approval_clears_legacy_paid_flags_and_creates_only_outstanding_payables()
+    {
+        var supplier = CreateSupplier(51);
+        var document = CreateDirectReceipt(supplier);
+        document.IsMerchandisePaid = true;
+        document.IsFreightPaid = true;
+        var fixture = CreateFixture(document, supplier);
+        var request = ValidCommercialRequest(supplier.Id);
+        request.HasFreight = true;
+        request.FreightTotal = 10m;
+        request.FreightPayeeName = "Đơn vị vận chuyển";
+
+        await fixture.Service.ApproveCommercialAsync(document.Id, request);
+
+        document.IsMerchandisePaid.Should().BeFalse();
+        document.IsFreightPaid.Should().BeFalse();
+        fixture.Repository.AddedPayables.Should().HaveCount(2);
+        fixture.Repository.AddedPayables.Should().OnlyContain(x =>
+            x.Status == PurchasePayableStatus.Outstanding && x.PaidAtUtc == null);
+
+        // A replay with an old payload cannot mutate an already-posted receipt.
+        request.IsMerchandisePaid = true;
+        request.IsFreightPaid = true;
+        await fixture.Service.ApproveCommercialAsync(document.Id, request);
+        fixture.Repository.AddedPayables.Should().HaveCount(2);
+        document.IsMerchandisePaid.Should().BeFalse();
+    }
+
     [Fact]
     public async Task Unresolved_provisional_blocks_inside_confirm_transaction_before_posting()
     {
@@ -70,7 +217,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
             ValidCommercialRequest(null, paid, payee));
 
         await action.Should().ThrowAsync<BusinessRuleException>()
-            .WithMessage("*chọn nhà cung cấp*");
+            .WithMessage(paid ? "*phiếu chi tại Thu/chi*" : "*chọn nhà cung cấp*");
         ReceiptSnapshot.Capture(document).Should().BeEquivalentTo(before);
         fixture.AssertNoMutationOrPosting();
         fixture.Repository.GetSupplierCalls.Should().Be(0);
@@ -176,7 +323,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
     }
 
     [Fact]
-    public async Task Final_authoritative_reconciliation_observes_applied_commercial_values_before_posting()
+    public async Task Documentary_reconciliation_observes_applied_commercial_values_before_posting()
     {
         var supplier = CreateSupplier(51);
         var document = CreateDirectReceipt(supplier);
@@ -184,7 +331,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
         {
             if (method.Name != nameof(IInputInvoiceReconciliationService
-                    .EnsureConfirmableWithinTransactionAsync))
+                    .RefreshWithinTransactionAsync))
                 throw new NotSupportedException(method.Name);
             observedAppliedPrice = document.Lines.Single().UnitPriceBeforeVat == 12m &&
                 document.Lines.Single().LineTotal > 0m;
@@ -249,7 +396,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
         {
             if (method.Name != nameof(IInputInvoiceReconciliationService
-                    .EnsureConfirmableWithinTransactionAsync))
+                    .RefreshWithinTransactionAsync))
                 throw new NotSupportedException(method.Name);
             calls++;
             return Task.FromException<GaoApp.Application.DTOs.Inventory.InputInvoices.InputInvoiceReconciliationDto>(
@@ -284,7 +431,7 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         var reconciliation = CreateProxy<IInputInvoiceReconciliationService>((method, _) =>
         {
             if (method.Name != nameof(IInputInvoiceReconciliationService
-                    .EnsureConfirmableWithinTransactionAsync))
+                    .RefreshWithinTransactionAsync))
                 throw new NotSupportedException(method.Name);
             calls++;
             return Task.FromResult(new InputInvoiceReconciliationDto
@@ -1205,6 +1352,8 @@ public sealed class PurchaseReceiptConfirmPrerequisiteTests
         public Task AddInventoryTransactionAsync(InventoryTransaction entity, CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
+            => throw new NotSupportedException();
+        public Task<List<StockDocumentListItemDto>> GetReceivingReceiptListAsync(CancellationToken ct = default)
             => throw new NotSupportedException();
         public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
             => throw new NotSupportedException();

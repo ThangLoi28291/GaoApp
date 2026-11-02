@@ -49,6 +49,7 @@ function checkRedirectGuards() {
         await Promise.all([page.waitForURL(url=>!url.pathname.endsWith('/login')),page.locator('button[type=submit]').click()]);
         await page.goto(info.baseUrl+'/admin/pos/v3');
         await page.waitForURL(url=>url.pathname==='/admin/pos-shift'&&url.searchParams.get('start')==='1');
+        await require('./browser-contract.cjs').continueShiftCountWithMockPrinter(page);
         await page.locator('#openShiftModal.show').waitFor();
         assert.equal(openRequests,0,'Navigating to receive shift never opens a shift without confirmation');
         assert.equal(new URL(page.url()).searchParams.get('returnUrl'),'/admin/pos/v3');

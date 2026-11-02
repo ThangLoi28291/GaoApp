@@ -12,6 +12,9 @@ namespace GaoApp.Infrastructure.Repositories.Inventory;
 public class InventoryCostLayerAllocationRepository : IInventoryCostLayerAllocationRepository
 {
     private readonly AppDbContext _db;
+    private Guid? _receiptTransactionId;
+    private int? _receiptStoreId;
+    private readonly Dictionary<(int WarehouseId, int VariantId), List<InventoryCostLayerAllocation>> _receiptAllocations = [];
 
     public InventoryCostLayerAllocationRepository(AppDbContext db)
     {
@@ -22,7 +25,10 @@ public class InventoryCostLayerAllocationRepository : IInventoryCostLayerAllocat
     /// Thêm 1 allocation.
     /// </summary>
     public Task AddAsync(InventoryCostLayerAllocation entity, CancellationToken ct = default)
-        => _db.InventoryCostLayerAllocations.AddAsync(entity, ct).AsTask();
+    {
+        _receiptAllocations.Clear();
+        return _db.InventoryCostLayerAllocations.AddAsync(entity, ct).AsTask();
+    }
 
     /// <summary>
     /// Thêm nhiều allocation.
@@ -88,7 +94,13 @@ public class InventoryCostLayerAllocationRepository : IInventoryCostLayerAllocat
         int productVariantId,
         CancellationToken ct = default)
     {
-        var rows = await _db.InventoryCostLayerAllocations
+        if (_receiptTransactionId == _db.Database.CurrentTransaction?.TransactionId &&
+            _db.CanWriteStoreData && (_db.CurrentStoreId is null || _receiptStoreId == _db.CurrentStoreId) && _receiptStoreId is { } storeId &&
+            InventoryPostingLockState.LockedBalance(_db, storeId, warehouseId, productVariantId) is not null &&
+            _receiptAllocations.TryGetValue((warehouseId, productVariantId), out var prepared))
+            return OpenRows(prepared);
+
+        var query = _db.InventoryCostLayerAllocations
             .Include(x => x.InventoryValuationEntry)
             .Where(x =>
                 x.IsProvisional &&
@@ -97,15 +109,58 @@ public class InventoryCostLayerAllocationRepository : IInventoryCostLayerAllocat
                 x.InventoryValuationEntry.ProductVariantId == productVariantId &&
                 x.InventoryValuationEntry.EntryType == InventoryValuationEntryType.Outbound)
             .OrderBy(x => x.InventoryValuationEntry.OccurredAtUtc)
-            .ThenBy(x => x.Id)
-            .ToListAsync(ct);
-        foreach (var row in rows)
-        {
-            await InventoryPostingLockState.RefreshOnceAsync(_db, row, ct);
-            await InventoryPostingLockState.RefreshOnceAsync(_db, row.InventoryValuationEntry, ct);
-        }
-        return rows.Where(x => !x.IsDeleted && x.IsProvisional && !x.IsResolved).ToList();
+            .ThenBy(x => x.Id);
+        if (_db.Database.CurrentTransaction is null) return await query.ToListAsync(ct);
+        return OpenRows(TrackSnapshots(await query.AsNoTrackingWithIdentityResolution().ToListAsync(ct)));
     }
+
+    public async Task PreparePurchaseReceiptAsync(int storeId, int warehouseId,
+        IReadOnlyCollection<int> productVariantIds, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(productVariantIds);
+        var transaction = _db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("Receipt preparation requires an active posting transaction.");
+        if (!_db.CanWriteStoreData || (_db.CurrentStoreId is > 0 && _db.CurrentStoreId != storeId))
+            throw new InvalidOperationException("Receipt preparation requires the current store.");
+        var ids = productVariantIds.Distinct().OrderBy(x => x).ToArray();
+        foreach (var id in ids)
+            if (InventoryPostingLockState.LockedBalance(_db, storeId, warehouseId, id) is null)
+                throw new InvalidOperationException("Receipt preparation requires every balance lock first.");
+        if (_receiptTransactionId != transaction.TransactionId)
+        {
+            _receiptTransactionId = transaction.TransactionId;
+            _receiptAllocations.Clear();
+        }
+        _receiptStoreId = storeId;
+        if (ids.Length == 0) return;
+        var snapshots = await _db.InventoryCostLayerAllocations.AsNoTrackingWithIdentityResolution()
+            .Include(x => x.InventoryValuationEntry)
+            .Where(x => x.StoreId == storeId && x.IsProvisional && !x.IsResolved &&
+                x.InventoryValuationEntry.WarehouseId == warehouseId &&
+                ids.Contains(x.InventoryValuationEntry.ProductVariantId) &&
+                x.InventoryValuationEntry.EntryType == InventoryValuationEntryType.Outbound)
+            .ToListAsync(ct);
+        var rows = TrackSnapshots(snapshots);
+        var grouped = rows.GroupBy(x => x.InventoryValuationEntry.ProductVariantId)
+            .ToDictionary(x => x.Key, x => x.ToList());
+        foreach (var id in ids)
+            _receiptAllocations[(warehouseId, id)] = grouped.GetValueOrDefault(id) ?? [];
+    }
+
+    private List<InventoryCostLayerAllocation> TrackSnapshots(List<InventoryCostLayerAllocation> snapshots)
+    {
+        var entries = InventoryPostingLockState.TrackFresh(_db,
+            snapshots.Select(x => x.InventoryValuationEntry).DistinctBy(x => x.Id).ToArray())
+            .ToDictionary(x => x.Id);
+        foreach (var row in snapshots) row.InventoryValuationEntry = entries[row.InventoryValuationEntryId];
+        var rows = InventoryPostingLockState.TrackFresh(_db, snapshots);
+        foreach (var row in rows) row.InventoryValuationEntry = entries[row.InventoryValuationEntryId];
+        return rows;
+    }
+
+    private static List<InventoryCostLayerAllocation> OpenRows(IEnumerable<InventoryCostLayerAllocation> rows)
+        => rows.Where(x => !x.IsDeleted && x.IsProvisional && !x.IsResolved)
+            .OrderBy(x => x.InventoryValuationEntry.OccurredAtUtc).ThenBy(x => x.Id).ToList();
 
     /// <summary>
     /// Lấy các allocation nguồn của order line vẫn còn outstanding

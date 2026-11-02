@@ -18,7 +18,8 @@ public sealed class ReceiptBarcodeProposalService(
     public async Task<ReceiptBarcodeContext> ContextAsync(int storeId, int documentId, CancellationToken ct)
     {
         var document = await DocumentAsync(storeId, documentId, false, ct);
-        return new(document.ReceiptSource, document.Status);
+        return new(document.PurchaseOrderId.HasValue ? PurchaseReceiptSource.PurchaseOrder : document.ReceiptSource,
+            document.Status);
     }
 
     public async Task<List<BarcodeVerificationManagementDto>> ListAsync(int storeId, int documentId, CancellationToken ct)

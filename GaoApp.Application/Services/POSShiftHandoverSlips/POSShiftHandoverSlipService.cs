@@ -271,7 +271,7 @@ public class POSShiftHandoverSlipService : IPOSShiftHandoverSlipService
 
     private async Task<string> GenerateSlipCodeAsync(int storeId, CancellationToken ct)
     {
-        var today = DateTime.Now.ToString("yyyyMMdd");
+        var today = VietnamTime.Now.ToString("yyyyMMdd");
 
         for (var i = 1; i <= 9999; i++)
         {

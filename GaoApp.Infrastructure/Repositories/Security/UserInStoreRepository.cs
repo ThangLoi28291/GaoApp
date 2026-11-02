@@ -88,7 +88,9 @@ public class UserInStoreRepository : IUserInStoreRepository
 
     public Task UpdateAsync(UserInStore entity, CancellationToken ct = default)
     {
-        _db.UserInStores.Update(entity);
+        // Edit loads a tracked membership. Mark only it, rather than rewriting
+        // the included User/Role graph and revoking every session for that role.
+        _db.Entry(entity).State = EntityState.Modified;
         return Task.CompletedTask;
     }
 
@@ -138,6 +140,7 @@ public class UserInStoreRepository : IUserInStoreRepository
     {
         return _db.UserInStores
             .Include(x => x.User)
+            .Include(x => x.Role)
             .FirstOrDefaultAsync(
                 x => x.StoreId == storeId &&
                      x.UserId == userId &&

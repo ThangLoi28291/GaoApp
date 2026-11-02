@@ -66,7 +66,7 @@
                 <div class="col-md-3">
                     <div class="text-muted small">Ngày phát hành</div>
                     <div class="fw-semibold">
-                        @(info.IssuedAtUtc?.ToString("dd/MM/yyyy HH:mm") ?? "-")
+                        @(info.IssuedAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "-")
                     </div>
                 </div>
 
@@ -211,7 +211,7 @@
 
                         <button type="submit"
                                 class="btn btn-primary"
-                                onclick="return confirm('Xác nhận tạo hóa đơn xử lý sai sót?');">
+                                data-csp-confirm="Xác nhận tạo hóa đơn xử lý sai sót?">
                             Tạo hóa đơn
                         </button>
                     </div>
@@ -222,3 +222,10 @@
     </div>
 
 </div>
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-operations.mobile.css" asp-append-version="true" />
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-operations.mobile.js" asp-append-version="true"></script>
+}

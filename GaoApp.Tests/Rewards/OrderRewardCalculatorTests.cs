@@ -8,6 +8,39 @@ namespace GaoApp.Tests.Rewards;
 public sealed class OrderRewardCalculatorTests
 {
     [Theory]
+    [InlineData("WHOLESALE")]
+    [InlineData(" wholesale ")]
+    public async Task Wholesale_customer_never_earns_even_at_full_retail_price(string tier)
+    {
+        var order = Sale();
+        order.Customer = new Customer { Id = 1, PriceTier = tier };
+        var result = await Calculator(order).CalculateAsync(order.Id);
+        Assert.Equal(0, result.RewardableAmount);
+        Assert.All(result.Lines, line => Assert.False(line.IsRewardable));
+    }
+
+    [Fact]
+    public async Task Wholesale_sale_snapshot_remains_ineligible_after_customer_changes_to_retail()
+    {
+        var order = Sale();
+        order.Customer = new Customer { Id = 1, PriceTier = "RETAIL" };
+        order.CustomerPriceTierSnapshot = "WHOLESALE";
+        Assert.Equal(0, (await Calculator(order).CalculateAsync(order.Id)).RewardableAmount);
+    }
+
+    [Fact]
+    public async Task Return_preserves_recorded_retail_earning_after_customer_changes_to_wholesale()
+    {
+        var order = Sale();
+        order.Customer = new Customer { Id = 1, PriceTier = "WHOLESALE" };
+        order.CustomerPriceTierSnapshot = "RETAIL";
+        order.Lines.Single().RewardableAmountSnapshot = 6000;
+        Assert.Equal(6000, (await Calculator(order).CalculateForReturnAsync(order.Id)).RewardableAmount);
+        order.Lines.Single().RewardableAmountSnapshot = 0;
+        Assert.Equal(0, (await Calculator(order).CalculateForReturnAsync(order.Id)).RewardableAmount);
+    }
+
+    [Theory]
     [InlineData(1, 6000, 1, 6000)]
     [InlineData(3, 6000, 1, 18000)]
     [InlineData(4, 6000, 1, 24000)]

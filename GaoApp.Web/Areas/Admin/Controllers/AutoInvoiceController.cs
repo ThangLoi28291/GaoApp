@@ -98,7 +98,7 @@ public sealed class AutoInvoiceController : Controller
         }
         var result = await _service.UpdateSettingsAsync(request, ct);
         if (!result.IsSuccess)
-            TempData["Error"] = result.Error?.Message;
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error);
         else
             TempData["Success"] = "Đã lưu cấu hình phát hành tự động.";
         return RedirectToAction(nameof(Index), new { tab = "settings" });
@@ -113,7 +113,7 @@ public sealed class AutoInvoiceController : Controller
         var enabled = result.IsSuccess && result.Value;
         TempData[result.IsSuccess ? "Success" : "Error"] = result.IsSuccess
             ? enabled ? "Đã bật phát hành tự động." : "Đã tạm ngưng phát hành tự động."
-            : result.Error?.Message;
+            : InvoiceErrorReadSanitizer.UserMessage(result.Error);
         return RedirectToAction(nameof(Index), new { tab = "settings" });
     }
 
@@ -125,7 +125,7 @@ public sealed class AutoInvoiceController : Controller
         var result = await _service.RunOnceAsync(force: true, ct);
         TempData[result.IsSuccess ? "Success" : "Error"] = result.IsSuccess
             ? "Worker đã nhận một chu kỳ xử lý."
-            : result.Error?.Message;
+            : InvoiceErrorReadSanitizer.UserMessage(result.Error);
         return RedirectToAction(nameof(Index));
     }
 
@@ -150,7 +150,7 @@ public sealed class AutoInvoiceController : Controller
         var result = await _service.RecheckIncidentAsync(invoiceHeadId, ct);
         TempData[result.IsSuccess ? "Success" : "Error"] = result.IsSuccess
             ? "Đã kiểm tra lại điều kiện cục bộ của hóa đơn."
-            : result.Error?.Message ?? "Không thể kiểm tra lại hóa đơn.";
+            : InvoiceErrorReadSanitizer.UserMessage(result.Error) ?? "Không thể kiểm tra lại hóa đơn.";
         return RedirectToAction(nameof(Index), new { tab = "errors" });
     }
 
@@ -186,7 +186,7 @@ public sealed class AutoInvoiceController : Controller
         var result = await routeService.ChangeRouteAsync(invoice.OrderId.Value, InvoiceIssuanceRoute.Manual, ct);
         TempData[result.IsSuccess ? "Success" : "Error"] = result.IsSuccess
             ? "Đã chuyển đơn hàng sang luồng phát hành thủ công."
-            : result.Error?.Message ?? "Không thể chuyển sang thủ công.";
+            : InvoiceErrorReadSanitizer.UserMessage(result.Error) ?? "Không thể chuyển sang thủ công.";
         return RedirectToAction(nameof(Index));
     }
 }

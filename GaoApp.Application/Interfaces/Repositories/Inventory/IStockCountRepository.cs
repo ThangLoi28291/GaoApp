@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Entities;
+using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Interfaces.Repositories.Inventory;
@@ -12,6 +12,13 @@ public interface IStockCountRepository
     Task<StockCountDocument?> GetDetailAsync(int id, CancellationToken ct = default);
 
     Task<StockCountLine?> GetLineByIdAsync(int lineId, CancellationToken ct = default);
+
+    Task<int?> GetDocumentIdForLineAsync(int lineId, CancellationToken ct = default);
+
+    // Must run inside the transaction, before loading/checking mutable document state.
+    Task LockDocumentForUpdateAsync(int documentId, CancellationToken ct = default);
+
+    Task<bool> HasActiveLinesAsync(int documentId, CancellationToken ct = default);
 
     Task<int> GetNextLineNoAsync(int stockCountDocumentId, CancellationToken ct = default);
 

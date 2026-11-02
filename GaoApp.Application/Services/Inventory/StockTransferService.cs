@@ -185,207 +185,260 @@ public class StockTransferService : IStockTransferService
 
         return "/" + storagePath.TrimStart('/');
     }
+    private Task ExecuteDocumentMutationAsync(int documentId, Func<Task> mutation, CancellationToken ct)
+        => ExecuteDocumentMutationAsync(documentId, async () =>
+        {
+            await mutation();
+            return true;
+        }, ct);
+
+    private async Task<T> ExecuteDocumentMutationAsync<T>(int documentId, Func<Task<T>> mutation, CancellationToken ct)
+    {
+        await _stockTransferRepository.BeginTransactionAsync(ct);
+        try
+        {
+            await _stockTransferRepository.LockDocumentForUpdateAsync(documentId, ct);
+            var result = await mutation();
+            await _stockTransferRepository.CommitTransactionAsync(ct);
+            return result;
+        }
+        catch
+        {
+            // Request cancellation must not skip rollback and keep a document locked.
+            await _stockTransferRepository.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public async Task UpdateHeaderAsync(int id, UpdateStockTransferHeaderRequest request, CancellationToken ct = default)
     {
-        var document = await _stockTransferRepository.GetByIdAsync(id, ct)
-            ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
+        await ExecuteDocumentMutationAsync(id, async () =>
+        {
+            var document = await _stockTransferRepository.GetByIdAsync(id, ct)
+                ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
 
-        EnsureEditable(document.Status);
-        ValidateWarehouses(request.FromWarehouseId, request.ToWarehouseId);
+            EnsureEditable(document.Status);
+            ValidateWarehouses(request.FromWarehouseId, request.ToWarehouseId);
 
-        if (!await _stockTransferRepository.WarehouseExistsAsync(request.FromWarehouseId, ct))
-            throw new InvalidOperationException("Kho nguồn không tồn tại.");
+            if (!await _stockTransferRepository.WarehouseExistsAsync(request.FromWarehouseId, ct))
+                throw new InvalidOperationException("Kho nguồn không tồn tại.");
 
-        if (!await _stockTransferRepository.WarehouseExistsAsync(request.ToWarehouseId, ct))
-            throw new InvalidOperationException("Kho đích không tồn tại.");
+            if (!await _stockTransferRepository.WarehouseExistsAsync(request.ToWarehouseId, ct))
+                throw new InvalidOperationException("Kho đích không tồn tại.");
 
-        document.DocumentDate = request.DocumentDate.Date;
-        document.FromWarehouseId = request.FromWarehouseId;
-        document.ToWarehouseId = request.ToWarehouseId;
-        document.Note = request.Note?.Trim();
+            document.DocumentDate = request.DocumentDate.Date;
+            document.FromWarehouseId = request.FromWarehouseId;
+            document.ToWarehouseId = request.ToWarehouseId;
+            document.Note = request.Note?.Trim();
 
-        await _stockTransferRepository.SaveChangesAsync(ct);
+            await _stockTransferRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task<int> AddLineAsync(int documentId, AddStockTransferLineRequest request, CancellationToken ct = default)
     {
-        var document = await _stockTransferRepository.GetDetailAsync(documentId, ct)
-            ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
-
-        EnsureEditable(document.Status);
-
-        var variant = await _stockTransferRepository.GetVariantForTransferAsync(request.ProductVariantId, ct)
-            ?? throw new InvalidOperationException("Sản phẩm không tồn tại.");
-
-        var resolvedUnit = await _inventoryUnitResolver.ResolveAsync(
-            request.ProductVariantId,
-            request.UnitId,
-            ct);
-
-        var factor = resolvedUnit.Factor <= 0 ? 1m : resolvedUnit.Factor;
-        var existingLine = document.Lines.FirstOrDefault(x =>
-    x.ProductVariantId == request.ProductVariantId &&
-    x.UnitId == resolvedUnit.UnitId);
-
-        if (existingLine != null)
+        return await ExecuteDocumentMutationAsync(documentId, async () =>
         {
-            existingLine.Quantity += request.Quantity;
-            existingLine.Factor = factor;
-            existingLine.BaseQuantity = existingLine.Quantity * factor;
-            existingLine.UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty;
-            existingLine.BarcodeSnapshot = ResolveBarcodeSnapshot(variant, resolvedUnit.UnitId);
+            var document = await _stockTransferRepository.GetDetailAsync(documentId, ct)
+                ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
 
-            var incomingNote = request.Note?.Trim();
+            EnsureEditable(document.Status);
 
-            if (!string.IsNullOrWhiteSpace(incomingNote))
+            var variant = await _stockTransferRepository.GetVariantForTransferAsync(request.ProductVariantId, ct)
+                ?? throw new InvalidOperationException("Sản phẩm không tồn tại.");
+
+            var resolvedUnit = await _inventoryUnitResolver.ResolveAsync(
+                request.ProductVariantId,
+                request.UnitId,
+                ct);
+
+            var factor = resolvedUnit.Factor <= 0 ? 1m : resolvedUnit.Factor;
+            var existingLine = document.Lines.FirstOrDefault(x =>
+        x.ProductVariantId == request.ProductVariantId &&
+        x.UnitId == resolvedUnit.UnitId);
+
+            if (existingLine != null)
             {
-                if (incomingNote.StartsWith("Quét mã:", StringComparison.OrdinalIgnoreCase))
+                existingLine.Quantity += request.Quantity;
+                existingLine.Factor = factor;
+                existingLine.BaseQuantity = existingLine.Quantity * factor;
+                existingLine.UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty;
+                existingLine.BarcodeSnapshot = ResolveBarcodeSnapshot(variant, resolvedUnit.UnitId);
+
+                var incomingNote = request.Note?.Trim();
+
+                if (!string.IsNullOrWhiteSpace(incomingNote))
                 {
-                    existingLine.Note = incomingNote;
+                    if (incomingNote.StartsWith("Quét mã:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        existingLine.Note = incomingNote;
+                    }
+                    else
+                    {
+                        existingLine.Note = string.IsNullOrWhiteSpace(existingLine.Note)
+                            ? incomingNote
+                            : $"{existingLine.Note} | {incomingNote}";
+                    }
                 }
-                else
-                {
-                    existingLine.Note = string.IsNullOrWhiteSpace(existingLine.Note)
-                        ? incomingNote
-                        : $"{existingLine.Note} | {incomingNote}";
-                }
+
+                await _stockTransferRepository.SaveChangesAsync(ct);
+                return existingLine.Id;
             }
+            // QUAN TRỌNG:
+            // Không tự lấy từ document.Lines vì có thể đang bị query filter / soft delete che mất.
+            // Phải lấy số dòng kế tiếp từ repository để bám đúng dữ liệu DB thực tế.
+            var newLineNo = await _stockTransferRepository.GetNextLineNoAsync(document.Id, ct);
 
+            var line = new StockTransferLine
+            {
+                StockTransferDocumentId = document.Id,
+                LineNo = newLineNo,
+
+                ProductVariantId = request.ProductVariantId,
+                UnitId = resolvedUnit.UnitId,
+                UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty,
+                Factor = factor,
+                Quantity = request.Quantity,
+                BaseQuantity = request.Quantity * factor,
+
+                ProductNameSnapshot = variant.Product?.Name ?? $"Variant #{variant.Id}",
+                SkuSnapshot = variant.Sku,
+                BarcodeSnapshot = ResolveBarcodeSnapshot(variant, resolvedUnit.UnitId),
+
+                Note = request.Note?.Trim()
+            };
+
+            document.Lines.Add(line);
             await _stockTransferRepository.SaveChangesAsync(ct);
-            return existingLine.Id;
-        }
-        // QUAN TRỌNG:
-        // Không tự lấy từ document.Lines vì có thể đang bị query filter / soft delete che mất.
-        // Phải lấy số dòng kế tiếp từ repository để bám đúng dữ liệu DB thực tế.
-        var newLineNo = await _stockTransferRepository.GetNextLineNoAsync(document.Id, ct);
 
-        var line = new StockTransferLine
-        {
-            StockTransferDocumentId = document.Id,
-            LineNo = newLineNo,
-
-            ProductVariantId = request.ProductVariantId,
-            UnitId = resolvedUnit.UnitId,
-            UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty,
-            Factor = factor,
-            Quantity = request.Quantity,
-            BaseQuantity = request.Quantity * factor,
-
-            ProductNameSnapshot = variant.Product?.Name ?? $"Variant #{variant.Id}",
-            SkuSnapshot = variant.Sku,
-            BarcodeSnapshot = ResolveBarcodeSnapshot(variant, resolvedUnit.UnitId),
-
-            Note = request.Note?.Trim()
-        };
-
-        document.Lines.Add(line);
-        await _stockTransferRepository.SaveChangesAsync(ct);
-
-        return line.Id;
+            return line.Id;
+        }, ct);
     }
 
     public async Task UpdateLineAsync(int lineId, UpdateStockTransferLineRequest request, CancellationToken ct = default)
     {
-        var line = await _stockTransferRepository.GetLineByIdAsync(lineId, ct)
+        var documentId = await _stockTransferRepository.GetDocumentIdForLineAsync(lineId, ct)
             ?? throw new InvalidOperationException("Dòng chuyển kho không tồn tại.");
 
-        EnsureEditable(line.StockTransferDocument.Status);
-
-        var resolvedUnit = await _inventoryUnitResolver.ResolveAsync(
-            line.ProductVariantId,
-            request.UnitId,
-            ct);
-
-        var factor = resolvedUnit.Factor <= 0 ? 1m : resolvedUnit.Factor;
-
-        line.UnitId = resolvedUnit.UnitId;
-        line.UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty;
-        line.Factor = factor;
-        line.Quantity = request.Quantity;
-        line.BaseQuantity = request.Quantity * factor;
-        line.Note = request.Note?.Trim();
-
-        // Nếu đổi đơn vị thì refresh lại barcode snapshot tương ứng
-        if (line.ProductVariant != null)
+        await ExecuteDocumentMutationAsync(documentId, async () =>
         {
-            line.BarcodeSnapshot = ResolveBarcodeSnapshot(line.ProductVariant, resolvedUnit.UnitId);
-        }
+            var line = await _stockTransferRepository.GetLineByIdAsync(lineId, ct)
+                ?? throw new InvalidOperationException("Dòng chuyển kho không tồn tại.");
 
-        await _stockTransferRepository.SaveChangesAsync(ct);
+            if (line.StockTransferDocumentId != documentId)
+                throw new InvalidOperationException("Dòng chuyển kho không thuộc phiếu đang xử lý.");
+
+            EnsureEditable(line.StockTransferDocument.Status);
+
+            var resolvedUnit = await _inventoryUnitResolver.ResolveAsync(
+                line.ProductVariantId,
+                request.UnitId,
+                ct);
+
+            var factor = resolvedUnit.Factor <= 0 ? 1m : resolvedUnit.Factor;
+
+            line.UnitId = resolvedUnit.UnitId;
+            line.UnitNameSnapshot = resolvedUnit.UnitName ?? string.Empty;
+            line.Factor = factor;
+            line.Quantity = request.Quantity;
+            line.BaseQuantity = request.Quantity * factor;
+            line.Note = request.Note?.Trim();
+
+            // Nếu đổi đơn vị thì refresh lại barcode snapshot tương ứng
+            if (line.ProductVariant != null)
+            {
+                line.BarcodeSnapshot = ResolveBarcodeSnapshot(line.ProductVariant, resolvedUnit.UnitId);
+            }
+
+            await _stockTransferRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task DeleteLineAsync(int lineId, CancellationToken ct = default)
     {
-        var line = await _stockTransferRepository.GetLineByIdAsync(lineId, ct)
+        var documentId = await _stockTransferRepository.GetDocumentIdForLineAsync(lineId, ct)
             ?? throw new InvalidOperationException("Dòng chuyển kho không tồn tại.");
 
-        EnsureEditable(line.StockTransferDocument.Status);
+        await ExecuteDocumentMutationAsync(documentId, async () =>
+        {
+            var line = await _stockTransferRepository.GetLineByIdAsync(lineId, ct)
+                ?? throw new InvalidOperationException("Dòng chuyển kho không tồn tại.");
 
-        await _stockTransferRepository.RemoveLineAsync(line, ct);
-        await _stockTransferRepository.SaveChangesAsync(ct);
+            if (line.StockTransferDocumentId != documentId)
+                throw new InvalidOperationException("Dòng chuyển kho không thuộc phiếu đang xử lý.");
+
+            EnsureEditable(line.StockTransferDocument.Status);
+
+            await _stockTransferRepository.RemoveLineAsync(line, ct);
+            await _stockTransferRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task SubmitAsync(int id, CancellationToken ct = default)
     {
-        var document = await _stockTransferRepository.GetDetailAsync(id, ct)
-            ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
-
-        if (document.Status != StockTransferDocumentStatus.Draft &&
-            document.Status != StockTransferDocumentStatus.Rejected)
+        await ExecuteDocumentMutationAsync(id, async () =>
         {
-            throw new InvalidOperationException("Chỉ phiếu Draft hoặc Rejected mới được submit.");
-        }
+            var document = await _stockTransferRepository.GetDetailAsync(id, ct)
+                ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
 
-        if (document.Lines.Count == 0)
-            throw new InvalidOperationException("Phiếu chuyển kho chưa có dòng hàng.");
+            if (document.Status != StockTransferDocumentStatus.Draft &&
+                document.Status != StockTransferDocumentStatus.Rejected)
+            {
+                throw new InvalidOperationException("Chỉ phiếu Draft hoặc Rejected mới được submit.");
+            }
 
-        document.Status = StockTransferDocumentStatus.PendingApproval;
-        document.SubmittedAtUtc = DateTime.UtcNow;
-        document.SubmittedByUserId = null; // TODO: thay bằng current user
+            if (document.Lines.Count == 0)
+                throw new InvalidOperationException("Phiếu chuyển kho chưa có dòng hàng.");
 
-        await _stockTransferRepository.SaveChangesAsync(ct);
+            document.Status = StockTransferDocumentStatus.PendingApproval;
+            document.SubmittedAtUtc = DateTime.UtcNow;
+            document.SubmittedByUserId = null; // TODO: thay bằng current user
+
+            await _stockTransferRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task RejectAsync(int id, string? reason, CancellationToken ct = default)
     {
-        var document = await _stockTransferRepository.GetByIdAsync(id, ct)
-            ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
-
-        if (document.Status != StockTransferDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu PendingApproval mới được reject.");
-
-        document.Status = StockTransferDocumentStatus.Rejected;
-
-        if (!string.IsNullOrWhiteSpace(reason))
+        await ExecuteDocumentMutationAsync(id, async () =>
         {
-            var trimmedReason = reason.Trim();
-            document.Note = string.IsNullOrWhiteSpace(document.Note)
-                ? $"Từ chối duyệt: {trimmedReason}"
-                : $"{document.Note}{Environment.NewLine}Từ chối duyệt: {trimmedReason}";
-        }
+            var document = await _stockTransferRepository.GetByIdAsync(id, ct)
+                ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
 
-        await _stockTransferRepository.SaveChangesAsync(ct);
+            if (document.Status != StockTransferDocumentStatus.PendingApproval)
+                throw new InvalidOperationException("Chỉ phiếu PendingApproval mới được reject.");
+
+            document.Status = StockTransferDocumentStatus.Rejected;
+
+            if (!string.IsNullOrWhiteSpace(reason))
+            {
+                var trimmedReason = reason.Trim();
+                document.Note = string.IsNullOrWhiteSpace(document.Note)
+                    ? $"Từ chối duyệt: {trimmedReason}"
+                    : $"{document.Note}{Environment.NewLine}Từ chối duyệt: {trimmedReason}";
+            }
+
+            await _stockTransferRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task ConfirmAsync(int id, CancellationToken ct = default)
     {
-        var document = await _stockTransferRepository.GetDetailAsync(id, ct)
-            ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
-
-        if (document.Status != StockTransferDocumentStatus.PendingApproval)
-            throw new InvalidOperationException("Chỉ phiếu PendingApproval mới được confirm.");
-
-        if (document.Lines.Count == 0)
-            throw new InvalidOperationException("Phiếu chuyển kho chưa có dòng hàng.");
-
-        var movementLines = document.Lines
-            .OrderBy(x => x.LineNo)
-            .ToList();
-
-        await _stockTransferRepository.BeginTransactionAsync(ct);
-
-        try
+        await ExecuteDocumentMutationAsync(id, async () =>
         {
+            var document = await _stockTransferRepository.GetDetailAsync(id, ct)
+                ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
+
+            if (document.Status != StockTransferDocumentStatus.PendingApproval)
+                throw new InvalidOperationException("Chỉ phiếu PendingApproval mới được confirm.");
+
+            if (document.Lines.Count == 0)
+                throw new InvalidOperationException("Phiếu chuyển kho chưa có dòng hàng.");
+
+            var movementLines = document.Lines
+                .OrderBy(x => x.LineNo)
+                .ToList();
+
             await _inventoryMovementService.PreLockBalancesAsync(
                 movementLines.SelectMany(line => new[]
                 {
@@ -465,13 +518,7 @@ public class StockTransferService : IStockTransferService
             document.ConfirmedByUserId = null;
 
             await _stockTransferRepository.SaveChangesAsync(ct);
-            await _stockTransferRepository.CommitTransactionAsync(ct);
-        }
-        catch
-        {
-            await _stockTransferRepository.RollbackTransactionAsync(ct);
-            throw;
-        }
+        }, ct);
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Common;
+using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace GaoApp.Domain.Entities;
 
 [Table("InvoiceProviderSettings")]
-public class InvoiceProviderSetting : BaseStoreEntity
+public class InvoiceProviderSetting : BaseStoreEntity, IAuditTrackedEntity
 {
     /// <summary>
     /// Tên nhà cung cấp: Viettel, Misa, VNPT...

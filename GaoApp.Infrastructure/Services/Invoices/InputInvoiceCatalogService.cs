@@ -7,10 +7,14 @@ using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
+
+// Created by the controller from server-side authorization, never request data.
+public sealed record InvoiceCatalogAccess(bool ViewCost, bool ApproveDirectReceipt, bool ApprovePurchaseReceipt);
 
 public sealed class InvoiceCatalogFilter
 {
@@ -46,66 +50,133 @@ public sealed class InputInvoiceCatalogService(AppDbContext db,
     private IQueryable<InputInvoiceLibraryEntry> Scoped(int storeId) => db.Set<InputInvoiceLibraryEntry>()
         .Where(x => x.StoreId == storeId && db.LegalEntities.Count(l => l.StoreId == storeId && l.IsActive && l.NormalizedTaxCode == x.BuyerTaxCode) == 1);
 
-    private IQueryable<InputInvoiceLibraryEntry> Linked(int storeId) => Scoped(storeId).Where(e =>
-        db.InputInvoiceHeads.Any(h => h.StoreId == storeId && h.NormalizedSellerTaxCode == e.SellerTaxCode &&
-            h.NormalizedInvoiceSeries == e.Series && h.NormalizedInvoiceNumber == e.Number && h.InvoiceIdentityDate == e.InvoiceDate &&
-            h.StockDocumentMaps.Any(m => m.StoreId == storeId)));
+    private sealed class ReceiptLink
+    {
+        public int EntryId { get; init; }
+        public int StockDocumentId { get; init; }
+        public string DocumentNo { get; init; } = "";
+        public string? DocumentTitle { get; init; }
+        public bool PurchaseOrderReceipt { get; init; }
+    }
 
-    public async Task<object> ListAsync(int storeId, InvoiceCatalogFilter f, CancellationToken ct)
+    private IQueryable<ReceiptLink> ReceiptLinks(int storeId) =>
+        from e in Scoped(storeId)
+        from m in db.StockDocumentInputInvoiceMaps
+        where m.StoreId == storeId && m.InputInvoiceHead.StoreId == storeId && m.StockDocument.StoreId == storeId &&
+            m.InputInvoiceHead.NormalizedSellerTaxCode == e.SellerTaxCode && m.InputInvoiceHead.NormalizedInvoiceSeries == e.Series &&
+            m.InputInvoiceHead.NormalizedInvoiceNumber == e.Number && m.InputInvoiceHead.InvoiceIdentityDate == e.InvoiceDate
+        select new ReceiptLink
+        {
+            EntryId = e.Id, StockDocumentId = m.StockDocumentId,
+            DocumentNo = m.StockDocument.DocumentNo, DocumentTitle = m.StockDocument.DocumentTitle,
+            PurchaseOrderReceipt = m.StockDocument.PurchaseOrderId.HasValue || m.StockDocument.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+        };
+
+    private IQueryable<int> ReviewableIds(int storeId, InvoiceCatalogAccess access)
+    {
+        if (!access.ApproveDirectReceipt && !access.ApprovePurchaseReceipt)
+            return Scoped(storeId).Where(_ => false).Select(x => x.Id);
+        if (access.ApproveDirectReceipt && access.ApprovePurchaseReceipt)
+            return Scoped(storeId).Select(x => x.Id);
+        var links = ReceiptLinks(storeId);
+        var purchaseIds = links.Where(x => x.PurchaseOrderReceipt).Select(x => x.EntryId);
+        var directIds = links.Where(x => !x.PurchaseOrderReceipt).Select(x => x.EntryId);
+        // An unlinked invoice belongs to the direct-receipt workflow. If several
+        // receipts share an invoice, approval of every represented workflow is required.
+        return access.ApproveDirectReceipt
+            ? Scoped(storeId).Where(x => !purchaseIds.Contains(x.Id)).Select(x => x.Id)
+            : Scoped(storeId).Where(x => purchaseIds.Contains(x.Id) && !directIds.Contains(x.Id)).Select(x => x.Id);
+    }
+
+    private IQueryable<int> CommercialIds(int storeId, InvoiceCatalogAccess access)
+        => access.ViewCost ? Scoped(storeId).Select(x => x.Id) : ReviewableIds(storeId, access);
+
+    private async Task<InputInvoiceLibraryEntry> RequireCommercialAsync(int storeId, int id, InvoiceCatalogAccess access, CancellationToken ct)
+    {
+        var entry = await RequireAsync(storeId, id, ct);
+        if (!await CommercialIds(storeId, access).ContainsAsync(id, ct))
+            throw new ForbiddenAppException("Không có quyền xem giá hoặc tải bản gốc của hóa đơn này.");
+        return entry;
+    }
+
+    public async Task<object> ListAsync(int storeId, InvoiceCatalogFilter f, InvoiceCatalogAccess access, CancellationToken ct)
     {
         if (f.Year is < 2000 or > 9999 || f.Month is < 1 or > 12 || f.Review is < 0 or > 3 || f.Kind is < 0 or > 3)
             throw new BusinessRuleException("Bộ lọc không hợp lệ.");
         var q = Scoped(storeId).AsNoTracking();
-        var linkedIds = Linked(storeId).Select(x => x.Id);
+        var linkedIds = ReceiptLinks(storeId).Select(x => x.EntryId);
+        var commercialIds = CommercialIds(storeId, access);
         if (f.Year.HasValue) q = q.Where(x => x.InvoiceDate.Year == f.Year);
         if (f.Month.HasValue) q = q.Where(x => x.InvoiceDate.Month == f.Month);
         if (!string.IsNullOrWhiteSpace(f.Search))
         {
             var s = f.Search.Trim();
-            q = q.Where(x => x.Number.Contains(s) || x.Series.Contains(s) || x.SellerName.Contains(s) || x.SellerTaxCode.Contains(s) || x.BuyerName.Contains(s));
+            var taxSearch = TaxCodeIdentityNormalizer.Normalize(s);
+            q = q.Where(x => x.Number.Contains(s) || x.Series.Contains(s) || x.SellerName.Contains(s) || x.SellerTaxCode.Contains(s) ||
+                (taxSearch != null && x.SellerTaxCode.Contains(taxSearch)) || x.BuyerName.Contains(s));
         }
-        if (!string.IsNullOrWhiteSpace(f.Supplier)) q = q.Where(x => x.SellerTaxCode == f.Supplier);
+        if (!string.IsNullOrWhiteSpace(f.Supplier))
+        {
+            var supplierTaxCode = TaxCodeIdentityNormalizer.Normalize(f.Supplier);
+            q = q.Where(x => x.SellerTaxCode == supplierTaxCode);
+        }
         if (f.Review.HasValue) q = q.Where(x => x.ReviewStatus == f.Review);
         if (f.Kind.HasValue) q = q.Where(x => x.InvoiceKind == f.Kind);
         if (f.Linked.HasValue) q = q.Where(x => linkedIds.Contains(x.Id) == f.Linked.Value);
         var total = await q.CountAsync(ct);
-        var summary = await q.GroupBy(x => x.InvoiceKind).Select(g => new { Kind = g.Key, Count = g.Count(), Total = g.Sum(x => x.Total) }).ToListAsync(ct);
+        var counts = await q.GroupBy(x => x.InvoiceKind).Select(g => new { Kind = g.Key, Count = g.Count() }).ToListAsync(ct);
+        // Never sum a restricted invoice into a response. Hide a group's amount
+        // unless all its invoices are visible; partial totals could mislead users.
+        var visibleSummary = await q.Where(x => commercialIds.Contains(x.Id)).GroupBy(x => x.InvoiceKind)
+            .Select(g => new { Kind = g.Key, Count = g.Count(), Total = g.Sum(x => x.Total) }).ToDictionaryAsync(x => x.Kind, ct);
+        var summary = counts.Select(x =>
+        {
+            var complete = visibleSummary.TryGetValue(x.Kind, out var visible) && visible.Count == x.Count;
+            return new { x.Kind, x.Count, CanViewCost = complete, Total = complete ? (decimal?)visible!.Total : null };
+        }).ToList();
         var uncheckedCount = await q.CountAsync(x => x.ReviewStatus == 0, ct);
         var unlinked = await q.CountAsync(x => !linkedIds.Contains(x.Id), ct);
         var page = Math.Clamp(f.Page, 1, Math.Max(1, (total + 29) / 30));
         var rows = await q.OrderByDescending(x => x.InvoiceDate).ThenByDescending(x => x.Id).Skip((page - 1) * 30).Take(30)
             .Select(x => new { x.Id, x.Series, x.Number, x.InvoiceDate, x.SellerTaxCode, x.SellerName, x.BuyerName,
-                x.Total, x.Tax, x.InvoiceKind, x.ReviewStatus, x.HasPdf, x.ReviewedAtUtc,
-                FolderMismatch = x.SourceSupplierTaxCode != null && x.SourceSupplierTaxCode != x.SellerTaxCode,
+                CanViewCost = commercialIds.Contains(x.Id),
+                Total = commercialIds.Contains(x.Id) ? (decimal?)x.Total : null,
+                Tax = commercialIds.Contains(x.Id) ? (decimal?)x.Tax : null,
+                x.InvoiceKind, x.ReviewStatus, x.HasPdf, x.ReviewedAtUtc,
+                FolderMismatch = x.SourceSupplierTaxCode != null && x.SourceSupplierTaxCode.Replace("-", "") != x.SellerTaxCode,
                 Linked = linkedIds.Contains(x.Id) }).ToListAsync(ct);
         var suppliers = await Scoped(storeId).GroupBy(x => x.SellerTaxCode)
             .Select(g => new { TaxCode = g.Key, Name = g.Max(x => x.SellerName) }).OrderBy(x => x.Name).ToListAsync(ct);
         return new { rows, total, page, pages = Math.Max(1, (total + 29) / 30), summary, uncheckedCount, unlinked, suppliers };
     }
 
-    public async Task<object> DetailAsync(int storeId, int id, CancellationToken ct)
+    public async Task<object> DetailAsync(int storeId, int id, InvoiceCatalogAccess access, CancellationToken ct)
     {
         var e = await RequireAsync(storeId, id, ct);
-        var receipts = await db.StockDocumentInputInvoiceMaps.Where(m => m.StoreId == storeId &&
-            m.InputInvoiceHead.StoreId == storeId && m.StockDocument.StoreId == storeId &&
-            m.InputInvoiceHead.NormalizedSellerTaxCode == e.SellerTaxCode && m.InputInvoiceHead.NormalizedInvoiceSeries == e.Series &&
-            m.InputInvoiceHead.NormalizedInvoiceNumber == e.Number && m.InputInvoiceHead.InvoiceIdentityDate == e.InvoiceDate)
-            .Select(m => new { m.StockDocumentId, m.StockDocument.DocumentNo, m.StockDocument.DocumentTitle }).ToListAsync(ct);
+        var canReview = await ReviewableIds(storeId, access).ContainsAsync(id, ct);
+        var canViewCost = access.ViewCost || canReview;
+        var receipts = await ReceiptLinks(storeId).Where(x => x.EntryId == id)
+            .Select(x => new { x.StockDocumentId, x.DocumentNo, DocumentTitle = canViewCost ? x.DocumentTitle : null }).ToListAsync(ct);
         var history = await db.Set<InputInvoiceLibraryReview>().Where(x => x.StoreId == storeId && x.InputInvoiceLibraryEntryId == id)
-            .OrderByDescending(x => x.Id).Select(x => new { x.Status, x.PreviousStatus, x.Note, x.ActorId, x.OccurredAtUtc,
+            .OrderByDescending(x => x.Id).Select(x => new { x.Status, x.PreviousStatus, Note = canViewCost ? x.Note : null, x.ActorId, x.OccurredAtUtc,
                 ActorName = db.UserInStores.Where(u => u.StoreId == storeId && u.UserId == x.ActorId).Select(u => u.User.FullName).FirstOrDefault() }).Take(100).ToListAsync(ct);
         return new { e.Id, e.Series, e.Number, e.InvoiceDate, e.SellerName, e.SellerTaxCode, e.BuyerName,
-            e.BuyerTaxCode, e.Total, e.BeforeTax, e.Tax, e.InvoiceKind, e.RelatedInvoice, e.HasPdf, e.SourceSupplierTaxCode,
-            FolderMismatch = e.SourceSupplierTaxCode != null && e.SourceSupplierTaxCode != e.SellerTaxCode,
-            e.ReviewStatus, e.ReviewNote, e.ReviewedBy, e.ReviewedAtUtc, rowVersion = Convert.ToBase64String(e.RowVersion), receipts, history };
+            e.BuyerTaxCode, CanViewCost = canViewCost, CanReview = canReview,
+            Total = canViewCost ? (decimal?)e.Total : null, BeforeTax = canViewCost ? (decimal?)e.BeforeTax : null,
+            Tax = canViewCost ? (decimal?)e.Tax : null, e.InvoiceKind, e.RelatedInvoice, e.HasPdf, e.SourceSupplierTaxCode,
+            FolderMismatch = e.SourceSupplierTaxCode != null && TaxCodeIdentityNormalizer.Normalize(e.SourceSupplierTaxCode) != e.SellerTaxCode,
+            e.ReviewStatus, ReviewNote = canViewCost ? e.ReviewNote : null, e.ReviewedBy, e.ReviewedAtUtc,
+            rowVersion = Convert.ToBase64String(e.RowVersion), receipts, history };
     }
 
-    public async Task ReviewAsync(int storeId, int id, int actorId, InvoiceCatalogReviewRequest request, CancellationToken ct)
+    public async Task ReviewAsync(int storeId, int id, int actorId, InvoiceCatalogReviewRequest request, InvoiceCatalogAccess access, CancellationToken ct)
     {
         if (request.Status is < 0 or > 3 || (request.Note?.Length ?? 0) > 1000 ||
             (request.Status == 3 && string.IsNullOrWhiteSpace(request.Note)))
             throw new BusinessRuleException("Chọn trạng thái hợp lệ. Không ghi nhận / cần làm rõ bắt buộc ghi lý do (tối đa 1.000 ký tự).");
         var e = await RequireAsync(storeId, id, ct);
+        if (!await ReviewableIds(storeId, access).ContainsAsync(id, ct))
+            throw new ForbiddenAppException("Không có quyền kiểm tra hóa đơn thuộc luồng nhập hàng này.");
         if (Convert.ToBase64String(e.RowVersion) != request.RowVersion)
             throw new DbUpdateConcurrencyException("Hóa đơn đã được cập nhật. Mở lại để kiểm tra trước khi lưu.");
         await ReadVerifiedXmlAsync(e, ct);
@@ -200,16 +271,17 @@ public sealed class InputInvoiceCatalogService(AppDbContext db,
         return (kind, related.Length > 500 ? related[..500] : related);
     }
 
-    public async Task<InputInvoicePdfPreviewDto> PdfAsync(int storeId, int id, CancellationToken ct)
+    public async Task<InputInvoicePdfPreviewDto> PdfAsync(int storeId, int id, InvoiceCatalogAccess access, CancellationToken ct)
     {
-        var e = await RequireAsync(storeId, id, ct);
+        var e = await RequireCommercialAsync(storeId, id, access, ct);
         await ReadVerifiedXmlAsync(e, ct);
         return await library.GetPdfAsync(e.SourceSupplierTaxCode ?? e.SellerTaxCode, e.DocumentKey, ct);
     }
-    public async Task<byte[]> XmlAsync(int storeId, int id, CancellationToken ct) => await ReadVerifiedXmlAsync(await RequireAsync(storeId, id, ct), ct);
-    public async Task<InputInvoiceXmlPreviewDto> PreviewAsync(int storeId, int id, CancellationToken ct)
+    public async Task<byte[]> XmlAsync(int storeId, int id, InvoiceCatalogAccess access, CancellationToken ct)
+        => await ReadVerifiedXmlAsync(await RequireCommercialAsync(storeId, id, access, ct), ct);
+    public async Task<InputInvoiceXmlPreviewDto> PreviewAsync(int storeId, int id, InvoiceCatalogAccess access, CancellationToken ct)
     {
-        var invoice = parser.Parse(await XmlAsync(storeId, id, ct));
+        var invoice = parser.Parse(await XmlAsync(storeId, id, access, ct));
         return new InputInvoiceXmlPreviewDto { InvoiceTemplateCode = invoice.InvoiceTemplateCode, InvoiceSeries = invoice.InvoiceSeries,
             InvoiceNumber = invoice.InvoiceNumber, InvoiceDate = invoice.InvoiceDate, TaxAuthorityCode = invoice.TaxAuthorityCode,
             SellerName = invoice.SellerName, SellerTaxCode = invoice.SellerTaxCode, SellerAddress = invoice.SellerAddress,

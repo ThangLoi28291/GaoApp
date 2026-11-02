@@ -1,0 +1,10 @@
+@model IReadOnlyList<GaoApp.Application.Storefront.StorefrontPublicationResult>
+@{ ViewData["Title"] = "Kết quả đăng / ẩn website"; }
+<div class="container-fluid py-3">
+    <h1 class="h3">Kết quả đăng / ẩn website</h1>
+    <p>Mỗi sản phẩm có kết quả riêng. Khi có xung đột, tải lại sản phẩm trước khi thử lại.</p>
+    <div class="table-responsive"><table class="table"><thead><tr><th>Sản phẩm</th><th>Kết quả</th><th>Chi tiết</th></tr></thead><tbody>
+        @foreach (var item in Model) { <tr><td><a asp-action="Edit" asp-route-id="@item.ProductId">#@item.ProductId</a></td><td>@(item.Outcome switch { GaoApp.Application.Storefront.StorefrontPublicationOutcome.Updated => "Đã cập nhật", GaoApp.Application.Storefront.StorefrontPublicationOutcome.Unchanged => "Đã đúng yêu cầu", GaoApp.Application.Storefront.StorefrontPublicationOutcome.Conflict => "Xung đột phiên bản", GaoApp.Application.Storefront.StorefrontPublicationOutcome.NotFound => "Không tìm thấy", _ => "Chưa hợp lệ" })</td><td>@item.Message</td></tr> }
+    </tbody></table></div>
+    <a asp-action="Index" class="btn btn-primary">Tải lại danh sách</a>
+</div>

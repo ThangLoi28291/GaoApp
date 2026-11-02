@@ -12,6 +12,12 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Authorize(Policy = PermissionCodes.Delivery.View)]
 public sealed class DeliveryFoundationController(IDeliveryFoundationService deliveries) : ControllerBase
 {
+    [HttpGet("workspace")]
+    public Task<IActionResult> Workspace([FromQuery] DeliveryWorkspaceQuery query, CancellationToken ct)
+        => Execute(() => deliveries.WorkspaceAsync(query, ct));
+    [HttpGet("{id:int}/workspace")]
+    public Task<IActionResult> WorkspaceContext(int id, CancellationToken ct)
+        => Execute(() => deliveries.WorkspaceContextAsync(id, ct));
     [HttpGet]
     public Task<IActionResult> List([FromQuery] int take = 50, CancellationToken ct = default)
         => Execute(() => deliveries.ListAsync(take, ct));
@@ -21,11 +27,15 @@ public sealed class DeliveryFoundationController(IDeliveryFoundationService deli
     public Task<IActionResult> Lookup([FromQuery] string key, CancellationToken ct) => Execute(() => deliveries.LookupAsync(key, ct));
     [HttpGet("{id:int}/history")]
     public Task<IActionResult> History(int id, CancellationToken ct) => Execute(() => deliveries.HistoryAsync(id, ct));
+    [HttpPost("{id:int}/sale-prices"), Authorize(Policy = PermissionCodes.Delivery.EditSalePrice), ValidateAntiForgeryToken]
+    public Task<IActionResult> ChangeSalePrices(int id, [FromBody] DeliverySalePriceRequest request, CancellationToken ct)
+        => Execute(() => deliveries.ChangeSalePricesAsync(id, request, ct));
     [HttpPost("{id:int}/recipient"), Authorize(Policy = PermissionCodes.Delivery.Create), ValidateAntiForgeryToken]
     public Task<IActionResult> UpdateRecipient(int id, [FromBody] DeliveryRecipientRequest request, CancellationToken ct)
         => Execute(() => deliveries.UpdateRecipientAsync(id, request, ct));
     private async Task<IActionResult> Execute<T>(Func<Task<T>> operation)
     {
+        Response.Headers.CacheControl = "no-store";
         try { return Ok(await operation()); }
         catch (DeliveryFoundationException ex) { return StatusCode(ex.StatusCode, new { code = ex.Code, message = ex.Message }); }
         catch (DeliveryRuleException ex) { return BadRequest(new { code = ex.Code, message = ex.Message }); }

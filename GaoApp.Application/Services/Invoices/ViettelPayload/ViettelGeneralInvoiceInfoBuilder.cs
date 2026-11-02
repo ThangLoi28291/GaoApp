@@ -20,6 +20,7 @@ internal static class ViettelGeneralInvoiceInfoBuilder
             InvoiceType = invoiceType,
             TemplateCode = templateCode,
             InvoiceSeries = invoiceSeries,
+            AdjustAmount20 = invoice.RevenueTaxPercentage,
 
             CurrencyCode = string.IsNullOrWhiteSpace(setting.CurrencyCode)
                 ? "VND"

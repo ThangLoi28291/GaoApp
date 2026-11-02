@@ -11,6 +11,8 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
 {
     private const string AccentInsensitiveSearchCollation =
         "Latin1_General_100_CI_AI";
+    // Bound request memory. This selects a query plan; it never limits search results.
+    private const int ResolvedTextMatchLimit = 4096;
 
     private readonly AppDbContext _db;
 
@@ -25,16 +27,17 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
         int? costViewerUserId,
         CancellationToken ct = default)
     {
+        var referenceReceiptCodes = await ResolveReceiptReferenceCodesAsync(storeId, request.ReferenceCode, ct);
+        var directReferenceCodes = await ResolveDirectReferenceCodesAsync(storeId, request.ReferenceCode, ct);
+        var ledgerCandidates = ApplyBaseFilters(BuildAggregateQuery(storeId), storeId,
+            request, referenceReceiptCodes, directReferenceCodes);
         var query = ApplyBaseFilters(
             BuildBaseQuery(storeId),
             storeId,
-            request);
-        query = await ApplyKeywordAsync(query, storeId, request.Keyword, request.SearchScope, ct);
+            request, referenceReceiptCodes, directReferenceCodes);
+        query = await ApplyKeywordAsync(query, ledgerCandidates, storeId, request.Keyword, request.SearchScope, ct);
         var aggregateQuery = string.IsNullOrWhiteSpace(request.Keyword)
-            ? ApplyBaseFilters(
-                BuildAggregateQuery(storeId),
-                storeId,
-                request)
+            ? ledgerCandidates
             : query;
 
         var summary = request.IncludeSummary
@@ -73,6 +76,8 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
         items.Sort((left, right) => positions[left.TransactionId].CompareTo(positions[right.TransactionId]));
 
         NormalizeImageUrls(items);
+        await PopulateReceiptReferencesAsync(storeId, items, ct);
+        await PopulateSourcesAsync(storeId, items, ct);
         if (canViewCost)
             await PopulateInboundCostsAsync(storeId, items, ct);
 
@@ -105,6 +110,8 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
             return null;
 
         item.ImageUrl = NormalizeImageUrl(item.ImageUrl);
+        await PopulateReceiptReferencesAsync(storeId, [item], ct);
+        await PopulateSourcesAsync(storeId, [item], ct);
         if (canViewCost)
             await PopulateInboundCostsAsync(storeId, [item], ct);
 
@@ -126,6 +133,103 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
                 && !transaction.ProductVariant.IsDeleted
                 && transaction.ProductVariant.Product.StoreId == storeId
                 && !transaction.ProductVariant.Product.IsDeleted);
+
+    public async Task<InventoryLedgerPeriodDto?> GetPeriodAsync(int storeId, int warehouseId,
+        int productVariantId, DateTime? fromDate, DateTime? toDate, CancellationToken ct = default)
+    {
+        var result = await (from warehouse in _db.Warehouses.AsNoTracking()
+            where warehouse.StoreId == storeId && !warehouse.IsDeleted && warehouse.Id == warehouseId
+            from variant in _db.ProductVariants.AsNoTracking()
+            where variant.StoreId == storeId && !variant.IsDeleted && variant.Id == productVariantId
+                && variant.Product.StoreId == storeId && !variant.Product.IsDeleted
+            select new InventoryLedgerPeriodDto
+            {
+                WarehouseId = warehouse.Id, WarehouseName = warehouse.Name,
+                ProductVariantId = variant.Id, ProductName = variant.Product.Name,
+                VariantName = variant.ProductVariantName, BaseUnitName = variant.Product.BaseUnit.Name,
+                FromDate = fromDate, ToDate = toDate
+            }).SingleOrDefaultAsync(ct);
+        if (result is null) return null;
+
+        var start = fromDate.HasValue ? VietnamTime.ToUtc(fromDate.Value.Date) : (DateTime?)null;
+        var end = toDate.HasValue ? VietnamTime.ToUtc(toDate.Value.Date.AddDays(1)) : (DateTime?)null;
+        // BeforeQty/AfterQty are posting-time snapshots, not a business-date running balance.
+        // Start from the first durable posting's baseline, then include ALL movements by
+        // OccurredAtUtc. This also handles late/backdated postings and empty periods.
+        var totals = await BuildBaseQuery(storeId)
+            .Where(t => t.WarehouseId == warehouseId && t.ProductVariantId == productVariantId)
+            .GroupBy(t => new { t.WarehouseId, t.ProductVariantId })
+            .Select(g => new
+            {
+                Baseline = g.OrderBy(t => t.Id).Select(t => t.BeforeQty).First(),
+                Prior = g.Sum(t => start.HasValue && t.OccurredAtUtc < start.Value ? t.QuantityChange : 0m),
+                Increase = g.Sum(t => (!start.HasValue || t.OccurredAtUtc >= start.Value)
+                    && (!end.HasValue || t.OccurredAtUtc < end.Value) && t.QuantityChange > 0 ? t.QuantityChange : 0m),
+                Decrease = g.Sum(t => (!start.HasValue || t.OccurredAtUtc >= start.Value)
+                    && (!end.HasValue || t.OccurredAtUtc < end.Value) && t.QuantityChange < 0 ? -t.QuantityChange : 0m)
+            }).SingleOrDefaultAsync(ct);
+        if (totals is null) return result; // No ledger: do not invent a historical balance from today's stock.
+        result.HasRecordedHistory = true;
+        result.OpeningQty = totals.Baseline + totals.Prior;
+        result.IncreaseQty = totals.Increase;
+        result.DecreaseQty = totals.Decrease;
+        result.ClosingQty = result.OpeningQty + totals.Increase - totals.Decrease;
+        return result;
+    }
+
+    private async Task PopulateSourcesAsync(int storeId, IReadOnlyCollection<InventoryLedgerIndexItemDto> items,
+        CancellationToken ct)
+    {
+        // ReferenceId is a typed durable identity, never a display code or arbitrary URL.
+        int[] Ids(InventoryReferenceType type) => items.Where(i => i.ReferenceType == type)
+            .Select(i => int.TryParse(i.ReferenceCode, out var id) && id > 0
+                && id.ToString(System.Globalization.CultureInfo.InvariantCulture) == i.ReferenceCode ? id : 0)
+            .Where(id => id > 0).Distinct().ToArray();
+        void Attach(InventoryReferenceType type, string kind, IEnumerable<(int ReferenceId, int TargetId)> sources)
+        {
+            var map = sources.ToDictionary(x => x.ReferenceId, x => x.TargetId);
+            foreach (var item in items.Where(i => i.ReferenceType == type))
+                if (int.TryParse(item.ReferenceCode, out var id) && map.TryGetValue(id, out var target))
+                { item.SourceKind = kind; item.SourceId = target; }
+        }
+
+        var ids = Ids(InventoryReferenceType.Order);
+        if (ids.Length > 0) Attach(InventoryReferenceType.Order, "order",
+            (await _db.Orders.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted && ids.Contains(x.Id))
+                .Select(x => x.Id).ToArrayAsync(ct)).Select(id => (id, id)));
+        ids = Ids(InventoryReferenceType.Refund);
+        if (ids.Length > 0) Attach(InventoryReferenceType.Refund, "order",
+            (await _db.SalesReturns.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted
+                && ids.Contains(x.Id) && x.Order.StoreId == storeId && !x.Order.IsDeleted)
+                .Select(x => new { x.Id, x.OrderId }).ToArrayAsync(ct)).Select(x => (x.Id, x.OrderId)));
+        ids = Ids(InventoryReferenceType.StockDocument);
+        if (ids.Length > 0)
+        {
+            var documents = await _db.StockDocuments.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted
+                && x.Type == StockDocumentType.Receipt && ids.Contains(x.Id))
+                .Select(x => new { x.Id, x.ReceiptSource }).ToArrayAsync(ct);
+            Attach(InventoryReferenceType.StockDocument, "receipt", documents
+                .Where(x => x.ReceiptSource != PurchaseReceiptSource.PurchaseOrder).Select(x => (x.Id, x.Id)));
+            Attach(InventoryReferenceType.StockDocument, "purchase-receipt", documents
+                .Where(x => x.ReceiptSource == PurchaseReceiptSource.PurchaseOrder).Select(x => (x.Id, x.Id)));
+        }
+        ids = Ids(InventoryReferenceType.StockCount);
+        if (ids.Length > 0) Attach(InventoryReferenceType.StockCount, "count",
+            (await _db.StockCountDocuments.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted && ids.Contains(x.Id))
+                .Select(x => x.Id).ToArrayAsync(ct)).Select(id => (id, id)));
+        ids = Ids(InventoryReferenceType.StockTransfer);
+        if (ids.Length > 0) Attach(InventoryReferenceType.StockTransfer, "transfer",
+            (await _db.StockTransferDocuments.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted && ids.Contains(x.Id))
+                .Select(x => x.Id).ToArrayAsync(ct)).Select(id => (id, id)));
+        ids = Ids(InventoryReferenceType.Adjustment);
+        if (ids.Length > 0) Attach(InventoryReferenceType.Adjustment, "adjustment",
+            (await _db.InventoryAdjustmentDocuments.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted && ids.Contains(x.Id))
+                .Select(x => x.Id).ToArrayAsync(ct)).Select(id => (id, id)));
+        ids = Ids(InventoryReferenceType.Delivery);
+        if (ids.Length > 0) Attach(InventoryReferenceType.Delivery, "delivery",
+            (await _db.DeliveryOrders.AsNoTracking().Where(x => x.StoreId == storeId && !x.IsDeleted && ids.Contains(x.Id))
+                .Select(x => x.Id).ToArrayAsync(ct)).Select(id => (id, id)));
+    }
 
     private IQueryable<InventoryTransaction> BuildAggregateQuery(int storeId)
         => _db.InventoryTransactions
@@ -178,7 +282,7 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
     private IQueryable<InventoryTransaction> ApplyBaseFilters(
         IQueryable<InventoryTransaction> query,
         int storeId,
-        InventoryLedgerIndexQueryRequest request)
+        InventoryLedgerIndexQueryRequest request, string[] referenceReceiptCodes, string[]? directReferenceCodes)
     {
         if (request.WarehouseId.HasValue)
             query = query.Where(x => x.WarehouseId == request.WarehouseId.Value);
@@ -191,40 +295,38 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
 
         if (request.FromDate.HasValue)
         {
-            var fromDate = request.FromDate.Value.Date;
+            var fromDate = VietnamTime.ToUtc(request.FromDate.Value.Date);
             query = query.Where(x => x.OccurredAtUtc >= fromDate);
         }
 
         if (request.ToDate.HasValue)
         {
-            var toDateExclusive = request.ToDate.Value.Date.AddDays(1);
+            var toDateExclusive = VietnamTime.ToUtc(request.ToDate.Value.Date.AddDays(1));
             query = query.Where(x => x.OccurredAtUtc < toDateExclusive);
         }
 
         if (!string.IsNullOrWhiteSpace(request.ReferenceCode))
         {
             var referenceCode = request.ReferenceCode.Trim();
-            query = query.Where(x =>
-                x.ReferenceId != null
-                && x.ReferenceId.Contains(referenceCode));
+            query = ApplyReferenceMatches(query, referenceCode, referenceReceiptCodes, directReferenceCodes);
         }
 
         return query;
     }
 
     private async Task<IQueryable<InventoryTransaction>> ApplyKeywordAsync(
-        IQueryable<InventoryTransaction> query, int storeId, string? keyword, string? scope, CancellationToken ct)
+        IQueryable<InventoryTransaction> query, IQueryable<InventoryTransaction> ledgerCandidates,
+        int storeId, string? keyword, string? scope, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(keyword)) return query;
         var search = keyword.Trim();
         var normalized = search.Replace('Đ', 'D').Replace('đ', 'd');
         if (scope == "reference")
-            return query.Where(t => t.ReferenceId != null && t.ReferenceId.Contains(search));
-        var notes = _db.Database.IsRelational()
-            ? query.Where(t => t.Note != null && EF.Functions.Collate(
-                t.Note.Replace("Đ", "D").Replace("đ", "d"), AccentInsensitiveSearchCollation).Contains(normalized))
-            : query.Where(t => t.Note != null && t.Note.Contains(search));
-        if (scope == "note") return notes;
+            return ApplyReferenceMatches(query, search,
+                await ResolveReceiptReferenceCodesAsync(storeId, search, ct),
+                await ResolveDirectReferenceCodesAsync(storeId, search, ct));
+        if (scope == "note")
+            return (await ResolveTextMatchesAsync(query, ledgerCandidates, search, normalized, notesOnly: true, ct)).Matches;
         var variants = _db.ProductVariants.AsNoTracking().Where(v =>
             v.StoreId == storeId && !v.IsDeleted &&
             v.Product.StoreId == storeId && !v.Product.IsDeleted);
@@ -251,13 +353,31 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
             return variantIds.Length == 0 ? query.Where(t => false)
                 : productMatches;
 
-        var textMatches = _db.Database.IsRelational()
-            ? query.Where(t => (t.ReferenceId != null && t.ReferenceId.Contains(search)) ||
-                (t.Note != null && EF.Functions.Collate(
-                    t.Note.Replace("Đ", "D").Replace("đ", "d"),
-                    AccentInsensitiveSearchCollation).Contains(normalized)))
-            : query.Where(t => (t.ReferenceId != null && t.ReferenceId.Contains(search)) ||
-                (t.Note != null && t.Note.Contains(search)));
+        // Resolve sparse text matches ONCE before the summary/page plans. Nesting a
+        // text scan under the product UNION caused repeated scans of the store ledger.
+        var textResolution = await ResolveTextMatchesAsync(query, ledgerCandidates, search, normalized, notesOnly: false, ct);
+        var xmlReceiptCodes = await ResolveReceiptReferenceCodesAsync(storeId, search, ct);
+        if (textResolution.IsBroad)
+        {
+            // A broad mixed product/text search must not fall back to the original
+            // UNION-inside-semi-join plan. Filter the same scoped row once, including
+            // receipt/XML identities, then retain normal server-side counts/paging.
+            return _db.Database.IsRelational()
+                ? query.Where(t => (variantIds.Length > 0 && variantIds.Contains(t.ProductVariantId))
+                    || (xmlReceiptCodes.Length > 0 && t.ReferenceType == InventoryReferenceType.StockDocument && xmlReceiptCodes.Contains(t.ReferenceId!))
+                    || (t.ReferenceId != null && t.ReferenceId.Contains(search))
+                    || (t.Note != null && EF.Functions.Collate(t.Note.Replace("Đ", "D").Replace("đ", "d"), AccentInsensitiveSearchCollation).Contains(normalized)))
+                : query.Where(t => (variantIds.Length > 0 && variantIds.Contains(t.ProductVariantId))
+                    || (xmlReceiptCodes.Length > 0 && t.ReferenceType == InventoryReferenceType.StockDocument && xmlReceiptCodes.Contains(t.ReferenceId!))
+                    || (t.ReferenceId != null && t.ReferenceId.Contains(search)) || (t.Note != null && t.Note.Contains(search)));
+        }
+        var textMatches = textResolution.Matches;
+        if (xmlReceiptCodes.Length > 0)
+        {
+            var textIds = textMatches.Select(t => t.Id)
+                .Union(ReceiptReferenceMatches(query, xmlReceiptCodes).Select(t => t.Id));
+            textMatches = query.Where(t => textIds.Contains(t.Id));
+        }
         if (variantIds.Length == 0) return textMatches;
 
         // Separate seekable product history from free-text notes. Union IDs only, so a movement
@@ -265,6 +385,131 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
         var matchingIds = productMatches.Select(t => t.Id)
             .Union(textMatches.Select(t => t.Id));
         return query.Where(t => matchingIds.Contains(t.Id));
+    }
+
+    private async Task<(IQueryable<InventoryTransaction> Matches, bool IsBroad)> ResolveTextMatchesAsync(
+        IQueryable<InventoryTransaction> query, IQueryable<InventoryTransaction> ledgerCandidates,
+        string search, string normalized, bool notesOnly, CancellationToken ct)
+    {
+        IQueryable<InventoryTransaction> Filter(IQueryable<InventoryTransaction> source)
+            => _db.Database.IsRelational()
+                ? source.Where(t => (!notesOnly && t.ReferenceId != null && t.ReferenceId.Contains(search))
+                    || (t.Note != null && EF.Functions.Collate(t.Note.Replace("Đ", "D").Replace("đ", "d"),
+                        AccentInsensitiveSearchCollation).Contains(normalized)))
+                : source.Where(t => (!notesOnly && t.ReferenceId != null && t.ReferenceId.Contains(search))
+                    || (t.Note != null && t.Note.Contains(search)));
+
+        // Only explicit store/date/warehouse/document scope during the expensive text
+        // scan. Final results ALWAYS retain all warehouse/product tenant/deletion checks.
+        var ids = await Filter(ledgerCandidates).Select(t => t.Id)
+            .Take(ResolvedTextMatchLimit + 1).ToArrayAsync(ct);
+        if (ids.Length > ResolvedTextMatchLimit)
+            return (Filter(query), true); // Broad searches remain complete, with server-side paging.
+        if (ids.Length == 0) return (query.Where(t => false), false);
+        if (ids.Length == 1) return (query.Where(t => t.Id == ids[0]), false);
+        var matches = _db.Database.IsRelational()
+            ? query.Where(t => EF.Constant(ids).Contains(t.Id))
+            : query.Where(t => ids.Contains(t.Id));
+        return (matches, false);
+    }
+
+    private async Task<string[]> ResolveReceiptReferenceCodesAsync(
+        int storeId, string? search, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return [];
+        search = search.Trim();
+        var xmlSearch = search.Replace(" ", "").Replace("·", "").Replace("/", "");
+        var receiptCodes = _db.StockDocuments.AsNoTracking().Where(d =>
+                d.StoreId == storeId && !d.IsDeleted && d.Type == StockDocumentType.Receipt
+                && d.DocumentNo.Contains(search))
+            .Select(d => d.Id.ToString());
+        var xmlReceiptCodes = ActiveReceiptInvoiceLinks(storeId).Where(m =>
+                xmlSearch != "" && ((m.InputInvoiceHead.InvoiceSeries ?? "") + (m.InputInvoiceHead.InvoiceNumber ?? ""))
+                    .Replace(" ", "").Replace("·", "").Replace("/", "").Contains(xmlSearch))
+            .Select(m => m.StockDocumentId.ToString());
+        return await receiptCodes.Union(xmlReceiptCodes).ToArrayAsync(ct);
+    }
+
+    private IQueryable<StockDocumentInputInvoiceMap> ActiveReceiptInvoiceLinks(int storeId)
+        => _db.StockDocumentInputInvoiceMaps.AsNoTracking().Where(m =>
+            m.StoreId == storeId && !m.IsDeleted
+            && m.StockDocument.StoreId == storeId && !m.StockDocument.IsDeleted
+            && m.StockDocument.Type == StockDocumentType.Receipt
+            && m.InputInvoiceHead.StoreId == storeId && !m.InputInvoiceHead.IsDeleted);
+
+    private async Task<string[]?> ResolveDirectReferenceCodesAsync(
+        int storeId, string? search, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return [];
+        search = search.Trim();
+        // Resolve a sparse reference once, then seek its history for counts and
+        // paging. Broad partial searches retain the existing database predicate.
+        var codes = await BuildAggregateQuery(storeId)
+            .Where(t => t.ReferenceId != null && t.ReferenceId.Contains(search))
+            .Select(t => t.ReferenceId!).Distinct().Take(129).ToArrayAsync(ct);
+        return codes.Length <= 128 ? codes : null;
+    }
+
+    private IQueryable<InventoryTransaction> ReceiptReferenceMatches(
+        IQueryable<InventoryTransaction> query, string[] receiptCodes)
+    {
+        var receipts = query.Where(t => t.ReferenceType == InventoryReferenceType.StockDocument);
+        return receiptCodes.Length == 1
+            ? receipts.Where(t => t.ReferenceId == receiptCodes[0])
+            : _db.Database.IsRelational()
+                ? receipts.Where(t => EF.Constant(receiptCodes).Contains(t.ReferenceId!))
+                : receipts.Where(t => receiptCodes.Contains(t.ReferenceId!));
+    }
+
+    private IQueryable<InventoryTransaction> ApplyReferenceMatches(
+        IQueryable<InventoryTransaction> query, string search, string[] receiptCodes, string[]? directCodes)
+    {
+        var direct = directCodes is null
+            ? query.Where(t => t.ReferenceId != null && t.ReferenceId.Contains(search))
+            : directCodes.Length == 0
+                ? query.Where(t => false)
+            : directCodes.Length == 1
+                ? query.Where(t => t.ReferenceId == directCodes[0])
+                : _db.Database.IsRelational()
+                    ? query.Where(t => EF.Constant(directCodes).Contains(t.ReferenceId!))
+                    : query.Where(t => directCodes.Contains(t.ReferenceId!));
+        if (receiptCodes.Length == 0) return direct;
+        var receipts = ReceiptReferenceMatches(query, receiptCodes);
+        if (directCodes is { Length: 0 }) return receipts;
+        var ids = direct.Select(t => t.Id).Union(receipts.Select(t => t.Id));
+        return query.Where(t => ids.Contains(t.Id));
+    }
+
+    private async Task PopulateReceiptReferencesAsync(
+        int storeId, IReadOnlyCollection<InventoryLedgerIndexItemDto> items, CancellationToken ct)
+    {
+        var receiptItems = items.Where(item => item.ReferenceType == InventoryReferenceType.StockDocument)
+            .ToList();
+        var codes = receiptItems.Select(item => item.ReferenceCode).Where(code => code != null).Distinct().ToArray();
+        if (codes.Length == 0) return;
+        // Load only the receipts on this page; never join XML details into ledger rows.
+        var receipts = await _db.StockDocuments.AsNoTracking().Where(d =>
+                d.StoreId == storeId && !d.IsDeleted && d.Type == StockDocumentType.Receipt
+                && codes.Contains(d.Id.ToString()))
+            .Select(d => new { d.Id, d.DocumentNo }).ToListAsync(ct);
+        if (receipts.Count == 0) return;
+        var ids = receipts.Select(d => d.Id).ToArray();
+        var invoices = await ActiveReceiptInvoiceLinks(storeId)
+            .Where(m => ids.Contains(m.StockDocumentId)).OrderBy(m => m.Id)
+            .Select(m => new
+            {
+                m.StockDocumentId, m.InputInvoiceHead.InvoiceSeries, m.InputInvoiceHead.InvoiceNumber
+            }).ToListAsync(ct);
+        var receiptByCode = receipts.ToDictionary(d => d.Id.ToString());
+        var invoiceByReceipt = invoices.GroupBy(m => m.StockDocumentId).ToDictionary(g => g.Key,
+            g => g.Select(m => new InventoryLedgerInputInvoiceDto
+                { InvoiceSeries = m.InvoiceSeries, InvoiceNumber = m.InvoiceNumber }).ToList());
+        foreach (var item in receiptItems)
+        {
+            if (item.ReferenceCode is null || !receiptByCode.TryGetValue(item.ReferenceCode, out var receipt)) continue;
+            item.ReceiptDocumentNo = receipt.DocumentNo;
+            item.LinkedInputInvoices = invoiceByReceipt.GetValueOrDefault(receipt.Id) ?? [];
+        }
     }
 
     private static IQueryable<InventoryTransaction> ApplyState(
@@ -346,6 +591,8 @@ public sealed class InventoryLedgerIndexReadRepository : IInventoryLedgerIndexRe
         => query.Select(transaction => new InventoryLedgerIndexItemDto
         {
             TransactionId = transaction.Id,
+            WarehouseId = transaction.WarehouseId,
+            ProductVariantId = transaction.ProductVariantId,
             WarehouseName = transaction.Warehouse.Name,
             ProductName = transaction.ProductVariant.Product.Name,
             VariantName = transaction.ProductVariant.ProductVariantName,

@@ -1,5 +1,8 @@
 using System.Diagnostics;
+using System.Net;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.Services.Inventory;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Repositories.Inventory;
@@ -11,6 +14,131 @@ namespace GaoApp.Tests.Security;
 [Collection("SqlServerConcurrency")]
 public sealed class InventoryLedgerSearchSqlServerTests(ITestOutputHelper output)
 {
+    [Fact]
+    public async Task Xml_reference_search_and_quick_view_preserve_receipt_identity_paging_tenant_and_active_links()
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var otherStore = app.Stores[1];
+        var seed = await ReceiptBarcodeProposalSqlServerTests.SeedAsync(app, store);
+        var foreignSeed = await ReceiptBarcodeProposalSqlServerTests.SeedAsync(app, otherStore);
+        var reference = seed.ReceiptId.ToString();
+        int transactionId;
+        int mapId;
+        const string documentNo = "NK-LEDGER-XML-TEST";
+        const string xmlNumber = "00006598";
+        await using (var db = app.Database.CreateHostContext())
+        {
+            var receipt = await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId);
+            receipt.DocumentNo = documentNo;
+            receipt.Status = StockDocumentStatus.Confirmed;
+            receipt.ConfirmedLegalEntityId = await db.Warehouses.Where(x => x.Id == receipt.WarehouseId)
+                .Select(x => x.LegalEntityId).SingleAsync();
+            InputInvoiceHead Head(int storeId) => new()
+            {
+                StoreId = storeId, SellerName = "Supplier", SellerTaxCode = "0312770607",
+                BuyerTaxCode = "0101234567", InvoiceSeries = "C26MYY", InvoiceNumber = xmlNumber,
+                InvoiceDate = new DateTime(2026, 6, 23)
+            };
+            var head = Head(store.StoreId);
+            var foreignHead = Head(otherStore.StoreId);
+            InputInvoiceIdentityPolicy.ApplyRequiredIdentity(head);
+            InputInvoiceIdentityPolicy.ApplyRequiredIdentity(foreignHead);
+            db.AddRange(head, foreignHead);
+            await db.SaveChangesAsync();
+            var link = new StockDocumentInputInvoiceMap
+                { StoreId = store.StoreId, StockDocumentId = seed.ReceiptId, InputInvoiceHeadId = head.Id };
+            db.Add(link);
+            db.Add(new StockDocumentInputInvoiceMap
+                { StoreId = otherStore.StoreId, StockDocumentId = foreignSeed.ReceiptId, InputInvoiceHeadId = foreignHead.Id });
+            for (var i = 0; i < 23; i++)
+                db.Add(new InventoryTransaction
+                {
+                    StoreId = store.StoreId, WarehouseId = store.WarehouseId, ProductVariantId = store.VariantId,
+                    ReferenceType = InventoryReferenceType.StockDocument, ReferenceId = reference,
+                    ReferenceLineId = i + 1, TransactionType = InventoryTransactionType.PurchaseReceipt,
+                    QuantityChange = 1m, BeforeQty = i - 5, AfterQty = i - 4,
+                    OccurredAtUtc = new DateTime(2026, 6, 23).AddMinutes(i),
+                    Note = i == 0 ? "XML " + xmlNumber : "Nhập hàng"
+                });
+            // The same numeric ID on an order is not the receipt's XML reference.
+            db.Add(new InventoryTransaction
+            {
+                StoreId = store.StoreId, WarehouseId = store.WarehouseId, ProductVariantId = store.VariantId,
+                ReferenceType = InventoryReferenceType.Order, ReferenceId = reference,
+                TransactionType = InventoryTransactionType.SaleIssue, QuantityChange = -1,
+                OccurredAtUtc = new DateTime(2026, 6, 23)
+            });
+            db.Add(new InventoryTransaction
+            {
+                StoreId = otherStore.StoreId, WarehouseId = otherStore.WarehouseId, ProductVariantId = otherStore.VariantId,
+                ReferenceType = InventoryReferenceType.StockDocument, ReferenceId = foreignSeed.ReceiptId.ToString(),
+                TransactionType = InventoryTransactionType.PurchaseReceipt, QuantityChange = 1,
+                OccurredAtUtc = new DateTime(2026, 6, 23)
+            });
+            await db.SaveChangesAsync();
+            mapId = link.Id;
+            transactionId = await db.InventoryTransactions.Where(x => x.StoreId == store.StoreId &&
+                x.ReferenceType == InventoryReferenceType.StockDocument && x.ReferenceId == reference)
+                .OrderBy(x => x.Id).Select(x => x.Id).FirstAsync();
+        }
+        using var viewer = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Inventory.Transaction.View));
+        foreach (var search in new[] { xmlNumber, "6598", "C26MYY", "c26myy", "C26MYY · 00006598", documentNo })
+        {
+            var page = await viewer.JsonAsync(HttpMethod.Get,
+                "/admin/inventory-ledger/data?searchScope=reference&keyword=" + Uri.EscapeDataString(search));
+            Assert.Equal(23, page.GetProperty("totalItems").GetInt32());
+            Assert.Equal(23, page.GetProperty("summary").GetProperty("increaseItems").GetInt32());
+            Assert.Equal(20, page.GetProperty("items").GetArrayLength());
+            foreach (var item in page.GetProperty("items").EnumerateArray())
+            {
+                Assert.Equal(reference, item.GetProperty("referenceCode").GetString());
+                Assert.Equal(documentNo, item.GetProperty("receiptDocumentNo").GetString());
+                var xml = Assert.Single(item.GetProperty("linkedInputInvoices").EnumerateArray());
+                Assert.Equal("C26MYY", xml.GetProperty("invoiceSeries").GetString());
+                Assert.Equal(xmlNumber, xml.GetProperty("invoiceNumber").GetString());
+            }
+        }
+        var lastPage = await viewer.JsonAsync(HttpMethod.Get,
+            "/admin/inventory-ledger/data?searchScope=reference&keyword=" + xmlNumber + "&page=2&includeSummary=false");
+        Assert.Equal(23, lastPage.GetProperty("totalItems").GetInt32());
+        Assert.Equal(3, lastPage.GetProperty("items").GetArrayLength());
+        var all = await viewer.JsonAsync(HttpMethod.Get, "/admin/inventory-ledger/data?searchScope=all&keyword=" + xmlNumber);
+        Assert.Equal(23, all.GetProperty("totalItems").GetInt32());
+        var filtered = await viewer.JsonAsync(HttpMethod.Get, "/admin/inventory-ledger/data?referenceCode=" + xmlNumber);
+        Assert.Equal(23, filtered.GetProperty("totalItems").GetInt32());
+        var quick = (await viewer.JsonAsync(HttpMethod.Get,
+            $"/admin/inventory-ledger/quick-view?transactionId={transactionId}")).GetProperty("item");
+        Assert.Equal(documentNo, quick.GetProperty("receiptDocumentNo").GetString());
+        Assert.Equal(xmlNumber, Assert.Single(quick.GetProperty("linkedInputInvoices").EnumerateArray())
+            .GetProperty("invoiceNumber").GetString());
+        using var foreign = await app.LoginAsync(await app.AddAccountAsync(otherStore, PermissionCodes.Inventory.Transaction.View));
+        var foreignPage = await foreign.JsonAsync(HttpMethod.Get,
+            "/admin/inventory-ledger/data?searchScope=reference&keyword=" + xmlNumber);
+        Assert.Equal(1, foreignPage.GetProperty("totalItems").GetInt32());
+        Assert.Equal(foreignSeed.ReceiptId.ToString(), Assert.Single(foreignPage.GetProperty("items").EnumerateArray())
+            .GetProperty("referenceCode").GetString());
+        using (var response = await foreign.Http.GetAsync($"/admin/inventory-ledger/quick-view?transactionId={transactionId}"))
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        await using var context = app.Database.CreateTenantContext(store.StoreId);
+        var before = await context.InventoryTransactions.AsNoTracking().OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.QuantityChange, x.BeforeQty, x.AfterQty, x.TotalCost, Version = Convert.ToBase64String(x.RowVersion) }).ToListAsync();
+        var linkToDelete = await context.StockDocumentInputInvoiceMaps.SingleAsync(x => x.Id == mapId);
+        linkToDelete.IsDeleted = true;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var repo = new InventoryLedgerIndexReadRepository(context);
+        var afterUnlink = await repo.QueryAsync(store.StoreId, new() { SearchScope = "reference", Keyword = xmlNumber }, null);
+        Assert.Empty(afterUnlink.Items);
+        var unlinked = await repo.GetQuickViewAsync(store.StoreId, transactionId, null);
+        Assert.Empty(unlinked!.Item.LinkedInputInvoices);
+        Assert.Equal(documentNo, unlinked.Item.ReceiptDocumentNo);
+        Assert.Equal(before, await context.InventoryTransactions.AsNoTracking().OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.QuantityChange, x.BeforeQty, x.AfterQty, x.TotalCost, Version = Convert.ToBase64String(x.RowVersion) }).ToListAsync());
+        Assert.Empty(context.ChangeTracker.Entries());
+    }
+
     internal static async Task<int> SeedAsync(FullApplicationFixture app, FullApplicationFixture.StoreSeed store, int backgroundCount)
     {
         await using var db = app.Database.CreateTenantContext(store.StoreId);
@@ -58,6 +186,16 @@ public sealed class InventoryLedgerSearchSqlServerTests(ITestOutputHelper output
         var initialCount = await db.InventoryTransactions.CountAsync();
         await SeedAsync(app, store, 1_500_000);
         var repo = new InventoryLedgerIndexReadRepository(db);
+        var periodClock = Stopwatch.StartNew();
+        var period = await repo.GetPeriodAsync(store.StoreId, store.WarehouseId, store.VariantId, null, null);
+        var periodMs = periodClock.ElapsedMilliseconds;
+        Assert.NotNull(period);
+        Assert.Equal(0m, period.OpeningQty);
+        Assert.Equal(102m, period.IncreaseQty);
+        Assert.Equal(1_500_000m, period.DecreaseQty);
+        Assert.Equal(-1_499_898m, period.ClosingQty);
+        output.WriteLine($"Full-history stock period across 1,500,047 movements: {periodMs} ms");
+        Assert.True(periodMs < 20_000, $"Full stock period exceeded the phone request timeout: {periodMs}ms");
         async Task<InventoryLedgerIndexPageDto> Search(string keyword, bool summary = true, int page = 1, string? scope = null)
         {
             var clock = Stopwatch.StartNew();

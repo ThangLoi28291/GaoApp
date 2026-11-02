@@ -15,8 +15,54 @@
 #invoiceIntentModal kbd { background: #ffffff25; color: inherit; border: 1px solid currentColor; border-radius: 6px; padding: 3px 8px; font-size: 13px; flex-shrink: 0; }
 #invoiceIntentModal .pos-invoice-option small { line-height: 1.5; font-size: 13px; }
 #invoiceIntentModal .pos-invoice-option:focus-visible { outline: 3px solid #343ad4; outline-offset: 3px; }
+
+/* Independent of Bootstrap modals: the next cart remains usable throughout. */
+.pos-cash-reminder {
+    position: fixed;
+    top: clamp(120px, 21vh, 210px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1040;
+    width: min(780px, calc(100% - 32px));
+    border: 2px solid #efbf5b;
+    border-radius: 22px;
+    background: #102139;
+    color: #fff;
+    box-shadow: 0 18px 54px #07152c70;
+    overflow: hidden;
+    pointer-events: none;
+}
+.pos-cash-reminder[hidden] { display: none !important; }
+.pos-cash-reminder-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px 0; font-size: 14px; color: #e0e9f5; }
+.pos-cash-reminder-paid { display: inline-flex; align-items: center; gap: 6px; color: #fff; font-weight: 700; }
+.pos-cash-reminder-paid i { font-size: 18px; }
+.pos-cash-reminder-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 14px; padding: 18px 20px 22px; }
+.pos-cash-reminder-amount { padding: 22px 12px; border-radius: 14px; background: #fff; color: #142238; text-align: center; }
+.pos-cash-reminder-label { display: block; font-size: 18px; font-weight: 800; margin-bottom: 11px; }
+.pos-cash-reminder-amount strong { display: flex; align-items: baseline; justify-content: center; flex-wrap: wrap; column-gap: 7px; font-size: clamp(34px, 4vw, 56px); font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.pos-cash-reminder-amount strong > span { min-width: 0; overflow-wrap: anywhere; }
+.pos-cash-reminder-amount small { font-size: .4em; font-weight: 700; }
+.pos-cash-reminder-change { background: #ffe08a; color: #35240a; }
+.pos-cash-reminder-change strong { font-size: clamp(40px, 4.8vw, 68px); }
+.pos-cash-reminder-track { height: 4px; background: #102139; }
+.pos-cash-reminder-progress { height: 100%; background: #ffe08a; transform-origin: left; }
+.pos-cash-reminder.is-visible .pos-cash-reminder-progress { animation: pos-cash-reminder-countdown 4s linear forwards; }
+@keyframes pos-cash-reminder-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+@media (prefers-reduced-motion: reduce) { .pos-cash-reminder.is-visible .pos-cash-reminder-progress { animation: none; } }
 @media (max-width: 575px) {
     #invoiceIntentModal .pos-cash-grid { grid-template-columns: 1fr; gap: 10px; }
     #invoiceIntentModal .pos-cash-amount { padding: 14px; }
     #invoiceIntentModal .pos-cash-amount span { margin-bottom: 6px; font-size: 16px; }
+    .pos-cash-reminder { top: 150px; width: calc(100% - 20px); border-radius: 17px; }
+    .pos-cash-reminder-head { padding: 14px 14px 0; font-size: 13px; }
+    .pos-cash-reminder-grid { grid-template-columns: 1fr; gap: 9px; padding: 13px 12px 16px; }
+    .pos-cash-reminder-amount { padding: 14px 10px; border-radius: 11px; }
+    .pos-cash-reminder-label { font-size: 14px; margin-bottom: 8px; }
+    .pos-cash-reminder-amount strong { font-size: 40px; column-gap: 4px; }
+    .pos-cash-reminder-change strong { font-size: 48px; }
+}
+@media (max-width: 359px) {
+    .pos-cash-reminder-amount { padding: 12px 8px; }
+    .pos-cash-reminder-amount strong { font-size: 36px; }
+    .pos-cash-reminder-change strong { font-size: 42px; }
 }

@@ -1,0 +1,26 @@
+@model System.Collections.Generic.IReadOnlyList<GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminNavigationNode>
+@inject GaoApp.Web.Services.AdminNavigationProvider Navigation
+@{ var navigation = await Navigation.GetAsync(ViewContext); var itemClass = ViewData["ConfiguredPosItemClass"] as string; }
+@foreach (var item in Model)
+{
+    if (item.Children.Count > 0)
+    {
+        <li class="@itemClass"><h6 class="dropdown-header">@item.Title</h6></li>
+        @await Html.PartialAsync("~/Areas/Admin/Views/Shared/_ConfiguredPOSMenuItems.cshtml", item.Children)
+    }
+    else if (navigation.IsCustomerDisplay(item))
+    {
+        <li class="@itemClass"><button type="button" class="dropdown-item" data-configured-customer-display data-url="@item.Href" data-menu-id="@item.Id">
+            <i class="@item.Icon me-2" aria-hidden="true"></i><span>@item.Title</span>
+        </button></li>
+    }
+    else
+    {
+        var opensReceiptSettings = GaoApp.Web.Services.AdminNavigationSnapshot.Under(navigation.LocalPath(item), "/admin/receipt-templates")
+            || navigation.LocalPath(item).Equals("/admin/pos/printer-settings", StringComparison.OrdinalIgnoreCase);
+        <li class="@itemClass"><a class="dropdown-item @(item.IsCurrent ? "active" : "")" href="@item.Href" data-menu-id="@item.Id" aria-current="@(item.IsCurrent ? "page" : null)"
+               target="@(opensReceiptSettings ? "_blank" : null)" rel="@(opensReceiptSettings ? "noopener" : null)">
+            <i class="@item.Icon me-2" aria-hidden="true"></i><span>@item.Title</span>
+        </a></li>
+    }
+}

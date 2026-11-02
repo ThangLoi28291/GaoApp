@@ -28,6 +28,7 @@ const { chromium } = require('playwright');
         if (response.url().endsWith('/update-header') && response.ok()) savedVersions.push((await response.json()).rowVersion);
     });
     async function open(target, itemId) {
+        await target.waitForFunction(() => !window.ReceiptIntake.isSaving() && !window.GaoAppPurchaseReceiptApproval?.supplierForIntake?.()?.busy);
         const pending = target.locator('#receiptIntakePending');
         if (await pending.getAttribute('open') === null) await pending.locator('summary').click();
         await target.locator(`[data-ri-review="${itemId}"]`).click();

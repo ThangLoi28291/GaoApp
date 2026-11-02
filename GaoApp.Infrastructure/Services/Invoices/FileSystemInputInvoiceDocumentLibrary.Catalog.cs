@@ -23,7 +23,7 @@ public sealed partial class FileSystemInputInvoiceDocumentLibrary
                 ct.ThrowIfCancellationRequested();
                 EnsureSafeExistingPath(supplierPath, true);
                 var tax = Path.GetFileName(supplierPath);
-                if (tax != ValidateTaxCode(tax)) continue;
+                if (!IsSupplierFolderName(tax)) continue;
                 for (var m = 1; m <= 12; m++)
                 {
                     if (month.HasValue && month != m) continue;

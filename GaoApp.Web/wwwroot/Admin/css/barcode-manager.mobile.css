@@ -1,0 +1,23 @@
+@media screen and (max-width:767.98px) {
+    #barcodeManagerPage { padding: 4px 0 20px; color: #192c4a; }
+    #barcodeManagerPage h1 { font-size: 23px; font-weight: 700; }
+    #barcodeManagerPage > .d-flex > div { min-width: 0; }
+    #barcodeManagerPage p, #barcodeManagerPage article { overflow-wrap: anywhere; }
+    #barcodeManagerPage .card { border: 1px solid #e1e7f0; border-radius: 20px; box-shadow: none; }
+    #barcodeManagerPage .card-body { padding: 20px 16px; }
+    #barcodeManagerPage h2 { color: #192c4a; font-size: 17px; font-weight: 700; }
+    #barcodeManagerPage article { padding: 14px 0; border-bottom: 1px solid #e1e7f0; }
+    #barcodeManagerPage article:last-child { border: 0; padding-bottom: 0; }
+    #barcodeManagerPage article p { margin: 4px 0 0; color: #607088; font-size: 13px; }
+    #barcodeManagerPage .btn { min-height: 48px; border-radius: 13px; }
+    #barcodeManagerPage > .d-flex > .btn, #barcodeManagerReload { width: 100%; }
+    #barcodeManagerPage .btn-primary { background: #3858df; border-color: #3858df; }
+    #barcodeChangeDialog .modal-dialog { margin: 0; height: 100dvh; max-width: none; }
+    #barcodeChangeDialog .modal-content { min-height: 100%; border: 0; border-radius: 0; }
+    #barcodeManagerForm { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    #barcodeManagerForm .modal-body { flex: 1; }
+    #barcodeManagerForm .modal-header { padding-top: max(16px,env(safe-area-inset-top)); }
+    #barcodeManagerForm .modal-footer { padding-bottom: max(16px,env(safe-area-inset-bottom)); }
+    #barcodeManagerForm :is(input:not([type=hidden]),textarea) { font-size: 16px; min-height: 48px; border-radius: 12px; }
+    #barcodeManagerForm .modal-footer > .btn { flex: 1; }
+}

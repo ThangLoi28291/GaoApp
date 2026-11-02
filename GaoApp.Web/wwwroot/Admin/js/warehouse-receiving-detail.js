@@ -10,6 +10,7 @@ let receivingSubmissionInProgress = false;
 let receivingRefreshSequence = 0;
 let receivingAddCommand = null;
 let receivingAddBusy = false;
+const receivingUncertainQuantities = new Map();
 let receivingLookupSequence = 0;
 let receivingLookupTerm = '';
 let deleteReceivingLineModalInstance = null;
@@ -78,11 +79,13 @@ async function readApiResponse(response) {
     try {
         return {
             ok: response.ok,
+            status: response.status,
             data: JSON.parse(text)
         };
     } catch {
         return {
             ok: response.ok,
+            status: response.status,
             data: { message: text }
         };
     }
@@ -182,7 +185,8 @@ function openGroupedProductPopup(group) {
         return;
     }
 
-    if (receivingAddBusy || receivingPendingSaves) return;
+    if (receivingAddBusy || receivingPendingSaves || window.ReceiptIntake?.isSaving()) return;
+    if (receivingAddCommand?.uncertain) { quickAddProductModalInstance?.show(); return; }
     receivingAddCommand = null;
     $('#quickLookupInput').select2('close');
 
@@ -211,6 +215,52 @@ function openGroupedProductPopup(group) {
         focusAndSelectPopupQty();
     }, 350);
 }
+
+// Assistant proposals prepare the existing popup. The employee confirms using the existing save service.
+window.applyAssistantReceivingMatch = async function(match, isCurrent, screenOptions = null) {
+    if (!match || !isCurrent() || receivingAddBusy || receivingPendingSaves || window.ReceiptIntake?.isSaving() || window.receivingHasPendingChanges?.()) throw new Error('Hãy lưu xong thay đổi hiện tại trước.');
+    const documentId = window.warehouseReceivingDetail?.documentId;
+    const fromScreen = screenOptions?.fromScreen === true;
+    const screenCurrent = () => !fromScreen || screenOptions.documentId === documentId && documentId === window.warehouseReceivingDetail?.documentId
+        && screenOptions.documentVersion === window.warehouseReceivingDetail?.rowVersion
+        && document.getElementById('CanEditReceiving')?.value === 'true';
+    const popupOpen = () => ['quickAddProductModal','receiptIntakeModal','wrdCaptureModal'].some(id=>document.getElementById(id)?.classList.contains('show'));
+    if(fromScreen&&(!screenCurrent()||popupOpen()||window.ReceiptIntake?.hasDraft?.()))throw new Error('Phiếu hoặc form nhập hàng đã thay đổi. Hãy hoàn tất form hiện tại rồi gửi lại đề xuất.');
+    const variantId = match.product?.variantId;
+    const complete = match.quantity != null;
+    if (!documentId || !/^\d+$/.test(variantId || '') || complete && (!/^\d+(?:\.\d{1,4})?$/.test(match.quantity || '') || !match.unit)) throw new Error('Đề xuất nhập hàng chưa hợp lệ.');
+    let unitsUrl = `/admin/api/stock-documents/${documentId}/barcode-proposals/products/${encodeURIComponent(variantId)}/units`;
+    if(fromScreen){
+        const contextUrl=document.getElementById('gaoAssistant')?.dataset.contextUrl;
+        if(!contextUrl?.endsWith('/context'))throw new Error('Chưa xác định được kết nối của màn hình.');
+        const url=new URL(contextUrl.slice(0,-8)+`/receiving/${documentId}/products/${encodeURIComponent(variantId)}/units`,location.origin);
+        url.searchParams.set('documentVersion',screenOptions.documentVersion);unitsUrl=url.toString();
+    }
+    const response = await fetch(unitsUrl, {cache:'no-store',credentials:'same-origin',redirect:'error'});
+    if (!response.ok) throw new Error('Chưa xác minh được sản phẩm. Hãy tìm thủ công.');
+    const data = await response.json();
+    if(fromScreen&&(data.documentId!==documentId||data.documentVersion!==screenOptions.documentVersion))throw new Error('Phiếu đã thay đổi. Mình tải lại và tạo đề xuất mới nhé.');
+    const units = (data.items || []).filter(u => String(u.productVariantId) === variantId);
+    const selected = complete ? units.find(u => String(u.unitId) === match.unit.unitId && (u.productUnitConversionId == null ? null : String(u.productUnitConversionId)) === match.unit.conversionId) : units[0];
+    if (!selected || complete && String(selected.factor) !== match.unit.factor || !isCurrent() || !screenCurrent()
+        || selected.productId != null && String(selected.productId) !== match.product.productId) throw new Error('Sản phẩm, phiếu hoặc quy cách đã thay đổi. Hãy tìm lại.');
+    const show = () => {
+        openGroupedProductPopup({productName:selected.productName, imageUrl:selected.imageUrl, units});
+        if (complete) {
+            $('#quickLookupInput').data('selected-item', selected);
+            renderUnitChooser(units, selected.unitId);
+            applySelectedUnitToPopup(selected);
+            if(fromScreen&&selected.price==null)setText('popupRetailPrice',selected.priceStatus==='forbidden'?'Không có quyền xem giá lẻ':'Chưa có giá lẻ hợp lệ');
+        }
+        document.getElementById('popupQuickQty').value = complete ? match.quantity : '';
+        updatePopupBaseQty();
+        setText('popupQuickMessage', complete ? 'AI đã điền đề xuất. Kiểm tra sản phẩm, đơn vị và số lượng rồi xác nhận thêm dòng.' : 'AI đã tìm sản phẩm. Chọn đơn vị và nhập số lượng thực nhận rồi xác nhận thêm dòng.');
+    };
+    if(fromScreen){
+        if(popupOpen()||receivingAddBusy||receivingPendingSaves||window.ReceiptIntake?.isSaving()||window.receivingHasPendingChanges?.())throw new Error('Hãy hoàn tất form hiện tại trước.');
+        screenOptions.beforeOpen?.();show();
+    }else if (!window.WarehouseReceivingMobile?.applyAssistant(show)) throw new Error('Cửa sổ nhập hàng đã đóng. Hãy yêu cầu lại.');
+};
 
 function renderUnitChooser(units, selectedUnitId) {
     const wrap = document.getElementById('popupUnitChooser');
@@ -328,7 +378,8 @@ function bindPopupQtyAutoSelect() {
 }
 function openQtyPopup(item) {
     if (!item) return;
-    if (receivingAddBusy || receivingPendingSaves) return;
+    if (receivingAddBusy || receivingPendingSaves || window.ReceiptIntake?.isSaving()) return;
+    if (receivingAddCommand?.uncertain) { quickAddProductModalInstance?.show(); return; }
     receivingAddCommand = null;
     $('#quickLookupInput').removeData('grouped-item');
 
@@ -405,7 +456,7 @@ function bindPopupAddLine() {
 function updateReceivingSubmitState() {
     const btn = document.getElementById('btnConfirmSubmitReceiving');
     const msg = document.getElementById('submitReceivingMessage');
-    if (btn) btn.disabled = receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress || !!window.WarehouseReceivingQuantity?.hasPending();
+    if (btn) btn.disabled = receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress || !!window.WarehouseReceivingQuantity?.hasPending() || !!window.ReceivingDraftRecovery?.hasPending();
     if (!msg) return;
     if (receivingPendingSaves > 0) msg.textContent = receivingSavingMessage;
     else if (receivingSaveFailed) msg.textContent = receivingSaveFailedMessage;
@@ -413,7 +464,7 @@ function updateReceivingSubmitState() {
 }
 
 function receivingHasPendingChanges() {
-    return !!window.WarehouseReceivingQuantity?.hasPending() || receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress || !!receivingAddCommand?.uncertain ||
+    return !!window.ReceivingDraftRecovery?.hasPending() || !!window.WarehouseReceivingQuantity?.hasPending() || receivingPendingSaves > 0 || receivingSaveFailed || receivingSubmissionInProgress || !!receivingAddCommand?.uncertain || receivingUncertainQuantities.size > 0 ||
         [...document.querySelectorAll('.js-receiving-qty')].some(x => parseDecimalInput(x.value) !== parseDecimalInput(x.defaultValue));
 }
 
@@ -426,8 +477,9 @@ function receivingRetryChanges() {
     if (receivingDeleteTarget && !document.getElementById('deleteReceivingLineError')?.hidden) {
         deleteReceivingLineModalInstance?.show(); return;
     }
-    if (receivingAddCommand || $('#quickLookupInput').data('selected-item')) { quickAddProductModalInstance?.show(); return; }
+    if (receivingAddCommand) { quickAddProductModalInstance?.show(); return; }
     if (window.ReceiptIntake?.retryPending?.()) return;
+    if ($('#quickLookupInput').data('selected-item')) { quickAddProductModalInstance?.show(); return; }
     const dirty = [...document.querySelectorAll('.js-receiving-qty')].find(x => parseDecimalInput(x.value) !== parseDecimalInput(x.defaultValue));
     if (dirty) { dirty.scrollIntoView({block:'center'}); dirty.focus(); saveReceivingQty(dirty); }
 }
@@ -460,9 +512,9 @@ function addReceivingLine() {
 }
 
 async function addReceivingLineCore() {
-    const selected = $('#quickLookupInput').data('selected-item');
+    const selected = receivingAddCommand?.uncertain ? receivingAddCommand.selected : $('#quickLookupInput').data('selected-item');
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
-    const qty = parseDecimalInput(document.getElementById('popupQuickQty')?.value || '0');
+    const qty = receivingAddCommand?.uncertain ? receivingAddCommand.payload.quantity : parseDecimalInput(document.getElementById('popupQuickQty')?.value || '0');
     const btn = document.getElementById('btnPopupQuickAddLine');
 
     if (!selected) {
@@ -488,35 +540,35 @@ async function addReceivingLineCore() {
             conversion = unitsApi.data.items?.find(x => Number(x.unitId) === Number(selected.unitId));
             if (!conversion) throw new Error('Không tìm thấy đơn vị nhập. Hãy chọn lại sản phẩm.');
         }
-        const payload = {productUnitConversionId:Number(conversion.productUnitConversionId),factor:Number(conversion.factor),quantity:qty,barcode:selected.barcode || null,note:null};
+        const payload = receivingAddCommand?.uncertain ? receivingAddCommand.payload : {productUnitConversionId:Number(conversion.productUnitConversionId),factor:Number(conversion.factor),quantity:qty,barcode:selected.barcode || null,note:null};
         const identity = JSON.stringify(payload);
-        if (!receivingAddCommand || (!receivingAddCommand.uncertain && receivingAddCommand.identity !== identity)) receivingAddCommand = {identity,commandId:crypto.randomUUID()};
+        if (!receivingAddCommand || (!receivingAddCommand.uncertain && receivingAddCommand.identity !== identity)) receivingAddCommand = {identity,commandId:crypto.randomUUID(),payload,selected};
         receivingAddCommand.feedback ??= window.WarehouseReceivingFeedback?.prepare({
             commandId:receivingAddCommand.commandId, conversionId:payload.productUnitConversionId,
             name:selected.productName || selected.text, unitName:selected.unitName || conversion.unitName || '',
             barcode:selected.barcode || selected.sku || '', factor:payload.factor, quantity:qty, imageUrl:selected.imageUrl
         });
-        const response = await fetch(`/admin/api/stock-documents/${documentId}/intake/known`, {
+        const response = await (window.ReceivingDraftRecovery?.request || fetch)(`/admin/api/stock-documents/${documentId}/intake/known`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 ...payload,commandId:receivingAddCommand.commandId,documentRowVersion:window.warehouseReceivingDetail.rowVersion,
                 leaseToken:sessionStorage.getItem(`gaoapp:receiving-lease:${documentId}`) || null
             })
-        });
+        }, `${selected.productName || selected.text} · ${qty} ${selected.unitName || ''}`);
 
         const api = await readApiResponse(response);
 
         if (!api.ok) {
             setText('popupQuickMessage', api.data?.message || 'Thêm dòng thất bại.');
-            receivingAddCommand.uncertain = response.status >= 500;
+            receivingAddCommand.uncertain ||= response.status >= 500;
             return false;
         }
 
         window.warehouseReceivingDetail.rowVersion = api.data.documentRowVersion;
-        window.WarehouseReceivingFeedback?.loadState(api.data.recentReceipts);
-        await refreshReceivingLines();
-        await window.ReceiptIntake?.reload();
+        if (await refreshReceivingLines() === false) throw new Error('Danh sách hàng đang tải lại. Vui lòng thử lại để xác nhận đủ kết quả.');
+        await window.ReceiptIntake?.reload({requireConfirmation:true,commandId:receivingAddCommand.commandId});
+        window.ReceivingDraftRecovery?.confirm(response);
         receivingAddCommand.saved = true;
         quickAddProductModalInstance?.hide();
         $('#quickLookupInput').val(null).trigger('change').removeData('selected-item');
@@ -538,7 +590,7 @@ async function addReceivingLineCore() {
     }
 }
 
-async function refreshReceivingLines() {
+async function refreshReceivingLines({confirmQuantity = null} = {}) {
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
     const sequence = ++receivingRefreshSequence;
 
@@ -552,7 +604,7 @@ async function refreshReceivingLines() {
     }
 
     const html = await response.text();
-    if (sequence !== receivingRefreshSequence) return;
+    if (sequence !== receivingRefreshSequence) return false;
     const template = document.createElement('template');
     template.innerHTML = html;
     const snapshot = template.content.querySelector('[data-receiving-row-version]');
@@ -561,6 +613,19 @@ async function refreshReceivingLines() {
     try { validVersion = atob(rowVersion).length === 8; } catch { /* Invalid snapshot: do not enable submission. */ }
     if (Number(snapshot?.dataset.receivingDocumentId) !== Number(documentId) || !validVersion) {
         throw new Error('Không đọc được phiên bản phiếu. Vui lòng tải lại trang.');
+    }
+    if (confirmQuantity) {
+        const {lineId,payload} = confirmQuantity;
+        const row = [...template.content.querySelectorAll('[data-line-id]')].find(x=>x.dataset.lineId===String(lineId));
+        const input = row?.querySelector('.js-receiving-qty');
+        const sameFields = input && Number(input.dataset.unitId)===payload.unitId && (input.dataset.note || null)===payload.note;
+        const sameQuantity = sameFields && Number(row.dataset.receivingQuantity)===payload.quantity;
+        if (!sameQuantity) {
+            // An unchanged snapshot proves the lost request did not write; its
+            // original concurrency tokens are still safe to retry.
+            if (sameFields && rowVersion===payload.rowVersion && row.dataset.rowVersion===payload.lineRowVersion) return false;
+            throw new Error('Dòng hàng đã thay đổi ở nơi khác. Giữ số lượng đang chờ xác nhận và tải lại phiếu để đối chiếu.');
+        }
     }
     // Advance the version only with the corresponding visible receipt snapshot.
     // Fetching a fresh token at submission would bypass unseen concurrent edits.
@@ -574,10 +639,12 @@ async function refreshReceivingLines() {
     updateSummaryFromDom();
     window.WarehouseReceivingApp?.restoreListViewport(viewport);
     await loadMissingBarcodeVerification(false);
+    return true;
 }
 
 function bindReceivingQtyInputs() {
     document.querySelectorAll('.js-receiving-qty').forEach(input => {
+        if (receivingUncertainQuantities.has(input.dataset.lineId)) input.dataset.receiptQuantityUncertain='1';
         if (input.dataset.bound === '1') return;
 
         input.dataset.bound = '1';
@@ -613,6 +680,19 @@ function saveReceivingQty(input) {
     return withReceivingLineSave(() => saveReceivingQtyCore(input));
 }
 
+function receivingLineTokens(row) {
+    return {
+        rowVersion: window.warehouseReceivingDetail?.rowVersion || '',
+        lineRowVersion: row?.dataset.rowVersion || ''
+    };
+}
+
+function receivingLineConflictMessage(api, fallback) {
+    return api.status === 409
+        ? 'Phiếu hoặc dòng hàng đã thay đổi ở nơi khác. Giữ nội dung đang nhập; sao chép nếu cần rồi tải lại phiếu để đối chiếu trước khi lưu hoặc xóa.'
+        : api.data?.message || fallback;
+}
+
 async function saveReceivingQtyCore(input) {
     const documentId = window.warehouseReceivingDetail?.documentId || 0;
     const lineId = input.dataset.lineId;
@@ -629,29 +709,52 @@ async function saveReceivingQtyCore(input) {
         return false;
     }
 
-    const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            unitId: unitId,
-            quantity: qty,
+    const payload = receivingUncertainQuantities.get(lineId) || {
+        ...receivingLineTokens(input.closest('tr')),unitId,quantity:qty,
+        // Quantity edits retain the server-owned commercial price snapshot.
+        unitCost:null,note
+    };
+    const confirmed = () => {
+        window.ReceivingDraftRecovery?.confirmLine(lineId);
+        window.ReceivingDraftRecovery?.confirmQuantity(input,payload.quantity);
+        receivingUncertainQuantities.delete(lineId);
+        delete input.dataset.receiptQuantityUncertain;
+        const current = [...document.querySelectorAll('.js-receiving-qty')].find(x=>x.dataset.lineId===lineId);
+        if(current)delete current.dataset.receiptQuantityUncertain;
+    };
+    try {
+        if (receivingUncertainQuantities.has(lineId) && await refreshReceivingLines({confirmQuantity:{lineId,payload}}) !== false) {
+            confirmed(); return true;
+        }
+        const response = await (window.ReceivingDraftRecovery?.request || fetch)(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }, `${input.closest('tr')?.querySelector('.wrd-line-name,strong')?.textContent.trim() || 'Sản phẩm'} · số lượng ${payload.quantity}`);
 
-            // Null yêu cầu server giữ nguyên snapshot giá; nhân viên không được
-            // nhìn thấy hoặc thay đổi giá thương mại.
-            unitCost: null,
-            note: note
-        })
-    });
+        const api = await readApiResponse(response);
 
-    const api = await readApiResponse(response);
+        if (!api.ok) {
+            if (response.status>=500) { receivingUncertainQuantities.set(lineId,payload); input.dataset.receiptQuantityUncertain='1'; }
+            alert(receivingLineConflictMessage(api, 'Cập nhật số lượng thất bại.'));
+            return false;
+        }
 
-    if (!api.ok) {
-        alert(api.data?.message || 'Cập nhật số lượng thất bại.');
-        return false;
+        if (await refreshReceivingLines() === false) throw new Error('Danh sách hàng đang tải lại. Vui lòng thử lại để xác nhận số lượng.');
+        window.ReceivingDraftRecovery?.confirm(response);
+        confirmed();
+        return true;
+    } catch(error) {
+        receivingUncertainQuantities.set(lineId,payload);input.dataset.receiptQuantityUncertain='1';throw error;
     }
+}
 
-    await refreshReceivingLines();
-    return true;
+function receivingIsActivelySaving(){return receivingPendingSaves>0 || receivingSubmissionInProgress;}
+function finishReceivingRecovery(){
+    if(receivingIsActivelySaving())return;
+    receivingSaveFailed=false;receivingUncertainQuantities.clear();
+    if(receivingAddCommand){receivingAddCommand.saved=true;quickAddProductModalInstance?.hide();receivingAddCommand=null;}
+    updateReceivingSubmitState();
 }
 
 function bindDeleteReceivingLine() {
@@ -668,7 +771,7 @@ function bindDeleteReceivingLine() {
             const current = document.querySelector(`.btn-delete-receiving-line[data-line-id="${lineId}"]`);
             if (!current) return;
             const row = current.closest('tr');
-            receivingDeleteTarget = {id:lineId, saved:receivingDeletedLineIds.has(lineId)};
+            receivingDeleteTarget = {id:lineId, saved:receivingDeletedLineIds.has(lineId), lineTokens:receivingLineTokens(row)};
             setText('deleteReceivingLineName', current.dataset.productName || 'Sản phẩm');
             setText('deleteReceivingLineCode', current.dataset.productCode ? `Mã: ${current.dataset.productCode}` : 'Chưa có mã sản phẩm');
             setText('deleteReceivingLineQuantity', `${new Intl.NumberFormat('vi-VN', {maximumFractionDigits:3}).format(Number(row.dataset.receivingQuantity) || 0)} ${current.dataset.unitName || ''}`);
@@ -703,10 +806,11 @@ async function confirmDeleteReceivingLine() {
                     const documentId = window.warehouseReceivingDetail?.documentId || 0;
                     const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${target.id}`, {
                         method:'DELETE', credentials:'same-origin',
-                        headers:{RequestVerificationToken:document.querySelector('[name="__RequestVerificationToken"]')?.value || ''}
+                        headers:{'Content-Type':'application/json', RequestVerificationToken:document.querySelector('[name="__RequestVerificationToken"]')?.value || ''},
+                        body:JSON.stringify(target.lineTokens)
                     });
                     const api = await readApiResponse(response);
-                    if (!api.ok) throw new Error(api.data?.message || 'Chưa xóa được dòng hàng. Vui lòng thử lại.');
+                    if (!api.ok) throw new Error(receivingLineConflictMessage(api, 'Chưa xóa được dòng hàng. Vui lòng thử lại.'));
                     target.saved = true;
                     receivingDeletedLineIds.add(target.id);
                 }
@@ -755,6 +859,9 @@ function bindSubmitReceiving() {
     }
 }
 async function submitReceivingForApproval() {
+    if(window.ReceivingDraftRecovery?.hasPending()){
+        setText('submitReceivingMessage','Còn phần nhập chưa xác nhận lưu. Khôi phục và kiểm tra đủ hàng trước khi gửi duyệt.');return;
+    }
     if (window.WarehouseReceivingQuantity?.hasPending() && !await window.WarehouseReceivingQuantity.flush()) {
         setText('submitReceivingMessage', 'Chưa lưu xong số lượng. Bấm Lưu lại trước khi gửi duyệt.');
         return;

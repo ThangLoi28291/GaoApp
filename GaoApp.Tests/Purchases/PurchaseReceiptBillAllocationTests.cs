@@ -81,6 +81,49 @@ public sealed class PurchaseReceiptBillAllocationTests
         Assert.Equal(55800, result.Rules.Single(x => x.RuleKey == "fixed").Amount);
         Assert.Equal(20, result.Quantities.Single().GiftBaseQuantity);
     }
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void Full_gift_participation_can_also_receive_a_discount_without_counting_goods_twice(bool fixedAmount, bool sameSku)
+    {
+        var giftVariant = sameSku ? 1 : 3;
+        var giftTarget = sameSku ? 1 : 3;
+        var gift = Gift("gift", "topkid", 48, giftTarget, 4, "gift-row");
+        gift.GiftMode = sameSku ? PurchaseReceiptPricingGiftMode.SameSku : PurchaseReceiptPricingGiftMode.DifferentSku;
+        var discount = fixedAmount ? Fixed(84000, ("topkid", 48)) : new PurchaseReceiptPricingRuleInput
+        {
+            RuleKey = "percent", Type = PurchaseReceiptPricingRuleType.PercentageDiscount, DiscountPercent = 17.5m,
+            BillSources = [new() { BillLineKey = "topkid", Quantity = 48 }]
+        };
+        var request = new PurchaseReceiptPricingAllocationRequest
+        {
+            ActualBillTotal = 4075000,
+            BillLines = [Row("topkid", 1, 48, 10000), Row("other", 2, 1, 3679000, variant: 2),
+                Row("gift-row", 3, 4, 0, variant: giftVariant, gift: true)],
+            Rules = [gift, discount]
+        };
+        var physical = new List<PurchaseReceiptPricingPhysicalLine> { Physical(1, sameSku ? 52 : 48), Physical(2, 1, 2) };
+        if (!sameSku) physical.Add(Physical(3, 4, 3));
+        var values = sameSku ? Array.Empty<PurchaseReceiptPricingGiftValue>()
+            : new[] { new PurchaseReceiptPricingGiftValue(3, 1, 1, 5000, PurchaseReceiptGiftValuationSource.Manual) };
+
+        var result = calculator.Calculate(request, physical, values);
+        Assert.True(result.CanApply, string.Join(";", result.Errors));
+        Assert.Equal(4075000, result.SystemTotal);
+        Assert.Equal(0, result.Difference);
+        Assert.Equal(84000, result.Rules.Single(x => x.RuleKey == discount.RuleKey).Amount);
+        Assert.Equal(48, result.Quantities.Single(x => x.ProductVariantId == 1).PurchasedBaseQuantity);
+        Assert.Equal(4, result.Quantities.Sum(x => x.GiftBaseQuantity));
+        Assert.Equal(sameSku ? 396000 : 376000, result.Lines.Single(x => x.StockDocumentLineId == 1).FinalAmountBeforeVat);
+        Assert.Equal(request.ActualBillTotal, result.Lines.Sum(x => x.FinalAmountBeforeVat));
+
+        request.Rules.Reverse();
+        var reversed = calculator.Calculate(request, physical, values);
+        Assert.True(reversed.CanApply, string.Join(";", reversed.Errors));
+        Assert.Equal(result.Lines.Select(x => x.FinalAmountBeforeVat), reversed.Lines.Select(x => x.FinalAmountBeforeVat));
+    }
     [Fact]
     public void Repeated_bill_and_receiving_lines_reconcile_by_sku_and_blend_same_sku_gift_once()
     {
@@ -93,6 +136,50 @@ public sealed class PurchaseReceiptBillAllocationTests
         Assert.Equal(20,result.Quantities.Single().GiftBaseQuantity);
         Assert.Equal(60*3110,result.BillSources.Single().BaselineAmount);
         Assert.All(result.Lines,x=>Assert.Equal(x.PurchasedAmount+x.GiftAmount,x.FinalAmountBeforeVat));
+    }
+    [Fact]
+    public void Global_money_discount_is_exact_after_line_discount_and_before_gift_allocation()
+    {
+        var request = new PurchaseReceiptPricingAllocationRequest
+        {
+            ActualBillTotal = 470400, GlobalDiscountAmount = 33600,
+            BillLines = [Row("a", 1, 180, 3110), Row("g", 2, 20, 0, gift: true)],
+            Rules = [Fixed(55800, ("a", 180)), Gift("gift", "a", 180, 1, 20, "g")]
+        };
+        var result = calculator.Calculate(request, [Physical(1, 200)]);
+        Assert.True(result.CanApply, string.Join(";", result.Errors));
+        Assert.Equal(470400, result.SystemTotal);
+        Assert.Equal(2352, result.Lines.Single().EffectiveUnitPriceBeforeVat);
+        Assert.Equal(20, result.Quantities.Single().GiftBaseQuantity);
+    }
+    [Fact]
+    public void Global_money_cent_discount_preserves_total_and_deterministic_allocation()
+    {
+        var request = new PurchaseReceiptPricingAllocationRequest { ActualBillTotal = 1.99m, GlobalDiscountAmount = .01m,
+            BillLines = [Row("a", 1, 1, 1), Row("b", 2, 1, 1, variant: 2)] };
+        var result = calculator.Calculate(request, [Physical(1, 1), Physical(2, 1, 2)]);
+        Assert.True(result.CanApply, string.Join(";", result.Errors));
+        Assert.Equal(1.99m, result.Lines.Sum(x => x.FinalAmountBeforeVat));
+        request.BillLines.Reverse();
+        Assert.Equal(result.Lines.Select(x => x.FinalAmountBeforeVat),
+            calculator.Calculate(request, [Physical(2, 1, 2), Physical(1, 1)]).Lines.Select(x => x.FinalAmountBeforeVat));
+    }
+    [Theory]
+    [InlineData(-1)] [InlineData(.001)] [InlineData(1000)] [InlineData(1001)]
+    public void Invalid_global_money_discount_is_rejected(decimal amount)
+    {
+        var result = calculator.Calculate(new() { ActualBillTotal = 900, GlobalDiscountAmount = amount,
+            BillLines = [Row("a", 1, 10, 100)] }, [Physical(1, 10)]);
+        Assert.False(result.CanApply);
+        Assert.Contains(result.Errors, x => x.Contains("giảm toàn bill"));
+    }
+    [Fact]
+    public void Global_money_and_percent_cannot_be_combined()
+    {
+        var result = calculator.Calculate(new() { ActualBillTotal = 890, GlobalDiscountAmount = 10, GlobalDiscountPercent = 10,
+            BillLines = [Row("a", 1, 10, 100)] }, [Physical(1, 10)]);
+        Assert.False(result.CanApply);
+        Assert.Contains(result.Errors, x => x.Contains("Chỉ chọn giảm tiền hoặc giảm %"));
     }
     [Fact]
     public void Partial_discount_only_reduces_selected_quantity_and_unit_conversion_reconciles_multiple_receiving_lines()

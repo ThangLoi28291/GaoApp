@@ -8,20 +8,24 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Area("Admin")]
 [Authorize(Policy = PermissionCodes.Security.Role.Permissions)]
+[ServiceFilter(typeof(GaoApp.Web.Security.AdministrationConfirmationRateLimitFilter))]
 public class RolePermissionsController : BaseAdminController
 {
     private readonly IRolePermissionAdminService _rolePermissionAdminService;
     private readonly ICurrentStorePermissionService _currentStorePermissionService;
     private readonly IRoleAdminService _roleAdminService;
+    private readonly ISecurityAdministrationGuard _security;
 
     public RolePermissionsController(
         IRolePermissionAdminService rolePermissionAdminService,
         ICurrentStorePermissionService currentStorePermissionService,
-        IRoleAdminService roleAdminService)
+        IRoleAdminService roleAdminService,
+        ISecurityAdministrationGuard security)
     {
         _rolePermissionAdminService = rolePermissionAdminService;
         _currentStorePermissionService = currentStorePermissionService;
         _roleAdminService = roleAdminService;
+        _security = security;
     }
 
     [HttpGet]
@@ -31,6 +35,8 @@ public class RolePermissionsController : BaseAdminController
         var userId = CurrentUserId;
 
         await LoadPagePermissionsAsync(storeId, userId, ct);
+        var actor = await _security.GetActorAsync(storeId, userId, ct);
+        ViewBag.CanManagePermissions = actor.CanAdminister;
         ViewBag.Roles = await _roleAdminService.GetLookupAsync(storeId, onlyActive: true, ct: ct);
         if (roleId == 0) return View(new RolePermissionMatrixDto());
         var vm = await _rolePermissionAdminService.GetMatrixAsync(storeId, roleId, ct);
@@ -39,6 +45,9 @@ public class RolePermissionsController : BaseAdminController
             ToastError("Không tìm thấy vai trò.");
             return RedirectToAction("Index", "Roles", new { area = "Admin" });
         }
+
+        if (vm.RoleCode == "ADMIN" && !actor.IsHostAdmin)
+            ViewBag.CanManagePermissions = false;
 
         return View(vm);
     }

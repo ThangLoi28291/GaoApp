@@ -1,0 +1,23 @@
+<div class="modal fade pos-camera-modal" id="posScanCameraModal" tabindex="-1" aria-labelledby="posScanCameraTitle" aria-hidden="true"
+     data-decoder-url="@Url.Content("~/lib/zxing-browser/0.1.5/zxing-browser.min.js")">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div><span class="pos-camera-eyebrow">BÁN HÀNG</span><h2 id="posScanCameraTitle">Quét mã vạch</h2></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng camera"></button>
+            </div>
+            <div class="modal-body">
+                <div class="pos-camera-preview">
+                    <video id="posScanCameraVideo" playsinline muted autoplay aria-label="Hình ảnh camera quét mã"></video>
+                    <div class="pos-camera-frame" aria-hidden="true"></div>
+                </div>
+                <p id="posScanCameraStatus" role="status" aria-live="polite"></p>
+                <p class="pos-camera-help">Đưa mã vạch vào khung. Camera dừng sau mỗi mã; sản phẩm được thêm theo quy cách và số lượng đang chọn. Đóng cửa sổ để gõ mã hoặc dùng máy quét.</p>
+            </div>
+            <div class="modal-footer">
+                <button id="posScanCameraTorch" type="button" class="btn btn-outline-secondary" aria-pressed="false" hidden>Bật đèn</button>
+                <button id="posScanCameraRetry" type="button" class="btn btn-primary">Quét lại</button>
+            </div>
+        </div>
+    </div>
+</div>

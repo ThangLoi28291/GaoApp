@@ -62,6 +62,13 @@
     const mobileItems = Array.from(root.querySelectorAll('[data-admin-menu-mobile-item]'));
     const desktopByKey = new Map(desktopRows.map((row) => [row.dataset.menuKey, row]));
     const mobileByKey = new Map(mobileItems.map((card) => [card.dataset.menuKey, card]));
+    const phone = matchMedia('(max-width: 767.98px)');
+    // The existing first two levels share metadata with their desktop rows.
+    // Further phone levels are projected from the same server tree, never from fixed routes.
+    desktopRows.forEach(row => {
+        const card = mobileByKey.get(row.dataset.menuKey);
+        if (card) Object.entries(row.dataset).forEach(([key, value]) => { if (key.startsWith('menu')) card.dataset[key] = value; });
+    });
     const collapsedParents = new Set();
     let adminMenuSearchTimer = 0;
     let pendingDeleteForm = null;
@@ -73,7 +80,7 @@
         .toLocaleLowerCase('vi-VN')
         .trim();
 
-    const buildAdminMenuItems = () => desktopRows.map((row) => ({
+    const buildAdminMenuItems = (rows = desktopRows) => rows.map((row) => ({
         key: row.dataset.menuKey || '',
         parentKey: row.dataset.menuParentKey || '',
         level: row.dataset.menuLevel || 'child',
@@ -91,7 +98,8 @@
         row
     }));
 
-    const allItems = buildAdminMenuItems();
+    let allItems = buildAdminMenuItems(phone.matches ? mobileItems : desktopRows);
+    let itemsByKey = new Map(allItems.map(item => [item.key, item]));
 
     const setText = (element, value) => {
         if (element) element.textContent = String(value ?? '—');
@@ -182,7 +190,14 @@
     }
 
     const setItemVisibility = (item, visible, context, ignoreCollapse) => {
-        const collapsed = item.parentKey && collapsedParents.has(item.parentKey) && !ignoreCollapse;
+        let collapsed = item.parentKey && collapsedParents.has(item.parentKey) && !ignoreCollapse;
+        if (phone.matches && !ignoreCollapse) {
+            let parent = item.parentKey; const seen = new Set();
+            while (parent && !seen.has(parent)) {
+                seen.add(parent); if (collapsedParents.has(parent)) { collapsed = true; break; }
+                parent = itemsByKey.get(parent)?.parentKey;
+            }
+        }
         const finalVisible = visible && !collapsed;
         item.row.hidden = !finalVisible;
         item.row.classList.toggle('is-context', finalVisible && context);
@@ -198,6 +213,7 @@
         root.querySelectorAll('[data-admin-menu-collapse]').forEach((button) => {
             const collapsed = collapsedParents.has(button.dataset.adminMenuCollapse);
             button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+            if (phone.matches && !button.hasAttribute('aria-label')) button.setAttribute('aria-label', 'Thu gọn hoặc mở rộng ' + (mobileByKey.get(button.dataset.adminMenuCollapse)?.dataset.menuTitle || 'nhóm menu'));
             const icon = button.querySelector('i');
             if (icon && !button.disabled) {
                 icon.className = 'bx ' + (collapsed ? 'bx-chevron-right' : 'bx-chevron-down');
@@ -227,6 +243,12 @@
         const pageItems = filtered.slice(offset, offset + state.pageSize);
         const resultKeys = new Set(pageItems.map((item) => item.key));
         const contextKeys = new Set(pageItems.filter((item) => item.parentKey).map((item) => item.parentKey));
+        if (phone.matches) pageItems.forEach(item => {
+            let parent = item.parentKey; const seen = new Set();
+            while (parent && !seen.has(parent)) {
+                seen.add(parent); contextKeys.add(parent); parent = itemsByKey.get(parent)?.parentKey;
+            }
+        });
         const ignoreCollapse = Boolean(normalizedKeyword)
             || state.level !== 'all'
             || state.type !== 'all'
@@ -250,7 +272,7 @@
     function openAdminMenuQuickView(source) {
         const holder = source.closest('[data-admin-menu-item], [data-admin-menu-mobile-item]');
         if (!holder) return;
-        const row = desktopByKey.get(holder.dataset.menuKey);
+        const row = phone.matches ? mobileByKey.get(holder.dataset.menuKey) : desktopByKey.get(holder.dataset.menuKey);
         if (!row) return;
 
         setText(elements.quickTitle, row.dataset.menuTitle);
@@ -395,7 +417,8 @@
 
         const mobileDelete = event.target.closest('[data-admin-menu-mobile-delete]');
         if (mobileDelete) {
-            const row = desktopByKey.get(mobileDelete.dataset.adminMenuMobileDelete);
+            const row = desktopByKey.get(mobileDelete.dataset.adminMenuMobileDelete)
+                || (phone.matches ? mobileByKey.get(mobileDelete.dataset.adminMenuMobileDelete) : null);
             showDeleteConfirmation(row?.querySelector('[data-admin-menu-delete-form]'));
         }
     });
@@ -432,4 +455,10 @@
 
     syncControlsFromState();
     applyAdminMenuFilters();
+    phone.addEventListener('change', () => {
+        allItems = buildAdminMenuItems(phone.matches ? mobileItems : desktopRows);
+        itemsByKey = new Map(allItems.map(item => [item.key, item]));
+        if (!phone.matches) mobileItems.filter(item => item.hasAttribute('data-menu-phone-only')).forEach(item => item.hidden = true);
+        applyAdminMenuFilters();
+    });
 })();

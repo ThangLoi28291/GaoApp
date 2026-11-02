@@ -1,0 +1,54 @@
+@model GaoApp.Web.Areas.Admin.Controllers.AssistantQualityPage
+@{
+    Layout="_ContentNavbarLayout";ViewData["Title"]="Chất lượng trợ lý";
+    var report=Model.Report;
+    string Kind(string kind)=>kind switch {"wrong_product"=>"Sai hàng","wrong_price"=>"Sai giá",_=>"Chưa hiểu"};
+    string Number(long? value)=>value?.ToString("N0")??"Chưa có số liệu";
+}
+<link rel="stylesheet" href="~/Admin/css/assistant-quality.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/Admin/css/assistant-admin.mobile.css" asp-append-version="true" />
+<div class="aq-page mx-auto" style="max-width:1100px">
+    <div class="d-flex flex-wrap justify-content-between gap-3 align-items-start mb-4">
+        <div><h3>Chất lượng trợ lý</h3><p class="text-muted mb-0">@Model.StoreName · số liệu của cửa hàng hiện tại</p></div>
+        <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-primary" href="@Url.Content("~/admin/customer-service")">Hộp thư CSKH</a><a class="btn btn-outline-primary" href="@Url.Content("~/admin/assistant/knowledge")">Kiến thức cửa hàng</a><a class="btn btn-outline-primary" href="@Url.Content("~/admin/assistant/search")">Tìm hàng và cách gọi</a><a class="btn btn-outline-secondary" href="@Url.Content("~/admin/assistant/settings")">Cấu hình AI</a><a class="btn btn-primary" href="@Url.Content("~/admin/assistant/quality")?days=@Model.Days">Tải lại</a></div>
+    </div>
+    <form method="get" action="@Url.Content("~/admin/assistant/quality")" class="d-flex gap-2 mb-4 align-items-center">
+        <label for="aqDays">Khoảng thời gian</label><select name="days" id="aqDays" class="form-select" style="width:auto"><option value="1" selected="@(Model.Days==1)">24 giờ</option><option value="7" selected="@(Model.Days==7)">7 ngày</option></select><button class="btn btn-outline-primary">Xem</button>
+    </form>
+    @if(TempData["AssistantQualityResult"] is string notice){<div class="alert alert-info" role="status">@notice</div>}
+    @if(Model.Error is not null){<div class="alert alert-warning" role="alert"><strong>Chưa có báo cáo mới.</strong> @Model.Error <small>Mã: @Model.Code</small></div>}
+    else{<div class="alert alert-success" role="status">Đã kết nối ChatbotLocal và xác minh quyền đọc báo cáo. Đọc lúc @report!.GeneratedAt.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm:ss") (giờ Việt Nam).</div>}
+    @if(Model.Switches is { } switches){<p>AI cửa hàng: <strong>@(switches.Enabled?"Bật":"Tắt")</strong> · Chat: @(switches.ChatEnabled?"Bật":"Tắt") · Nhập hàng: @(switches.ReceivingEnabled?"Bật":"Tắt") · Gợi ý tên: @(switches.NormalizeEnabled?"Bật":"Tắt")</p>}
+    @if(report is not null){
+        <div class="row g-3 mb-4">
+            @foreach(var tile in new[]{("Lượt xử lý HTTP",Number(report.Requests.Attempts)),("Phản hồi hoàn tất",Number(report.Requests.Completed)),("Lỗi / đã hủy",$"{report.Requests.Failed:N0} / {report.Requests.Cancelled:N0}"),("Phản hồi cần xem",Number(report.OpenFeedback))}){
+                <div class="col-6 col-lg-3"><div class="card h-100"><div class="card-body"><p class="text-muted">@tile.Item1</p><h4 class="mb-0">@tile.Item2</h4></div></div></div>
+            }
+        </div>
+        <div class="card mb-4"><div class="card-body"><h5>Thời gian phản hồi</h5><p>p50: <strong>@Number(report.Requests.P50Ms) ms</strong> · p95: <strong>@Number(report.Requests.P95Ms) ms</strong> · @report.Requests.LatencySamples.ToString("N0") mẫu.</p>
+            <p class="text-muted mb-0">Số lượt HTTP gồm thử lại; @report.Requests.Accepted lượt trả trạng thái đang xử lý. Thời gian tính ở ChatbotLocal, chưa gồm toàn bộ mạng/trình duyệt. @(report.Requests.SampleLimited?"Độ trễ lấy 10.000 mẫu mới nhất.":"")</p></div></div>
+        <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Sử dụng AI</h5></div><div class="card-body">
+            <p class="text-muted">Tính từng lần gọi model, gồm router, tóm tắt và retry. Token chỉ cộng số đã được provider trả; thiếu số liệu không coi là 0. Các project có thể dùng chung quota với cửa hàng khác.</p>
+            @if(report.Ai.Length==0){<p>Chưa ghi nhận lần gọi AI trong khoảng này.</p>}
+            else{<div class="table-responsive"><table class="table"><thead><tr><th>Provider / model</th><th>Project / slot</th><th>Lần gọi</th><th>Thành công / lỗi / dở dang</th><th>Token đã ghi nhận</th><th>Chờ quota</th></tr></thead><tbody>
+                @foreach(var row in report.Ai){<tr><td>@row.Provider<br/>@row.Model</td><td>@(row.Project??"Chưa ghi project")<br/>Slot @row.Slot</td><td>@row.Attempts</td><td>@row.Succeeded / @row.Failed / @row.Interrupted</td><td>@Number(row.KnownTokens)<br/><small>@row.UnknownTokens lần thiếu tổng token</small></td><td>@if(row.CooldownUntil is { } until){<span>@row.CooldownKind · đến @until.ToOffset(TimeSpan.FromHours(7)).ToString("HH:mm:ss dd/MM")</span>}else{<span>Không ghi nhận chờ quota</span>}</td></tr>}
+            </tbody></table></div>}
+        </div></div>
+        <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Lỗi và hủy</h5></div><div class="card-body">
+            @if(report.Errors.Length==0){<p>Không ghi nhận lỗi trong khoảng này.</p>}else{<ul>@foreach(var row in report.Errors){<li><code>@row.Code</code> — @row.Count lượt</li>}</ul>}
+        </div></div>
+        <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Phản hồi nhân viên</h5></div><div class="card-body">
+            <p>@report.OpenFeedback cần xem · @report.ResolvedFeedback đã xử lý. Hiện tối đa 50 phản hồi mới nhất; dùng mã tham chiếu để đối chiếu với nhân viên.</p>
+            @if(report.Feedback.Length==0){<p>Chưa có phản hồi.</p>}else{<div class="aq-feedback-list">
+                @foreach(var row in report.Feedback){<article class="aq-feedback-item"><div class="d-flex flex-wrap justify-content-between align-items-start gap-3"><div><strong>@Kind(row.Kind)</strong><p class="text-muted my-2">NV #@row.Owner · @row.UpdatedAt.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM HH:mm") · Tin #@row.MessageId</p><details><summary>Xem mã tham chiếu</summary><code class="aq-reference">Chat @row.ConversationId</code></details></div><div><p>@(row.Status=="open"?"Cần xem":"Đã xử lý")</p>@if(row.Status=="open"){
+                    <form method="post" action="@Url.Content("~/admin/assistant/quality/resolve")">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@row.Id"/><input type="hidden" name="version" value="@row.Version"/><input type="hidden" name="requestId" value="@Guid.NewGuid()"/><input type="hidden" name="days" value="@Model.Days"/><button class="btn btn-outline-primary btn-sm">Đã xử lý</button></form>
+                }</div></div></article>}
+            </div>}
+        </div></div>
+        <p class="text-muted">Giữ số liệu @report.RetentionDays ngày. Dữ liệu theo cửa hàng bắt đầu được ghi từ @report.ScopedSince.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm"); bản ghi cũ chưa gắn cửa hàng không được đưa vào báo cáo này. Không hiển thị key, token đăng nhập hoặc nội dung chat.</p>
+    }
+</div>
+
+@section PageScripts {
+<script src="~/Admin/js/assistant-admin.mobile.js" asp-append-version="true"></script>
+}

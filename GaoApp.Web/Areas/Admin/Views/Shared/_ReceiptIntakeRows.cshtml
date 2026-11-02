@@ -3,6 +3,7 @@
 @foreach (var item in Model.Items)
 {
     <tr class="ri-received-row" data-intake-item-id="@item.Id" data-receiving-key="intake-@item.Id"
+        data-row-version="@item.RowVersion"
         data-receiving-quantity="@item.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)">
         <td>@(++index)</td>
         @if (Model.HasImageColumn)

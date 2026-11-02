@@ -73,7 +73,7 @@ const { chromium } = require('playwright');
     await page.setViewportSize({ width: 390, height: 844 });
     for (const section of ['cashflow', 'inventory', 'debts']) { await go(section); assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'Mobile overflow: ' + section); await page.screenshot({ path: path.join(output, section + '-mobile.png'), fullPage: true }); }
     await page.locator('.mr-actions .layout-menu-toggle').click(); await page.waitForFunction(() => document.documentElement.classList.contains('layout-menu-expanded'));
-    await page.locator('.layout-overlay').click({ position: { x: 380, y: 100 } }); await page.waitForFunction(() => !document.documentElement.classList.contains('layout-menu-expanded'));
+    await page.locator('[data-nav-close]').click(); await page.waitForFunction(() => !document.documentElement.classList.contains('layout-menu-expanded'));
     await page.setViewportSize({ width: 1480, height: 1080 }); await go('cashflow');
     await page.evaluate(() => document.documentElement.classList.add('dark-style')); await page.waitForFunction(() => document.querySelector('[data-operations-report]').dataset.reportTheme === 'dark'); await page.screenshot({ path: path.join(output, 'cashflow-dark.png'), fullPage: true });
     await page.locator('[data-filters] [name=fromDate]').fill('2001-01-01'); await page.locator('[data-filters] [name=toDate]').fill('2001-01-02'); await page.locator('[data-filters] button[type=submit]').click(); await loaded();

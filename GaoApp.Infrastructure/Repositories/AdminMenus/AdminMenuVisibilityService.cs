@@ -68,10 +68,7 @@ public sealed class AdminMenuVisibilityService(AppDbContext db) : IAdminMenuVisi
             return new MenuVisibilityNode(x.Id, x.ParentId, x.Title, x.Icon ?? "bx bx-folder", reason == null, reason,
                 string.IsNullOrWhiteSpace(x.Url) && string.IsNullOrWhiteSpace(x.Controller));
         }).ToList();
-        nodes.InsertRange(0, new[] {
-            new MenuVisibilityNode(MenuVisibilityRules.PosTerminals, null, "Quản lý máy POS", "bx bx-desktop", isAdmin && active, isAdmin ? null : "Chỉ dành cho quản trị viên", false),
-            new MenuVisibilityNode(MenuVisibilityRules.Kiosks, null, "Quầy tự phục vụ", "bx bx-desktop", isAdmin && active, isAdmin ? null : "Chỉ dành cho quản trị viên", false)
-        });
+        var menuIds = nodes.Select(x => x.Id).ToHashSet();
         var preferences = await db.Set<AdminMenuVisibilitySetting>().AsNoTracking()
             .Where(x => x.StoreId == storeId && !x.IsDeleted).ToListAsync(ct);
         var roleJson = preferences.SingleOrDefault(x => x.RoleId == role.Id)?.HiddenMenuIdsJson;
@@ -81,13 +78,14 @@ public sealed class AdminMenuVisibilityService(AppDbContext db) : IAdminMenuVisi
         var members = memberIds.Select(x => personalIds.Contains(x)).ToList();
         var own = employee == null ? roleJson : preferences.SingleOrDefault(x => x.UserInStoreId == employee.Id)?.HiddenMenuIdsJson;
         var inherited = employee != null && own == null;
-        var hidden = MenuVisibilityRules.Parse(own ?? roleJson).Order().ToList();
+        // Old preferences may contain IDs for sidebar shortcuts that no longer exist.
+        var hidden = MenuVisibilityRules.Parse(own ?? roleJson).Where(menuIds.Contains).Order().ToList();
         var versionData = JsonSerializer.Serialize(new { storeId, type, id, RoleId = role.Id, RoleHidden = roleJson,
             Own = own, Nodes = nodes, Members = members.Count, Personal = members.Count(x => x) });
         var version = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(versionData)));
         return new(type, id, role.Id, employee == null ? role.Name : employee.User.FullName ?? employee.User.UserName,
             employee == null ? role.Code : role.Name, inherited, members.Count, members.Count(x => x), version,
-            hidden, MenuVisibilityRules.Parse(roleJson).Order().ToList(), nodes);
+            hidden, MenuVisibilityRules.Parse(roleJson).Where(menuIds.Contains).Order().ToList(), nodes);
     }
 
     public async Task<MenuVisibilityWorkspace> SaveAsync(int storeId, SaveMenuVisibilityRequest request, CancellationToken ct = default)

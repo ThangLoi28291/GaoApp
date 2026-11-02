@@ -2,9 +2,10 @@
   "profiles": {
     "http": {
       "commandName": "Project",
-      "launchBrowser": true,
+      "launchBrowser": false,
       "launchUrl": "admin",
       "environmentVariables": {
+        "GaoAppDevBrowser__Enabled": "true",
         "ASPNETCORE_ENVIRONMENT": "Development",
         "InputInvoiceLibrary__Enabled": "true",
         "InputInvoiceLibrary__RootPath": "XML",
@@ -15,9 +16,10 @@
     },
     "https": {
       "commandName": "Project",
-      "launchBrowser": true,
+      "launchBrowser": false,
       "launchUrl": "admin",
       "environmentVariables": {
+        "GaoAppDevBrowser__Enabled": "true",
         "ASPNETCORE_ENVIRONMENT": "Development",
         "InputInvoiceLibrary__Enabled": "true",
         "InputInvoiceLibrary__RootPath": "XML",

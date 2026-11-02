@@ -24,7 +24,8 @@ public sealed class ReceiptLineRemovalSqlServerTests
         }
         using var employee = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Inventory.StockDocument.Delete));
         foreach (var lineId in new[] { seed.KnownLineId, seed.ResolvedLineId })
-            await employee.JsonAsync(HttpMethod.Delete, $"/admin/api/stock-documents/{seed.ReceiptId}/lines/{lineId}");
+            await employee.JsonAsync(HttpMethod.Delete, $"/admin/api/stock-documents/{seed.ReceiptId}/lines/{lineId}",
+                await Versions(app, store, seed.ReceiptId, lineId));
         using var reader = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Inventory.StockDocument.Update));
         var history = (await reader.JsonAsync(HttpMethod.Get, $"/admin/api/stock-documents/{seed.ReceiptId}/intake")).GetProperty("recentReceipts");
         Assert.Contains(history.EnumerateArray(), x => x.GetProperty("rowKey").GetString() == $"line-{seed.ResolvedLineId}" && x.GetProperty("isRemoved").GetBoolean());
@@ -74,7 +75,9 @@ public sealed class ReceiptLineRemovalSqlServerTests
                     receipt.ConfirmedLegalEntityId = (await db.Warehouses.SingleAsync(x => x.Id == store.WarehouseId)).LegalEntityId;
                 await db.SaveChangesAsync();
             }
-            using var denied = await authorized.Http.DeleteAsync(url);
+            using var request = new HttpRequestMessage(HttpMethod.Delete, url)
+            { Content = JsonContent.Create(await Versions(app, store, seed.ReceiptId, seed.ResolvedLineId)) };
+            using var denied = await authorized.Http.SendAsync(request);
             Assert.Equal(HttpStatusCode.BadRequest, denied.StatusCode);
         }
         await using var check = app.Database.CreateTenantContext(store.StoreId);
@@ -85,6 +88,13 @@ public sealed class ReceiptLineRemovalSqlServerTests
     }
 
     internal sealed record Seed(int ReceiptId, int KnownLineId, int ResolvedLineId, int ItemId, int ProductId);
+    private static async Task<object> Versions(FullApplicationFixture app, FullApplicationFixture.StoreSeed store, int documentId, int lineId)
+    {
+        await using var db = app.Database.CreateTenantContext(store.StoreId);
+        var document = await db.StockDocuments.SingleAsync(x => x.Id == documentId);
+        var line = await db.StockDocumentLines.SingleAsync(x => x.Id == lineId);
+        return new { rowVersion = Convert.ToBase64String(document.RowVersion), lineRowVersion = Convert.ToBase64String(line.RowVersion) };
+    }
     internal static async Task<Seed> SeedAsync(FullApplicationFixture app, FullApplicationFixture.StoreSeed store)
     {
         var basic = await ReceiptIntakeSupplierSqlServerTests.SeedAsync(app, store);

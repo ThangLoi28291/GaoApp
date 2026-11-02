@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
@@ -25,46 +26,32 @@ public class InvoiceDashboardService : IInvoiceDashboardService
         InvoiceDashboardQueryDto query,
         CancellationToken ct = default)
     {
-        var fromDate = query.FromDate.Date;
-        var toDate = query.ToDate.Date;
-
-        if (toDate < fromDate)
-        {
-            return Result<InvoiceDashboardDto>.Failure(
-                Error.Validation("InvoiceDashboard.DateInvalid", "Đến ngày phải lớn hơn hoặc bằng từ ngày."));
-        }
-
-        var invoices = await _invoiceRepository.GetInvoiceHeadsForDashboardAsync(
-            fromDate,
-            toDate,
-            ct);
+        query ??= new InvoiceDashboardQueryDto();
+        query.NormalizeAndValidate();
+        var fromDate = query.FromDate;
+        var toDate = query.ToDate;
+        var rows = await _invoiceRepository.GetInvoiceDashboardAggregatesAsync(fromDate, toDate, ct);
 
         var logs = await _logRepository.GetLogsForDashboardAsync(
             fromDate,
             toDate,
             ct);
 
-        var issuedLike = invoices
-            .Where(x => IsIssuedLike(x.ProviderStatus, x.ProviderInvoiceNo))
-            .ToList();
-
         var result = new InvoiceDashboardDto
         {
-            FromDate = fromDate,
-            ToDate = toDate,
-
-            TotalInvoices = invoices.Count,
-            LocalDraftCount = invoices.Count(x => x.ProviderStatus == InvoiceProviderStatus.LocalDraft),
-            ReadyToIssueCount = invoices.Count(x => x.ProviderStatus == InvoiceProviderStatus.ReadyToIssue),
-            IssuedCount = issuedLike.Count,
-            IssueFailedCount = invoices.Count(x => x.ProviderStatus == InvoiceProviderStatus.IssueFailed),
-            NeedUuidSyncCount = invoices.Count(NeedUuidSync),
-            PdfDownloadedCount = invoices.Count(x => !string.IsNullOrWhiteSpace(x.PdfFilePath)),
-            ZipDownloadedCount = invoices.Count(x => !string.IsNullOrWhiteSpace(x.ZipFilePath)),
-            EmailSentCount = invoices.Count(x => x.ProviderStatus == InvoiceProviderStatus.EmailSent),
-            MissingPdfCount = issuedLike.Count(x => string.IsNullOrWhiteSpace(x.PdfFilePath)),
-            MissingZipCount = issuedLike.Count(x => string.IsNullOrWhiteSpace(x.ZipFilePath)),
-            IssuedAmount = issuedLike.Sum(x => x.GrandTotal),
+            FromDate = fromDate, ToDate = toDate,
+            TotalInvoices = rows.Sum(x => x.Count),
+            LocalDraftCount = rows.Where(x => x.ProviderStatus == InvoiceProviderStatus.LocalDraft).Sum(x => x.Count),
+            ReadyToIssueCount = rows.Where(x => x.ProviderStatus == InvoiceProviderStatus.ReadyToIssue).Sum(x => x.Count),
+            IssuedCount = rows.Sum(x => x.IssuedCount),
+            IssueFailedCount = rows.Where(x => x.ProviderStatus == InvoiceProviderStatus.IssueFailed).Sum(x => x.Count),
+            NeedUuidSyncCount = rows.Sum(x => x.NeedUuidSyncCount),
+            PdfDownloadedCount = rows.Sum(x => x.PdfDownloadedCount),
+            ZipDownloadedCount = rows.Sum(x => x.ZipDownloadedCount),
+            EmailSentCount = rows.Where(x => x.ProviderStatus == InvoiceProviderStatus.EmailSent).Sum(x => x.Count),
+            MissingPdfCount = rows.Sum(x => x.MissingPdfCount),
+            MissingZipCount = rows.Sum(x => x.MissingZipCount),
+            IssuedAmount = rows.Sum(x => x.IssuedAmount),
 
             ErrorLogCount = logs.Count(x => !x.IsSuccess),
             TimeoutLogCount = logs.Count(x =>
@@ -75,16 +62,10 @@ public class InvoiceDashboardService : IInvoiceDashboardService
                 (x.ErrorMessage ?? "").Contains("HTTP 500", StringComparison.OrdinalIgnoreCase))
         };
 
-        result.StatusRows = invoices
-            .GroupBy(x => x.ProviderStatus)
-            .Select(g => new InvoiceDashboardStatusRowDto
-            {
-                StatusName = GetStatusName(g.Key),
-                Count = g.Count(),
-                Amount = g.Sum(x => x.GrandTotal)
-            })
-            .OrderByDescending(x => x.Count)
-            .ToList();
+        result.StatusRows = rows.Select(x => new InvoiceDashboardStatusRowDto
+        {
+            StatusName = GetStatusName(x.ProviderStatus), Count = x.Count, Amount = x.Amount
+        }).OrderByDescending(x => x.Count).ToList();
 
         result.RecentErrors = logs
             .Where(x => !x.IsSuccess)
@@ -95,56 +76,13 @@ public class InvoiceDashboardService : IInvoiceDashboardService
                 LogId = x.Id,
                 InvoiceHeadId = x.InvoiceHeadId,
                 ActionName = GetActionName(x.ActionType),
-                ErrorCode = x.ErrorCode,
-                ErrorMessage = x.ErrorMessage,
+                ErrorCode = InvoiceErrorReadSanitizer.Code(x.ErrorCode),
+                ErrorMessage = InvoiceErrorReadSanitizer.Message(x.ErrorMessage, x.ErrorCode),
                 StartedAtUtc = x.StartedAtUtc
             })
             .ToList();
 
         return Result<InvoiceDashboardDto>.Success(result);
-    }
-
-    private static bool IsIssuedLike(
-        InvoiceProviderStatus status,
-        string? providerInvoiceNo)
-    {
-        if (!string.IsNullOrWhiteSpace(providerInvoiceNo))
-            return true;
-
-        return status is
-            InvoiceProviderStatus.Issued or
-            InvoiceProviderStatus.PdfDownloaded or
-            InvoiceProviderStatus.ZipDownloaded or
-            InvoiceProviderStatus.EmailSent;
-    }
-
-    private static bool NeedUuidSync(InvoiceHead invoice)
-    {
-        if (invoice.ProviderStatus == InvoiceProviderStatus.Issuing)
-            return true;
-
-        if (invoice.ProviderStatus == InvoiceProviderStatus.IssuedWaitingNumber)
-            return true;
-
-        if (invoice.ProviderStatus != InvoiceProviderStatus.IssueFailed)
-            return false;
-
-        var code = invoice.LastErrorCode ?? string.Empty;
-        var message = invoice.LastErrorMessage ?? string.Empty;
-
-        if (code.Equals("TIMEOUT", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (code.StartsWith("HTTP_5", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (message.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        if (message.Contains("HTTP 500", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        return false;
     }
 
     private static string GetStatusName(InvoiceProviderStatus status)

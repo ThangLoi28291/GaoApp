@@ -15,8 +15,8 @@ public sealed record DeliveryLineDto(int Id, int? SourceOrderLineId, string Item
     decimal Gross, decimal LineDiscount, decimal AllocatedOrderDiscount, decimal Net);
 
 public sealed record DeliveryDetailDto(int Id, string Code, string LookupToken, string State,
-    int Revision, string Version, int SourceWarehouseId, int SourceLegalEntityId, int SourceCartId,
-    int CreatedTerminalId, int CreatedShiftId, int CreatedByUserId, int? CustomerId,
+    int Revision, string Version, int SourceWarehouseId, int SourceLegalEntityId, int? SourceCartId,
+    int? CreatedTerminalId, int? CreatedShiftId, int CreatedByUserId, int? CustomerId,
     string RecipientName, string RecipientPhone, string RecipientAddress, string? Note,
     decimal QuotedTotal, DateTime CreatedAtUtc, IReadOnlyList<DeliveryLineDto> Lines);
 

@@ -192,7 +192,7 @@ public sealed class DeliveryD03SqlServerTests(DeliveryD02Fixture fixture)
         var migrator=db.GetService<IMigrator>();var orders=await db.Orders.CountAsync();var deliveries=await db.DeliveryOrders.CountAsync();
         var revisions=await db.DeliveryRevisions.CountAsync();
         try {
-            await migrator.MigrateAsync("20261006153000_AddDeliveryFoundation");
+            await GaoApp.Tests.Configuration.MigrationTestSupport.MigrateHistoricalPrefixAsync(fixture.Web.Database, "20261006153000_AddDeliveryFoundation");
             Assert.Equal(0,await db.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM sys.triggers WHERE name IN ('TR_Orders_DeliverySource','TR_OrderLines_DeliverySource','TR_OrderPayments_DeliverySource')").SingleAsync());
             Assert.Equal(orders,await db.Orders.CountAsync());Assert.Equal(deliveries,await db.DeliveryOrders.CountAsync());Assert.Equal(revisions,await db.DeliveryRevisions.CountAsync());
             Assert.Equal(result.Delivery.LookupToken,(await db.DeliveryOrders.SingleAsync(x=>x.Id==result.Delivery.Id)).LookupToken);

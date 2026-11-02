@@ -33,10 +33,10 @@
             : "Bắt đầu nhận hàng";
 }
 @section VendorStyles {
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="~/lib/select2/select2.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/lib/select2/select2-bootstrap-5-theme.min.css" rel="stylesheet"  asp-append-version="true" />
 }
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-details.css" asp-append-version="true" /> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/purchase-order-details.css" asp-append-version="true" /> <link rel="stylesheet" href="~/Admin/css/purchasing.mobile.css" asp-append-version="true" /> }
 
 <div class="pod-page" id="purchaseOrderDetailsPage" data-supplier-lookup-url="@Url.Content("~/admin/purchase-orders/supplier-lookup")">
     <header class="pod-hero">
@@ -138,7 +138,7 @@
                 {
                     <td rowspan="@groupSize" class="pod-product-cell"><div class="pod-product"><span class="pod-product-avatar"><i class="bx bx-package"></i></span><div><strong>@groupFirstLine.ProductName</strong><small>@(string.IsNullOrWhiteSpace(groupFirstLine.Sku) ? "Chưa có SKU" : $"SKU: {groupFirstLine.Sku}")</small>@if(groupSize > 1){<span class="pod-unit-count">@groupSize đơn vị đặt hàng</span>}@if(groupFirstLine.ItemKind==PurchaseItemKind.FreeText && !groupFirstLine.ResolvedAtUtc.HasValue){<span class="pod-inline-state is-warning"><i class="bx bx-link"></i>Cần chuẩn hóa</span>}else if(groupFirstLine.ItemKind==PurchaseItemKind.FreeText){<span class="pod-inline-state is-success"><i class="bx bx-check"></i>Đã ghép danh mục</span>}</div></div></td>
                 }
-                <td><span class="pod-unit-badge">@line.UnitName <small>× @PurchaseQuantityFormatter.Display(line.ConversionFactor)</small></span><div class="pod-unit-base">@if(line.ItemKind==PurchaseItemKind.Catalog){<span>= @PurchaseQuantityFormatter.Display(line.ConversionFactor) @line.BaseUnitName</span>}@if(!string.IsNullOrWhiteSpace(line.ShortCloseReason)){<span class="pod-short-reason">Đóng thiếu: @line.ShortCloseReason</span>}</div></td>
+                <td><span class="pod-unit-badge">@line.UnitName <small>× @PurchaseQuantityFormatter.Display(line.ConversionFactor)</small></span><div class="pod-unit-base">@if(line.ItemKind==PurchaseItemKind.Catalog){<span>= @PurchaseQuantityFormatter.Display(line.ConversionFactor) @line.BaseUnitName</span>}@if(!string.IsNullOrWhiteSpace(line.ShortCloseReason)){<span class="pod-short-reason">Đóng thiếu: @line.ShortCloseReason</span>}</div>@if(!string.IsNullOrWhiteSpace(line.Note)){<div class="pod-line-note"><strong>Ghi chú:</strong> @line.Note</div>}</td>
                 <td class="text-end"><strong class="pod-quantity">@PurchaseQuantityFormatter.Display(line.OrderedQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
                 <td class="text-end"><strong class="pod-quantity is-success">@PurchaseQuantityFormatter.Display(line.ReceivedQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
                 <td class="text-end"><strong class="pod-quantity is-primary">@PurchaseQuantityFormatter.Display(line.PendingQuantity)</strong><small class="pod-quantity-unit">@line.UnitName</small></td>
@@ -374,7 +374,7 @@
                         </tbody>
                     </table>
                 </div>
-                <div class="row g-2"><div class="col-md-3"><input class="form-control" type="date" name="DocumentDate" value="@DateTime.Today.ToString("yyyy-MM-dd")"/></div><div class="col-md-7"><input class="form-control" name="Note" placeholder="Ghi chú phiếu nhập"/></div><div class="col-md-2"><button class="btn btn-primary w-100">Tạo phiếu nhập</button></div></div>
+                <div class="row g-2"><div class="col-md-3"><input class="form-control" type="date" name="DocumentDate" value="@VietnamTime.Today.ToString("yyyy-MM-dd")"/></div><div class="col-md-7"><input class="form-control" name="Note" placeholder="Ghi chú phiếu nhập"/></div><div class="col-md-2"><button class="btn btn-primary w-100">Tạo phiếu nhập</button></div></div>
             </form>
         }
         </div></div>
@@ -407,7 +407,7 @@
             <div class="pod-timeline">
                 @foreach(var action in order.Actions.OrderByDescending(x => x.OccurredAtUtc))
                 {
-                    <div class="pod-timeline-item"><span class="dot"></span><div class="flex-grow-1"><div class="pod-timeline-title"><strong>@PurchaseOrderPresentation.ActionLabel(action.ActionType)</strong><time>@action.OccurredAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</time></div><div class="pod-timeline-meta"><span>@action.ActorName</span><span>@PurchaseOrderPresentation.StatusLabel(action.FromStatus) <i class="bx bx-right-arrow-alt"></i> @PurchaseOrderPresentation.StatusLabel(action.ToStatus)</span></div>@if(!string.IsNullOrWhiteSpace(action.Note)){<div class="pod-timeline-note">@action.Note</div>}</div></div>
+                    <div class="pod-timeline-item"><span class="dot"></span><div class="flex-grow-1"><div class="pod-timeline-title"><strong>@PurchaseOrderPresentation.ActionLabel(action.ActionType)</strong><time>@action.OccurredAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</time></div><div class="pod-timeline-meta"><span>@action.ActorName</span><span>@PurchaseOrderPresentation.StatusLabel(action.FromStatus) <i class="bx bx-right-arrow-alt"></i> @PurchaseOrderPresentation.StatusLabel(action.ToStatus)</span></div>@if(!string.IsNullOrWhiteSpace(action.Note)){<div class="pod-timeline-note">@action.Note</div>}</div></div>
                 }
             </div>
         </section>
@@ -558,5 +558,6 @@
     }
 }
 
-@section VendorScripts { <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script> }
-@section PageScripts { <script src="~/Admin/js/purchase-order-details.js" asp-append-version="true"></script> }
+@section VendorScripts { <script src="~/lib/select2/select2.min.js" asp-append-version="true"></script> }
+@section PageScripts { <script src="~/Admin/js/purchase-order-details.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/purchasing.mobile.js" asp-append-version="true"></script> }

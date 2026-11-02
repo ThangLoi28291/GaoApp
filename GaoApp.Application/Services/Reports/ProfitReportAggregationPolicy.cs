@@ -36,12 +36,14 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
             AffectedOrders = valid ? costs.Count(x => x.Quality == ProfitQuality.Provisional) : null,
             AffectedLines = valid ? costs.Sum(x => x.AffectedLines ?? 0) : null,
             IsEmpty = !hasEvents && valid,
-            Message = !valid ? "Chưa đủ dữ liệu tin cậy để xác định giá vốn cho phạm vi này."
+            Message = quality == ProfitQuality.DataIntegrityConflict ? "Dữ liệu giá vốn có liên kết hoặc số liệu không khớp. Cần kiểm tra các đơn bị ảnh hưởng."
+                : !valid ? "Thiếu lịch sử hoặc chứng từ nguồn để xác định giá vốn. Cần kiểm tra các đơn bị ảnh hưởng."
                 : quality == ProfitQuality.Provisional ? "Giá vốn và lợi nhuận còn tạm tính." : null
         };
     }
 
-    public Dictionary<int, CostResult> EvaluateCosts(ProfitSourceSnapshot source, Dictionary<int, CostResult>? lineResults = null, CancellationToken ct = default)
+    public Dictionary<int, CostResult> EvaluateCosts(ProfitSourceSnapshot source, Dictionary<int, CostResult>? lineResults = null,
+        CancellationToken ct = default, List<ProfitCostIssueDto>? issues = null)
     {
         ct.ThrowIfCancellationRequested();
         var index = new EvidenceIndex(source);
@@ -53,14 +55,23 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
         var allocations = source.LegalAllocations.ToLookup(x => x.OrderLineId);
         var returnLines = source.ReturnLines.ToLookup(x => x.OrderLineId);
         var returnHeaders = source.Returns.ToDictionary(x => x.Id);
+        var deliveryCosts = new DeliveryProfitCostPolicy(source);
+        var storefrontCosts = new StorefrontProfitCostPolicy(source);
         var result = new Dictionary<int, CostResult>();
         foreach (var order in source.Orders)
         {
             ct.ThrowIfCancellationRequested();
+            if (storefrontCosts.Contains(order.Id))
+            { result[order.Id] = storefrontCosts.Evaluate(order, lineResults, issues, ct); continue; }
+            if (deliveryCosts.Contains(order.Id))
+            { result[order.Id] = deliveryCosts.Evaluate(order, lineResults, issues, ct); continue; }
+            void Issue(OrderLine? line, ProfitQuality quality, string code, string message) => issues?.Add(new(
+                order.Id, order.OrderNumber ?? order.Id.ToString(), line?.Id, line?.ItemName, quality, code, message));
             var orderLines = lines[order.Id].Where(x => !x.IsDeleted).ToList();
             var outcomes = new List<CostResult>();
             if (order.IsDeleted || order.StoreId != source.StoreId || orderLines.Count == 0)
-            { result[order.Id] = Unknown(); continue; }
+            { Issue(null, ProfitQuality.Unavailable, "MissingSalesLines", "Đơn thiếu dòng bán hàng hợp lệ để đối chiếu giá vốn.");
+                result[order.Id] = Unknown(); continue; }
             var orderLineIds = orderLines.Select(x => x.Id).ToHashSet();
             foreach (var line in orderLines)
             {
@@ -69,25 +80,32 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
                 var roots = entries.Where(x => x.EntryType == InventoryValuationEntryType.Outbound).ToList();
                 var quantity = line.BaseQuantity > 0 ? line.BaseQuantity : line.Quantity * (line.Multiplier > 0 ? line.Multiplier : 1);
                 if (line.StoreId != source.StoreId || roots.Count == 0 || roots.Sum(x => -x.Quantity) != quantity)
-                { outcomes.Add(Unknown()); continue; }
+                { Issue(line, ProfitQuality.Unavailable, roots.Count == 0 ? "MissingOutboundValuation" : "OutboundQuantityMismatch",
+                    roots.Count == 0 ? "Chưa có bút toán giá vốn xuất bán cho dòng hàng này."
+                        : $"Số lượng xuất theo giá vốn ({roots.Sum(x => -x.Quantity):0.####}) không khớp số lượng bán ({quantity:0.####}) hoặc sai cửa hàng.");
+                    outcomes.Add(Unknown()); continue; }
                 if (entries.Any(x => x.EntryType == InventoryValuationEntryType.Revaluation &&
                     !roots.Any(r => r.Id == x.RevaluationOfEntryId)) ||
                     roots.Any(x => x.ProductVariantId != line.VariantId))
-                { outcomes.Add(Conflict()); continue; }
+                { Issue(line, ProfitQuality.DataIntegrityConflict, "ValuationLineMismatch", "Bút toán điều chỉnh hoặc sản phẩm của giá vốn không khớp dòng bán gốc.");
+                    outcomes.Add(Conflict()); continue; }
                 var lineMaps = allocations[line.Id].ToList();
                 if (lineMaps.Count > 0 && (lineMaps.Sum(x => x.BaseQuantity) != quantity ||
                     lineMaps.Any(x => x.InventoryTransactionId is null ||
                         roots.Where(r => r.InventoryTransactionId == x.InventoryTransactionId).Sum(r => -r.Quantity) != x.BaseQuantity)))
-                { outcomes.Add(Conflict()); continue; }
+                { Issue(line, ProfitQuality.DataIntegrityConflict, "LegalAllocationMismatch", "Phân bổ hộ kinh doanh không khớp số lượng hoặc giao dịch xuất kho.");
+                    outcomes.Add(Conflict()); continue; }
                 if (order.UseMultiLegalEntity && lineMaps.Count == 0)
-                { outcomes.Add(Unknown()); continue; }
+                { Issue(line, ProfitQuality.Unavailable, "MissingLegalAllocation", "Thiếu phân bổ hộ kinh doanh cho dòng bán dùng nhiều pháp nhân.");
+                    outcomes.Add(Unknown()); continue; }
                 var lineReturns = returnLines[line.Id].Where(x => !x.IsDeleted &&
                     returnHeaders.TryGetValue(x.SalesReturnId, out var header) && !header.IsDeleted &&
                     header.Status == SalesReturnStatus.Completed).ToList();
                 if (lineReturns.Sum(x => x.ReturnBaseQuantity) > quantity ||
                     lineReturns.Any(x => x.StoreId != source.StoreId || x.VariantId != line.VariantId ||
                         x.ReturnBaseQuantity <= 0 || returnHeaders[x.SalesReturnId].OrderId != order.Id))
-                { outcomes.Add(Conflict()); continue; }
+                { Issue(line, ProfitQuality.DataIntegrityConflict, "ReturnQuantityMismatch", "Chứng từ trả hàng có số lượng hoặc liên kết dòng bán không hợp lệ.");
+                    outcomes.Add(Conflict()); continue; }
                 var lineCost = new List<CostResult>();
                 foreach (var root in roots)
                 {
@@ -103,15 +121,22 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
                         _ => ProfitQuality.Unavailable };
                     var current = new CostResult(cost.Cost, cost.ProvisionalExposure, quality,
                         quality == ProfitQuality.Provisional ? 1 : 0);
+                    if (!cost.Cost.HasValue || !cost.ProvisionalExposure.HasValue)
+                        Issue(line, quality == ProfitQuality.DataIntegrityConflict ? quality : ProfitQuality.Unavailable,
+                            "Valuation:" + cost.Reason, ProfitCostDiagnosticsPolicy.ValuationReason(cost.Reason));
                     if (root.CostLayerAllocations.Any(x => x.IsDeleted) ||
                         linked.Any(x => x.EntryType == InventoryValuationEntryType.Inbound &&
                             !ValidReturnOrVoid(source, index, order, line, x, returnHeaders)))
-                        current = Conflict();
+                    { Issue(line, ProfitQuality.DataIntegrityConflict, "ReturnProvenanceMismatch", "Phân bổ giá vốn đã bị xóa hoặc lịch sử nhập lại hàng không khớp chứng từ trả/hủy.");
+                        current = Conflict(); }
                     if (order.Status == OrderStatus.Voided &&
                         (cost.State != SaleValuationCostPolicy.Quality.Finalized || cost.Cost != 0 ||
-                         cost.InventoryReversedQuantity != -root.Quantity)) current = Conflict();
+                         cost.InventoryReversedQuantity != -root.Quantity)) {
+                        Issue(line, ProfitQuality.DataIntegrityConflict, "VoidCostResidual", "Đơn đã hủy nhưng số lượng đảo kho hoặc giá vốn còn lại chưa khớp.");
+                        current = Conflict(); }
                     if (lineMaps.Count > 0 && !ValidLegalMapping(source, index, order, line, root, lineMaps, linked))
-                        current = Conflict();
+                    { Issue(line, ProfitQuality.DataIntegrityConflict, "LegalSourceMismatch", "Nguồn kho và pháp nhân của giá vốn/hoàn hàng không khớp phân bổ hộ kinh doanh.");
+                        current = Conflict(); }
                     lineCost.Add(current);
                 }
                 // Every completed Restock must have complete monetary/quantity provenance, including broken links.
@@ -123,7 +148,8 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
                         (inbound.Sum(x => x.Quantity) != returned.ReturnBaseQuantity ||
                          inbound.Any(x => !roots.Any(r => r.Id == x.SourceValuationEntryId))) ||
                         returned.Action is SalesReturnLineAction.NoRestock or SalesReturnLineAction.PendingRestock && inbound.Count > 0)
-                        lineCost.Add(Conflict());
+                    { Issue(line, ProfitQuality.DataIntegrityConflict, "RestockCostMismatch", "Số lượng nhập lại hoặc nguồn hoàn giá vốn không khớp chứng từ trả hàng.");
+                        lineCost.Add(Conflict()); }
                 }
                 var subtotal = Summarize(0, lineCost, true);
                 if (lineResults is not null) lineResults[line.Id] = new(subtotal.Cogs.Value,
@@ -134,7 +160,8 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
             // An entry naming a missing/deleted line is evidence, not an invisible zero.
             if (index.OrderEntries[order.Id.ToString()].Any(x =>
                 !x.ReferenceLineId.HasValue || !orderLineIds.Contains(x.ReferenceLineId.Value)))
-                outcomes.Add(Conflict());
+            { Issue(null, ProfitQuality.DataIntegrityConflict, "OrphanValuation", "Có bút toán giá vốn không gắn với dòng bán hàng hợp lệ của đơn.");
+                outcomes.Add(Conflict()); }
             var summary = Summarize(0, outcomes, true);
             result[order.Id] = new(summary.Cogs.Value, summary.ProvisionalCogs.Value,
                 summary.Cogs.Quality, summary.AffectedLines);
@@ -245,6 +272,16 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
                 returned.CompletedAtUtc!.Value, "Trả hàng", Summarize(-returned.ReturnSubtotal, [cost], true),
                 SalesReturnId: returned.Id));
         }
+        foreach (var fee in s.StorefrontServices.Where(x => !x.IsDeleted && x.StoreId == s.StoreId && InPeriod(x.RecognizedAtUtc)))
+        {
+            var sale = s.StorefrontSales.SingleOrDefault(x => x.StorefrontOrderId == fee.StorefrontOrderId && !x.IsDeleted);
+            var order = sale is null ? null : s.Orders.SingleOrDefault(x => x.Id == sale.SaleOrderId);
+            var eligible = order is null ? null : Matches(s, shifts, query, order, fee.SettlingShiftId);
+            if (eligible is null) { invalidRevenue = true; continue; } if (!eligible.Value) continue;
+            rows.Add(new(order!.Id, order.OrderNumber ?? order.Id.ToString(), order.CompletedAtUtc, fee.RecognizedAtUtc,
+                "Dịch vụ giao hàng", Summarize(fee.NetAmount, [new CostResult(0, 0, ProfitQuality.Finalized, 0)], true),
+                ItemName: fee.Name, StorefrontServiceRevenueId: fee.Id));
+        }
         ProfitSummaryDto Combine(List<ProfitDetailRowDto> selected, bool unknown)
         {
             var selectedCosts = selected.Select(x => new CostResult(x.Summary.Cogs.Value,
@@ -276,12 +313,19 @@ public sealed class ProfitReportAggregationPolicy(SalesReportingPeriodPolicy per
         {
             ct.ThrowIfCancellationRequested();
             var root = entry.RevaluationOfEntryId is int rootId ? entries[rootId].FirstOrDefault() : null;
-            var order = root is null ? null : orders[root.ReferenceId].FirstOrDefault();
+            Order? order;
+            if (root?.ReferenceType == InventoryReferenceType.Delivery)
+            {
+                var map = s.LegalAllocations.SingleOrDefault(x => x.InventoryTransactionId == root.InventoryTransactionId && !x.IsDeleted && s.StorefrontSales.Any(b => b.SaleOrderId == x.OrderId));
+                order = map is null ? null : s.Orders.SingleOrDefault(x => x.Id == map.OrderId);
+            }
+            else order = root is null ? null : orders[root.ReferenceId].FirstOrDefault();
             var matches = order is null ? null : Matches(s, shifts, query, order, order.POSShiftId);
             if (matches == false) continue;
             var known = matches == true && !entry.IsDeleted && order is not null &&
                 costs.TryGetValue(order.Id, out var cost) && cost.Cost.HasValue;
-            decimal? impact = known ? entry.CostSourceType switch {
+            decimal? impact = known && root?.ReferenceType == InventoryReferenceType.Delivery && root.InventoryTransaction?.PostingPrecisionPolicy is 1 or 2
+                ? entry.Amount : known ? entry.CostSourceType switch {
                 InventoryCostSourceType.Manual => entry.Amount,
                 InventoryCostSourceType.RevaluationAdjustment => -entry.Amount, _ => null } : null;
             rows.Add(new(entry.Id, order?.Id, order?.OrderNumber ?? "Không xác định", order?.CompletedAtUtc,

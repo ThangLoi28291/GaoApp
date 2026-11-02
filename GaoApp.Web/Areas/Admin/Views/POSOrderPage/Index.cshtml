@@ -7,9 +7,10 @@
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos-orders-page.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-orders-page.mobile.css" asp-append-version="true" />
 }
 
-<div class="pos-orders-page">
+<div class="pos-orders-page" data-mobile-orders>
     <partial name="~/Areas/Admin/Views/Shared/_POSNavTabs.cshtml" />
     <header class="po-header">
         <div class="po-heading">
@@ -41,12 +42,12 @@
         <article class="po-metric">
             <div class="po-metric-label">Đã thanh toán tại POS <i class="bx bx-check-circle" aria-hidden="true"></i></div>
             <div class="po-metric-value po-text-success" id="metricPaid">—</div>
-            <span class="po-metric-note">Các đơn trên trang này · chưa gồm thanh toán giao hàng</span>
+            <span class="po-metric-note">Các đơn trên trang này · gồm đơn giao đã chốt</span>
         </article>
         <article class="po-metric">
             <div class="po-metric-label">Còn thiếu tại POS <i class="bx bx-time-five" aria-hidden="true"></i></div>
             <div class="po-metric-value" id="metricDue">—</div>
-            <span class="po-metric-note">Các đơn trên trang này · chưa gồm thanh toán giao hàng</span>
+            <span class="po-metric-note">Các đơn trên trang này · gồm đơn giao đã chốt</span>
         </article>
     </section>
 
@@ -75,6 +76,7 @@
                 <button type="button" class="po-button po-filter-toggle" id="btnToggleFilters" aria-expanded="false" aria-controls="fromDate toDate status orderFilterDetails"><i class="bx bx-filter-alt" aria-hidden="true"></i> Bộ lọc</button>
             </div>
             <div class="po-filter-details" id="orderFilterDetails">
+                <div class="po-field"><label for="product">Sản phẩm</label><input type="search" id="product" maxlength="320" placeholder="Tên sản phẩm, SKU hoặc mã vạch…" autocomplete="off" /></div>
                 <div class="po-field po-autocomplete" data-order-lookup="employee">
                     <label for="employee">Nhân viên thu ngân</label>
                     <input type="search" id="employee" maxlength="200" placeholder="Gõ tên để chọn nhân viên…" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="employeeOptions" />
@@ -148,7 +150,9 @@
 </div>
 
 @section PageScripts {
+    <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.orders.filters.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.orders.page.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.orders.mobile.js" asp-append-version="true"></script>
 }

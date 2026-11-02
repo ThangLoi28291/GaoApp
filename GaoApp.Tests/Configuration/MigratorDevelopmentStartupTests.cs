@@ -33,6 +33,8 @@ public sealed class MigratorDevelopmentStartupTests
                 Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(assemblyPath))));
         }
         var executable = Path.Combine(release, "migrator", "GaoApp.Migrator.dll");
+        await using var db = database.CreateHostContext();
+        var expectedMigrationCount = db.Database.GetMigrations().Count();
         for (var attempt = 0; attempt < 2; attempt++)
         {
             var start = new ProcessStartInfo("dotnet")
@@ -54,9 +56,8 @@ public sealed class MigratorDevelopmentStartupTests
             catch { if (!process.HasExited) process.Kill(true); throw; }
             var diagnostic = await output + await error;
             Assert.True(process.ExitCode == 0, diagnostic);
-            Assert.Contains("SCHEMA_ONLY_VERIFIED; SourceMigrations=73; AppliedMigrations=73", diagnostic);
+            Assert.Contains($"SCHEMA_ONLY_VERIFIED; SourceMigrations={expectedMigrationCount}; AppliedMigrations={expectedMigrationCount}", diagnostic);
         }
-        await using var db = database.CreateHostContext();
         Assert.Empty(await db.Database.GetPendingMigrationsAsync());
         Assert.False(await db.Stores.AnyAsync());
         Assert.False(await db.Users.AnyAsync());

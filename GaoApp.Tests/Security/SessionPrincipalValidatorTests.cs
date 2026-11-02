@@ -35,6 +35,7 @@ public sealed class SessionPrincipalValidatorTests
         var identity = new ClaimsIdentity(new[] {
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), new Claim("store_id", "7"),
             new Claim("role_id", role.Id.ToString()), new Claim(ClaimTypes.Role, role.Code),
+            new Claim("terminal_id", "0"), new Claim(PosDeviceSession.ManagementClaim, "1"),
             new Claim(AuthSessionStamp.ClaimType, AuthSessionStamp.Create(user, mapping))
         }, "test");
         switch (change)

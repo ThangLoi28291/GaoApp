@@ -23,6 +23,13 @@ public sealed class EmployeeIndexReadRepository : IEmployeeIndexReadRepository
         EmployeeIndexQueryRequest request,
         CancellationToken ct = default)
     {
+        var actor = await _db.UserInStores.AsNoTracking()
+            .Where(x => x.StoreId == storeId && x.UserId == currentUserId && x.IsActive && !x.IsDeleted &&
+                x.User.IsActive && !x.User.IsDeleted && !x.Role.IsDeleted && x.Role.StoreId == storeId)
+            .Select(x => new { x.User.IsHostAdmin, IsAdmin = x.Role.IsSystemRole && x.Role.Code == "ADMIN" })
+            .SingleOrDefaultAsync(ct);
+        var host = actor?.IsHostAdmin == true;
+        var admin = host || actor?.IsAdmin == true;
         var scopedQuery = ApplyRole(
             ApplyKeyword(BuildBaseQuery(storeId), request.Keyword),
             request.RoleId);
@@ -68,11 +75,14 @@ public sealed class EmployeeIndexReadRepository : IEmployeeIndexReadRepository
                 JoinedDate = item.JoinedDate,
                 CreatedAtUtc = item.CreatedAtUtc,
                 Note = item.Note,
-                CanEdit = !item.User.IsHostAdmin,
-                CanResetPassword = !item.User.IsHostAdmin,
-                CanToggleActive = !item.User.IsHostAdmin && item.UserId != currentUserId,
+                CanEdit = ((!item.User.IsHostAdmin && (item.Role.Code != "ADMIN" || host)) ||
+                    (item.UserId == currentUserId && item.User.IsActive && !item.User.IsDeleted)),
+                CanResetPassword = admin && !item.User.IsHostAdmin && item.UserId != currentUserId &&
+                    (host || item.Role.Code != "ADMIN") &&
+                    !_db.UserInStores.IgnoreQueryFilters().Any(m => m.UserId == item.UserId && m.StoreId != storeId),
+                CanToggleActive = admin && !item.User.IsHostAdmin && item.UserId != currentUserId && (host || item.Role.Code != "ADMIN"),
                 ActionLockReason = item.User.IsHostAdmin
-                    ? "Tài khoản Host Admin được bảo vệ."
+                    ? "Quyền Host Admin được bảo vệ."
                     : item.UserId == currentUserId
                         ? "Không thể tự khóa tài khoản đang đăng nhập."
                         : null

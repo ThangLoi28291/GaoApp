@@ -1,0 +1,86 @@
+/* UI-19: phone presentation only. Preview, client settings and print commands stay native. */
+@media screen and (max-width: 767.98px) {
+  #promotionLabels { color: #172d4d; color-scheme: light; min-width: 0; max-width: 100%; overflow-wrap: anywhere; padding-bottom: 18px; }
+  #promotionLabels * { box-sizing: border-box; }
+  #promotionLabels [hidden], #promotionLabels .d-none { display: none !important; }
+  #promotionLabels .pl-heading { flex-direction: column; align-items: stretch; gap: 15px; padding: 18px; margin: 0 0 14px; border: 1px solid #dce5f0; border-radius: 20px; background: linear-gradient(135deg,#fff 30%,#edf3ff); box-shadow: 0 7px 22px #172d4d06; }
+  #promotionLabels h1 { font-size: 25px; line-height: 1.25; letter-spacing: -.6px; color: #172d4d; margin: 4px 0 9px; }
+  #promotionLabels .pl-heading p { font-size: 13px; line-height: 1.55; color: #62758e; }
+  #promotionLabels .pl-eyebrow { color: #2463eb; font-size: 10px; letter-spacing: 1.5px; }
+  #promotionLabels .pl-workspace, #promotionLabels .pl-main { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; }
+  #promotionLabels .pl-panel { padding: 16px; border-color: #dce5f0; border-radius: 18px; box-shadow: 0 5px 16px #172d4d04; }
+  #promotionLabels .pl-print-panel { width: 100%; max-width: none; }
+  #promotionLabels h2 { color: #172d4d; font-size: 17px; line-height: 1.45; }
+  #promotionLabels .plm-selection-title { margin: 0 0 16px; }
+  #promotionLabels [data-plm-step] > .plm-selection-title::before,
+  #promotionLabels [data-plm-step] > .pl-toolbar:first-child > h2::before {
+    content: attr(data-plm-number); display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px;
+    margin-right: 9px; border-radius: 9px; color: #2459be; background: #eaf1ff; font-size: 12px; font-weight: 750; vertical-align: middle;
+  }
+  #promotionLabels .pl-filters { grid-template-columns: minmax(0,1fr); gap: 13px; }
+  #promotionLabels label { gap: 7px; font-size: 12px; line-height: 1.5; color: #62758e; min-width: 0; }
+  #promotionLabels :is(input:not([type=hidden]):not([type=checkbox]),select) { max-width: 100%; min-width: 0; min-height: 46px; padding: 10px 11px; border: 1px solid #d2ddea; border-radius: 11px; color: #172d4d; background-color: #fff; font-size: 16px; line-height: 1.4; box-shadow: none; }
+  #promotionLabels input[readonly] { background: #f3f6fb; color: #62758e; }
+  #promotionLabels .btn { min-height: 44px; min-width: 44px; padding: 10px 12px; border-radius: 12px; font-size: 13px; font-weight: 650; line-height: 1.4; white-space: normal; touch-action: manipulation; box-shadow: none; }
+  #promotionLabels .btn-primary { background: #2463eb; border-color: #2463eb; color: #fff; }
+  #promotionLabels .btn-outline-primary { color: #2459be; border-color: #c9daf8; background: #f4f8ff; }
+  #promotionLabels .btn-outline-secondary { color: #345375; border-color: #dce5f0; background: #fff; }
+  #promotionLabels .btn-outline-danger { color: #ae3939; border-color: #f0dada; background: #fff7f7; }
+  #promotionLabels .btn:disabled { opacity: .5; }
+  #promotionLabels .pl-toolbar { align-items: center; margin: 17px 0 13px; gap: 11px; color: #62758e; font-size: 12px; }
+  #promotionLabels .pl-main > .pl-panel:nth-child(2) > .pl-toolbar { margin-top: 0; align-items: stretch; flex-direction: column; }
+  #promotionLabels .pl-main > .pl-panel:nth-child(2) > .pl-toolbar .btn { align-self: stretch; }
+  #promotionLabels .pl-products { max-height: 420px; overflow-y: auto; overscroll-behavior-y: contain; padding-right: 3px; gap: 10px; scrollbar-width: thin; }
+  #promotionLabels .pl-product { padding: 13px; gap: 10px; border-color: #dce5f0; border-radius: 13px; align-items: start; }
+  #promotionLabels .pl-product strong { font-size: 13px; line-height: 1.5; color: #172d4d; }
+  #promotionLabels .pl-product small { color: #62758e; font-size: 11px; line-height: 1.6; }
+  #promotionLabels .pl-product .pl-price { color: #2459be; font-size: 13px; line-height: 1.65; }
+  #promotionLabels .pl-product .pl-price del { color: #62758e; font-weight: 500; }
+  #promotionLabels .pl-product .btn { flex-shrink: 0; padding-inline: 10px; }
+  #promotionLabels .pl-paging { justify-content: space-between; gap: 8px; color: #62758e; }
+  #promotionLabels .pl-table-scroll { overflow: visible; }
+  #promotionLabels .table, #promotionLabels .table tbody { display: block; width: 100%; }
+  #promotionLabels .table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #promotionLabels .table tbody tr { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 13px 10px; padding: 14px; margin-bottom: 11px; border: 1px solid #dce5f0; border-radius: 14px; background: #fff; }
+  #promotionLabels .table tbody tr:last-child { margin-bottom: 0; }
+  #promotionLabels .table td { display: block; min-width: 0; padding: 0; border: 0; font-size: 13px; color: #172d4d; }
+  #promotionLabels .table td:first-child { grid-column: 1 / -1; min-width: 0; }
+  #promotionLabels .table td[colspan] { grid-column: 1 / -1; color: #62758e; line-height: 1.6; }
+  #promotionLabels .table td[data-plm-label]::before { content: attr(data-plm-label); display: block; margin-bottom: 5px; font-size: 11px; line-height: 1.4; font-weight: 600; color: #62758e; }
+  #promotionLabels .table td:first-child::before, #promotionLabels .table td:last-child::before { display: none; }
+  #promotionLabels .table td:first-child .btn { min-height: 44px; min-width: 44px; display: inline-flex; align-items: center; padding: 4px 0 !important; font-size: 14px; color: #2459be; border-radius: 0; }
+  #promotionLabels .table small { color: #62758e; line-height: 1.55; font-size: 11px; margin-top: 5px; }
+  #promotionLabels .table td:nth-child(3) strong { color: #2459be; font-size: 15px; }
+  #promotionLabels .table td:last-child:not([colspan]) { align-self: end; justify-self: end; }
+  #promotionLabels .pl-quantity { width: 100%; max-width: 118px; }
+  #promotionLabels .pl-template-choice { margin: 16px 0; }
+  #promotionLabels .pl-preview-stage { padding: 14px 10px; background: #edf2fb; border: 1px solid #dce5f0; border-radius: 14px; }
+  #promotionLabels .pl-preview-open { min-height: 44px; display: flex; align-items: center; justify-content: center; color: #2459be; font-size: 13px; }
+  #promotionLabels .pl-sheet-paging { gap: 10px; justify-content: space-between; color: #62758e; }
+  #promotionLabels .pl-note { color: #62758e; font-size: 12px; line-height: 1.6; margin: 12px 0 16px; }
+  #promotionLabels .plm-device-note { padding: 12px; background: #f3f7ff; border: 1px solid #dce5f0; border-radius: 12px; }
+  #promotionLabels .pl-error { color: #ae3939; }
+  #promotionLabels .pl-button-row { display: flex; flex-wrap: wrap; gap: 9px; }
+  #promotionLabels .pl-button-row > .btn { flex: 1 1 100px; }
+  #promotionLabels .pl-print-footer { gap: 13px; margin-top: 17px; padding-top: 17px; border-color: #dce5f0; }
+  #promotionLabels #plTotal { font-size: 15px; line-height: 1.55; color: #172d4d; }
+  #promotionLabels details { margin-top: 18px; padding: 0; border: 1px solid #dce5f0; border-radius: 13px; background: #f8faff; }
+  #promotionLabels details > summary { min-height: 48px; padding: 14px 12px; color: #345375; font-size: 13px; line-height: 1.5; cursor: pointer; }
+  #promotionLabels details[open] > summary { border-bottom: 1px solid #dce5f0; }
+  #promotionLabels .pl-printer-fields { padding: 14px 12px; margin: 0; gap: 14px; }
+  #promotionLabels .pl-config-grid { grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 14px 10px; }
+  #promotionLabels .pl-check { min-height: 44px; color: #345375; gap: 9px; }
+  #promotionLabels .pl-check > input { flex: none; width: 19px; height: 19px; accent-color: #2463eb; }
+  #promotionLabels #plConnectionStatus, #promotionLabels #plSaveState { color: #62758e; line-height: 1.6; }
+  #promotionLabels #plMessage { border: 1px solid #c9e6d7; border-radius: 13px; padding: 13px 15px; font-size: 13px; line-height: 1.6; margin-bottom: 14px; }
+  #promotionLabels #plMessage[data-error=true] { border-color: #f0dada; color: #ae3939; background: #fff1f1; }
+  #promotionLabels :is(button,a,input,select,summary):focus-visible { outline: 3px solid #87adff; outline-offset: 3px; }
+}
+@media screen and (max-width: 359px) {
+  #promotionLabels .pl-product { flex-direction: column; }
+  #promotionLabels .pl-product .btn { align-self: stretch; }
+  #promotionLabels .pl-config-grid { grid-template-columns: minmax(0,1fr); }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  #promotionLabels .btn, #promotionLabels summary { transition: none; animation: none; }
+}

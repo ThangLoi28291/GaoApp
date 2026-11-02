@@ -99,7 +99,8 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
                   x.Order.CompletedAtUtc.HasValue &&
                   x.Order.CompletedAtUtc.Value >= fromUtc &&
                   x.Order.CompletedAtUtc.Value < toUtc) ||
-                 (x.InvoiceDate >= fromUtc && x.InvoiceDate < toUtc)))
+                 ((x.Order == null || !x.Order.CompletedAtUtc.HasValue) &&
+                  x.InvoiceDate >= fromUtc && x.InvoiceDate < toUtc)))
             .ExecuteUpdateAsync(
                 setters => setters
                     .SetProperty(x => x.LastErrorCode, (string?)null)
@@ -302,15 +303,14 @@ public sealed class AutoInvoiceRepository : IAutoInvoiceRepository
                 !x.IsAutoInvoiceGroup &&
                 x.OriginalInvoiceHeadId == null &&
                 x.CorrectionType == null &&
-                x.Order != null &&
-x.Order.InvoiceIssuanceRoute ==
-    InvoiceIssuanceRoute.Automatic &&
+                (x.Order != null && x.Order.InvoiceIssuanceRoute == InvoiceIssuanceRoute.Automatic || x.StorefrontServiceRevenueId != null && x.NativeServiceInvoiceRoute == InvoiceIssuanceRoute.Automatic) &&
     !succeededSourceIds.Contains(x.Id) &&
                 !issuedStatuses.Contains(x.ProviderStatus) &&
-                ((x.Order.CompletedAtUtc.HasValue &&
+                ((x.Order != null && x.Order.CompletedAtUtc.HasValue &&
                   x.Order.CompletedAtUtc.Value >= fromUtc &&
                   x.Order.CompletedAtUtc.Value < toUtc) ||
-                 (x.InvoiceDate >= fromUtc && x.InvoiceDate < toUtc)))
+                 (x.StorefrontServiceRevenueId != null && x.NativeServiceRecognizedAtUtc >= fromUtc && x.NativeServiceRecognizedAtUtc < toUtc) ||
+                 (x.Order != null && !x.Order.CompletedAtUtc.HasValue && x.InvoiceDate >= fromUtc && x.InvoiceDate < toUtc)))
             .Select(x => x.Id)
             .ToListAsync(ct);
 

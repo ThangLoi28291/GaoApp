@@ -182,6 +182,8 @@ public sealed class GaoAppDesignSystemSourceContractTests
             "StoreBankAccounts/Index.cshtml",
             "Supplier/Index.cshtml",
             "Tax/Index.cshtml",
+            "UiFoundation/Index.cshtml",
+            "UiFoundation/Mobile.cshtml",
             "Unit/Index.cshtml",
             "UserInStores/Index.cshtml",
             "WarehouseManagement/Index.cshtml",

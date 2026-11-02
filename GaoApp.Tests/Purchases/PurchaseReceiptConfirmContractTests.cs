@@ -89,12 +89,16 @@ public sealed class PurchaseReceiptConfirmContractTests
     }
 
     [Fact]
-    public void Workbench_describes_supplier_as_always_required_and_payee_as_non_substitute()
+    public void Workbench_requires_supplier_and_records_payment_only_through_a_treasury_voucher()
     {
         var source = Read("GaoApp.Web/Areas/Admin/Views/StockDocumentManagement/_CommercialApprovalWorkbench.cshtml");
 
-        source.Should().Contain("Nhà cung cấp bắt buộc trước khi duyệt, kể cả phiếu đã trả tiền.");
-        source.Should().Contain("không thay thế nhà cung cấp");
+        source.Should().Contain("Nhà cung cấp bắt buộc để ghi nhận công nợ khi duyệt.");
+        source.Should().Contain("Thanh toán được ghi nhận bằng phiếu chi tại Thu/chi sau khi duyệt.");
+        source.Should().Contain("Phí vận chuyển tạo khoản phải trả riêng khi duyệt.");
+        source.Should().NotContain("id=\"commercialMerchandisePaid\"");
+        source.Should().NotContain("id=\"commercialFreightPaid\"");
+        source.Should().NotContain("id=\"commercialPayeeName\"");
         source.Should().NotContain("Bắt buộc khi còn nợ tiền hàng");
         source.Should().NotContain("Dùng khi trả ngay và chưa có NCC");
     }

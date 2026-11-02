@@ -6,6 +6,7 @@ public interface IStockDocumentService
 {
     Task<ReceiptPriceDraftResult> SavePriceDraftAsync(int documentId, SaveReceiptPriceDraftRequest request, CancellationToken ct = default);
     Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default);
+    Task<List<StockDocumentListItemDto>> GetReceivingReceiptListAsync(CancellationToken ct = default);
 
     Task<StockReceiptFormOptionsDto> GetReceiptFormOptionsAsync(CancellationToken ct = default);
 
@@ -22,6 +23,7 @@ public interface IStockDocumentService
         CancellationToken ct = default);
 
     Task<StockDocumentDto?> GetDetailAsync(int id, CancellationToken ct = default);
+    Task<StockDocumentWorkflowContextDto?> GetWorkflowContextAsync(int id, CancellationToken ct = default);
 
     Task CompleteLegacyCatalogProductAsync(
         int documentId,
@@ -38,9 +40,9 @@ public interface IStockDocumentService
     Task<int> AddLineAsync(int documentId, AddStockDocumentLineRequest request, CancellationToken ct = default);
     Task<int> AddLineByBarcodeAsync(int documentId, AddStockDocumentLineByBarcodeRequest request, CancellationToken ct = default);
 
-    Task UpdateLineAsync(int lineId, UpdateStockDocumentLineRequest request, CancellationToken ct = default);
+    Task UpdateLineAsync(int documentId, int lineId, UpdateStockDocumentLineRequest request, CancellationToken ct = default);
 
-    Task DeleteLineAsync(int lineId, CancellationToken ct = default);
+    Task DeleteLineAsync(int documentId, int lineId, DeleteStockDocumentLineRequest request, CancellationToken ct = default);
 
     Task SubmitForApprovalAsync(int documentId, string? approvalNote, string? rowVersion, CancellationToken ct = default);
 

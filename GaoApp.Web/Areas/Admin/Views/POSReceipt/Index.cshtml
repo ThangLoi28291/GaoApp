@@ -186,8 +186,8 @@
 </head>
 <body>
     <div class="toolbar">
-        <button class="btn btn-print" onclick="window.print()">In hóa đơn</button>
-        <button class="btn btn-close" onclick="window.close()">Đóng</button>
+        <button class="btn btn-print" data-csp-action="print">In hóa đơn</button>
+        <button class="btn btn-close" data-csp-action="close">Đóng</button>
     </div>
 
     <div class="receipt-wrap">
@@ -292,7 +292,7 @@
                                 <td>@p.Method</td>
                                 <td class="text-end">@p.Amount.ToString("N0")</td>
                                 <td>@(string.IsNullOrWhiteSpace(p.Reference) ? "-" : p.Reference)</td>
-                                <td>@p.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                                <td>@p.CreatedAt.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
                             </tr>
                             payIndex++;
                         }

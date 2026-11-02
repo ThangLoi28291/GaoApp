@@ -6,6 +6,10 @@ namespace GaoApp.Domain.Entities;
 
 public class OrderLine : BaseStoreEntity
 {
+    public bool? HasInputInvoiceSnapshot { get; set; }
+    public int? StorefrontOrderId { get; set; }
+    public int? StorefrontOrderLineId { get; set; }
+    public decimal StorefrontRoundingAdjustment { get; set; }
     public int OrderId { get; set; }
     public Order Order { get; set; } = default!;
 

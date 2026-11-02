@@ -1,0 +1,56 @@
+@model StorefrontCatalogProduct
+@{
+    ViewData["Title"] = Model.Name; var first = Model.Variants.First(); var unit = first.Units.First();
+    var images = Model.Media.Where(x => x.Kind == StorefrontMediaKind.Image).ToList();
+    var models = Model.Media.Where(x => x.Kind == StorefrontMediaKind.Model3D).ToList();
+    var mainPhoto = images.FirstOrDefault();
+}
+<div class="page-shell">
+    <a class="back-link" href="/shop/products">← Danh mục sản phẩm</a>
+    <article class="product-detail" data-detail data-product-id="@Model.ProductId">
+        <div class="detail-gallery" data-product-viewer data-state="idle">
+            <div class="detail-main-image"><img id="detail-image" src="@(mainPhoto is null ? "/assets/product-fallback.svg" : mainPhoto.Path + "?width=640")" srcset="@(mainPhoto is null ? null : $"{mainPhoto.Path}?width=320 320w, {mainPhoto.Path}?width=640 640w, {mainPhoto.Path}?width=960 960w")" sizes="(max-width:700px) calc(100vw - 32px), 48vw" alt="@(mainPhoto?.AltText is { Length: > 0 } alt ? alt : Model.Name)" width="700" height="700" decoding="async" fetchpriority="high" data-image-fallback />@if (models.Count > 0) { <div id="product-viewer-stage" hidden></div> }</div>
+            @if (models.Count > 0)
+            {
+                <div id="product-viewer-tools" class="viewer-tools" hidden role="group" aria-label="Điều khiển mô hình">
+                    <button id="product-viewer-rotate-left" type="button" aria-label="Xoay sang trái">← Xoay</button><button id="product-viewer-rotate-right" type="button" aria-label="Xoay sang phải">Xoay →</button><button id="product-viewer-zoom-in" type="button" aria-label="Phóng to">＋</button><button id="product-viewer-zoom-out" type="button" aria-label="Thu nhỏ">−</button><button id="product-viewer-reset" type="button">Đặt lại góc</button>
+                </div>
+            }
+            @if (images.Count > 1) { <div class="detail-thumbs" aria-label="Ảnh sản phẩm">@foreach (var image in images) { <button class="image-thumb" type="button" data-gallery-src="@image.Path" data-gallery-alt="@(string.IsNullOrWhiteSpace(image.AltText) ? Model.Name : image.AltText)" aria-label="Xem ảnh @(images.IndexOf(image) + 1)"><img src="@(image.Path + "?width=160")" alt="" width="96" height="96" loading="lazy" decoding="async" data-image-fallback /></button> }</div> }
+            @if (models.Count > 0)
+            {
+                <section class="product-viewer-panel" aria-label="Xem mô hình sản phẩm">
+                    <p>Mô hình của sản phẩm để tham khảo hình dáng. Hãy kiểm tra biến thể và đơn vị ở phần chọn mua.</p>
+                    <label for="product-model-choice">Mô hình được cửa hàng cung cấp</label>
+                    <select id="product-model-choice">@foreach (var media in models) { <option value="@media.MediaAssetId">@(string.IsNullOrWhiteSpace(media.AltText) ? $"Góc xem {models.IndexOf(media) + 1}" : media.AltText)</option> }</select>
+                    <div class="viewer-actions"><button class="button" id="product-viewer-open" type="button" aria-controls="product-viewer-stage">Xem 3D</button><button class="button secondary-button" id="product-viewer-close" type="button" hidden>Về ảnh sản phẩm</button></div>
+                    <p id="product-viewer-status" role="status" aria-live="polite" data-state="idle">Chỉ tải mô hình khi bạn chọn xem 3D. Bạn vẫn có thể mua bằng ảnh.</p>
+                </section>
+            }
+        </div>
+        <div class="detail-copy">
+            @if (!string.IsNullOrWhiteSpace(Model.DisplayGroup)) { <a class="eyebrow group-link" href="/shop/products?DisplayGroup=@Uri.EscapeDataString(Model.DisplayGroup)">@Model.DisplayGroup</a> }
+            <h1>@Model.Name</h1>
+            <p class="detail-price" id="detail-price" aria-live="polite">@unit.RetailPrice.ToString("#,0.##", System.Globalization.CultureInfo.GetCultureInfo("vi-VN")) đ <small>/ @unit.Name</small></p>
+            <form id="product-choice">
+                <label for="variant-choice">Biến thể</label><select id="variant-choice">@foreach (var variant in Model.Variants) { <option value="@variant.VariantId">@variant.Name</option> }</select>
+                <label for="unit-choice">Đơn vị bán</label><select id="unit-choice">
+                    @foreach (var variant in Model.Variants) { @foreach (var choice in variant.Units) { <option value="@choice.UnitId" data-variant="@variant.VariantId" data-price="@choice.RetailPrice.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-price-text="@(choice.RetailPrice.ToString("#,0.##", System.Globalization.CultureInfo.GetCultureInfo("vi-VN")) + " đ")" data-weight="@choice.WeightKg?.ToString(System.Globalization.CultureInfo.InvariantCulture)" hidden="@(variant.VariantId != first.VariantId)" disabled="@(variant.VariantId != first.VariantId)">@choice.Name</option> } }
+                </select>
+                <p class="unit-note" id="unit-note">Giá áp dụng cho đúng một @unit.Name.</p>
+                <label for="product-quantity">Số lượng</label>
+                <div class="quantity-control"><button type="button" data-quantity-step="-1" aria-label="Giảm số lượng"><partial name="_Icon" model='"minus"' /></button><input id="product-quantity" name="quantity" type="number" min="0.0001" max="1000000" step="0.0001" value="1" inputmode="decimal" required /><button type="button" data-quantity-step="1" aria-label="Tăng số lượng"><partial name="_Icon" model='"plus"' /></button></div>
+                <p class="field-message" id="choice-message" role="alert" hidden></p>
+                <div class="purchase-actions"><button class="button" type="submit"><partial name="_Icon" model='"cart"' /> Thêm vào giỏ</button><button class="button secondary-button" type="button" id="buy-now">Xem bước tiếp theo</button></div>
+            </form>
+            <div class="detail-policy"><strong>Chọn rõ đơn vị, kiểm tra rõ giá.</strong><p>Giỏ sẽ kiểm tra lại giá và trạng thái bán khi mở. Phí giao được xác nhận trước khi đặt hàng.</p>@if ((Context.Items[typeof(StorefrontPageContext)] as StorefrontPageContext)?.RuntimeMode == "preview") { <p class="muted">Đây là chế độ xem thử. Luồng đặt đơn và QR dùng để kiểm tra, không dùng cho giao dịch thật.</p> }</div>
+        </div>
+        <section class="detail-description"><h2>Thông tin sản phẩm</h2>@if (string.IsNullOrWhiteSpace(Model.Description)) { <p>Cửa hàng đang bổ sung mô tả cho sản phẩm này.</p> } else { <div class="plain-description">@Model.Description</div> }</section>
+    </article>
+</div>
+@section Scripts {
+    @if (models.Count > 0) {
+        <link rel="stylesheet" href="~/assets/product-viewer.css" asp-append-version="true" />
+        <script src="~/assets/product-viewer.js" asp-append-version="true" defer></script>
+    }
+}

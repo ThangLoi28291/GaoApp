@@ -20,6 +20,9 @@ public sealed class OrderReceiptDto
     public int? CustomerId { get; set; }
     public string? CustomerName { get; set; }
     public string? CustomerPhone { get; set; }
+    public string? CustomerPriceTier { get; set; }
+    /// <summary>Điểm khả dụng tại thời điểm tải phiếu; null khi không có khách hoặc chưa đọc được số dư.</summary>
+    public decimal? CustomerCurrentPoints { get; set; }
 
     public string? CashierName { get; set; }
     public string? TerminalName { get; set; }

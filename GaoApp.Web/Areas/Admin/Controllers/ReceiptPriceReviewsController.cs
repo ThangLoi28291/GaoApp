@@ -23,7 +23,7 @@ public sealed class ReceiptPriceReviewsController(IReceiptSellingPriceService se
             if (!approve && !await Has(po ? PermissionCodes.Purchase.Receipt.View : PermissionCodes.Inventory.StockDocument.View) &&
                 !await Has(po ? PermissionCodes.Purchase.Receipt.Update : PermissionCodes.Inventory.StockDocument.Update)) return Forbid();
             var cost = approve || await Has(PermissionCodes.Purchase.Order.ViewCost);
-            return Ok(data with { Lines = data.Lines.Select(x => cost ? x : x with { ReviewedBaseCost = null, CurrentBaseCost = null }).ToList() });
+            return Ok(data with { Lines = data.Lines.Select(x => cost ? x : x with { ReviewedBaseCost = null, CurrentBaseCost = null, Units = [] }).ToList() });
         }
         catch (BusinessRuleException ex) { return Conflict(new { message = ex.SafeMessage }); }
     }

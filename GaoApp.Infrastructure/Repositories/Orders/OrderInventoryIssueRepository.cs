@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Repositories.Orders;
 
-public sealed class OrderInventoryIssueRepository : IOrderInventoryIssueRepository
+public sealed partial class OrderInventoryIssueRepository : IOrderInventoryIssueRepository
 {
     private readonly AppDbContext _db;
 
@@ -135,6 +135,7 @@ public sealed class OrderInventoryIssueRepository : IOrderInventoryIssueReposito
 
     public async Task<decimal> GetCurrentAvailableQtyForIssueLineAsync(int issueLineId, CancellationToken ct = default)
     {
+        if (await NativeIssueLine(issueLineId, ct)) return await NativeAvailable(issueLineId, ct);
         var row = await (
             from line in _db.OrderInventoryIssueLines
             join issue in _db.OrderInventoryIssues on line.OrderInventoryIssueId equals issue.Id
@@ -160,6 +161,7 @@ public sealed class OrderInventoryIssueRepository : IOrderInventoryIssueReposito
         int orderLineId,
         CancellationToken ct = default)
     {
+        if (await _db.OrderLines.AnyAsync(x => x.Id == orderLineId && x.OrderId == orderId && x.StorefrontOrderLineId != null, ct)) return await NativeCost(orderId, orderLineId, ct);
         // 1) Đọc các provisional allocations gốc của đúng order line
         var allocationRows = await (
             from entry in _db.InventoryValuationEntries
@@ -253,6 +255,7 @@ public sealed class OrderInventoryIssueRepository : IOrderInventoryIssueReposito
         int issueLineId,
         CancellationToken ct = default)
     {
+        if (await NativeIssueLine(issueLineId, ct)) return await NativeOptions(issueLineId, InventoryReferenceType.StockDocument, ct);
         var issueLine = await (
             from line in _db.OrderInventoryIssueLines
             join issue in _db.OrderInventoryIssues on line.OrderInventoryIssueId equals issue.Id
@@ -306,6 +309,7 @@ public sealed class OrderInventoryIssueRepository : IOrderInventoryIssueReposito
         int issueLineId,
         CancellationToken ct = default)
     {
+        if (await NativeIssueLine(issueLineId, ct)) return await NativeOptions(issueLineId, InventoryReferenceType.Adjustment, ct);
         var issueLine = await (
             from line in _db.OrderInventoryIssueLines
             join issue in _db.OrderInventoryIssues on line.OrderInventoryIssueId equals issue.Id
@@ -359,6 +363,7 @@ public sealed class OrderInventoryIssueRepository : IOrderInventoryIssueReposito
         int issueId,
         CancellationToken ct = default)
     {
+        if (await _db.OrderInventoryIssueLines.AnyAsync(x => x.OrderInventoryIssueId == issueId && x.OrderLine.StorefrontOrderLineId != null, ct)) return await NativeInbound(issueId, ct);
         var issueContext = await (
             from issue in _db.OrderInventoryIssues
             join ord in _db.Orders on issue.OrderId equals ord.Id

@@ -69,7 +69,7 @@ test('automatic QR grants one print handoff only for a finalized completion with
     }
 });
 
-test('countdown follows actual 30-second first lookup and 8-second retries without overlapping requests', async () => {
+test('background fallback retains the 30-second first lookup and 8-second retries without overlapping requests', async () => {
     const firstLookup = deferred();
     let bankLookups = 0;
     const pos = posHarness(async url => {
@@ -78,26 +78,20 @@ test('countdown follows actual 30-second first lookup and 8-second retries witho
         return response({ status: 'Pending', orderId: 100 });
     });
     pos.acb.track({ id: 42 }); pos.emit('DOMContentLoaded'); await settle();
-    const value = pos.elements.get('acbPaymentCountdownValue');
-    assert.equal(value.textContent, '00:30');
     pos.advance(20000); await settle();
-    assert.equal(value.textContent, '00:10'); assert.equal(bankLookups, 0);
+    assert.equal(bankLookups, 0);
     pos.acb.track({ id: 42 }); // Reopening must retain the original deadline.
-    assert.equal(value.textContent, '00:10');
     pos.advance(10000); await settle();
     assert.equal(bankLookups, 1);
-    assert.equal(pos.elements.get('acbPaymentCountdownLabel').textContent, 'Đang kiểm tra ACB…');
-    assert.equal(value.textContent, '…');
     pos.advance(2000); await settle(); assert.equal(bankLookups, 1);
     firstLookup.resolve(response({ status: 'Pending', orderId: 100 })); await settle();
-    assert.equal(value.textContent, '00:08');
     pos.advance(7000); await settle();
-    assert.equal(value.textContent, '00:01'); assert.equal(bankLookups, 1);
+    assert.equal(bankLookups, 1);
     pos.advance(1000); await settle();
-    assert.equal(bankLookups, 2); assert.equal(value.textContent, '00:08');
+    assert.equal(bankLookups, 2);
 });
 
-test('checking manually skips the countdown and restarts the next 8-second wait', async () => {
+test('checking manually queries ACB immediately and restarts the fallback wait', async () => {
     const urls = [];
     const pos = posHarness(async url => {
         urls.push(url);
@@ -105,15 +99,17 @@ test('checking manually skips the countdown and restarts the next 8-second wait'
     });
     pos.acb.track({ id: 42 }); pos.emit('DOMContentLoaded'); await settle();
     pos.advance(12000); await settle();
-    assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:18');
+    assert.equal(urls.filter(url => url.includes('refresh=true')).length, 0);
     await pos.acb.check(42);
     assert.ok(urls.at(-1).includes('refresh=true&manual=true'));
-    assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:08');
+    pos.advance(7000); await settle();
+    assert.equal(urls.filter(url => url.includes('refresh=true')).length, 1);
     pos.advance(1000); await settle();
-    assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:07');
+    assert.equal(urls.filter(url => url.includes('refresh=true')).length, 2);
+    assert.ok(urls.at(-1).includes('refresh=true') && !urls.at(-1).includes('manual=true'));
 });
 
-test('network failure shows retry countdown and preserves the diagnostic while waiting', async () => {
+test('network failure preserves the diagnostic while waiting for the background retry', async () => {
     let lookups = 0;
     const pos = posHarness(async url => {
         if (url.endsWith('/terminal-pending')) return response([]);
@@ -125,27 +121,31 @@ test('network failure shows retry countdown and preserves the diagnostic while w
     });
     pos.acb.track({ id: 42 }); pos.emit('DOMContentLoaded'); await settle();
     pos.advance(30000); await settle();
-    assert.equal(pos.elements.get('acbPaymentCountdown').dataset.phase, 'retry');
-    assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:08');
     assert.equal(pos.elements.get('acbPaymentCheckStatus').textContent, 'Không kết nối được ACB.');
     pos.advance(7000); await settle(); assert.equal(lookups, 1);
     assert.equal(pos.elements.get('acbPaymentCheckStatus').textContent, 'Không kết nối được ACB.');
     pos.advance(1000); await settle(); assert.equal(lookups, 2);
 });
 
-test('changing the displayed QR keeps separate deadlines and hides the timer on manual/read-only views', async () => {
-    const pos = posHarness(async url => response(url.endsWith('/terminal-pending') ? [] : { status: 'Pending', orderId: 100 }));
+test('changing or closing the displayed QR preserves separate background lookup deadlines', async () => {
+    const bankLookups = [];
+    const pos = posHarness(async url => {
+        if (url.includes('refresh=true')) bankLookups.push(url);
+        return response(url.endsWith('/terminal-pending') ? [] : { status: 'Pending', orderId: 100 });
+    });
     pos.acb.track({ id: 41 }); pos.emit('DOMContentLoaded'); await settle();
     pos.advance(10000); await settle(); pos.acb.track({ id: 42 });
-    assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:30');
-    pos.acb.track({ id: 41 }); assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:20');
-    pos.acb.blur(); assert.equal(pos.elements.get('acbPaymentCountdown').hidden, true);
-    pos.advance(5000); await settle(); assert.equal(pos.elements.get('acbPaymentCountdown').hidden, true);
-    pos.acb.track({ id: 42 }); assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:25');
+    pos.acb.track({ id: 41 }); pos.acb.blur();
+    pos.advance(5000); await settle(); pos.acb.track({ id: 42 });
+    pos.advance(15000); await settle();
+    assert.equal(bankLookups.length, 1);
+    assert.ok(bankLookups[0].includes('/41/status?refresh=true'));
+    pos.advance(10000); await settle();
+    assert.ok(bankLookups.some(url => url.includes('/42/status?refresh=true')));
 });
 
 for (const status of ['ReviewRequired', 'Cancelled', 'Received']) {
-    test(`countdown stops after ${status} without another bank check`, async () => {
+    test(`background watching stops after ${status} without another bank check`, async () => {
         let statuses = 0;
         const pos = posHarness(async url => {
             if (url.endsWith('/terminal-pending')) return response([]);
@@ -154,12 +154,11 @@ for (const status of ['ReviewRequired', 'Cancelled', 'Received']) {
         });
         pos.emit('DOMContentLoaded'); await settle();
         await pos.acb.check(42);
-        assert.equal(pos.elements.get('acbPaymentCountdown').hidden, true);
         pos.advance(60000); await settle(); assert.equal(statuses, 1);
     });
 }
 
-test('returning from a throttled background tab checks immediately instead of extending or going negative', async () => {
+test('returning from a throttled background tab checks immediately and retains the next fallback deadline', async () => {
     let lookups = 0;
     const pos = posHarness(async url => {
         if (url.endsWith('/terminal-pending')) return response([]);
@@ -169,7 +168,8 @@ test('returning from a throttled background tab checks immediately instead of ex
     pos.acb.track({ id: 42 }); pos.emit('DOMContentLoaded'); await settle();
     pos.advance(90000); await settle();
     assert.equal(lookups, 1);
-    assert.equal(pos.elements.get('acbPaymentCountdownValue').textContent, '00:08');
+    pos.advance(7999); await settle(); assert.equal(lookups, 1);
+    pos.advance(1); await settle(); assert.equal(lookups, 2);
 });
 
 test('hub notifications during a pending status request resume immediately and finalize once', async () => {
@@ -329,7 +329,6 @@ test('offline POS pauses discovery and bank checks until all pending sales have 
     pos.advance(30000); pos.emit('acb:payment-changed'); await pos.acb.check(42); await settle();
     assert.deepEqual(urls, []);
     assert.equal(pos.notes.length, 0);
-    assert.equal(pos.elements.get('acbPaymentCountdown').hidden, true);
     status.connected = true;
     pos.emit('pos:offline-status'); pos.advance(8000); await settle();
     assert.deepEqual(urls, [], 'A reachable server is not enough while the journal is pending');

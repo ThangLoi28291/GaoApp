@@ -941,3 +941,4 @@
         transition: none;
     }
 }
+.prc-line-note{margin-top:8px;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--bs-secondary-color)}

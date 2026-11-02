@@ -298,8 +298,8 @@
 </head>
 <body>
     <div class="print-toolbar">
-        <button type="button" class="btn btn-primary" onclick="window.print()">In hóa đơn</button>
-        <button type="button" class="btn btn-secondary" onclick="window.close()">Đóng</button>
+        <button type="button" class="btn btn-primary" data-csp-action="print">In hóa đơn</button>
+        <button type="button" class="btn btn-secondary" data-csp-action="close">Đóng</button>
     </div>
 
     <div class="receipt-shell @(isThermal80 ? "receipt-80" : "receipt-a4")">
@@ -333,7 +333,7 @@
             </tr>
             <tr>
                 <td class="meta-label">Ngày:</td>
-                <td>@Model.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                <td>@Model.CreatedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
             </tr>
             <tr>
                 <td class="meta-label">Thu ngân:</td>
@@ -477,7 +477,7 @@
                         <td>
                             <div class="strong">@p.Method</div>
                             <div class="tiny">
-                                @p.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm:ss")
+                                @p.CreatedAt.ToVietnamTime().ToString("dd/MM HH:mm:ss")
                                 @if (!string.IsNullOrWhiteSpace(p.Reference))
                                 {
                                     <span> | Ref: @p.Reference</span>

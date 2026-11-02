@@ -16,7 +16,7 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
             const errors = [], mutations = [];
             page.on('pageerror', error => errors.push(error.message));
             const boot = { storeId: 1, terminalId: 2, userId: 3, shiftId: 4,
-                antiForgeryToken: 'test-token', expiresAtUtc: new Date(Date.now() + 3600000).toISOString(),
+                antiForgeryToken: 'test-token', deviceBinding: 'session-probe-device', expiresAtUtc: new Date(Date.now() + 3600000).toISOString(),
                 permissions: ['pos.order.create', 'pos.order.finalize', 'pos.order.hold', 'pos.order.discount', 'pos.payment.create'],
                 screen: { currentDraft: null, draftOrders: [], heldOrders: [] } };
             const catalog = { fetchedAtUtc: new Date().toISOString(), products: [{ id: 10, productId: 11, productName: 'Sữa',
@@ -45,18 +45,15 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
                 return respond(route, {}, 404);
             });
             await page.goto('http://localhost/');
+            await page.addScriptTag({ path: path.join(scripts, 'pos.offline.privacy.js') });
+            await page.evaluate(() => PosOfflinePrivacy.settled());
             if (scenario !== 'no-cache') await page.evaluate(async ({ stored, catalog }) => {
-                const db = await new Promise((resolve, reject) => {
-                    const request = indexedDB.open('gao-pos-offline-v1', 1);
-                    request.onupgradeneeded = () => ['sessions','catalogs','meta'].forEach(name => request.result.createObjectStore(name));
-                    request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
-                });
-                await new Promise((resolve, reject) => {
-                    const tx = db.transaction(['sessions','catalogs','meta'], 'readwrite');
-                    tx.objectStore('sessions').put(stored, stored.key); tx.objectStore('catalogs').put(catalog, stored.key);
-                    tx.objectStore('meta').put({ key: stored.key, expiresAt: stored.context.expiresAtUtc }, 'active');
-                    tx.oncomplete = resolve; tx.onerror = () => reject(tx.error);
-                }); db.close();
+                const db = await PosOfflinePrivacy.open();
+                const authorization = await PosOfflinePrivacy.authorize(db, await PosOfflinePrivacy.auth(db), stored.context);
+                stored.privacyVersion = PosOfflinePrivacy.version;
+                stored.privacyRevision = authorization.revision;
+                await PosOfflinePrivacy.commit(db, stored, catalog);
+                db.close();
             }, { stored, catalog });
             for (const file of ['pos.offline.core.js', 'pos.offline.js', 'pos.common.js', 'pos.render.js'])
                 await page.addScriptTag({ path: path.join(scripts, file) });
@@ -91,7 +88,7 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
             assert.equal(blocked.offline,false,scenario);
             assert.equal(blocked.canWork,false,scenario);
             assert.equal(blocked.localMode,false,scenario);
-            assert.ok(blocked.sessionIssue);
+            assert.ok(blocked.sessionIssue, scenario + ': ' + JSON.stringify(blocked));
             await page.evaluate(() => PosRender.renderNetworkBanner({ offline:{ isOnline:true } }));
             const banner=await page.locator('#posNetworkStateBanner').innerText();
             assert.doesNotMatch(banner,/Mất kết nối|đang bán offline/);
@@ -102,14 +99,14 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
                     const r=await fetch('/admin/pos/cart/current/scan',{method:'POST',body:JSON.stringify({barcode:'123456'})});
                     return {status:r.status,body:await r.json()};
                 });
-                assert.equal(rejected.status,409);
+                assert.equal(rejected.status,401,scenario+': '+JSON.stringify(rejected));
                 assert.deepEqual(await snapshot(),before,'Rejected session must not edit saved orders or pending commands');
                 assert.deepEqual(mutations,[],'No mutation is sent or replayed for a closed shift');
-                const screen=await page.evaluate(async()=>await(await fetch('/admin/pos/screen')).json());
-                assert.equal(screen.source,'server','Show authoritative online screen instead of old offline data');
+                const screen=await page.evaluate(async()=>{const r=await fetch('/admin/pos/screen');return {status:r.status,body:await r.json()};});
+                assert.equal(screen.status,401,'Current privacy fence requires verified reauthentication before any POS data read');
                 assert.deepEqual(await snapshot(),before,'Online reads must not overwrite pending local quantities');
                 // A new shift cannot receive commands belonging to the previous shift.
-                if (before.queue.length) {
+                if (before?.queue.length) {
                     server=200; responseContext={...boot,shiftId:5}; await sync();
                     assert.equal((await readStatus()).sessionIssue.code,'POS_SESSION_CHANGED');
                     assert.deepEqual((await snapshot()).queue,before.queue); assert.deepEqual(mutations,[]);

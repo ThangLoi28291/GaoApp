@@ -6,7 +6,7 @@
 }
 
 @section header {
-    <div data-gao-ui="modern" class="w-100">
+    <div data-gao-ui="modern" data-wr-index-header class="w-100">
         <div class="gds-page-header gds-page-header--compact">
             <div class="gds-page-header__main">
                 <h3 class="gds-page-header__title">Nhập hàng nhanh</h3>
@@ -27,7 +27,8 @@
 }
 
 @section VendorStyles {
-    <link href="~/admin/css/warehouse-receiving.css" rel="stylesheet" />
+    <link href="~/admin/css/warehouse-receiving.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/Admin/css/warehouse-receiving-index.mobile.css" rel="stylesheet" asp-append-version="true" />
 }
 
 <div data-gao-ui="modern" data-warehouse-receiving-index class="gds-page wr-page">
@@ -104,6 +105,7 @@
     </section>
 
     <section class="gds-list-panel wr-list-panel" aria-label="Danh sách phiếu nhập nhanh">
+        <div id="wrLoadStatus" class="p-3" role="status" aria-live="polite" hidden></div>
         <div id="wrReceiptList" class="wr-list">
             <div class="wr-empty">Đang tải danh sách phiếu...</div>
         </div>
@@ -205,4 +207,5 @@
     @await Html.PartialAsync("_ReceiptDocumentActions")
     <script src="~/Admin/js/receipt-document-actions.js" asp-append-version="true"></script>
     <script src="~/admin/js/warehouse-receiving.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/warehouse-receiving-index.mobile.js" asp-append-version="true"></script>
 }

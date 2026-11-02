@@ -49,7 +49,8 @@ public sealed class LabelPrintingController(ProductLabelService labels, IAuthori
     {
         if (!ModelState.IsValid || request.Design is null) return ValidationProblem(ModelState);
         if (!OperatingSystem.IsWindows()) return Conflict(new { message = "Xem trước tem cần máy chủ Windows." });
-        return File(ProductLabelRenderer.Preview(request.Design with { BarcodeFormat = "AUTO" }, request.Product, request.Dpi is 203 or 300 ? request.Dpi : 203), "image/png");
+        if (request.OffsetXmm is < -5 or > 5 || request.OffsetYmm is < -5 or > 5) return BadRequest(new { message = "Dịch ngang/dọc từ -5 đến 5 mm." });
+        return File(ProductLabelRenderer.Preview(request.Design with { BarcodeFormat = "AUTO" }, request.Product, request.Dpi is 203 or 300 ? request.Dpi : 203, request.OffsetXmm, request.OffsetYmm), "image/png");
     }
     [HttpGet("layouts/{key}/preview"), Authorize(Policy = PermissionCodes.System.ProductLabel.Manage)]
     public IActionResult LayoutPreview(string key)
@@ -58,7 +59,7 @@ public sealed class LabelPrintingController(ProductLabelService labels, IAuthori
         if (!OperatingSystem.IsWindows()) return Conflict(new { message = "Xem trước tem cần máy chủ Windows." });
         return File(ProductLabelRenderer.Preview(ProductLabelLayouts.DefaultDesign(key)), "image/png");
     }
-    public sealed record LabelPreviewRequest(ProductLabelDesign Design, LabelProduct? Product, int Dpi = 203);
+    public sealed record LabelPreviewRequest(ProductLabelDesign Design, LabelProduct? Product, int Dpi = 203, decimal OffsetXmm = 0, decimal OffsetYmm = 0);
     [HttpGet("printers")] public async Task<IActionResult> Printers(CancellationToken ct) => Ok(await labels.Printers(ct));
     [HttpGet("installed-printers"), Authorize(Policy = PermissionCodes.System.ProductLabel.Manage)]
     public IActionResult InstalledPrinters() => OperatingSystem.IsWindows() ? Ok(WindowsLabelPrinter.Installed()) : Ok(Array.Empty<string>());

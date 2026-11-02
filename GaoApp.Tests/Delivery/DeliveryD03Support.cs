@@ -27,7 +27,8 @@ internal static class DeliveryD03Support
     {
         using var r = await c.Client.Http.PostAsJsonAsync(CreatePath, body);
         Assert.Equal(status, r.StatusCode);
-        Assert.Equal(code, (await r.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString());
+        if (status == HttpStatusCode.Unauthorized) Assert.Empty(await r.Content.ReadAsStringAsync());
+        else Assert.Equal(code, (await r.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString());
         await using var db = c.Context(); Assert.Empty(await db.DeliveryOrders.Where(x => x.SourceCartId == c.CartId).ToListAsync());
     }
 }

@@ -1,0 +1,61 @@
+{
+  "Name": "three",
+  "Version": "0.187.0",
+  "Release": "r187",
+  "Repository": "https://github.com/mrdoob/three.js/tree/r187",
+  "Registry": "https://registry.npmjs.org/three/0.187.0",
+  "Integrity": "sha512-Qiu7R+Cmh8CstZsY1uJOSWnVlfo7ZtNLV7mF8Jltk3LB3AtDu9cRZlcnRKkAk8Y4z6KKw35z7Y7Urd7jWY8etA==",
+  "License": "MIT; LICENSE.txt copied exactly",
+  "RuntimeNetwork": "Self-hosted modules only; no CDN/importmap/eval",
+  "Files": [
+    {
+      "Path": "build/three.module.js",
+      "UpstreamFile": "npm187-three.module.js",
+      "UpstreamSha256": "104F56145899722094556490D787AAE0617CC2FC3382F31DF02D724EA1AEE341",
+      "VendoredSha256": "104F56145899722094556490D787AAE0617CC2FC3382F31DF02D724EA1AEE341",
+      "Patch": "None"
+    },
+    {
+      "Path": "build/three.core.js",
+      "UpstreamFile": "npm187-three.core.js",
+      "UpstreamSha256": "613E370F76638FDEF83926642BF256DC9615684922DE1CE1F63A8583E5D78578",
+      "VendoredSha256": "613E370F76638FDEF83926642BF256DC9615684922DE1CE1F63A8583E5D78578",
+      "Patch": "None"
+    },
+    {
+      "Path": "loaders/GLTFLoader.js",
+      "UpstreamFile": "npm187-GLTFLoader.js",
+      "UpstreamSha256": "532AC726E120039ACBCD6CF54328C57ACBF7B438176AFAA6951257126D11BFF1",
+      "VendoredSha256": "946DC24ABFEF7465BA4136665D89C22B6B20597D95EFA9657C93FE34C128C877",
+      "Patch": "Exactly one bare from 'three' -> from '../build/three.module.js'; preserve relative addon imports"
+    },
+    {
+      "Path": "controls/OrbitControls.js",
+      "UpstreamFile": "npm187-OrbitControls.js",
+      "UpstreamSha256": "E7FCA2FE9E7670A828AF9B28084669A5909445B7F36F1F26CEE9BF8F2961C32C",
+      "VendoredSha256": "6D818C90AC37620654AD827635FAB328A6F5DF097F5E6444FE9A569E320EE720",
+      "Patch": "Exactly one bare from 'three' -> from '../build/three.module.js'; preserve relative addon imports"
+    },
+    {
+      "Path": "utils/BufferGeometryUtils.js",
+      "UpstreamFile": "npm187-BufferGeometryUtils.js",
+      "UpstreamSha256": "7BDA2A8BA836B2BCF67CB938D4B9E1BB5D1B1BC616817103ED858C0B58296CE7",
+      "VendoredSha256": "DBDD79548CCE262D348D8F4AA2FD425D1EB4659369DED95AB0445F51356B7FE6",
+      "Patch": "Exactly one bare from 'three' -> from '../build/three.module.js'; preserve relative addon imports"
+    },
+    {
+      "Path": "utils/SkeletonUtils.js",
+      "UpstreamFile": "npm187-SkeletonUtils.js",
+      "UpstreamSha256": "B1632A703206C3D830DE9FCBE515696770D04B71A15EE6B50AFA6D2C3298C86F",
+      "VendoredSha256": "A9A3495DA800B5718482B47EADB9613C58AE436F05B059190EB572E30B11B9C8",
+      "Patch": "Exactly one bare from 'three' -> from '../build/three.module.js'; preserve relative addon imports"
+    },
+    {
+      "Path": "LICENSE.txt",
+      "UpstreamFile": "npm187-LICENSE",
+      "UpstreamSha256": "8B378EBE60E2FE500158CB0AC71CB5E8B7D92953C2ABCC63A0EB90499653B5BC",
+      "VendoredSha256": "8B378EBE60E2FE500158CB0AC71CB5E8B7D92953C2ABCC63A0EB90499653B5BC",
+      "Patch": "None"
+    }
+  ]
+}

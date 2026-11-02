@@ -3,6 +3,10 @@
     Layout = "_ContentNavbarLayout";
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/catalog-barcodes.mobile.css" asp-append-version="true" />
+}
+
 <div class="container-xxl flex-grow-1 container-p-y">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
@@ -127,5 +131,6 @@
 </div>
 
 @section PageScripts {
-    <script src="~/admin/js/barcode-normalization.js"></script>
+    <script src="~/admin/js/barcode-normalization.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/catalog-barcodes.mobile.js" asp-append-version="true"></script>
 }

@@ -1,0 +1,91 @@
+/* UI-16: phone presentation for existing provider/integration views; native print remains unchanged. */
+@media screen and (max-width: 767.98px) {
+    body[data-invoice-integration-phone] { --integration-phone-ink: #172d4d; --integration-phone-blue: #2463eb; --integration-phone-muted: #62738b; --integration-phone-line: #dce5f0; background: #f3f6fb; }
+    body[data-invoice-integration-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] { width: 100%; max-width: 100%; min-width: 0; padding: 0 0 20px; color: #172d4d; font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; overflow-wrap: anywhere; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] *, body[data-invoice-integration-phone] .modal * { box-sizing: border-box; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.row > *, .card, .card-body, .card-header > *, .d-flex > *, .preview-value, .payload-value, .status-stack, .action-stack, .viettel-toolbar-section) { min-width: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .row { --bs-gutter-x: 0; margin-left: 0; margin-right: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .row > * { padding-left: 0; padding-right: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-header] { display: flex; flex-direction: column; align-items: stretch !important; gap: 12px; margin-bottom: 18px !important; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-header] > .btn { flex: 0 0 auto; align-self: stretch; width: 100%; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-header] > .d-flex { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.page-title, h3.fw-bold) { font-size: 23px; line-height: 1.3; letter-spacing: -.4px; margin-bottom: 7px !important; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-header] .text-muted { color: #62738b !important; font-size: 13px; line-height: 1.6; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) :is(.btn, .page-link) { min-height: 44px; border-radius: 12px; white-space: normal; overflow-wrap: anywhere; font-size: 13px; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) .btn-primary { color: #fff; background: #2463eb; border-color: #2463eb; box-shadow: 0 4px 12px #2463eb1f; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) .btn-outline-primary { color: #2463eb; border-color: #b7cefa; background: #fff; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) .btn-outline-primary:is(:hover,:focus) { background: #edf3ff; border-color: #2463eb; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) :is(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea) { min-width: 0; max-width: 100%; min-height: 46px; font-size: 16px; border-radius: 12px; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) :is(.form-control, .form-select) { border-color: #cfdbea; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], .modal) :is(.form-control, .form-select):focus { border-color: #2463eb; box-shadow: 0 0 0 3px #2463eb18; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.form-label, .help-text, .form-text) { overflow-wrap: anywhere; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .form-label { color: #52647c; font-size: 13px; font-weight: 600; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.card, .stat-box) { border: 1px solid #dce5f0; border-radius: 18px; box-shadow: 0 3px 12px #172d4d05 !important; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .card-header { padding: 14px; background: #fff; border-bottom-color: #e7edf6; border-radius: 18px 18px 0 0; gap: 10px; flex-wrap: wrap; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .card-body { padding: 14px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .card-footer { padding: 12px 14px; background: #fff; border-top-color: #e7edf6; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .alert { border-radius: 14px; padding: 14px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .alert-dismissible { padding-right: 48px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .alert-dismissible .btn-close { width: 44px; height: 44px; padding: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.badge, small, .fw-semibold, .preview-value, .payload-value) { overflow-wrap: anywhere; white-space: normal; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .btn-group { display: flex; gap: 8px; width: 100%; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .btn-group > .btn { flex: 1 1 0; border-radius: 12px !important; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="dashboard"] > .row, body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] > .row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="dashboard"] > .row > *, body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] > .row > * { width: auto; margin-top: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.summary-card .card-body, .stat-box) { min-height: 88px; padding: 14px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.summary-number, .stat-value) { font-size: 24px; line-height: 1.25; color: #172d4d; font-variant-numeric: tabular-nums; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.summary-label, .stat-label) { font-size: 11px; line-height: 1.5; margin-top: 5px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] form.row, body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] form > .row { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 10px; margin-top: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] form.row > *, body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] form > .row > * { width: auto; margin-top: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] form.row > :is(.col-md-3, .col-md-1), body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] form > .row > :is(.col-md-2) { grid-column: 1 / -1; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] form .form-check { margin-top: 0 !important; padding-top: 10px; padding-bottom: 10px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="sync"] form button[type="submit"] { width: 100%; min-height: 48px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .table-responsive { overflow: visible; min-width: 0; padding: 12px; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table]:not([hidden]):not(.d-none) { display: block; min-width: 0; width: 100%; border: 0; table-layout: auto; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] :is(tbody, tfoot):not([hidden]):not(.d-none) { display: block; min-width: 0; width: 100%; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] tbody tr:not([hidden]):not(.d-none) { display: block; min-width: 0; width: 100%; margin-bottom: 12px; padding: 12px; background: #fff; border: 1px solid #dce5f0; border-radius: 15px; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] tbody tr:last-child { margin-bottom: 0; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] :is(td, tbody th):not([hidden]):not(.d-none) { display: block; width: auto !important; min-width: 0; max-width: 100%; padding: 8px 0; border: 0; white-space: normal; overflow-wrap: anywhere; text-align: left !important; font-size: 13px; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] [data-invoice-integration-phone-label]:not([hidden]):not(.d-none) { display: grid; grid-template-columns: minmax(80px,.8fr) minmax(0,1.2fr); gap: 10px; align-items: start; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] [data-invoice-integration-phone-label]::before { content: attr(data-invoice-integration-phone-label); color: #71839a; font-size: 11px; font-weight: 600; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] :is([data-invoice-integration-phone-wide], [data-invoice-integration-phone-actions]):not([hidden]):not(.d-none) { display: block; }
+    body[data-invoice-integration-phone] table[data-invoice-integration-phone-table] :is([data-invoice-integration-phone-wide], [data-invoice-integration-phone-actions])::before { display: block; margin-bottom: 6px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.provider-url, .provider-note) { max-width: 100%; display: block; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .provider-actions { min-width: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.provider-actions, .action-stack, .payload-toolbar, .viettel-toolbar-actions) { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.provider-actions, .action-stack, .payload-toolbar, .viettel-toolbar-actions) > :is(form, .btn) { flex: 1 1 120px; margin: 0 !important; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.provider-actions, .action-stack, .payload-toolbar, .viettel-toolbar-actions) form > .btn { width: 100%; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .viettel-toolbar-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .viettel-toolbar-section { border-color: #dce5f0; padding: 12px; border-radius: 14px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .viettel-toolbar-section .btn-success:disabled { color: #17633d; background: #e7f5ec; border-color: #b8dec4; opacity: 1; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .payload-json { max-width: 100%; min-width: 0; max-height: min(65dvh,560px); padding: 14px; font-size: 12px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; border-radius: 13px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] :is(.payload-grid, .info-grid) { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root] .preview-frame { max-width: 100%; min-height: 300px; height: 55dvh; border-radius: 13px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-leading] { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 46px; border-radius: 12px; font-size: 13px; white-space: normal; color: #2463eb; background: #edf3ff; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] .form-section-title { font-size: 16px; gap: 9px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] .help-text { font-size: 12px; line-height: 1.6; color: #71839a; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] .password-toggle-btn { width: 44px; height: 44px; padding: 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] .preview-row { display: grid; grid-template-columns: minmax(85px,.8fr) minmax(0,1.2fr); gap: 10px; padding: 10px 0; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] .preview-value { text-align: right; white-space: normal; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] form > .d-flex { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px !important; padding: 14px; background: #fff; border: 1px solid #dce5f0; border-radius: 16px; }
+    body[data-invoice-integration-phone] [data-invoice-integration-phone-root="form"] form > .d-flex .btn { min-width: 0; min-height: 48px; }
+    .invoice-integration-phone-sections { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 5px; padding: 5px; margin: 0 0 16px; background: #e8eef7; border-radius: 14px; }
+    .invoice-integration-phone-sections a { display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 7px 4px; color: #395370; border-radius: 10px; background: #fff; font-size: 12px; font-weight: 600; }
+    [data-invoice-integration-phone-section] { scroll-margin-top: 12px; }
+    body[data-invoice-integration-phone] .modal .modal-dialog:not(.modal-fullscreen) { display: flex; flex-direction: column; width: 100%; max-width: none; min-height: 0; height: var(--gao-mobile-visible-height,100dvh); max-height: var(--gao-mobile-visible-height,100dvh); margin: 0; padding: max(12px,env(safe-area-inset-top)) 12px max(12px,env(safe-area-inset-bottom)); }
+    body[data-invoice-integration-phone] .modal .modal-content { min-height: 0; max-height: 100%; overflow: hidden; border-radius: 18px; font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; }
+    body[data-invoice-integration-phone] .modal .modal-content > form { display: flex; flex-direction: column; min-height: 0; max-height: 100%; }
+    body[data-invoice-integration-phone] .modal .modal-header { flex-shrink: 0; gap: 10px; padding: 12px 14px; }
+    body[data-invoice-integration-phone] .modal .modal-header > :first-child { min-width: 0; flex: 1; }
+    body[data-invoice-integration-phone] .modal .modal-title { font-size: 18px; line-height: 1.4; }
+    body[data-invoice-integration-phone] .modal .modal-header .btn-close { position: static; inset: auto; width: 44px; height: 44px; flex: 0 0 44px; margin: 0; transform: none !important; }
+    body[data-invoice-integration-phone] .modal .modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 14px; }
+    body[data-invoice-integration-phone] .modal .modal-footer { flex-shrink: 0; display: flex; gap: 8px; padding: 12px; }
+    body[data-invoice-integration-phone] .modal .modal-footer .btn { flex: 1 1 0; min-width: 0; min-height: 48px; margin: 0; font-size: 13px; }
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root], [data-invoice-integration-phone-leading], .modal) :is(button,a,summary):focus-visible { outline: 3px solid #2463eb80; outline-offset: 3px; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    body[data-invoice-integration-phone] :is([data-invoice-integration-phone-root],.modal,.modal-dialog) { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

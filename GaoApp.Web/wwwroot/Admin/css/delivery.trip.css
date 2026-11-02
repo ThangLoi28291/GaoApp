@@ -27,6 +27,7 @@
 .delivery-trip-list-state{font-size:10px;line-height:1.35;border-radius:20px;padding:4px 7px;background:#eef0f7;color:#63728b;max-width:105px;text-align:center}
 .delivery-trip-list-state.state-HandedOver{background:#e4f6ed;color:#267554}
 .delivery-trip-list-state.state-Departed{background:#e5f5f2;color:#167668}
+.delivery-trip-list-state.state-Completed{background:#e4f6ed;color:#267554}
 .delivery-trip-list-courier,.delivery-trip-list-code,.delivery-trip-list-time{display:block;font-size:12px;line-height:1.7}
 .delivery-trip-list-code{font-size:10px;color:#8490a3;word-break:break-word;margin-top:2px}
 .delivery-trip-list-time{color:#8490a3;font-size:11px}
@@ -37,6 +38,8 @@
 .delivery-trip-state{font-size:11px;font-weight:600;line-height:1.5;padding:6px 10px;border-radius:20px;background:#eef0fa;color:#5b67a4;flex:none}
 .delivery-trip-state.state-HandedOver{background:#e7f6ec;color:#277451}
 .delivery-trip-state.state-Departed{background:#e7f6f2;color:#1b7768}
+.delivery-trip-state.state-Completed{background:#e7f6ec;color:#277451}
+.delivery-trip-state.state-Returned{background:#e7f6f2;color:#1b7768}
 .delivery-trip-state.state-Abandoned{background:#f1f3f6;color:#778191}
 .delivery-trip-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));list-style:none;padding:15px 12px;margin:0 0 20px;background:#f8f9fc;border:1px solid #eff1f6;border-radius:12px;gap:8px}
 .delivery-trip-step{display:flex;align-items:center;gap:8px;color:#97a1b0;font-size:13px;font-weight:600;position:relative;min-width:0}

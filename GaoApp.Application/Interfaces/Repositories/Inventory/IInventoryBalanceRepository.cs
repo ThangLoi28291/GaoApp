@@ -13,6 +13,12 @@ namespace GaoApp.Application.Interfaces.Repositories.Inventory;
 /// </summary>
 public interface IInventoryBalanceRepository
 {
+    async Task LockBatchAsync(IReadOnlyList<InventoryPostingLockKey> keys, CancellationToken ct = default)
+    {
+        foreach (var key in keys)
+            await LockAndGetOrCreateAsync(key.StoreId, key.WarehouseId, key.ProductVariantId, ct);
+    }
+
     Task<InventoryBalance?> GetByWarehouseAndVariantAsync(
         int warehouseId,
         int productVariantId,

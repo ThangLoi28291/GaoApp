@@ -1,0 +1,20 @@
+@model bool
+@{
+    var pageTitle = ViewData["title"] as string ?? ViewData["Title"] as string ?? "";
+}
+<header class="gao-mobile-app-header" data-mobile-app-header aria-label="Thanh ứng dụng">
+    @if (Model)
+    {
+        <button type="button" class="gao-mobile-shell-menu layout-menu-toggle" aria-controls="layout-menu" aria-label="Mở menu cửa hàng" aria-expanded="false">
+            <i class="icon-base bx bx-menu" aria-hidden="true"></i>
+        </button>
+    }
+    <div class="gao-mobile-app-identity">
+        <span class="gao-mobile-app-store" data-mobile-store-label>GAOAPP</span>
+        <strong class="gao-mobile-app-title" title="@pageTitle">@pageTitle</strong>
+    </div>
+    <div class="gao-mobile-app-actions">
+        <div data-mobile-utilities-slot></div>
+        <div data-mobile-account-slot></div>
+    </div>
+</header>

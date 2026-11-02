@@ -550,11 +550,20 @@ public sealed class ReceivingWorkbenchSqlServerTests
                 SupplierId = supplierId, ExpectedWarehouseId = seed.WarehouseId,
                 LegalEntityId = warehouse.LegalEntityId, Status = PurchaseOrderStatus.Approved
             };
-            order.Lines.Add(NewOrderLine(seed.StoreId, seed.ProductVariantId, 1));
-            order.Lines.Add(NewOrderLine(seed.StoreId, seed.ProductVariantId, 2));
             db.PurchaseOrders.Add(order);
             await db.SaveChangesAsync();
             orderId = order.Id;
+            // Use the actual historical shape; the current EF line model also maps
+            // Note, which did not exist before the receiving-workbench migration.
+            foreach (var lineNo in new[] { 1, 2 })
+                await db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT PurchaseOrderLines(StoreId,PurchaseOrderId,[LineNo],ItemKind,ProductVariantId,
+                        ProductNameSnapshot,UnitNameSnapshot,ConversionFactor,OrderedQuantity,
+                        UnitPriceBeforeVat,TaxRate,VatAmount,UnitPriceAfterVat,LineTotalBeforeVat,LineTotalAfterVat,
+                        ReceivedQuantity,ShortClosedQuantity,ReceiptStatus,CreatedAtUtc,IsDeleted)
+                    VALUES({seed.StoreId},{orderId},{lineNo},0,{seed.ProductVariantId},N'Duplicate',N'Base',1,1,
+                        0,0,0,0,0,0,0,0,0,SYSUTCDATETIME(),0);
+                    """);
         }
 
         var migrate = () => database.MigrateAsync();

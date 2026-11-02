@@ -412,14 +412,24 @@ public static partial class DatabaseSchemaNormalization
             return null;
         }
 
+        var literals = new List<string>();
+        var masked = Regex.Replace(NormalizeNullGuardedInPredicate(value), @"(?:[Nn])?'(?:''|[^'])*'", match =>
+        {
+            var token = "\u0001" + literals.Count.ToString(CultureInfo.InvariantCulture) + "\u0002";
+            literals.Add(match.Value[0] is 'N' or 'n' ? "n" + match.Value[1..] : match.Value);
+            return token;
+        });
         var normalized = WhitespaceRegex()
-            .Replace(NormalizeNullGuardedInPredicate(value).ToLowerInvariant(), string.Empty)
+            .Replace(masked.ToLowerInvariant(), string.Empty)
             .Replace("[", string.Empty, StringComparison.Ordinal)
             .Replace("]", string.Empty, StringComparison.Ordinal);
         normalized = NumericLiteralParenthesesRegex()
             .Replace(normalized, "$1");
 
-        return TrimOuterParentheses(normalized);
+        normalized = TrimOuterParentheses(normalized);
+        for (var index = 0; index < literals.Count; index++)
+            normalized = normalized.Replace("\u0001" + index.ToString(CultureInfo.InvariantCulture) + "\u0002", literals[index], StringComparison.Ordinal);
+        return normalized;
     }
 
     /// <summary>
@@ -440,7 +450,7 @@ public static partial class DatabaseSchemaNormalization
         // SQL Server persists these exact migration predicates in an expanded
         // form. Match complete expressions; never remove arbitrary arithmetic
         // or AND/OR parentheses to make a changed constraint pass inspection.
-        var known = NormalizeKnownMigrationCheck(value);
+        var known = NormalizeRecentCheck(value) ?? NormalizeKnownMigrationCheck(value);
         if (known is not null) return known;
 
         var rewritten = value;
@@ -451,7 +461,8 @@ public static partial class DatabaseSchemaNormalization
                 : RewriteCheckGroup(value, tokens, closing, 0, tokens.Count);
         }
 
-        return NormalizeSqlExpression(rewritten);
+        var normalized = NormalizeSqlExpression(rewritten);
+        return normalized is null ? null : NormalizeRecentCheck(normalized) ?? NormalizeKnownMigrationCheck(normalized) ?? normalized;
     }
 
     private static string? NormalizeKnownMigrationCheck(string value)
@@ -460,7 +471,16 @@ public static partial class DatabaseSchemaNormalization
         foreach (var pair in KnownMigrationChecks)
         {
             var canonical = NormalizeSqlExpression(pair.Source);
-            if (normalized == canonical || normalized == NormalizeSqlExpression(pair.Persisted))
+            // Older reviewed pairs used lowercased persisted literals. Restore
+            // their spelling from the trusted Source constant only; never fold
+            // literal bytes in the schema being inspected.
+            var spelling = Regex.Matches(pair.Source, @"(?:[Nn])?'(?:''|[^'])*'")
+                .Select(x => x.Value).GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .Where(x => x.Distinct(StringComparer.Ordinal).Count() == 1)
+                .ToDictionary(x => x.Key, x => x.First(), StringComparer.OrdinalIgnoreCase);
+            var persisted = Regex.Replace(pair.Persisted, @"(?:[Nn])?'(?:''|[^'])*'", match =>
+                spelling.TryGetValue(match.Value, out var original) ? original : match.Value);
+            if (normalized == canonical || normalized == NormalizeSqlExpression(persisted))
                 return canonical;
         }
         return null;
@@ -468,6 +488,8 @@ public static partial class DatabaseSchemaNormalization
 
     private static readonly (string Source, string Persisted)[] KnownMigrationChecks =
     [
+        ("([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)",
+         "([IsProvisional]=(0) AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL OR [IsProvisional]=(1) AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)"),
         ("[State] BETWEEN 0 AND 10 AND [Revision] > 0",
          "([State]>=(0) AND [State]<=(10) AND [Revision]>(0))"),
         ("[Kind] BETWEEN 1 AND 7 AND [MoneyAmount] >= 0 AND [MoneyAmount] = ROUND([MoneyAmount],0)",
@@ -476,6 +498,13 @@ public static partial class DatabaseSchemaNormalization
          "([OrderedQuantity]>(0) AND [BaseMultiplier]>(0) AND [UnitPrice]>=(0) AND [Gross]>=(0) AND [LineDiscount]>=(0) AND [AllocatedOrderDiscount]>=(0) AND [Net]=(([Gross]-[LineDiscount])-[AllocatedOrderDiscount]) AND [Net]>=(0) AND [Net]=round([Net],(0)))"),
         ("[Status] IN ('draft','confirmed','voided')",
          "([Status]='voided' OR [Status]='confirmed' OR [Status]='draft')"),
+        // SQL Server persists the P3 string IN lists as reversed equality OR
+        // chains. Accept only these complete migration predicates; changed
+        // members, guards, grouping and constraint flags remain significant.
+        ("[StoreId]>0 AND [SourceId]>0 AND [SourceType] IN ('Order','Invoice') AND [Kind] IN ('Receipt','OfficialPdf','OfficialZipXml','OfficialXml','OfficialLink','CorrectionPdf','CorrectionZipXml','CorrectionXml','CorrectionLink','DraftPreview')",
+         "([StoreId]>(0) AND [SourceId]>(0) AND ([SourceType]='Invoice' OR [SourceType]='Order') AND ([Kind]='DraftPreview' OR [Kind]='CorrectionLink' OR [Kind]='CorrectionXml' OR [Kind]='CorrectionZipXml' OR [Kind]='CorrectionPdf' OR [Kind]='OfficialLink' OR [Kind]='OfficialXml' OR [Kind]='OfficialZipXml' OR [Kind]='OfficialPdf' OR [Kind]='Receipt'))"),
+        ("[State] IN ('Pending','Dispatching','Accepted','Sent','PartiallySent','NeedsReview','Failed','Blocked','Cancelled')",
+         "([State]='Cancelled' OR [State]='Blocked' OR [State]='Failed' OR [State]='NeedsReview' OR [State]='PartiallySent' OR [State]='Sent' OR [State]='Accepted' OR [State]='Dispatching' OR [State]='Pending')"),
         ("[TargetFund] IS NULL OR (([TargetFund] <> [Fund] OR ([Fund] = 'cash' AND [IsVoucherLink] = 1)) AND [OperatingExpenseId] IS NULL AND [PurchasePayableId] IS NULL)",
          "([TargetFund] IS NULL OR ([TargetFund]<>[Fund] OR [Fund]='cash' AND [IsVoucherLink]=(1)) AND [OperatingExpenseId] IS NULL AND [PurchasePayableId] IS NULL)"),
         ("([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0)",
@@ -798,7 +827,8 @@ public static partial class DatabaseSchemaNormalization
             return null;
         }
 
-        normalized = normalized.Replace("n'", "'", StringComparison.Ordinal);
+        normalized = Regex.Replace(normalized, @"[Nn]?'(?:''|[^'])*'", match =>
+            match.Value[0] is 'N' or 'n' ? match.Value[1..] : match.Value);
 
         while (TryUnwrapConvert(normalized, out var converted))
         {
@@ -822,7 +852,7 @@ public static partial class DatabaseSchemaNormalization
         {
             bool boolean => boolean ? "1" : "0",
             string text =>
-                $"'{text.Replace("'", "''", StringComparison.Ordinal).ToLowerInvariant()}'",
+                $"'{text.Replace("'", "''", StringComparison.Ordinal)}'",
             byte[] bytes => Convert.ToHexString(bytes).ToLowerInvariant(),
             IFormattable formattable =>
                 formattable.ToString(null, CultureInfo.InvariantCulture)

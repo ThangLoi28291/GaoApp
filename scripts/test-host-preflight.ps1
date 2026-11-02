@@ -2,9 +2,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ReleasePath,
-    [ValidateSet('Web', 'Migrator')][string]$Component = 'Web'
+    [ValidateSet('Web', 'Migrator', 'AutoInvoiceWorker', 'LabelPrintServer')][string]$Component = 'Web'
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '../eng/deployment/RuntimeSupport.ps1')
+. (Join-Path $PSScriptRoot '../eng/deployment/AssistantStorage.ps1')
+. (Join-Path $PSScriptRoot '../eng/deployment/ChannelCredentials.ps1')
 & (Join-Path $PSScriptRoot 'test-release-package.ps1') -ReleasePath $ReleasePath
 $releaseRoot = (Resolve-Path -LiteralPath $ReleasePath).Path
 function Required-Environment([string]$name) {
@@ -64,6 +67,7 @@ if (!$server -or !$database -or $server -match '(?i)\(localdb\)' -or $database -
 if ((Sql-Value @('Encrypt')) -notin @('true', 'mandatory', 'strict') -or (Sql-Value @('TrustServerCertificate', 'Trust Server Certificate')) -ne 'false') {
     throw 'Host SQL must explicitly use Encrypt=True (or Strict) and TrustServerCertificate=False with a trusted SQL certificate.'
 }
+if ($Component -ne 'LabelPrintServer') {
 $keys = External-Path 'DataProtection__KeysPath'
 $certificatePath = External-Path 'DataProtection__CertificatePath' -File
 $password = Required-Environment 'DataProtection__CertificatePassword'
@@ -80,6 +84,11 @@ try {
 }
 catch { throw 'Data Protection certificate could not be validated; check private RSA key, password, validity and read permission.' }
 finally { if ($certificate) { $certificate.Dispose() }; $password = $null }
+}
+if ($Component -eq 'LabelPrintServer') {
+    $storeId = 0
+    if (![int]::TryParse((Required-Environment 'LabelPrinting__StoreId'), [ref]$storeId) -or $storeId -le 0) { throw 'LabelPrinting__StoreId must identify the reviewed store.' }
+}
 if ($Component -eq 'Web') {
     $uploads = External-Path 'Storage__UploadRoot'
     if ((Is-Inside $keys $uploads) -or (Is-Inside $certificatePath $uploads)) { throw 'Keys/certificate must not be inside upload storage.' }
@@ -107,14 +116,22 @@ foreach ($entry in Get-ChildItem Env: | Where-Object { $_.Name -match '^Serilog_
     $logDirectory = External-Path $pathKey -ParentDirectory
     if ($Component -eq 'Web' -and (Is-Inside $logDirectory $uploads)) { throw 'Log files must not be inside upload storage.' }
 }
+if ($Component -eq 'Web') {
+    $assistantDirectory = External-Path 'Assistant__StoreSettingsDirectory'
+    $customerDatabase = External-Path 'CustomerService__DatabasePath' -File
+    foreach ($private in @($assistantDirectory,$customerDatabase)) {
+        foreach ($public in @($uploads,$keys,$certificatePath)) {
+            if ((Is-Inside $private $public) -or (Is-Inside $public $private)) { throw 'Assistant storage must be separate from uploads and encryption keys.' }
+        }
+    }
+    [void](Invoke-GaoAssistantStorage (Join-Path $releaseRoot 'web') @{operation='check';databasePath=$customerDatabase;settingsDirectory=$assistantDirectory;storageId=(Required-Environment 'Assistant__StorageId')})
+    $channelEnvironment=@{}
+    foreach($entry in Get-ChildItem Env:){$channelEnvironment[$entry.Name]=$entry.Value}
+    [void](Invoke-GaoChannelCredentialCheck (Join-Path $releaseRoot 'web') $channelEnvironment @($releaseRoot,$uploads,$keys,$certificatePath,$assistantDirectory,$customerDatabase))
+}
 $runtimeConfig = Get-Content -LiteralPath (Join-Path $releaseRoot "$($Component.ToLowerInvariant())/GaoApp.$Component.runtimeconfig.json") -Raw | ConvertFrom-Json
 $runtimes = & dotnet --list-runtimes
 if ($LASTEXITCODE -ne 0) { throw 'dotnet runtime is not installed for this service account.' }
-$frameworks = @($runtimeConfig.runtimeOptions.frameworks) + @($runtimeConfig.runtimeOptions.framework)
-foreach ($framework in $frameworks | Where-Object { $_ }) {
-    $version = [Version]$framework.version
-    $pattern = '^' + [Regex]::Escape($framework.name) + ' ' + $version.Major + '\.' + $version.Minor + '\.'
-    if (!($runtimes -match $pattern)) { throw "Missing runtime: $($framework.name) $($version.Major).$($version.Minor).x" }
-}
+Assert-GaoAppInstalledRuntimes -Configuration $runtimeConfig -InstalledRuntimes $runtimes
 Write-Host 'PASS: release, environment, HTTPS origins, storage access, encryption certificate and installed runtimes.'
 Write-Host 'This checks the current account. SQL connectivity/permissions, DNS, proxy TLS and WebSockets still require the running staging checks.'

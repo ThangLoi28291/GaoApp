@@ -1,0 +1,27 @@
+@model GaoApp.Application.DTOs.AdminMenus.SaveAdminMenuItemRequest
+
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white border-0 pt-4 px-4">
+        <h5 class="mb-1">Điều kiện hiển thị menu</h5>
+        <div class="text-muted small">Chọn quyền người dùng cần có để thấy menu này.</div>
+    </div>
+    <div class="card-body p-4">
+        <label asp-for="PermissionCode" class="form-label fw-semibold">Quyền cần có</label>
+        <select asp-for="PermissionCode" class="form-select" aria-describedby="menuPermissionHelp">
+            <option value="">-- Không yêu cầu quyền để hiện menu --</option>
+            @if (ViewBag.Permissions != null)
+            {
+                foreach (var permission in ViewBag.Permissions)
+                {
+                    <option value="@permission.Code">@permission.Code - @permission.Name</option>
+                }
+            }
+        </select>
+        <span asp-validation-for="PermissionCode" class="text-danger small"></span>
+        <div class="form-text mt-2" id="menuPermissionHelp">
+            Lưu menu giữ nguyên quyền đã cấp cho các vai trò. Quyền sử dụng chức năng được quản lý tại
+            <a asp-area="Admin" asp-controller="RolePermissions" asp-action="Index">Phân quyền vai trò</a>.
+            Ẩn hoặc hiện menu không thay đổi quyền truy cập chức năng.
+        </div>
+    </div>
+</div>

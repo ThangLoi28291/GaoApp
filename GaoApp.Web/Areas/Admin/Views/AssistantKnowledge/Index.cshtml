@@ -1,0 +1,57 @@
+@model GaoApp.Web.Areas.Admin.Controllers.PolicyAdminPage
+@using GaoApp.Web.Services.Assistant
+@{
+    Layout = "_ContentNavbarLayout"; ViewData["Title"] = "Kiến thức cửa hàng";
+    string Date(DateTimeOffset at) => at.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm");
+    string InputDate(DateTimeOffset at) => at.ToOffset(TimeSpan.FromHours(7)).ToString("yyyy-MM-dd'T'HH:mm:ss");
+    string State(PolicyRevision r) => r.Status switch { "draft" => "Bản nháp", "withdrawn" => "Đã thu hồi", "cancelled" => "Đã hủy lịch", _ => r.EffectiveFrom > Model.Now ? "Đã duyệt · Chờ ngày áp dụng" : r.EffectiveUntil <= Model.Now ? "Hết hạn" : AssistantPolicyKnowledge.Current(Model.Document, r.Topic, Model.Now)?.Id == r.Id ? "Đang áp dụng" : "Đã có bản thay thế" };
+}
+<link rel="stylesheet" href="~/Admin/css/assistant-knowledge.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/Admin/css/assistant-admin.mobile.css" asp-append-version="true" />
+<div id="assistantKnowledgeAdmin" class="mx-auto" style="max-width:1100px;overflow-wrap:anywhere">
+    <div class="d-flex flex-wrap justify-content-between gap-3 mb-4"><div><h3>Kiến thức cửa hàng</h3><p class="text-muted">@Model.StoreName · Chính sách dành cho khách hàng</p></div><a class="btn btn-outline-secondary align-self-start" href="@Url.Content("~/admin/assistant/quality")">Chất lượng trợ lý</a></div>
+    @if (TempData["PolicyResult"] is string notice) { <div class="alert alert-info" role="status">@notice</div> }
+    @if (Model.Error is string error) { <div class="alert alert-danger" role="alert">@error Bản đang soạn được giữ bên dưới; kiểm tra lại trước khi gửi.</div> }
+    <div class="alert alert-light border">Chatbot chỉ dùng bản đã duyệt, còn hiệu lực của cửa hàng hiện tại. Mỗi chủ đề có một bản áp dụng tại một thời điểm. Bản mới thay bản cũ từ ngày áp dụng; khi hết hạn hoặc thu hồi sẽ không quay về bản cũ. Giờ hiển thị: Việt Nam (UTC+7).</div>
+    <div class="row g-3 mb-4">
+    @foreach (var topic in AssistantPolicyKnowledge.Topics) {
+        var current = AssistantPolicyKnowledge.Current(Model.Document, topic, Model.Now);
+        <div class="col-12 col-md-6"><div class="card h-100"><div class="card-body"><div class="d-flex justify-content-between flex-wrap gap-2"><h5>@AssistantPolicyKnowledge.Label(topic)</h5><a href="@Url.Action("Index", new { topic })">Soạn bản mới</a></div>
+            @if (current is null) { <p class="text-muted mb-0">Chưa có bản đang áp dụng. Trợ lý sẽ đề nghị nhân viên xác nhận.</p> }
+            else { <strong>@current.Title</strong><p class="mt-2 mb-1" style="white-space:pre-wrap">@current.Body</p><small>Phiên bản @current.Id.ToString("N")[..8] · từ @Date(current.EffectiveFrom)@(current.EffectiveUntil is { } end ? " đến " + Date(end) : "")</small> }
+        </div></div></div>
+    }
+    </div>
+    <div class="card mb-4"><div class="card-body"><h4>Soạn bản nháp</h4><p>Mẫu chỉ gợi ý nội dung cần kiểm tra. Bỏ dấu [CẦN XÁC NHẬN] sau khi đã điền chính sách thực tế. Viết đầy đủ điều kiện, ngoại lệ và phạm vi; tránh dữ liệu cá nhân, mật khẩu, giá/tồn từng mã hàng.</p>
+    <form method="post" action="@Url.Content("~/admin/assistant/knowledge/save")" class="row g-3" id="policyDraftForm">
+        @Html.AntiForgeryToken()<input type="hidden" name="version" value="@Model.Document.Version"/><input type="hidden" name="requestId" value="@Guid.NewGuid()"/>
+        <div class="col-md-4"><label class="form-label" for="policyTopic">Chủ đề</label><select class="form-select" id="policyTopic" name="topic">@foreach(var t in AssistantPolicyKnowledge.Topics) { <option value="@t" selected="@(t == Model.Draft.Topic)">@AssistantPolicyKnowledge.Label(t)</option> }</select></div>
+        <div class="col-md-8"><label class="form-label" for="policyTitle">Tiêu đề</label><input class="form-control" id="policyTitle" name="title" maxlength="160" required value="@Model.Draft.Title"/></div>
+        <div class="col-12"><label class="form-label" for="policyBody">Nội dung khách hàng được đọc</label><textarea class="form-control" id="policyBody" name="body" rows="9" maxlength="3000" required>@Model.Draft.Body</textarea></div>
+        <div class="col-md-6"><label class="form-label" for="policyFrom">Áp dụng từ (UTC+7)</label><input class="form-control" id="policyFrom" name="from" type="datetime-local" step="1" required value="@InputDate(Model.Draft.EffectiveFrom)"/></div>
+        <div class="col-md-6"><label class="form-label" for="policyUntil">Hết hiệu lực (để trống nếu chưa chốt)</label><input class="form-control" id="policyUntil" name="until" type="datetime-local" step="1" value="@(Model.Draft.EffectiveUntil is { } until ? InputDate(until) : "")"/></div>
+        <div class="col-12"><label class="form-label" for="policySource">Căn cứ nội bộ để người duyệt kiểm tra</label><input class="form-control" id="policySource" name="sourceNote" maxlength="400" required value="@Model.Draft.SourceNote"/></div>
+        <div class="col-12 d-flex flex-wrap gap-2"><button type="button" class="btn btn-outline-primary" id="policyPreview">Xem trước câu trả lời</button><button class="btn btn-primary">Lưu bản nháp</button></div>
+        <div class="col-12" id="policyPreviewBox" hidden><div class="border rounded p-3"><strong id="policyPreviewTitle"></strong><p id="policyPreviewBody" style="white-space:pre-wrap" class="mb-0 mt-2"></p><small>Nội dung sẽ hiển thị nguyên văn, kèm phiên bản và thời hạn đã duyệt.</small></div></div>
+    </form></div></div>
+    <div class="card"><div class="card-body"><h4>Lịch sử và duyệt phiên bản</h4><p>Hiện 60 bản gần nhất trên tổng @Model.Document.Revisions.Length. Duyệt bản mới không sửa nội dung bản trước. Có thể hủy lịch một bản chưa áp dụng.</p>
+    @if (Model.Document.Revisions.Length == 0) { <p>Chưa lưu bản nháp nào. Hãy bắt đầu từ mẫu bên trên.</p> }
+    @foreach (var row in Model.Document.Revisions.OrderByDescending(r => r.CreatedAt).Take(60)) {
+        <article class="border rounded p-3 mb-3" data-policy-id="@row.Id"><div class="d-flex flex-wrap justify-content-between gap-2"><strong>@row.Title · @AssistantPolicyKnowledge.Label(row.Topic)</strong><span class="badge bg-label-secondary">@State(row)</span></div>
+        <p class="mt-3" style="white-space:pre-wrap">@row.Body</p><p class="text-muted small">Bản @row.Id · NV soạn #@row.Author · @Date(row.CreatedAt)<br/>Áp dụng @Date(row.EffectiveFrom)@(row.EffectiveUntil is { } end ? " đến " + Date(end) : "")<br/>Căn cứ: @row.SourceNote
+        @if (row.ReviewedBy is { } reviewer) { <br/><span>Duyệt bởi NV #@reviewer · @Date(row.ReviewedAt!.Value)</span> }
+        @if (row.WithdrawnBy is { } withdrawer) { <br/><span>Thu hồi/hủy bởi NV #@withdrawer · @Date(row.WithdrawnAt!.Value)</span> }</p>
+        <div class="d-flex flex-wrap align-items-center gap-3"><a href="@Url.Action("Index",new {edit=row.Id})">Biên soạn bản tiếp theo</a>
+        @if (row.Status is "draft" or "approved") {
+            <form method="post" action="@Url.Content("~/admin/assistant/knowledge/review")" class="d-flex flex-wrap align-items-center gap-2">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@row.Id"/><input type="hidden" name="version" value="@Model.Document.Version"/><input type="hidden" name="requestId" value="@Guid.NewGuid()"/>
+            @if(row.Status == "draft") { <input type="hidden" name="decision" value="approve"/><label class="d-flex align-items-center gap-2"><input type="checkbox" name="confirmed" value="true" required/>Tôi đã kiểm tra điều kiện và ngày áp dụng</label><button class="btn btn-success">Duyệt bản này</button> }
+            else { <input type="hidden" name="decision" value="withdraw"/><button class="btn btn-outline-danger">@(row.EffectiveFrom > Model.Now ? "Hủy lịch áp dụng" : "Thu hồi bản này")</button> }
+            </form>
+        }</div></article>
+    }
+    </div></div>
+</div>
+@section PageScripts {
+<script src="~/Admin/js/assistant-knowledge.js" asp-append-version="true"></script>
+<script src="~/Admin/js/assistant-admin.mobile.js" asp-append-version="true"></script>
+}

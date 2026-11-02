@@ -9,6 +9,22 @@
     const deliveryBillUrl = order => Number.isSafeInteger(order.delivery?.deliveryOrderId) && order.delivery.deliveryOrderId > 0
         ? '/admin/deliveries/' + order.delivery.deliveryOrderId + '/bill' : '';
     const deliveryStateLabel = state => ({ Created: 'Chờ soạn', Picking: 'Đang soạn', AwaitingApproval: 'Chờ duyệt', ReadyForHandover: 'Chờ bàn giao', HandedOver: 'Đã bàn giao', Delivering: 'Đang giao', AwaitingReconciliation: 'Chờ đối soát', ReadyToSettle: 'Chờ chốt thanh toán', CancellationPending: 'Chờ xử lý hủy', Settled: 'Đã chốt', Cancelled: 'Đã hủy' }[state] || 'Đơn giao');
+    const isDeliverySource = order => !!order.delivery && order.delivery.isSettlementSale !== true;
+    function deliveryDocumentsMarkup(order) {
+        const delivery = order.delivery;
+        if (!delivery) return '';
+        const validId = id => Number.isSafeInteger(id) && id > 0;
+        const links = [];
+        if (deliveryBillUrl(order)) links.push('<a href="' + deliveryBillUrl(order) + '">Phiếu giao A5 · QR gốc</a>');
+        if (validId(delivery.sourceOrderId) && delivery.sourceOrderId !== order.orderId)
+            links.push('<a href="/admin/pos/order-detail/' + delivery.sourceOrderId + '">Phiếu gốc #' + delivery.sourceOrderId + '</a>');
+        if (validId(delivery.saleOrderId)) {
+            const label = esc(delivery.saleOrderNumber || ('#' + delivery.saleOrderId));
+            links.push('<a href="/admin/pos/order-detail/' + delivery.saleOrderId + '">Hóa đơn thanh toán ' + label + '</a>');
+            links.push('<a href="/admin/pos/orders/' + delivery.saleOrderId + '/print?autoPrint=false" target="_blank" rel="noopener">In hóa đơn thanh toán</a>');
+        }
+        return '<div class="po-delivery-documents">' + links.join('') + '</div>';
+    }
     function priceBreakdownRows(order) {
         const rows = [['Giảm giá dòng hàng', num(order.lineDiscountTotal)], ['Khuyến mãi sản phẩm', num(order.promotionDiscountTotal)],
             ['Giảm combo' + (order.comboPromotionName ? ' · ' + order.comboPromotionName : ''), num(order.comboDiscountTotal)],
@@ -32,7 +48,7 @@
             '</div><strong class="po-amount"><small>Sau giảm</small>' + money(line.lineTotal) + ' đ</strong></li>';
     }
     function appendDeliveryOnly(query, enabled) { if (enabled === true || enabled === 'true') query.set('deliveryOnly', 'true'); else query.delete('deliveryOnly'); return query; }
-    if (typeof module !== 'undefined' && module.exports) { module.exports = { displayStatus, deliveryBillUrl, deliveryStateLabel, priceBreakdownRows, priceBreakdownMarkup, sourceLineMarkup, appendDeliveryOnly }; return; }
+    if (typeof module !== 'undefined' && module.exports) { module.exports = { displayStatus, deliveryBillUrl, deliveryStateLabel, priceBreakdownRows, priceBreakdownMarkup, sourceLineMarkup, appendDeliveryOnly, isDeliverySource, deliveryDocumentsMarkup }; return; }
     const root = document.querySelector('.pos-orders-page');
     if (!root) return;
     const $ = id => root.querySelector('#' + id);
@@ -40,7 +56,7 @@
     const state = { page: 1, pageSize: 20, total: 0, items: [], loaded: false, busy: false, applied: null, displayedPage: 1, displayedSize: 20 };
     let listSequence = 0, listController, previewSequence = 0, previewController, previewId = 0, previewTrigger, menuTrigger;
     const body = $('ordersBody'), table = body.closest('table'), dialog = $('orderPreview');
-    const fields = ['keyword', 'fromDate', 'toDate', 'status', 'employee', 'employeeId', 'customer', 'terminal', 'terminalId', 'settlement'];
+    const fields = ['keyword', 'fromDate', 'toDate', 'status', 'product', 'employee', 'employeeId', 'customer', 'terminal', 'terminalId', 'settlement'];
     const settlementLabels = { Cash: 'Tiền mặt', BankTransfer: 'Chuyển khoản', Credit: 'Đơn bán công nợ',
         OutstandingCredit: 'Công nợ — còn nợ', Mixed: 'Nhiều hình thức thanh toán', Card: 'Thẻ', EWallet: 'Ví điện tử', Other: 'Khác' };
     const positiveInt = (value, fallback = 1) => Number.isSafeInteger(Number(value)) && Number(value) > 0 ? Number(value) : fallback;
@@ -134,6 +150,10 @@
         state.page = positiveInt(query.get('page'), 1);
         state.pageSize = [10, 20, 50].includes(Number(query.get('pageSize'))) ? Number(query.get('pageSize')) : 20;
         $('pageSize').value = String(state.pageSize);
+        if ($('product').value) {
+            $('ordersFilters').classList.add('po-filters-expanded');
+            $('btnToggleFilters').setAttribute('aria-expanded', 'true');
+        }
         syncPeriods();
     }
     function queryFor(filters) {
@@ -150,7 +170,7 @@
         const status = statuses[token(filters.status)]?.[0] || 'Tất cả trạng thái';
         const parts = [range, status];
         if (filters.keyword) parts.push('“' + filters.keyword + '”');
-        [['employee', 'Nhân viên'], ['customer', 'Khách hàng'], ['terminal', 'Máy tính tiền']].forEach(([key, label]) => {
+        [['product', 'Sản phẩm'], ['employee', 'Nhân viên'], ['customer', 'Khách hàng'], ['terminal', 'Máy tính tiền']].forEach(([key, label]) => {
             if (filters[key]) parts.push(label + ': ' + filters[key]);
         });
         if (settlementLabels[filters.settlement]) parts.push(settlementLabels[filters.settlement]);
@@ -160,9 +180,9 @@
     function updateMetrics() {
         $('metricCount').textContent = state.loaded ? money(state.total) : '—';
         [['metricTotal', 'grandTotal'], ['metricPaid', 'paidTotal'], ['metricDue', 'balanceDue']].forEach(([id, key]) => {
-            $(id).innerHTML = state.loaded ? money(state.items.reduce((sum, order) => sum + (order.delivery && key !== 'grandTotal' ? 0 : num(order[key])), 0)) + '<small>đ</small>' : '—';
+            $(id).innerHTML = state.loaded ? money(state.items.reduce((sum, order) => sum + (isDeliverySource(order) && key !== 'grandTotal' ? 0 : num(order[key])), 0)) + '<small>đ</small>' : '—';
         });
-        $('metricDue').classList.toggle('po-text-warning', state.loaded && state.items.some(order => !order.delivery && num(order.balanceDue) > 0));
+        $('metricDue').classList.toggle('po-text-warning', state.loaded && state.items.some(order => !isDeliverySource(order) && num(order.balanceDue) > 0));
     }
     function updatePaging() {
         const page = state.loaded ? state.displayedPage : state.page;
@@ -212,7 +232,7 @@
         return '<div class="po-extras">' + (parts.join('') || '<span class="po-none" aria-label="Không có hậu mãi hoặc voucher">—</span>') + '</div>';
     }
     function orderName(order) {
-        return order.orderNumber || (token(order.status) === 'draft' ? 'Đơn nháp #' : 'Đơn #') + positiveInt(order.orderId);
+        return order.delivery?.code || order.orderNumber || (token(order.status) === 'draft' ? 'Đơn nháp #' : 'Đơn #') + positiveInt(order.orderId);
     }
     function settlementBadges(order) {
         const tags = list(order.paymentMethods).map(method => '<span class="po-badge po-badge-' +
@@ -227,19 +247,21 @@
         if (!state.items.length) { body.innerHTML = '<tr><td colspan="6">' + stateMarkup('empty') + '</td></tr>'; return; }
         body.innerHTML = state.items.map(order => {
             const id = positiveInt(order.orderId, 0), name = esc(orderName(order)), due = num(order.balanceDue);
+            const source = isDeliverySource(order);
             const payToken = token(order.paymentStatus);
             return '<tr class="po-order-row" data-order-id="' + id + '" title="Nhấp đúp để xem nhanh đơn hàng">' +
                 '<td><button type="button" class="po-order-link" data-preview-id="' + id + '" aria-label="Xem nhanh ' + name + '"' + (!id ? ' disabled' : '') + '><span class="po-order-number">' + name + '</span></button>' +
-                '<span class="po-order-meta">' + icon('time-five') + esc(dateTime(order.createdAtUtc)) + '</span>' +
+                '<span class="po-order-meta">' + icon('time-five') + esc(dateTime(order.delivery?.isSettlementSale ? order.completedAtUtc : order.createdAtUtc)) + '</span>' +
+                (order.delivery?.isSettlementSale ? '<span class="po-order-meta">Hóa đơn ' + esc(order.orderNumber || ('#' + id)) + '</span>' : '') +
                 '<span class="po-order-meta po-customer">' + icon('user') + esc(order.customerName || 'Khách lẻ') + '</span>' +
                 (order.customerPhone ? '<span class="po-order-meta">' + icon('phone') + esc(order.customerPhone) + '</span>' : '') + '</td>' +
                 '<td><span class="po-order-meta po-cashier">' + icon('user-circle') + esc(order.cashierName || 'Chưa rõ nhân viên') + '</span>' +
                 '<span class="po-order-meta po-terminal">' + icon('desktop') + esc(order.terminalName || order.terminalCode || 'Chưa rõ máy') + '</span>' +
-                '<div class="po-statuses">' + badge(displayStatus(order), statuses) + (order.delivery ? '' : '<span class="po-payment-label">' + badge(order.paymentStatus, payments) + '</span>') + '</div>' +
-                (order.delivery ? '<span class="po-order-meta">' + esc(order.delivery.code) + ' · ' + esc(deliveryStateLabel(order.delivery.state)) + '</span>' : '') + '</td>' +
-                '<td class="po-align-right"><span class="po-mobile-label">' + (order.delivery ? 'Giá trị dự kiến khi lập đơn' : 'Tổng tiền đơn') + '</span><span class="po-amount">' + money(order.grandTotal) + ' <small>đ</small></span>' +
-                (order.delivery ? '<small class="po-source-caption">Giá trị dự kiến khi lập đơn</small>' : '') + '</td>' +
-                '<td>' + (order.delivery ? '<span class="po-source-caption">' + (order.delivery.isPendingSettlement ? 'Chưa thu tiền' : 'Xem thanh toán tại hồ sơ giao') + '</span>' : '<div class="po-paid-line"><span>Đã trả</span><strong>' + money(order.paidTotal) + ' đ</strong></div>' +
+                '<div class="po-statuses">' + badge(displayStatus(order), statuses) + (source ? '' : '<span class="po-payment-label">' + badge(order.paymentStatus, payments) + '</span>') + '</div>' +
+                (order.delivery ? '<span class="po-order-meta">' + esc(deliveryStateLabel(order.delivery.state)) + '</span>' : '') + '</td>' +
+                '<td class="po-align-right"><span class="po-mobile-label">' + (source ? 'Giá trị dự kiến khi lập đơn' : 'Tổng tiền đơn') + '</span><span class="po-amount">' + money(order.grandTotal) + ' <small>đ</small></span>' +
+                (source ? '<small class="po-source-caption">Giá trị dự kiến khi lập đơn</small>' : order.delivery ? '<small class="po-source-caption">Theo hàng thực giao</small>' : '') + '</td>' +
+                '<td>' + (source ? '<span class="po-source-caption">' + (order.delivery.isPendingSettlement ? 'Chưa thu tiền' : 'Xem thanh toán tại hồ sơ giao') + '</span>' : '<div class="po-paid-line"><span>Đã trả</span><strong>' + money(order.paidTotal) + ' đ</strong></div>' +
                 (due > 0 ? '<div class="po-due-line"><span>Còn thiếu</span><strong>' + money(due) + ' đ</strong></div>'
                     : '<span class="po-settled">' + icon('check') + (payToken === 'paid' ? 'Đã thanh toán đủ' : 'Không còn thiếu') + '</span>') + settlementBadges(order)) + '</td>' +
                 '<td>' + extras(order) + '</td>' +
@@ -318,9 +340,11 @@
         menu.innerHTML = '<button type="button" data-preview-id="' + id + '">' + icon('show') + 'Xem nhanh đơn hàng</button>' +
             '<a href="' + detailUrl(id) + '">' + icon('file') + 'Chi tiết đầy đủ</a>' +
             (deliveryBillUrl(order) ? '<a href="' + deliveryBillUrl(order) + '">' + icon('printer') + 'Phiếu giao · ' + esc(order.delivery.code) + '</a>' : '') +
+            (order.delivery?.isSettlementSale && Number.isSafeInteger(order.delivery.sourceOrderId) && order.delivery.sourceOrderId > 0
+                ? '<a href="' + detailUrl(order.delivery.sourceOrderId) + '">' + icon('history') + 'Phiếu gốc #' + order.delivery.sourceOrderId + '</a>' : '') +
             (order.hasBankTransfer === true ? '<a href="/admin/acb/payments/orders/' + id + '" data-acb-order-id="' + id + '">' + icon('transfer-alt') + 'Thông tin chuyển khoản</a>' : '') +
-            (completed ? '<div class="po-menu-separator"></div><a href="' + detailUrl(id) + '" data-refund-order-id="' + id + '">' + icon('undo') + 'Hoàn tiền / trả hàng</a>' : '') +
-            (canVoid ? '<a class="po-action-danger" href="' + detailUrl(id) + '" data-void-order-id="' + id + '">' + icon('x-circle') + 'Hủy sau chốt</a>' : '');
+            (completed && !order.delivery ? '<div class="po-menu-separator"></div><a href="' + detailUrl(id) + '" data-refund-order-id="' + id + '">' + icon('undo') + 'Hoàn tiền / trả hàng</a>' : '') +
+            (canVoid && !order.delivery ? '<a class="po-action-danger" href="' + detailUrl(id) + '" data-void-order-id="' + id + '">' + icon('x-circle') + 'Hủy sau chốt</a>' : '');
         menu.showPopover();
         const rect = trigger.getBoundingClientRect();
         menu.style.left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, rect.right - menu.offsetWidth)) + 'px';
@@ -369,32 +393,35 @@
         }
     }
     function renderPreview(order) {
+        const source = isDeliverySource(order);
+        const orderPayments = list(order.payments);
+        const paymentReferences = window.ReceiptTemplates.paymentDisplayReferences(orderPayments);
         const meta = (label, value) => '<div><dt>' + label + '</dt><dd>' + esc(value || '—') + '</dd></div>';
         const total = (label, value, cls = '') => '<div class="' + cls + '"><dt>' + label + '</dt><dd>' + money(value) + ' đ</dd></div>';
         const paymentMethod = method => ({ cash: 'Tiền mặt', banktransfer: 'Chuyển khoản', card: 'Thẻ', ewallet: 'Ví điện tử' }[token(method)] || method);
         $('previewTitle').textContent = orderName(order);
-        $('previewBody').innerHTML = '<div class="po-preview-status">' + badge(displayStatus(order), statuses) + (order.delivery ? '' : badge(order.paymentStatus, payments)) + '</div>' +
+        $('previewBody').innerHTML = '<div class="po-preview-status">' + badge(displayStatus(order), statuses) + (source ? '' : badge(order.paymentStatus, payments)) + '</div>' +
             (order.delivery ? '<p class="po-preview-note">' + esc(order.delivery.code) + ' · ' + esc(deliveryStateLabel(order.delivery.state)) + '</p>' +
-                (deliveryBillUrl(order) ? '<a class="po-delivery-link" href="' + deliveryBillUrl(order) + '">Xem phiếu giao A5</a>' : '') : '') +
+                deliveryDocumentsMarkup(order) : '') +
             '<dl class="po-preview-meta">' + meta('Khách hàng', order.customerName || 'Khách lẻ') + meta('Thu ngân', order.cashierName) +
             (order.customerPhone ? meta('Điện thoại', order.customerPhone) : '') + meta('Máy tính tiền', order.terminalName || order.terminalCode) +
-            meta('Tạo lúc', dateTime(order.createdAtUtc)) + (order.delivery ? '' : meta('Hoàn tất', dateTime(order.finalizedAtUtc))) + '</dl>' +
+            meta('Tạo lúc', dateTime(order.createdAtUtc)) + (source ? '' : meta('Hoàn tất', dateTime(order.finalizedAtUtc))) + '</dl>' +
             (order.shiftCode ? '<details class="po-preview-section"><summary>Mã ca để tra cứu</summary><p class="po-preview-note">' + esc(order.shiftCode) + '</p></details>' : '') +
             '<section class="po-preview-section"><h3>Sản phẩm <span>' + order.lines.length + ' dòng hàng</span></h3><ul class="po-preview-lines">' +
             (order.lines.map(sourceLineMarkup).join('') ||
                 '<li><span class="po-text-muted">Đơn chưa có sản phẩm.</span></li>') + '</ul></section>' +
-            '<section class="po-preview-section"><h3>' + (order.delivery ? 'Giá trị dự kiến khi lập đơn' : 'Thanh toán') + '</h3><dl class="po-preview-totals">' +
-            priceBreakdownMarkup(order) + total(order.delivery ? 'Giá trị dự kiến' : 'Tổng tiền', order.grandTotal, 'po-preview-grand') +
-            (order.delivery ? '' :
+            '<section class="po-preview-section"><h3>' + (source ? 'Giá trị dự kiến khi lập đơn' : order.delivery ? 'Thanh toán theo hàng thực giao' : 'Thanh toán') + '</h3><dl class="po-preview-totals">' +
+            priceBreakdownMarkup(order) + total(source ? 'Giá trị dự kiến' : 'Tổng tiền', order.grandTotal, 'po-preview-grand') +
+            (source ? '' :
             (num(order.depositAmount) > 0 ? total('Trừ tiền cọc', order.depositAmount) + total('Cần trả sau cọc', Math.max(0, num(order.grandTotal) - num(order.depositAmount))) : '') +
             total(num(order.depositAmount) > 0 ? 'Đã thanh toán (gồm cọc)' : 'Đã thanh toán', order.paidTotal, 'po-text-success') +
             total('Còn thiếu', order.balanceDue, num(order.balanceDue) > 0 ? 'po-text-warning' : '') +
             (num(order.changeDue) > 0 ? total('Tiền thừa', order.changeDue) : '') +
             (num(order.refundedTotal) > 0 ? total('Đã hoàn tiền', order.refundedTotal, 'po-text-warning') : '')) + '</dl>' +
-            (order.delivery ? '<p class="po-preview-note">' + (order.delivery.isPendingSettlement ? 'Chưa thu tiền' : 'Xem thanh toán tại hồ sơ giao') + ' · Giá trị nguồn đã lưu khi lập đơn.</p>' : '') + '</section>' +
-            (!order.delivery && list(order.payments).length ? '<section class="po-preview-section"><h3>Các khoản thanh toán</h3><ul class="po-preview-lines">' +
-                order.payments.map(payment => '<li><div><strong>' + esc(paymentMethod(payment.method)) + '</strong><small>' + esc(dateTime(payment.createdAt)) +
-                    (payment.reference ? ' · ' + esc(payment.reference) : '') + '</small></div><strong class="po-amount">' + money(payment.amount) + ' đ</strong></li>').join('') + '</ul></section>' : '') +
+            (source ? '<p class="po-preview-note">' + (order.delivery.isPendingSettlement ? 'Chưa thu tiền' : 'Xem hóa đơn thanh toán liên kết') + ' · Giá trị nguồn đã lưu khi lập đơn.</p>' : '') + '</section>' +
+            (!source && orderPayments.length ? '<section class="po-preview-section"><h3>Các khoản thanh toán</h3><ul class="po-preview-lines">' +
+                orderPayments.map((payment, index) => '<li><div><strong>' + esc(paymentMethod(payment.method)) + '</strong><small>' + esc(dateTime(payment.createdAt)) +
+                    (paymentReferences[index] ? ' · ' + esc(paymentReferences[index]) : '') + '</small></div><strong class="po-amount">' + money(payment.amount) + ' đ</strong></li>').join('') + '</ul></section>' : '') +
             (num(order.depositAmount) > 0 || num(order.voucherDiscountTotal) > 0 || list(order.rewardVouchers).length ? '<section class="po-preview-section"><h3>Cọc / Voucher</h3>' + extras(order, true) + '</section>' : '') +
             (order.note ? '<section class="po-preview-section"><h3>Ghi chú</h3><p class="po-preview-note">' + esc(order.note) + '</p></section>' : '');
     }

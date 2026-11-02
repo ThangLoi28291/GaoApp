@@ -1,0 +1,7 @@
+Initial preflight: 2026-11-02 Asia/Bangkok
+Root: E:/GaoApp/GAOAPP-SA-20260819-01
+Branch: codex/p4-p8-20261030
+HEAD: 4495ffb7ba7cbd0a5d58507a1bf702398d0a8465
+Existing Git entries before pilot reports: 2194
+Unstaged modified: 978; unstaged deleted: 67; untracked: 1149; staged: 0
+Scope: read-only source; new documentation/evidence only.

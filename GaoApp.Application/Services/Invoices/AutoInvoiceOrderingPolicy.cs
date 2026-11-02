@@ -33,6 +33,7 @@ public static class AutoInvoiceOrderingPolicy
         DateTime nowLocal)
     {
         var ordered = candidates
+            .Where(x => x.GrandTotal > 0m)
             .OrderBy(x => x.SaleAtUtc)
             .ThenBy(x => x.InvoiceHeadId)
             .ToList();

@@ -29,7 +29,9 @@ public sealed partial class DeliveryTripService
             new HashSet<int> { order.SourceLegalEntityId });
     private static DeliveryOrigin Origin(DeliveryOrder order)
         => new(order.StoreId, order.SourceWarehouseId, order.SourceLegalEntityId, order.CreatedByUserId,
-            order.CreatedTerminalId, order.CreatedShiftId, order.SourceCartId, Utc(order.CreatedAtUtc), order.CustomerId);
+            order.CreatedTerminalId ?? throw Error(403, "POS_ORIGIN_REQUIRED", "Đơn này cần quy trình giao website."),
+            order.CreatedShiftId ?? throw Error(403, "POS_ORIGIN_REQUIRED", "Đơn này cần quy trình giao website."),
+            order.SourceCartId ?? throw Error(403, "POS_ORIGIN_REQUIRED", "Đơn này cần quy trình giao website."), Utc(order.CreatedAtUtc), order.CustomerId);
     private static string? ReturnNote(string? text)
     {
         var normalized = DeliveryTripPolicy.NormalizeNote(text);

@@ -55,7 +55,7 @@ public sealed class CustomerRewardVoucherRepository : ICustomerRewardVoucherRepo
 
     public async Task<string> GenerateNextVoucherCodeAsync(CancellationToken ct = default)
     {
-        var today = DateTime.UtcNow.ToString("yyyyMMdd");
+        var today = VietnamTime.Now.ToString("yyyyMMdd");
         var prefix = $"RV-{today}-";
 
         var countToday = await _db.CustomerRewardVouchers
@@ -104,12 +104,13 @@ public sealed class CustomerRewardVoucherRepository : ICustomerRewardVoucherRepo
 
         if (filter.FromDate.HasValue)
         {
-            query = query.Where(x => x.IssuedAtUtc >= filter.FromDate.Value);
+            var fromUtc = VietnamTime.ToUtc(filter.FromDate.Value.Date);
+            query = query.Where(x => x.IssuedAtUtc >= fromUtc);
         }
 
         if (filter.ToDate.HasValue)
         {
-            var toDate = filter.ToDate.Value.Date.AddDays(1);
+            var toDate = VietnamTime.ToUtc(filter.ToDate.Value.Date.AddDays(1));
             query = query.Where(x => x.IssuedAtUtc < toDate);
         }
 
@@ -222,7 +223,7 @@ public sealed class CustomerRewardVoucherRepository : ICustomerRewardVoucherRepo
         if (!vouchers.Any())
             return;
 
-        var nowText = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var nowText = VietnamTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
 
         foreach (var voucher in vouchers)
         {

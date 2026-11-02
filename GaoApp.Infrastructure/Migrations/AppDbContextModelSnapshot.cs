@@ -17,10 +17,14 @@ namespace GaoApp.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.29")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+            modelBuilder.HasSequence("StorefrontBankCorrelationSequence")
+                .HasMin(1L)
+                .HasMax(999999999999L);
 
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryCommandReceipt", b =>
                 {
@@ -363,13 +367,13 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("DeliveryOrderLineId")
                         .HasColumnType("int");
 
-                    b.Property<int>("InventoryCostBudgetDebitId")
+                    b.Property<int?>("InventoryCostBudgetDebitId")
                         .HasColumnType("int");
 
                     b.Property<int>("InventoryCostLayerAllocationId")
                         .HasColumnType("int");
 
-                    b.Property<int>("InventoryCostLayerId")
+                    b.Property<int?>("InventoryCostLayerId")
                         .HasColumnType("int");
 
                     b.Property<int>("InventoryTransactionId")
@@ -380,6 +384,11 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("IsProvisional")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -412,9 +421,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("StoreId", "InventoryCostBudgetDebitId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[InventoryCostBudgetDebitId] IS NOT NULL");
 
-                    b.HasIndex("StoreId", "InventoryCostLayerAllocationId");
+                    b.HasIndex("StoreId", "InventoryCostLayerAllocationId", "InventoryValuationEntryId");
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "InventoryCostLayerAllocationId")
                         .IsUnique();
@@ -422,6 +432,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId");
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryJournalEntryId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.HasIndex("StoreId", "InventoryValuationEntryId", "InventoryTransactionId", "SourceWarehouseId", "VariantId");
 
                     b.HasIndex("StoreId", "InventoryCostBudgetDebitId", "SourceWarehouseId", "VariantId", "SourceLegalEntityId", "InventoryCostLayerId", "InventoryTransactionId", "InventoryValuationEntryId", "InventoryCostLayerAllocationId");
 
@@ -432,6 +444,8 @@ namespace GaoApp.Infrastructure.Migrations
                             t.HasTrigger("TR_DeliveryDispatchCostFragments_StockSource");
 
                             t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_Cost", "[BaseQuantity] >= 0 AND [UnitCost] >= 0 AND [CostAmount] >= 0");
+
+                            t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_CostProof", "([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)");
 
                             t.HasCheckConstraint("CK_DeliveryDispatchCostFragments_Live", "[IsDeleted] = 0");
 
@@ -591,10 +605,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("CreatedByUserId")
                         .HasColumnType("int");
 
-                    b.Property<int>("CreatedShiftId")
+                    b.Property<int?>("CreatedShiftId")
                         .HasColumnType("int");
 
-                    b.Property<int>("CreatedTerminalId")
+                    b.Property<int?>("CreatedTerminalId")
                         .HasColumnType("int");
 
                     b.Property<int?>("CustomerId")
@@ -646,7 +660,10 @@ namespace GaoApp.Infrastructure.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
-                    b.Property<int>("SourceCartId")
+                    b.Property<int?>("SourceCartId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceKind")
                         .HasColumnType("int");
 
                     b.Property<int>("SourceLegalEntityId")
@@ -659,6 +676,15 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("StorefrontAllowNegativeInventory")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("StorefrontFulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderId")
                         .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
@@ -680,7 +706,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique();
 
                     b.HasIndex("StoreId", "SourceCartId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("[SourceCartId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "StorefrontFulfillmentSourceId")
+                        .IsUnique()
+                        .HasFilter("[StorefrontFulfillmentSourceId] IS NOT NULL");
 
                     b.HasIndex("StoreId", "CreatedShiftId", "CreatedTerminalId");
 
@@ -688,17 +719,23 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "State", "CreatedAtUtc");
 
+                    b.HasIndex("StoreId", "StorefrontOrderId", "StorefrontFulfillmentSourceId");
+
                     b.ToTable("DeliveryOrders", null, t =>
                         {
                             t.HasTrigger("TR_DeliveryOrders_Origin");
 
                             t.HasTrigger("TR_DeliveryOrders_SourceShift");
 
+                            t.HasTrigger("TR_DeliveryOrders_StorefrontSource");
+
                             t.HasCheckConstraint("CK_DeliveryOrders_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_DeliveryOrders_NativeOrigin", "([SourceKind]=0 AND [SourceCartId] IS NOT NULL AND [CreatedTerminalId] IS NOT NULL AND [CreatedShiftId] IS NOT NULL AND [StorefrontOrderId] IS NULL AND [StorefrontFulfillmentSourceId] IS NULL AND [StorefrontAllowNegativeInventory] IS NULL) OR ([SourceKind]=1 AND [SourceCartId] IS NULL AND [CreatedTerminalId] IS NULL AND [CreatedShiftId] IS NULL AND [StorefrontOrderId] IS NOT NULL AND [StorefrontFulfillmentSourceId] IS NOT NULL AND [StorefrontAllowNegativeInventory] IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_DeliveryOrders_State", "[State] BETWEEN 0 AND 10 AND [Revision] > 0");
 
-                            t.HasCheckConstraint("CK_DeliveryOrders_Total", "[QuotedTotal] > 0 AND [QuotedTotal] = ROUND([QuotedTotal], 0)");
+                            t.HasCheckConstraint("CK_DeliveryOrders_Total", "(([SourceKind]=0 AND [QuotedTotal]>0) OR ([SourceKind]=1 AND [QuotedTotal]>=0)) AND [QuotedTotal] = ROUND([QuotedTotal], 0)");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -784,13 +821,23 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("SellingUnitId")
                         .HasColumnType("int");
 
-                    b.Property<int>("SourceCartId")
+                    b.Property<int?>("SourceCartId")
                         .HasColumnType("int");
 
                     b.Property<int?>("SourceOrderLineId")
                         .HasColumnType("int");
 
                     b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("StorefrontBaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<int?>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderLineId")
                         .HasColumnType("int");
 
                     b.Property<string>("UnitName")
@@ -819,13 +866,13 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "OriginalRootLineId");
 
-                    b.HasIndex("StoreId", "DeliveryOrderId", "SourceCartId");
-
                     b.HasIndex("StoreId", "DeliveryOrderId", "SourceOrderLineId")
                         .IsUnique()
                         .HasFilter("[SourceOrderLineId] IS NOT NULL");
 
                     b.HasIndex("StoreId", "SourceCartId", "SourceOrderLineId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "StorefrontOrderLineId");
 
                     b.HasIndex("StoreId", "VariantId", "ProductUnitConversionId", "SellingUnitId");
 
@@ -835,7 +882,9 @@ namespace GaoApp.Infrastructure.Migrations
 
                             t.HasTrigger("TR_DeliveryOrderLines_Root");
 
-                            t.HasCheckConstraint("CK_DeliveryOrderLines_Identity", "([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0)");
+                            t.HasTrigger("TR_DeliveryOrderLines_StorefrontSource");
+
+                            t.HasCheckConstraint("CK_DeliveryOrderLines_Identity", "([StorefrontOrderId] IS NULL AND [StorefrontOrderLineId] IS NULL AND [SourceCartId] IS NOT NULL AND (([SourceOrderLineId] IS NOT NULL AND [OriginalRootLineId] IS NULL AND [ProductUnitConversionId] IS NULL AND [SellingUnitId] IS NULL AND [BaseUnitId] IS NULL) OR ([SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NOT NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL AND [LineDiscount]=0 AND [AllocatedOrderDiscount]=0))) OR ([StorefrontOrderId] IS NOT NULL AND [StorefrontOrderLineId] IS NOT NULL AND [SourceCartId] IS NULL AND [SourceOrderLineId] IS NULL AND [OriginalRootLineId] IS NULL AND [SellingUnitId] IS NOT NULL AND [BaseUnitId] IS NOT NULL)");
 
                             t.HasCheckConstraint("CK_DeliveryOrderLines_Live", "[IsDeleted] = 0");
 
@@ -1183,10 +1232,14 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("DeliveryPickingWorks", null, t =>
                         {
-                            t.HasCheckConstraint("CK_DeliveryPickingWorks_Approval", "([ApprovedRevision] IS NULL AND [ApprovedByUserId] IS NULL AND [ApprovedAtUtc] IS NULL AND [ApprovedTotal] IS NULL) OR ([ApprovedRevision] IS NOT NULL AND [ApprovedRevision]>0 AND [ApprovedByUserId] IS NOT NULL AND [ApprovedAtUtc] IS NOT NULL AND [ApprovedTotal] IS NOT NULL AND [ApprovedTotal]>0 AND [ApprovedTotal]=ROUND([ApprovedTotal],0))");
+                            t.HasTrigger("TR_DeliveryPickingWorks_NativeSource");
+
+                            t.HasCheckConstraint("CK_DeliveryPickingWorks_Approval", "([ApprovedRevision] IS NULL AND [ApprovedByUserId] IS NULL AND [ApprovedAtUtc] IS NULL AND [ApprovedTotal] IS NULL) OR ([ApprovedRevision] IS NOT NULL AND [ApprovedRevision]>0 AND [ApprovedByUserId] IS NOT NULL AND [ApprovedAtUtc] IS NOT NULL AND [ApprovedTotal] IS NOT NULL AND [ApprovedTotal]>=0 AND [ApprovedTotal]=ROUND([ApprovedTotal],0))");
 
                             t.HasCheckConstraint("CK_DeliveryPickingWorks_Live", "[IsDeleted]=0");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryReturnedCostFragment", b =>
@@ -1243,6 +1296,11 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<bool>("IsProvisional")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -1984,7 +2042,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("TargetStoreId");
 
-                    b.ToTable("AcbCallbackRoutes", (string)null);
+                    b.ToTable("AcbCallbackRoutes", null, t =>
+                        {
+                            t.HasTrigger("TR_AcbCallbackRoutes_StorefrontBinding");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.AcbCallbackRouteChange", b =>
@@ -2028,6 +2091,9 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("BankVerifiedReceiptId")
+                        .HasColumnType("int");
 
                     b.Property<string>("Content")
                         .IsRequired()
@@ -2083,10 +2149,10 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("StoreId");
-
                     b.HasIndex("SessionId", "TransactionNumber")
                         .IsUnique();
+
+                    b.HasIndex("StoreId", "BankVerifiedReceiptId");
 
                     b.ToTable("AcbPaymentTransactions", (string)null);
                 });
@@ -2187,6 +2253,9 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BankBindingSnapshotJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("CartFingerprint")
                         .IsRequired()
@@ -2298,7 +2367,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "OrderId", "Status");
 
-                    b.ToTable("AcbQrSessions", (string)null);
+                    b.ToTable("AcbQrSessions", null, t =>
+                        {
+                            t.HasTrigger("TR_AcbQrSessions_BankBinding");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuItem", b =>
@@ -2387,6 +2461,58 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "ParentId", "SortOrder");
 
                     b.ToTable("AdminMenuItems", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuPinSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PinnedMenuIdsJson")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId")
+                        .IsUnique()
+                        .HasFilter("[StoreId] IS NOT NULL");
+
+                    b.ToTable("AdminMenuPinSettings", (string)null);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuVisibilitySetting", b =>
@@ -2568,6 +2694,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<Guid?>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("IpAddress")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -2605,6 +2734,10 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("EventId")
+                        .IsUnique()
+                        .HasFilter("[EventId] IS NOT NULL");
+
                     b.HasIndex("StoreId");
 
                     b.HasIndex("TraceId");
@@ -2618,6 +2751,46 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "Module", "ActionType", "CreatedAtUtc");
 
                     b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AuditOutboxMessage", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastErrorType")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("ProcessedAtUtc", "NextAttemptAtUtc", "CreatedAtUtc");
+
+                    b.HasIndex("StoreId", "ProcessedAtUtc", "NextAttemptAtUtc", "CreatedAtUtc");
+
+                    b.ToTable("AuditOutbox", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AuditOutbox_StoreId", "[StoreId] > 0");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.AutoInvoiceOperation", b =>
@@ -2996,6 +3169,757 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("AutoInvoiceWorkerStates", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationDevice", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("BankAccountFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastSeenAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankAccountId");
+
+                    b.HasIndex("StoreId", "BankAccountId", "Enabled");
+
+                    b.ToTable("BankNotificationDevices", null, t =>
+                        {
+                            t.HasTrigger("TR_BankNotificationDevices_StorefrontIdentity");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationDismissal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WaitId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReceiptId");
+
+                    b.HasIndex("WaitId");
+
+                    b.HasIndex("StoreId", "ReceiptId", "WaitId")
+                        .IsUnique();
+
+                    b.ToTable("BankNotificationDismissals", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("AppliedWaitId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ConfirmationSource")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime?>("ConfirmedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(12000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int?>("PaymentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("PostedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("QrCode")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SenderName")
+                        .HasMaxLength(240)
+                        .HasColumnType("nvarchar(240)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TransactionCode")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppliedWaitId");
+
+                    b.HasIndex("BankAccountId");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("PaymentId");
+
+                    b.HasIndex("StoreId", "EvidenceKey")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "BankAccountId", "PostedAtUtc");
+
+                    b.ToTable("BankNotificationReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_BankNotificationReceipts_NativeSnapshot");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationWait", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("BankAccountFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CartFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QrId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TerminalId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankAccountId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("QrId");
+
+                    b.HasIndex("ShiftId");
+
+                    b.HasIndex("TerminalId");
+
+                    b.HasIndex("StoreId", "QrId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "BankAccountId", "ExpiresAtUtc");
+
+                    b.ToTable("BankNotificationWaits", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankPaymentReference", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NotificationIdentityMappingVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OriginStoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PosQrRequestId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("StorefrontPaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OriginStoreId");
+
+                    b.HasIndex("PosQrRequestId");
+
+                    b.HasIndex("StorefrontPaymentIntentId");
+
+                    b.HasIndex("Provider", "Reference")
+                        .IsUnique();
+
+                    b.HasIndex("AccountIdentity", "Channel", "NotificationIdentityMappingVerified");
+
+                    b.ToTable("BankPaymentReferences", null, t =>
+                        {
+                            t.HasTrigger("TR_BankPaymentReferences_BankEvidence");
+
+                            t.HasCheckConstraint("CK_BankPaymentReferences_Channel", "([Channel]=1 AND [PosQrRequestId] IS NOT NULL AND [StorefrontPaymentIntentId] IS NULL) OR ([Channel]=2 AND [PosQrRequestId] IS NULL AND [StorefrontPaymentIntentId] IS NOT NULL)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankReceiptConflict", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AttemptedReference")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<int>("AttemptedStoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BankVerifiedReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("ObservedAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ObservedIdentityKind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankVerifiedReceiptId", "Fingerprint", "AttemptedStoreId")
+                        .IsUnique();
+
+                    b.ToTable("BankReceiptConflicts", null, t =>
+                        {
+                            t.HasTrigger("TR_BankReceiptConflicts_BankEvidence");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankReceiptConsumption", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BankVerifiedReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OriginStoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PosPaymentId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("StorefrontAllocationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankVerifiedReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("PosPaymentId")
+                        .IsUnique()
+                        .HasFilter("[PosPaymentId] IS NOT NULL");
+
+                    b.HasIndex("StorefrontAllocationId")
+                        .IsUnique()
+                        .HasFilter("[StorefrontAllocationId] IS NOT NULL");
+
+                    b.HasIndex("OriginStoreId", "BankVerifiedReceiptId");
+
+                    b.ToTable("BankReceiptConsumptions", null, t =>
+                        {
+                            t.HasTrigger("TR_BankReceiptConsumptions_BankEvidence");
+
+                            t.HasTrigger("TR_BankReceiptConsumptions_CodClaim");
+
+                            t.HasCheckConstraint("CK_BankReceiptConsumptions_Channel", "([Channel]=1 AND [PosPaymentId] IS NOT NULL AND [StorefrontAllocationId] IS NULL) OR ([Channel]=2 AND [PosPaymentId] IS NULL AND [StorefrontAllocationId] IS NOT NULL)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankVerifiedReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("AccountVersion")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)")
+                        .HasDefaultValue("");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("AssetConfidence")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("BankBusinessDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CrossProtocolMappingVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExternalTransactionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("IdentityKind")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NativeCollectionAuthorityProofJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("OriginStoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ProviderReference")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)")
+                        .UseCollation("Latin1_General_100_BIN2");
+
+                    b.Property<string>("RawBankTime")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReviewCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("RoutingProvenance")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int>("TimePrecision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BankAccountId");
+
+                    b.HasIndex("OriginStoreId", "ProviderReference");
+
+                    b.HasIndex("Provider", "AccountIdentity", "ExternalTransactionId")
+                        .IsUnique();
+
+                    b.ToTable("BankVerifiedReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_BankVerifiedReceipts_BankEvidence");
+
+                            t.HasTrigger("TR_BankVerifiedReceipts_CodSource");
+
+                            t.HasCheckConstraint("CK_BankVerifiedReceipts_Amount", "[Amount]>=0 AND [Amount]=ROUND([Amount],0)");
+
+                            t.HasCheckConstraint("CK_BankVerifiedReceipts_CodProvenance", "[RoutingProvenance] IN (0,1,2) AND ([NativeCollectionAuthorityProofJson] IS NULL OR ISJSON([NativeCollectionAuthorityProofJson])=1)");
+
+                            t.HasCheckConstraint("CK_BankVerifiedReceipts_Time", "([TimePrecision]=0 AND [OccurredAtUtc] IS NULL AND [BankBusinessDate] IS NULL) OR ([TimePrecision] IN (1,2) AND [OccurredAtUtc] IS NOT NULL AND [BankBusinessDate] IS NOT NULL)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.Brand", b =>
@@ -3515,6 +4439,425 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasFilter("[OrderId] IS NOT NULL AND [Kind] IN ('Apply','Void')");
 
                     b.ToTable("CustomerDepositEntries", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingCampaign", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<byte[]>("AssetBytes")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("AssetContentType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("AssetFileName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("AssetKind")
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<long?>("AssetLength")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AssetSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<Guid>("CampaignKey")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConnectionBinding")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CustomerGroup")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MessageText")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<Guid>("PreviewRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("ScheduledAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SenderProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("SnapshotSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignKey")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "PreviewRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "Status", "ScheduledAtUtc");
+
+                    b.ToTable("CustomerMarketingCampaigns", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerMarketingCampaigns_Values", "[StoreId] > 0 AND [RecipientCount] > 0 AND [CampaignKey] <> '00000000-0000-0000-0000-000000000000' AND [PreviewRequestId] <> '00000000-0000-0000-0000-000000000000' AND [SenderProfileId] <> '00000000-0000-0000-0000-000000000000' AND LEN([MessageText]) > 0 AND LEN([RequestFingerprint]) = 64 AND (([AssetBytes] IS NULL AND [AssetKind] IS NULL AND [AssetFileName] IS NULL AND [AssetContentType] IS NULL AND [AssetLength] IS NULL AND [AssetSha256] IS NULL) OR ([AssetBytes] IS NOT NULL AND [AssetKind] IN ('Image','File') AND [AssetFileName] IS NOT NULL AND [AssetContentType] IS NOT NULL AND [AssetLength] > 0 AND [AssetSha256] IS NOT NULL)) AND [Status] IN ('Draft','Scheduled','Dispatching','Completed','Cancelled','NeedsReview')");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingCampaignRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("BindingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("BindingVersion")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ConnectionBinding")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CustomerNameSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("NativePeer")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SenderProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("ZaloJobId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BindingId");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("CampaignId", "CustomerId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "Status", "NextAttemptAtUtc");
+
+                    b.ToTable("CustomerMarketingCampaignRecipients", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerMarketingCampaignRecipients_Values", "[StoreId] > 0 AND [CustomerId] > 0 AND [BindingVersion] > 0 AND [SenderProfileId] <> '00000000-0000-0000-0000-000000000000' AND [Status] IN ('Pending','Dispatching','Accepted','Sent','Skipped','Failed','NeedsReview')");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingConsent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("ChangedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ChangedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceReference")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsGranted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("StoreId", "CustomerId", "Channel")
+                        .IsUnique();
+
+                    b.ToTable("CustomerMarketingConsents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerMarketingConsents_Values", "[StoreId] > 0 AND [CustomerId] > 0 AND [Channel] = N'Zalo' AND ([ChangedByUserId] IS NULL OR [ChangedByUserId] > 0) AND LEN([Source]) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingConsentEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceReference")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsGranted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("RecordedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("StoreId", "Channel", "EvidenceReference")
+                        .IsUnique()
+                        .HasFilter("[Source] = N'ZaloKeyword' AND [EvidenceReference] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "CustomerId", "Channel", "RecordedAtUtc");
+
+                    b.ToTable("CustomerMarketingConsentEvents", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CustomerMarketingConsentEvents_Values", "[StoreId] > 0 AND [CustomerId] > 0 AND [Channel] = N'Zalo' AND ([RecordedByUserId] IS NULL OR [RecordedByUserId] > 0) AND LEN([Source]) > 0");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.CustomerReceivableEntry", b =>
@@ -5276,6 +6619,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("InventoryCostLayerAllocations", null, t =>
                         {
                             t.HasTrigger("TR_InventoryCostLayerAllocations_BudgetSource");
+
+                            t.HasTrigger("TR_InventoryCostLayerAllocations_DeliveryProvisional");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -5367,6 +6712,15 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("StoreId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("StorefrontFulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderLineId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -5391,11 +6745,20 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "ReferenceType", "ReferenceId");
 
+                    b.HasIndex("StoreId", "StorefrontOrderLineId", "StorefrontFulfillmentSourceId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InventoryReservations_StorefrontLineSource")
+                        .HasFilter("[ReferenceType]=12 AND [IsDeleted]=0");
+
                     b.HasIndex("StoreId", "DeliveryOrderId", "DeliveryOrderLineId", "ProductVariantId");
 
                     b.HasIndex("StoreId", "DeliveryOrderId", "WarehouseId", "SourceLegalEntityId");
 
+                    b.HasIndex("StoreId", "StorefrontOrderId", "StorefrontOrderLineId", "ProductVariantId");
+
                     b.HasIndex("StoreId", "WarehouseId", "ProductVariantId", "Status");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "StorefrontFulfillmentSourceId", "WarehouseId", "SourceLegalEntityId");
 
                     b.HasIndex("StoreId", "ReferenceType", "ReferenceId", "ReferenceLineId", "WarehouseId", "ProductVariantId", "Status");
 
@@ -5403,7 +6766,11 @@ namespace GaoApp.Infrastructure.Migrations
                         {
                             t.HasTrigger("TR_InventoryReservations_DeliverySource");
 
-                            t.HasCheckConstraint("CK_InventoryReservations_DeliverySource", "([ReferenceType]<>11 AND [DeliveryOrderId] IS NULL AND [DeliveryOrderLineId] IS NULL AND [SourceLegalEntityId] IS NULL AND [DeliveryRevision] IS NULL AND [ReportedByUserId] IS NULL AND [ReportedAtUtc] IS NULL) OR ([ReferenceType]=11 AND [IsDeleted]=0 AND [DeliveryOrderId] IS NOT NULL AND [DeliveryOrderLineId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL AND [DeliveryRevision] IS NOT NULL AND [DeliveryRevision]>0 AND [ReportedByUserId] IS NOT NULL AND [ReportedAtUtc] IS NOT NULL AND [ReservedQty]>0 AND [ReferenceLineId] IS NOT NULL AND [ReferenceLineId]=[DeliveryOrderLineId] AND [ReferenceId]=CONVERT(nvarchar(50),[DeliveryOrderId]) AND ([Status]=1 OR [Status]=2 OR [Status]=3))");
+                            t.HasTrigger("TR_InventoryReservations_StorefrontSource");
+
+                            t.HasCheckConstraint("CK_InventoryReservations_DeliverySource", "([ReferenceType]<>11 AND [DeliveryOrderId] IS NULL AND [DeliveryOrderLineId] IS NULL AND ([SourceLegalEntityId] IS NULL OR [ReferenceType]=12) AND [DeliveryRevision] IS NULL AND [ReportedByUserId] IS NULL AND [ReportedAtUtc] IS NULL) OR ([ReferenceType]=11 AND [IsDeleted]=0 AND [DeliveryOrderId] IS NOT NULL AND [DeliveryOrderLineId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL AND [DeliveryRevision] IS NOT NULL AND [DeliveryRevision]>0 AND [ReportedByUserId] IS NOT NULL AND [ReportedAtUtc] IS NOT NULL AND [ReservedQty]>0 AND [ReferenceLineId] IS NOT NULL AND [ReferenceLineId]=[DeliveryOrderLineId] AND [ReferenceId]=CONVERT(nvarchar(50),[DeliveryOrderId]) AND ([Status]=1 OR [Status]=2 OR [Status]=3))");
+
+                            t.HasCheckConstraint("CK_InventoryReservations_StorefrontSource", "([ReferenceType]<>12 AND [StorefrontOrderId] IS NULL AND [StorefrontOrderLineId] IS NULL AND [StorefrontFulfillmentSourceId] IS NULL) OR ([ReferenceType]=12 AND [IsDeleted]=0 AND [StorefrontOrderId] IS NOT NULL AND [StorefrontOrderLineId] IS NOT NULL AND [StorefrontFulfillmentSourceId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL AND [ReservedQty]>0 AND [ReferenceLineId]=[StorefrontOrderLineId] AND [ReferenceLineId] IS NOT NULL AND CONVERT(varbinary(max),[ReferenceId])=CONVERT(varbinary(max),CONVERT(nvarchar(50),[StorefrontOrderId])) AND DATALENGTH([ReferenceId])=DATALENGTH(CONVERT(nvarchar(50),[StorefrontOrderId])) AND [Status] IN (1,2,3))");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -5570,9 +6937,15 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("InventoryTransactions", null, t =>
                         {
+                            t.HasTrigger("TR_InventoryTransactions_CancellationV7");
+
                             t.HasTrigger("TR_InventoryTransactions_DeliveryProof");
 
+                            t.HasTrigger("TR_InventoryTransactions_DeliveryProvisional");
+
                             t.HasCheckConstraint("CK_InventoryTransactions_DeliveryPosting", "[PostingPrecisionPolicy]<>2 OR ([ReferenceType]=11 AND [ReferenceLineId] IS NOT NULL AND [IdempotencyKey] IS NOT NULL AND (([TransactionType]=80 AND [QuantityChange]<0) OR ([TransactionType]=81 AND [QuantityChange]>0)))");
+
+                            t.HasCheckConstraint("CK_InventoryTransactions_NoStorefrontPhysical", "[ReferenceType]<>12");
 
                             t.HasCheckConstraint("CK_InventoryTransactions_PostingPrecision", "[PostingPrecisionPolicy]=0 OR [PostingPrecisionPolicy]=1 OR [PostingPrecisionPolicy]=2");
                         });
@@ -5743,6 +7116,8 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("InventoryValuationEntries", null, t =>
                         {
                             t.HasTrigger("TR_InventoryValuationEntries_BudgetSource");
+
+                            t.HasTrigger("TR_InventoryValuationEntries_DeliveryProvisional");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -6099,8 +7474,8 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.Property<decimal>("Quantity")
-                        .HasPrecision(18, 3)
-                        .HasColumnType("decimal(18,3)");
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
 
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
@@ -6112,6 +7487,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("tinyint");
 
                     b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontServiceRevenueId")
                         .HasColumnType("int");
 
                     b.Property<decimal>("TotalAmount")
@@ -6154,6 +7532,8 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "OrderLegalEntityAllocationId");
 
+                    b.HasIndex("StoreId", "StorefrontServiceRevenueId");
+
                     b.HasIndex("StoreId", "InvoiceHeadId", "IsDeleted");
 
                     b.HasIndex("StoreId", "InvoiceHeadId", "OrderLegalEntityAllocationId")
@@ -6168,7 +7548,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "SourceType", "IsDeleted");
 
-                    b.ToTable("InvoiceDetails", (string)null);
+                    b.ToTable("InvoiceDetails", null, t =>
+                        {
+                            t.HasTrigger("TR_InvoiceDetails_StorefrontSource");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceHead", b =>
@@ -6345,9 +7730,24 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("LockedByUserId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("NativeServiceActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("NativeServiceCashOnly")
+                        .HasColumnType("bit");
+
+                    b.Property<byte?>("NativeServiceInvoiceRoute")
+                        .HasColumnType("tinyint");
+
+                    b.Property<DateTime?>("NativeServiceRecognizedAtUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Note")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<long?>("OfficialPdfByteLength")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime?>("OfficialPdfDownloadedAtUtc")
                         .HasColumnType("datetime2");
@@ -6356,8 +7756,15 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
 
+                    b.Property<string>("OfficialPdfSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<int>("OfficialPdfStatus")
                         .HasColumnType("int");
+
+                    b.Property<long?>("OfficialZipXmlByteLength")
+                        .HasColumnType("bigint");
 
                     b.Property<DateTime?>("OfficialZipXmlDownloadedAtUtc")
                         .HasColumnType("datetime2");
@@ -6365,6 +7772,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<string>("OfficialZipXmlFileName")
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
+
+                    b.Property<string>("OfficialZipXmlSha256")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
 
                     b.Property<int>("OfficialZipXmlStatus")
                         .HasColumnType("int");
@@ -6407,6 +7818,15 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<int?>("RevenueTaxPercentage")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("RevenueTaxReductionAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m);
+
                     b.Property<byte[]>("RowVersion")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -6414,6 +7834,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("rowversion");
 
                     b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontServiceRevenueId")
                         .HasColumnType("int");
 
                     b.Property<decimal>("SubTotal")
@@ -6429,8 +7852,8 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<decimal>("TotalQuantity")
-                        .HasPrecision(18, 3)
-                        .HasColumnType("decimal(18,3)");
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
 
                     b.Property<string>("TransactionUuid")
                         .HasMaxLength(36)
@@ -6460,9 +7883,15 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[LegacySourceId] IS NOT NULL");
 
+                    b.HasIndex("StoreId", "NativeServiceActorUserId");
+
                     b.HasIndex("StoreId", "OrderId")
                         .IsUnique()
                         .HasFilter("[OrderId] IS NOT NULL AND [IsDeleted] = 0 AND [OriginalInvoiceHeadId] IS NULL AND [LegalEntityId] IS NULL");
+
+                    b.HasIndex("StoreId", "StorefrontServiceRevenueId")
+                        .IsUnique()
+                        .HasFilter("[StorefrontServiceRevenueId] IS NOT NULL AND [OriginalInvoiceHeadId] IS NULL AND [IsDeleted]=0");
 
                     b.HasIndex("StoreId", "TransactionUuid")
                         .IsUnique()
@@ -6494,8 +7923,16 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("InvoiceHeads", null, t =>
                         {
-                            t.HasCheckConstraint("CK_InvoiceHeads_LegacyOrder", "[OrderId] IS NOT NULL OR ([LegacySourceId] IS NOT NULL AND [LegacyReadOnly] = 1) OR [IsAutoInvoiceGroup] = 1");
+                            t.HasTrigger("TR_InvoiceHeads_StorefrontSource");
+
+                            t.HasCheckConstraint("CK_InvoiceHeads_LegacyOrder", "[OrderId] IS NOT NULL OR ([LegacySourceId] IS NOT NULL AND [LegacyReadOnly] = 1) OR [IsAutoInvoiceGroup] = 1 OR ([StorefrontServiceRevenueId] IS NOT NULL AND [NativeServiceInvoiceRoute] IN (1,2) AND [NativeServiceRecognizedAtUtc] IS NOT NULL AND [NativeServiceActorUserId] IS NOT NULL AND [LegacyReadOnly]=0 AND [LegacySourceId] IS NULL)");
+
+                            t.HasCheckConstraint("CK_InvoiceHeads_NotificationArtifactProof", "([OfficialPdfSha256] IS NULL AND [OfficialPdfByteLength] IS NULL OR LEN([OfficialPdfSha256])=64 AND [OfficialPdfByteLength]>0) AND ([OfficialZipXmlSha256] IS NULL AND [OfficialZipXmlByteLength] IS NULL OR LEN([OfficialZipXmlSha256])=64 AND [OfficialZipXmlByteLength]>0)");
+
+                            t.HasCheckConstraint("CK_InvoiceHeads_RevenueTax", "([RevenueTaxPercentage] IS NULL AND [RevenueTaxReductionAmount] = 0) OR ([RevenueTaxPercentage] IS NOT NULL AND [RevenueTaxPercentage] IN (1,2,3,5) AND [RevenueTaxReductionAmount] >= 0)");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceInputStockSupplementalMovement", b =>
@@ -6687,6 +8124,175 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("InvoiceIntegrationLogs", (string)null);
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceNotificationAudit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("BindingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<Guid?>("OutboxId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "CreatedAtUtc");
+
+                    b.ToTable("InvoiceNotificationAudit", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceNotificationOutbox", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("BindingId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BindingSnapshotJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("BindingVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime?>("FirstAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("LeaseExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PartsOutcomeJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PreparedJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SnapshotSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("SourceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("SourceVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("nvarchar(24)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ZaloJobId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BindingId");
+
+                    b.HasIndex("State", "NextAttemptAtUtc");
+
+                    b.HasIndex("StoreId", "RequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "SourceType", "SourceId", "SourceVersion", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("InvoiceNotificationOutbox", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InvoiceNotificationOutbox_Json", "ISJSON([SnapshotJson])=1 AND ([BindingSnapshotJson] IS NULL OR ISJSON([BindingSnapshotJson])=1) AND ([PreparedJson] IS NULL OR ISJSON([PreparedJson])=1)");
+
+                            t.HasCheckConstraint("CK_InvoiceNotificationOutbox_Source", "[StoreId]>0 AND [SourceId]>0 AND [SourceType] IN ('Order','Invoice') AND [Kind] IN ('Receipt','OfficialPdf','OfficialZipXml','OfficialXml','OfficialLink','CorrectionPdf','CorrectionZipXml','CorrectionXml','CorrectionLink','DraftPreview')");
+
+                            t.HasCheckConstraint("CK_InvoiceNotificationOutbox_State", "[State] IN ('Pending','Dispatching','Accepted','Sent','PartiallySent','NeedsReview','Failed','Blocked','Cancelled')");
+                        });
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceProviderSetting", b =>
                 {
                     b.Property<int>("Id")
@@ -6819,6 +8425,106 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("InvoiceProviderSettings", (string)null);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceRecipientBinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ConnectionBinding")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(48)
+                        .HasColumnType("nvarchar(48)");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceReference")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<long>("IncomingSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("NativePeer")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("RevocationReason")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime?>("RevokedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RevokedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid>("SenderProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VerificationMethod")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("VerificationRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("VerifiedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId");
+
+                    b.HasIndex("StoreId", "CustomerId")
+                        .IsUnique()
+                        .HasFilter("[RevokedAtUtc] IS NULL");
+
+                    b.HasIndex("StoreId", "VerificationRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "ConnectionId", "ConversationId")
+                        .IsUnique()
+                        .HasFilter("[RevokedAtUtc] IS NULL");
+
+                    b.ToTable("InvoiceRecipientBindings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InvoiceRecipientBindings_Proof", "[StoreId]>0 AND [CustomerId]>0 AND [Version]>0 AND [IncomingSequence]>0 AND [VerifiedByUserId]>0");
+                        });
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.KioskStation", b =>
@@ -7419,12 +9125,16 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("OperatingExpenses", null, t =>
                         {
+                            t.HasTrigger("TR_OperatingExpenses_StorefrontClaim");
+
                             t.HasCheckConstraint("CK_OperatingExpenses_Amount", "[Amount] > 0");
 
                             t.HasCheckConstraint("CK_OperatingExpenses_Period", "[RecognitionTo] >= [RecognitionFrom]");
 
                             t.HasCheckConstraint("CK_OperatingExpenses_Status", "[Status] IN ('draft','confirmed','voided')");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.Order", b =>
@@ -7680,6 +9390,8 @@ namespace GaoApp.Infrastructure.Migrations
                             t.HasTrigger("TR_Orders_DeliverySource");
 
                             t.HasTrigger("TR_Orders_DeliverySourceShift");
+
+                            t.HasTrigger("TR_Orders_StorefrontFinancialSource");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -8151,6 +9863,16 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("InventoryTransactionId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("InvoiceUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InvoiceUnitKind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("InvoiceUnitName")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -8205,6 +9927,12 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("StoreId")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("StorefrontHeaderDiscountAllocated")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m);
+
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -8238,6 +9966,8 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsUnique()
                         .HasFilter("[InventoryTransactionId] IS NOT NULL AND [IsDeleted] = 0");
 
+                    b.HasIndex("StoreId", "InvoiceUnitId");
+
                     b.HasIndex("StoreId", "OrderId", "IsDeleted");
 
                     b.HasIndex("StoreId", "LegalEntityId", "OrderId", "IsDeleted");
@@ -8250,12 +9980,16 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("OrderLegalEntityAllocations", null, t =>
                         {
+                            t.HasTrigger("TR_OrderLegalEntityAllocations_StorefrontSource");
+
                             t.HasCheckConstraint("CK_OrderLegalEntityAllocations_Amounts_NonNegative", "[LineTotal] >= 0 AND [DiscountAllocated] >= 0 AND [PromotionDiscountAllocated] >= 0 AND [ComboDiscountAllocated] >= 0 AND [OrderDiscountAllocated] >= 0 AND [VoucherDiscountAllocated] >= 0 AND [NetAmount] >= 0");
 
                             t.HasCheckConstraint("CK_OrderLegalEntityAllocations_Quantity_Positive", "[Quantity] > 0 AND [BaseQuantity] > 0");
 
                             t.HasCheckConstraint("CK_OrderLegalEntityAllocations_SalePriority_Positive", "[SalePriority] > 0");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.OrderLegalEntityAllocationReversal", b =>
@@ -8461,6 +10195,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 4)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<bool?>("HasInputInvoiceSnapshot")
+                        .HasColumnType("bit");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -8567,11 +10304,23 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("Sku")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
 
                     b.Property<int>("StoreId")
                         .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("StorefrontRoundingAdjustment")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18)
+                        .HasColumnType("decimal(18,0)")
+                        .HasDefaultValue(0m);
 
                     b.Property<decimal?>("UnitCostSnapshot")
                         .HasPrecision(18, 6)
@@ -8612,11 +10361,21 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "ProductUnitConversionId");
 
+                    b.HasIndex("StoreId", "StorefrontOrderLineId")
+                        .IsUnique()
+                        .HasFilter("[StorefrontOrderLineId] IS NOT NULL");
+
                     b.HasIndex("StoreId", "VariantId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "StorefrontOrderLineId");
 
                     b.ToTable("OrderLines", null, t =>
                         {
                             t.HasTrigger("TR_OrderLines_DeliverySource");
+
+                            t.HasTrigger("TR_OrderLines_StorefrontSnapshot");
+
+                            t.HasTrigger("TR_OrderLines_StorefrontSource");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -8688,6 +10447,9 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("BankVerifiedReceiptId")
+                        .HasColumnType("int");
+
                     b.Property<Guid?>("ClientRequestId")
                         .HasColumnType("uniqueidentifier");
 
@@ -8738,6 +10500,12 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("StoreId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("StorefrontCarrierWithholdingId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontCodReceiptId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -8748,6 +10516,8 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("OrderId");
 
+                    b.HasIndex("StoreId", "BankVerifiedReceiptId");
+
                     b.HasIndex("StoreId", "ClientRequestId")
                         .IsUnique()
                         .HasDatabaseName("UX_OrderPayments_StoreId_ClientRequestId")
@@ -8755,9 +10525,17 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "OrderId");
 
+                    b.HasIndex("StoreId", "StorefrontCarrierWithholdingId");
+
+                    b.HasIndex("StoreId", "StorefrontCodReceiptId");
+
                     b.ToTable("OrderPayments", null, t =>
                         {
+                            t.HasTrigger("TR_OrderPayments_BankSource");
+
                             t.HasTrigger("TR_OrderPayments_DeliverySource");
+
+                            t.HasTrigger("TR_OrderPayments_StorefrontSource");
                         });
 
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
@@ -9584,7 +11362,14 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "Type");
 
-                    b.ToTable("POSShiftCashTransactions", (string)null);
+                    b.ToTable("POSShiftCashTransactions", null, t =>
+                        {
+                            t.HasTrigger("TR_POSShiftCashTransactions_RefundClaimV7");
+
+                            t.HasTrigger("TR_POSShiftCashTransactions_StorefrontClaim");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.POSShiftClosingSlip", b =>
@@ -10266,6 +12051,14 @@ namespace GaoApp.Infrastructure.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<string>("AccountIdentitySnapshot")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("AccountVersionSnapshot")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<decimal>("Amount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -10309,6 +12102,13 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasColumnType("datetime2");
 
                     b.Property<int?>("ManualConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("NotificationConfirmationSource")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int?>("NotificationReceiptId")
                         .HasColumnType("int");
 
                     b.Property<int>("OrderId")
@@ -10379,7 +12179,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "OrderId", "Status");
 
-                    b.ToTable("PosPaymentQrRequests");
+                    b.ToTable("PosPaymentQrRequests", t =>
+                        {
+                            t.HasTrigger("TR_PosPaymentQrRequests_StorefrontIdentity");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.PosReceiptTemplate", b =>
@@ -12061,6 +13866,10 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<decimal>("OrderedQuantity")
                         .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)");
@@ -12563,6 +14372,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int?>("DeletedBy")
                         .HasColumnType("int");
 
+                    b.Property<decimal>("GlobalDiscountAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<decimal>("GlobalDiscountPercent")
                         .HasPrecision(9, 4)
                         .HasColumnType("decimal(9,4)");
@@ -12616,6 +14429,8 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("PurchaseReceiptPricingPlan", null, t =>
                         {
+                            t.HasCheckConstraint("CK_PurchaseReceiptPricingPlan_GlobalDiscount", "[GlobalDiscountAmount] >= 0 AND ([GlobalDiscountAmount] = 0 OR [GlobalDiscountPercent] = 0)");
+
                             t.HasCheckConstraint("CK_PurchaseReceiptPricingPlan_Money", "[ActualBillTotal] > 0 AND [SystemTotal] > 0 AND [GlobalDiscountPercent] >= 0 AND [GlobalDiscountPercent] < 100");
 
                             t.HasCheckConstraint("CK_PurchaseReceiptPricingPlan_State", "[State] = 1 OR [State] = 2 OR [State] = 3");
@@ -13299,6 +15114,10 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Property<int>("LineNo")
                         .HasColumnType("int");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<string>("ProductNameSnapshot")
                         .IsRequired()
                         .HasMaxLength(250)
@@ -13608,7 +15427,12 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId", "ReturnNumber")
                         .IsUnique();
 
-                    b.ToTable("SalesReturns", (string)null);
+                    b.ToTable("SalesReturns", null, t =>
+                        {
+                            t.HasTrigger("TR_SalesReturns_StorefrontFinancialSource");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.SalesReturnLine", b =>
@@ -15520,7 +17344,12 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasIndex("StoreId")
                         .IsUnique();
 
-                    b.ToTable("StoreAcbSettings", (string)null);
+                    b.ToTable("StoreAcbSettings", null, t =>
+                        {
+                            t.HasTrigger("TR_StoreAcbSettings_StorefrontBinding");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.StoreBankAccount", b =>
@@ -15635,7 +17464,12 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.HasIndex("StoreId", "IsDefault");
 
-                    b.ToTable("StoreBankAccounts");
+                    b.ToTable("StoreBankAccounts", null, t =>
+                        {
+                            t.HasTrigger("TR_StoreBankAccounts_StorefrontBinding");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.Supplier", b =>
@@ -15935,10 +17769,16 @@ namespace GaoApp.Infrastructure.Migrations
 
                     b.ToTable("TreasuryEntries", null, t =>
                         {
+                            t.HasTrigger("TR_TreasuryEntries_RefundClaimV7");
+
+                            t.HasTrigger("TR_TreasuryEntries_StorefrontClaim");
+
                             t.HasCheckConstraint("CK_TreasuryEntries_Amount", "[Amount] <> 0");
 
                             t.HasCheckConstraint("CK_TreasuryEntries_Transfer", "[TargetFund] IS NULL OR (([TargetFund] <> [Fund] OR ([Fund] = 'cash' AND [IsVoucherLink] = 1)) AND [OperatingExpenseId] IS NULL AND [PurchasePayableId] IS NULL)");
                         });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.TreasuryOpeningBalance", b =>
@@ -16304,6 +18144,4885 @@ namespace GaoApp.Infrastructure.Migrations
                     b.ToTable("Warehouses", (string)null);
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankCollectionAuthority", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ReceivingLegalEntityId");
+
+                    b.HasIndex("StoreId", "SourceLegalEntityId");
+
+                    b.HasIndex("StoreId", "BankAccountId", "ReceivingLegalEntityId", "SourceLegalEntityId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontBankCollectionAuthorities", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontBankCollectionAuthorities_Live", "[IsDeleted] = 0");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankObservation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("ObservedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "Fingerprint")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontBankObservations", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontBankObservations_BankEvidence");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("ExternalTransactionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int?>("GlobalBankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("NeedsReview")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlobalBankReceiptId")
+                        .IsUnique()
+                        .HasFilter("[GlobalBankReceiptId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "BankAccountId");
+
+                    b.HasIndex("StoreId", "GlobalBankReceiptId");
+
+                    b.HasIndex("StoreId", "ReceivingLegalEntityId");
+
+                    b.HasIndex("Provider", "BankAccountId", "ExternalTransactionId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontBankReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontBankReceipts_GlobalSource");
+
+                            t.HasTrigger("TR_StorefrontBankReceipts_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontBankReceipts_Amount", "[Amount] > 0 AND [Amount] = ROUND([Amount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontBankReceipts_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontBankReceipts_Verified", "[IsVerified] = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankReviewRestriction", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("EvidenceKind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReasonCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "ReasonCode", "EvidenceFingerprint")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontBankReviewRestrictions", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontBankReviewRestrictions_Immutable");
+
+                            t.HasTrigger("TR_StorefrontBankReviewRestrictions_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontBankReviewRestrictions_Evidence", "LEN([ReasonCode])>0 AND LEN([EvidenceKind])>0 AND DATALENGTH([EvidenceFingerprint])=128 AND DATALENGTH([ProtectedEvidence])>0");
+
+                            t.HasCheckConstraint("CK_StorefrontBankReviewRestrictions_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankScanAttempt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("BindingFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestedWindowsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTime>("StartedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "Id");
+
+                    b.ToTable("StorefrontBankScanAttempts", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontBankScanAttempts_Immutable");
+
+                            t.HasTrigger("TR_StorefrontBankScanAttempts_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontBankScanAttempts_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontBankScanAttempts_Scope", "DATALENGTH([AccountIdentity])=128 AND DATALENGTH([BindingFingerprint])=128 AND ISJSON([RequestedWindowsJson])=1 AND JSON_QUERY([RequestedWindowsJson],'$[0]') IS NOT NULL");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankScanCompletion", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ScanAttemptId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ScanAttemptId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "Id");
+
+                    b.HasIndex("StoreId", "ScanAttemptId", "StorefrontOrderId", "PaymentIntentId");
+
+                    b.ToTable("StorefrontBankScanCompletions", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontBankScanCompletions_Immutable");
+
+                            t.HasTrigger("TR_StorefrontBankScanCompletions_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontBankScanCompletions_Evidence", "DATALENGTH([Fingerprint])=128 AND DATALENGTH([ProtectedEvidence])>0");
+
+                            t.HasCheckConstraint("CK_StorefrontBankScanCompletions_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCancellationDecision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ActualDeliveryEvidenceId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ActualReturnEvidenceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("AuthorisesPhysicalReturn")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("CancellationRequestId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("DecidedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "CancellationRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "ActualDeliveryEvidenceId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "ActualReturnEvidenceId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "CancellationRequestId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontCancellationDecisions", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCancellationDecisions_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCancellationDecisions_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCancellationDecisions_Decision", "LEN([Reason])>0 AND (([Kind]=1 AND [ActualDeliveryEvidenceId] IS NULL AND [ActualReturnEvidenceId] IS NULL) OR ([Kind]=2 AND [AuthorisesPhysicalReturn]=0 AND [ActualDeliveryEvidenceId] IS NULL AND [ActualReturnEvidenceId] IS NULL) OR ([Kind]=3 AND [AuthorisesPhysicalReturn]=0 AND [ActualDeliveryEvidenceId] IS NOT NULL AND [ActualReturnEvidenceId] IS NULL) OR ([Kind]=4 AND [AuthorisesPhysicalReturn]=0 AND [ActualDeliveryEvidenceId] IS NULL AND [ActualReturnEvidenceId] IS NOT NULL))");
+
+                            t.HasCheckConstraint("CK_StorefrontCancellationDecisions_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCancellationRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("GuestTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsImmediate")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ClientRequestId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "IsImmediate");
+
+                    b.ToTable("StorefrontCancellationRequests", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCancellationRequests_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCancellationRequests_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCancellationRequests_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontCancellationRequests_Request", "[ClientRequestId]<>'00000000-0000-0000-0000-000000000000' AND DATALENGTH([GuestTokenHash])=128 AND LEN([Reason])>0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCancellationReviewAcknowledgement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("AcknowledgedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("CancellationDecisionId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "CancellationDecisionId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "CancellationDecisionId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontCancellationReviewAcknowledgements", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCancellationReviewAcknowledgements_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCancellationReviewAcknowledgements_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCancellationReviewAcknowledgements_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontCancellationReviewAcknowledgements_Reason", "LEN([Reason])>0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCarrierWithholding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CarrierEvidenceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OperatingExpenseId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "LegalEntityId");
+
+                    b.HasIndex("StoreId", "OperatingExpenseId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontCarrierWithholdings", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCarrierWithholdings_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCarrierWithholdings_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCarrierWithholdings_Amount", "[Amount]>0 AND [Amount]<10000000000000000 AND [Amount]=ROUND([Amount],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontCarrierWithholdings_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCodBankRouting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AuthoritySnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("GlobalBankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlobalBankReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "GlobalBankReceiptId");
+
+                    b.HasIndex("StoreId", "ReceivingLegalEntityId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontCodBankRoutings", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCodBankRoutings_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCodBankRoutings_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCodBankRoutings_AuthoritySnapshotJson", "ISJSON([AuthoritySnapshotJson])=1");
+
+                            t.HasCheckConstraint("CK_StorefrontCodBankRoutings_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCodCollection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CustomerPaidAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceReference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("FulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("RecordedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "RecordedByUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "FulfillmentSourceId");
+
+                    b.ToTable("StorefrontCodCollections", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCodCollections_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCodCollections_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCodCollections_Amount", "[Amount]>0 AND [Amount]<10000000000000000 AND [Amount]=ROUND([Amount],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontCodCollections_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCodReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("CodBankRoutingId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GlobalBankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("POSShiftCashTransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TreasuryEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GlobalBankReceiptId")
+                        .IsUnique()
+                        .HasFilter("[GlobalBankReceiptId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "CodBankRoutingId");
+
+                    b.HasIndex("StoreId", "GlobalBankReceiptId");
+
+                    b.HasIndex("StoreId", "POSShiftCashTransactionId")
+                        .IsUnique()
+                        .HasFilter("[POSShiftCashTransactionId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "TreasuryEntryId")
+                        .IsUnique()
+                        .HasFilter("[TreasuryEntryId] IS NOT NULL");
+
+                    b.ToTable("StorefrontCodReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCodReceipts_Immutable");
+
+                            t.HasTrigger("TR_StorefrontCodReceipts_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCodReceipts_Amount", "[Amount]>0 AND [Amount]<10000000000000000 AND [Amount]=ROUND([Amount],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontCodReceipts_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontCodReceipts_Source", "([GlobalBankReceiptId] IS NOT NULL AND [CodBankRoutingId] IS NOT NULL AND [TreasuryEntryId] IS NULL AND [POSShiftCashTransactionId] IS NULL) OR ([GlobalBankReceiptId] IS NULL AND [CodBankRoutingId] IS NULL AND [POSShiftCashTransactionId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_StorefrontCodReceipts_SourceSnapshotJson", "ISJSON([SourceSnapshotJson])=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCommandReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("OutcomeJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "Operation", "ClientRequestId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontCommandReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCommandReceipts_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontCommandReceipts_Key", "[ClientRequestId] <> '00000000-0000-0000-0000-000000000000'");
+
+                            t.HasCheckConstraint("CK_StorefrontCommandReceipts_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontCommandReceipts_OutcomeJson", "ISJSON([OutcomeJson]) = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCustodyIncident", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActualCustodySourceIdsJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EvidenceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("ReconciledByEvidenceId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "EvidenceId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "ReconciledByEvidenceId");
+
+                    b.ToTable("StorefrontCustodyIncidents", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontCustodyIncidents_Identity");
+
+                            t.HasTrigger("TR_StorefrontCustodyIncidents_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontCustodyIncidents_Json", "ISJSON([ActualCustodySourceIdsJson])=1");
+
+                            t.HasCheckConstraint("CK_StorefrontCustodyIncidents_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontEvent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("CausationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontEvents", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontEvents_CheckoutPlaced");
+
+                            t.HasTrigger("TR_StorefrontEvents_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontEvents_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontEvents_PayloadJson", "ISJSON([PayloadJson]) = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontEvents_Revision", "[Revision] > 0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<string>("Note")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "FulfillmentSourceId");
+
+                    b.ToTable("StorefrontFulfillmentEvidence", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontFulfillmentEvidence_Immutable");
+
+                            t.HasTrigger("TR_StorefrontFulfillmentEvidence_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontFulfillmentEvidence_Json", "ISJSON([SnapshotJson])=1");
+
+                            t.HasCheckConstraint("CK_StorefrontFulfillmentEvidence_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DispatchPostingKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId")
+                        .IsUnique()
+                        .HasFilter("[DeliveryOrderId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "DispatchPostingKey")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "SourceWarehouseId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.ToTable("StorefrontFulfillmentSources", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontFulfillmentSources_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontFulfillmentSources_Live", "[IsDeleted] = 0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontFulfillmentWork", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("CarrierName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("CourierUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("LatestEvidenceId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("Stage")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TrackingCode")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "CourierUserId");
+
+                    b.HasIndex("StoreId", "DeliveryOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "FulfillmentSourceId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "FulfillmentSourceId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "LatestEvidenceId");
+
+                    b.ToTable("StorefrontFulfillmentWorks", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontFulfillmentWorks_Identity");
+
+                            t.HasTrigger("TR_StorefrontFulfillmentWorks_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontFulfillmentWorks_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontFulfillmentWorks_Stage", "[Stage] BETWEEN 0 AND 6");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontInventoryIssueSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BaselineResolvedQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryCostLayerAllocationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryValuationEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OrderInventoryIssueId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("OrderInventoryIssueLineId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnresolvedQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "InventoryCostLayerAllocationId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "InventoryValuationEntryId");
+
+                    b.HasIndex("StoreId", "OrderInventoryIssueId");
+
+                    b.HasIndex("StoreId", "OrderInventoryIssueLineId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontInventoryIssueSources", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontInventoryIssueSources_Immutable");
+
+                            t.HasTrigger("TR_StorefrontInventoryIssueSources_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontInventoryIssueSources_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontInventoryIssueSources_Quantity", "[BaselineResolvedQuantity]>=0 AND [UnresolvedQuantity]>0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontInvoiceWork", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SaleOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ServiceRevenueId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "SaleOrderId");
+
+                    b.HasIndex("StoreId", "ServiceRevenueId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontInvoiceWorks", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontInvoiceWorks_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontInvoiceWorks_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontLineSource", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("InventoryTransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsProvisionalCost")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("RecordedCost")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "InventoryTransactionId");
+
+                    b.HasIndex("StoreId", "OrderLineId", "FulfillmentSourceId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "FulfillmentSourceId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "OrderLineId");
+
+                    b.ToTable("StorefrontLineSources", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontLineSources_Immutable");
+
+                            t.HasTrigger("TR_StorefrontLineSources_NativeBudget");
+
+                            t.HasTrigger("TR_StorefrontLineSources_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontLineSources_Budget", "[BaseQuantity] > 0 AND [RecordedCost] >= 0");
+
+                            t.HasCheckConstraint("CK_StorefrontLineSources_Live", "[IsDeleted] = 0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontMedia", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AltText")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MediaAssetId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontProductId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "MediaAssetId");
+
+                    b.HasIndex("StoreId", "StorefrontProductId", "MediaAssetId", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontMedia", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontMedia_Kind", "[Kind] IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_StorefrontMedia_Live", "[IsDeleted] = 0");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontNotificationAttestation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("AccountSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AccountVersion")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime>("AuthenticatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BankNotificationReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("BankOccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("CollectionAuthoritySnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("HadManualAmbiguity")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NativeTransactionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourcePackage")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "BankAccountId");
+
+                    b.HasIndex("StoreId", "BankNotificationReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "DeviceId");
+
+                    b.ToTable("StorefrontNotificationAttestations", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontNotificationAttestations_Immutable");
+
+                            t.HasTrigger("TR_StorefrontNotificationAttestations_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontNotificationAttestations_AccountSnapshotJson", "ISJSON([AccountSnapshotJson])=1");
+
+                            t.HasCheckConstraint("CK_StorefrontNotificationAttestations_CollectionAuthoritySnapshotJson", "ISJSON([CollectionAuthoritySnapshotJson])=1");
+
+                            t.HasCheckConstraint("CK_StorefrontNotificationAttestations_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontNotificationCertification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("GlobalBankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("NotificationAttestationId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("GlobalBankReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "GlobalBankReceiptId");
+
+                    b.HasIndex("StoreId", "NotificationAttestationId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontNotificationCertifications", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontNotificationCertifications_Immutable");
+
+                            t.HasTrigger("TR_StorefrontNotificationCertifications_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontNotificationCertifications_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontOrder", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AddressSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryMethod")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryState")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GoodsAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("GuestTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LegalEntityModeCapturedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime?>("PaymentExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PaymentMethod")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PaymentState")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Phase")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QuoteId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RecipientAddress")
+                        .IsRequired()
+                        .HasMaxLength(1200)
+                        .HasColumnType("nvarchar(1200)");
+
+                    b.Property<string>("RecipientName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("RecipientPhone")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<int>("RefundState")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<decimal>("ShippingCharge")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ShippingFeeTreatment")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TotalDue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("UseMultiLegalEntitySnapshot")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "GuestTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "QuoteId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "Phase", "CreatedAtUtc");
+
+                    b.HasIndex("StoreId", "QuoteId", "GoodsAmount", "ShippingCharge", "TotalDue");
+
+                    b.ToTable("StorefrontOrders", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontOrders_CancellationV7");
+
+                            t.HasTrigger("TR_StorefrontOrders_CheckoutSnapshot");
+
+                            t.HasTrigger("TR_StorefrontOrders_FulfillmentProof");
+
+                            t.HasTrigger("TR_StorefrontOrders_NativeMode");
+
+                            t.HasTrigger("TR_StorefrontOrders_QrPayment");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_AddressSnapshotJson", "ISJSON([AddressSnapshotJson]) = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_GoodsAmount", "[GoodsAmount] > 0 AND [GoodsAmount] = ROUND([GoodsAmount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_GuestHash", "LEN([GuestTokenHash]) = 64 AND [GuestTokenHash] NOT LIKE '%[^0-9A-Fa-f]%' COLLATE Latin1_General_100_BIN2");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_ShippingCharge", "[ShippingCharge] >= 0 AND [ShippingCharge] = ROUND([ShippingCharge], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_State", "[Revision] > 0 AND [Phase] BETWEEN 0 AND 6 AND [PaymentMethod] IN (0, 1) AND [PaymentState] BETWEEN 0 AND 3 AND [DeliveryState] BETWEEN 0 AND 6 AND [RefundState] BETWEEN 0 AND 4 AND [DeliveryMethod] IN (0, 1)");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_Total", "[TotalDue] = [GoodsAmount] + [ShippingCharge] AND [ShippingFeeTreatment] = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontOrders_TotalDue", "[TotalDue] > 0 AND [TotalDue] = ROUND([TotalDue], 0)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontOrderLine", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BaseMultiplier")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("BaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Discount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool?>("HasInputInvoiceSnapshot")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsGift")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ItemName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<decimal>("NetAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ProductUnitConversionId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("RoundingAdjustment")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SellingUnitId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UnitName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("WeightKgPerSellingUnit")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "SellingUnitId");
+
+                    b.HasIndex("StoreId", "VariantId", "ProductId");
+
+                    b.HasIndex("StoreId", "VariantId", "ProductUnitConversionId", "SellingUnitId");
+
+                    b.ToTable("StorefrontOrderLines", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontOrderLines_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_Discount", "[Discount] >= 0 AND [Discount] = ROUND([Discount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_NetAmount", "[NetAmount] >= 0 AND [NetAmount] = ROUND([NetAmount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_Price", "ROUND([Quantity] * [UnitPrice],0)+[RoundingAdjustment]>=0 AND [Discount]<=ROUND([Quantity] * [UnitPrice],0)+[RoundingAdjustment] AND [NetAmount]=ROUND([Quantity] * [UnitPrice],0)+[RoundingAdjustment]-[Discount]");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_Quantities", "[Quantity] > 0 AND [BaseMultiplier] > 0 AND [BaseQuantity] > 0 AND [BaseQuantity] = ROUND([Quantity] * [BaseMultiplier], 4) AND [UnitPrice] >= 0 AND [WeightKgPerSellingUnit] >= 0");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_RoundingAdjustment", "[RoundingAdjustment] BETWEEN -201 AND 201 AND [RoundingAdjustment] = ROUND([RoundingAdjustment],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontOrderLines_SnapshotJson", "ISJSON([SnapshotJson]) = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontOutboxMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("nvarchar(60)");
+
+                    b.Property<DateTime?>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ProcessedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("ProcessedAtUtc", "NextAttemptAtUtc");
+
+                    b.HasIndex("StoreId", "EventId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "EventId", "StorefrontOrderId", "Revision");
+
+                    b.ToTable("StorefrontOutboxMessages", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontOutboxMessages_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontOutboxMessages_Attempts", "[Attempts] >= 0 AND [Revision] > 0");
+
+                            t.HasCheckConstraint("CK_StorefrontOutboxMessages_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontOutboxMessages_PayloadJson", "ISJSON([PayloadJson]) = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontPaymentAllocation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("ReceiptVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "BankReceiptId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "PaymentIntentId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "BankReceiptId", "BankAccountId", "ReceivingLegalEntityId", "Amount", "ReceiptVerified");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "StorefrontOrderId", "BankAccountId", "ReceivingLegalEntityId", "Amount");
+
+                    b.ToTable("StorefrontPaymentAllocations", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontPaymentAllocations_BankSource");
+
+                            t.HasTrigger("TR_StorefrontPaymentAllocations_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentAllocations_Amount", "[Amount] > 0 AND [Amount] = ROUND([Amount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentAllocations_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentAllocations_Verified", "[ReceiptVerified] = 1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontPaymentIntent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountDue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BankTerminalCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("BankUserCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("BindingSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("ProviderReference")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<int>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "ProviderReference")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "BankAccountId");
+
+                    b.HasIndex("StoreId", "ReceivingLegalEntityId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId")
+                        .IsUnique()
+                        .HasFilter("[IsActive] = 1");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "AmountDue");
+
+                    b.ToTable("StorefrontPaymentIntents", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontPaymentIntents_BankBinding");
+
+                            t.HasTrigger("TR_StorefrontPaymentIntents_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentIntents_AcbBounds", "[AmountDue] <= 2147483647 AND LEN([ProviderReference]) > 0 AND LEN([BankTerminalCode]) > 0 AND LEN([BankUserCode]) > 0 AND [ExpiresAtUtc] > [CreatedAtUtc]");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentIntents_AmountDue", "[AmountDue] > 0 AND [AmountDue] = ROUND([AmountDue], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentIntents_BindingSnapshotJson", "ISJSON([BindingSnapshotJson]) = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontPaymentIntents_Live", "[IsDeleted] = 0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontProduct", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(6000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("DisplayGroup")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontProducts", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontProducts_Live", "[IsDeleted] = 0");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontQrClosureProof", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("CancellationObservationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ProviderReference")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ScanCompletionId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("VerifiedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "CancellationObservationId");
+
+                    b.HasIndex("StoreId", "ScanCompletionId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "Fingerprint")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontQrClosureProofs", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontQrClosureProofs_Immutable");
+
+                            t.HasTrigger("TR_StorefrontQrClosureProofs_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontQrClosureProofs_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontQrClosureProofs_Proof", "DATALENGTH([ProviderReference])=26 AND DATALENGTH([AccountIdentity])=128 AND DATALENGTH([Fingerprint])=128 AND DATALENGTH([ProtectedEvidence])>0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontQrProcessing", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("LastAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("NextAttemptAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextScanBankDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProviderTraceNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("QrPng")
+                        .HasMaxLength(262144)
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTime?>("RequestedBankDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("ReviewCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TraceNumber")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VirtualAccount")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("NextAttemptAtUtc", "State");
+
+                    b.HasIndex("StoreId", "PaymentIntentId")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontQrProcessing", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontQrProcessing_Binding");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontQuote", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<decimal>("GoodsAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SettingsRevision")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ShippingCharge")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ShippingRateId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("Token")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("TotalDue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ShippingRateId");
+
+                    b.HasIndex("StoreId", "Token")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontQuotes", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontQuotes_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontQuotes_GoodsAmount", "[GoodsAmount] > 0 AND [GoodsAmount] = ROUND([GoodsAmount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontQuotes_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontQuotes_Quote", "[Revision] > 0 AND [SettingsRevision] > 0 AND [TotalDue] = [GoodsAmount] + [ShippingCharge] AND [ExpiresAtUtc] > [CreatedAtUtc]");
+
+                            t.HasCheckConstraint("CK_StorefrontQuotes_ShippingCharge", "[ShippingCharge] >= 0 AND [ShippingCharge] = ROUND([ShippingCharge], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontQuotes_SnapshotJson", "ISJSON([SnapshotJson]) = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontQuotes_TotalDue", "[TotalDue] > 0 AND [TotalDue] = ROUND([TotalDue], 0)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefund", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("ApprovedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GoodsAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<decimal>("ShippingAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("State")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("UnallocatedReceiptAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ApprovedByUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontRefunds", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontRefunds_ObligationV7");
+
+                            t.HasCheckConstraint("CK_StorefrontRefunds_Amount", "[Amount] > 0 AND [Amount] = ROUND([Amount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontRefunds_GoodsAmount", "[GoodsAmount] >= 0 AND [GoodsAmount] = ROUND([GoodsAmount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontRefunds_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontRefunds_ShippingAmount", "[ShippingAmount] >= 0 AND [ShippingAmount] = ROUND([ShippingAmount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontRefunds_Total", "[Amount] = [GoodsAmount] + [ShippingAmount] + [UnallocatedReceiptAmount] AND [State] BETWEEN 1 AND 4");
+
+                            t.HasCheckConstraint("CK_StorefrontRefunds_UnallocatedReceiptAmount", "[UnallocatedReceiptAmount] >= 0 AND [UnallocatedReceiptAmount] = ROUND([UnallocatedReceiptAmount], 0)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefundDecision", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("DecidedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("RefundId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "RefundId", "Id");
+
+                    b.HasIndex("StoreId", "RefundId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontRefundDecisions", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontRefundDecisions_Immutable");
+
+                            t.HasTrigger("TR_StorefrontRefundDecisions_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundDecisions_Decision", "([Kind]=1 OR [Kind]=2) AND LEN([Reason])>0");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundDecisions_Live", "[IsDeleted]=0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefundEvidence", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("BankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ConfirmedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EvidenceFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("EvidenceReference")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<DateTime>("ExecutedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ExternalPayoutKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Fund")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<int?>("FundingId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("POSShiftCashTransactionId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PayerBankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PayerLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("PayoutSourceKind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedPayoutEvidence")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("RefundId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceSnapshotJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("TreasuryEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("VerificationMethod")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("ExternalPayoutKey")
+                        .IsUnique();
+
+                    b.HasIndex("POSShiftCashTransactionId")
+                        .IsUnique()
+                        .HasFilter("[POSShiftCashTransactionId] IS NOT NULL");
+
+                    b.HasIndex("TreasuryEntryId")
+                        .IsUnique()
+                        .HasFilter("[TreasuryEntryId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "BankReceiptId");
+
+                    b.HasIndex("StoreId", "ConfirmedByUserId");
+
+                    b.HasIndex("StoreId", "POSShiftCashTransactionId");
+
+                    b.HasIndex("StoreId", "PayerBankAccountId");
+
+                    b.HasIndex("StoreId", "PayerLegalEntityId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "TreasuryEntryId");
+
+                    b.HasIndex("StoreId", "RefundId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "FundingId", "RefundId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontRefundEvidence", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontRefundEvidence_Immutable");
+
+                            t.HasTrigger("TR_StorefrontRefundEvidence_SourceV7");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundEvidence_Amount", "[Amount] > 0 AND [Amount] = ROUND([Amount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundEvidence_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundEvidence_NativePayout", "([FundingId] IS NULL AND [PayoutSourceKind] IS NULL AND [TreasuryEntryId] IS NULL AND [POSShiftCashTransactionId] IS NULL AND [PayerBankAccountId] IS NULL AND [PayerLegalEntityId] IS NULL AND [Fund] IS NULL AND [VerificationMethod] IS NULL AND [EvidenceReference] IS NULL AND [ProtectedPayoutEvidence] IS NULL AND [SourceSnapshotJson] IS NULL) OR ([FundingId] IS NOT NULL AND [PayerLegalEntityId] IS NOT NULL AND [Fund] IS NOT NULL AND ([Fund]=N'cash' OR [Fund]=N'bank') AND [VerificationMethod] IS NOT NULL AND [EvidenceReference] IS NOT NULL AND LEN([EvidenceReference])>0 AND [ProtectedPayoutEvidence] IS NOT NULL AND DATALENGTH([ProtectedPayoutEvidence])>0 AND [SourceSnapshotJson] IS NOT NULL AND ISJSON([SourceSnapshotJson])=1 AND LEFT(LTRIM(REPLACE(REPLACE(REPLACE([SourceSnapshotJson],NCHAR(9),N''),NCHAR(10),N''),NCHAR(13),N'')),1)=N'{' AND (([PayoutSourceKind]=1 AND [POSShiftCashTransactionId] IS NOT NULL) OR ([PayoutSourceKind]=2 AND [TreasuryEntryId] IS NOT NULL)))");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefundFunding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("CodReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GlobalBankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RefundId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("CodReceiptId")
+                        .IsUnique()
+                        .HasFilter("[CodReceiptId] IS NOT NULL");
+
+                    b.HasIndex("GlobalBankReceiptId")
+                        .IsUnique()
+                        .HasFilter("[GlobalBankReceiptId] IS NOT NULL");
+
+                    b.HasIndex("StoreId", "CodReceiptId");
+
+                    b.HasIndex("StoreId", "GlobalBankReceiptId");
+
+                    b.HasIndex("StoreId", "ReceivingLegalEntityId");
+
+                    b.HasIndex("StoreId", "RefundId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.HasIndex("StoreId", "RefundId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontRefundFundings", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontRefundFundings_Immutable");
+
+                            t.HasTrigger("TR_StorefrontRefundFundings_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundFundings_Amount", "[Amount]>0 AND [Amount]<10000000000000000 AND [Amount]=ROUND([Amount],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundFundings_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontRefundFundings_Source", "(([Kind]=1 AND [GlobalBankReceiptId] IS NOT NULL AND [CodReceiptId] IS NULL AND [ReceivingLegalEntityId] IS NOT NULL) OR ([Kind]=2 AND [CodReceiptId] IS NOT NULL)) AND ISJSON([SourceSnapshotJson])=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontReservationLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InventoryReservationId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "InventoryReservationId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "OrderLineId");
+
+                    b.ToTable("StorefrontReservationLinks", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontReservationLinks_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontReservationLinks_Live", "[IsDeleted] = 0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontReservationTransfer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("BaseQuantity")
+                        .HasPrecision(18, 4)
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryReservationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OrderLineId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WebReservationId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "DeliveryReservationId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "WebReservationId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "FulfillmentSourceId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "OrderLineId");
+
+                    b.ToTable("StorefrontReservationTransfers", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontReservationTransfers_Immutable");
+
+                            t.HasTrigger("TR_StorefrontReservationTransfers_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontReservationTransfers_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontReservationTransfers_Qty", "[BaseQuantity]>0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSaleBinding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClientRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SaleOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SettlingShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "SaleOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "SettlingShiftId", "ActorUserId");
+
+                    b.ToTable("StorefrontSaleBindings", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontSaleBindings_Immutable");
+
+                            t.HasTrigger("TR_StorefrontSaleBindings_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontSaleBindings_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontSaleBindings_SourceSnapshotJson", "ISJSON([SourceSnapshotJson])=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSellingUnit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("ProductUnitConversionId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontVariantId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UnitId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "ProductUnitConversionId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontVariantId", "VariantId");
+
+                    b.HasIndex("StoreId", "VariantId", "ProductUnitConversionId", "UnitId");
+
+                    b.ToTable("StorefrontSellingUnits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontSellingUnits_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontSellingUnits_WeightKg", "[WeightKg] IS NULL OR [WeightKg] > 0");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontServiceFunding", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int?>("CarrierWithholdingId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("CodReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("GlobalBankReceiptId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ServiceRevenueId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "CarrierWithholdingId");
+
+                    b.HasIndex("StoreId", "CodReceiptId");
+
+                    b.HasIndex("StoreId", "GlobalBankReceiptId");
+
+                    b.HasIndex("StoreId", "ServiceRevenueId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId");
+
+                    b.ToTable("StorefrontServiceFundings", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontServiceFundings_Immutable");
+
+                            t.HasTrigger("TR_StorefrontServiceFundings_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceFundings_Amount", "[Amount]>0 AND [Amount]<10000000000000000 AND [Amount]=ROUND([Amount],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceFundings_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceFundings_Source", "(CASE WHEN [GlobalBankReceiptId] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [CodReceiptId] IS NOT NULL THEN 1 ELSE 0 END + CASE WHEN [CarrierWithholdingId] IS NOT NULL THEN 1 ELSE 0 END)=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontServiceRevenue", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("CashOnlyFunding")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GrossAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<byte>("InvoiceRoute")
+                        .HasColumnType("tinyint");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<decimal>("NetAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("RecognizedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SettlingShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SourceSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TaxAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("TaxId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("TaxRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("decimal(5,2)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ActorUserId");
+
+                    b.HasIndex("StoreId", "LegalEntityId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "TaxId");
+
+                    b.HasIndex("StoreId", "SettlingShiftId", "ActorUserId");
+
+                    b.ToTable("StorefrontServiceRevenues", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontServiceRevenues_Immutable");
+
+                            t.HasTrigger("TR_StorefrontServiceRevenues_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceRevenues_Arithmetic", "[GrossAmount]=[NetAmount]+[TaxAmount] AND [NetAmount]>=0 AND [TaxAmount]>=0 AND [TaxRate]>=0 AND [TaxRate]<=100 AND [InvoiceRoute] IN (1,2)");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceRevenues_GrossAmount", "[GrossAmount]>0 AND [GrossAmount]<10000000000000000 AND [GrossAmount]=ROUND([GrossAmount],0)");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceRevenues_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceRevenues_SourceSnapshotJson", "ISJSON([SourceSnapshotJson])=1");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontServiceRevenueSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("InvoiceRoute")
+                        .HasColumnType("tinyint");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("LegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TaxId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "LegalEntityId");
+
+                    b.HasIndex("StoreId", "TaxId");
+
+                    b.ToTable("StorefrontServiceRevenueSettings", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontServiceRevenueSettings_Source");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceRevenueSettings_Live", "[IsDeleted]=0");
+
+                            t.HasCheckConstraint("CK_StorefrontServiceRevenueSettings_Route", "[InvoiceRoute] IN (1,2)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllowNegativeInventory")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("BankAccountId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BankTerminalCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("BankUserCode")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("CodEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ContactPhone")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("LogoPath")
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<bool>("QrEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("QrHoldMinutes")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("ReceivingLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<bool>("ShippingByWeight")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ShippingFeeTreatment")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(1);
+
+                    b.Property<int?>("SourceLegalEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SourceWarehouseId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "BankAccountId");
+
+                    b.HasIndex("StoreId", "ReceivingLegalEntityId");
+
+                    b.HasIndex("StoreId", "SourceWarehouseId", "SourceLegalEntityId");
+
+                    b.ToTable("StorefrontSettings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontSettings_BankPair", "([BankAccountId] IS NULL AND [ReceivingLegalEntityId] IS NULL) OR ([BankAccountId] IS NOT NULL AND [ReceivingLegalEntityId] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_StorefrontSettings_FeeTreatment", "[ShippingFeeTreatment] = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontSettings_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontSettings_QrConfig", "[QrEnabled] = 0 OR ([BankAccountId] IS NOT NULL AND [ReceivingLegalEntityId] IS NOT NULL AND [QrHoldMinutes] IS NOT NULL AND LEN(LTRIM(RTRIM([BankTerminalCode]))) > 0 AND LEN(LTRIM(RTRIM([BankUserCode]))) > 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontSettings_QrHold", "[QrHoldMinutes] IS NULL OR [QrHoldMinutes] BETWEEN 1 AND 10080");
+
+                            t.HasCheckConstraint("CK_StorefrontSettings_Revision", "[Revision] > 0");
+
+                            t.HasCheckConstraint("CK_StorefrontSettings_SourcePair", "([SourceWarehouseId] IS NULL AND [SourceLegalEntityId] IS NULL) OR ([SourceWarehouseId] IS NOT NULL AND [SourceLegalEntityId] IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSettlementLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("AllocationSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("DeliveryExpense")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("FulfillmentSourceId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("GoodsAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SaleOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SettledByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SettlingShiftId")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ShippingServiceAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontOrderId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "FulfillmentSourceId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "SaleOrderId");
+
+                    b.HasIndex("StoreId", "SettledByUserId");
+
+                    b.HasIndex("StoreId", "SaleOrderId", "SettlingShiftId");
+
+                    b.HasIndex("StoreId", "SettlingShiftId", "SettledByUserId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "FulfillmentSourceId");
+
+                    b.HasIndex("StoreId", "StorefrontOrderId", "SaleOrderId", "SettlingShiftId", "SettledByUserId");
+
+                    b.ToTable("StorefrontSettlementLinks", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontSettlementLinks_NativeSource");
+
+                            t.HasCheckConstraint("CK_StorefrontSettlementLinks_AllocationSnapshotJson", "ISJSON([AllocationSnapshotJson]) = 1");
+
+                            t.HasCheckConstraint("CK_StorefrontSettlementLinks_DeliveryExpense", "[DeliveryExpense] >= 0 AND [DeliveryExpense] = ROUND([DeliveryExpense], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontSettlementLinks_GoodsAmount", "[GoodsAmount] >= 0 AND [GoodsAmount] = ROUND([GoodsAmount], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontSettlementLinks_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontSettlementLinks_ShippingServiceAmount", "[ShippingServiceAmount] >= 0 AND [ShippingServiceAmount] = ROUND([ShippingServiceAmount], 0)");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontShippingRate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AdditionalFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<decimal>("AdditionalStepKg")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<decimal>("BaseFee")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("ByWeight")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("FirstWeightKg")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<decimal?>("FreeFromGoodsAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("ShippingZoneId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "ShippingZoneId")
+                        .IsUnique()
+                        .HasFilter("[IsCurrent] = 1");
+
+                    b.HasIndex("StoreId", "ShippingZoneId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontShippingRates", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontShippingRates_Immutable");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_AdditionalFee", "[AdditionalFee] >= 0 AND [AdditionalFee] = ROUND([AdditionalFee], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_AdditionalStepKg", "[AdditionalStepKg] > 0");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_BaseFee", "[BaseFee] >= 0 AND [BaseFee] = ROUND([BaseFee], 0)");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_FirstWeightKg", "[FirstWeightKg] > 0");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_FreeThreshold", "[FreeFromGoodsAmount] IS NULL OR ([FreeFromGoodsAmount] > 0 AND [FreeFromGoodsAmount] = ROUND([FreeFromGoodsAmount], 0))");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingRates_Revision", "[Revision] > 0");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontShippingZone", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("nvarchar(2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("DeliveryMethod")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxDeliveryDays")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinDeliveryDays")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("ProvinceCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<int>("Revision")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("WardCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId", "Code")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "DeliveryMethod", "CountryCode", "ProvinceCode", "WardCode")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontShippingZones", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontShippingZones_Live", "[IsDeleted] = 0");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingZones_Scope", "[CountryCode] = N'VN' AND ([WardCode] = N'' OR [ProvinceCode] <> N'') AND ([DeliveryMethod] = 1 OR [ProvinceCode] <> N'')");
+
+                            t.HasCheckConstraint("CK_StorefrontShippingZones_State", "[Revision] > 0 AND [DeliveryMethod] IN (0, 1) AND [MinDeliveryDays] >= 0 AND [MaxDeliveryDays] >= [MinDeliveryDays] AND [MaxDeliveryDays] <= 365");
+                        });
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontUnattributedBankReceipt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("BankBusinessDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ExternalTransactionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ObservedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PaymentIntentId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProtectedEvidence")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("RawBankTime")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ReportedAccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<string>("RequestedAccountIdentity")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TimePrecision")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "PaymentIntentId", "Fingerprint")
+                        .IsUnique();
+
+                    b.ToTable("StorefrontUnattributedBankReceipts", null, t =>
+                        {
+                            t.HasTrigger("TR_StorefrontUnattributedBankReceipts_BankEvidence");
+                        });
+
+                    b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontVariant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("BaseUnitIsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<decimal?>("BaseUnitWeightKg")
+                        .HasPrecision(18, 6)
+                        .HasColumnType("decimal(18,6)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime2")
+                        .HasDefaultValueSql("SYSUTCDATETIME()");
+
+                    b.Property<int?>("CreatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedBy")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsPublished")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("StoreId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("StorefrontProductId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedBy")
+                        .HasColumnType("int");
+
+                    b.Property<int>("VariantId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("StoreId", "Id");
+
+                    b.HasIndex("StoreId", "VariantId")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "StorefrontProductId", "ProductId");
+
+                    b.HasIndex("StoreId", "VariantId", "ProductId");
+
+                    b.ToTable("StorefrontVariants", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_StorefrontVariants_BaseUnitWeightKg", "[BaseUnitWeightKg] IS NULL OR [BaseUnitWeightKg] > 0");
+
+                            t.HasCheckConstraint("CK_StorefrontVariants_Live", "[IsDeleted] = 0");
+                        });
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryCommandReceipt", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.Store", "Store")
@@ -16425,17 +23144,17 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("GaoApp.Domain.Entities.InventoryCostLayerAllocation", null)
-                        .WithMany()
-                        .HasForeignKey("StoreId", "InventoryCostLayerAllocationId")
-                        .HasPrincipalKey("StoreId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("GaoApp.Domain.Delivery.DeliveryOrderLine", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "DeliveryOrderId", "DeliveryOrderLineId")
                         .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryCostLayerAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryCostLayerAllocationId", "InventoryValuationEntryId")
+                        .HasPrincipalKey("StoreId", "Id", "InventoryValuationEntryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -16453,12 +23172,18 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.InventoryValuationEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryValuationEntryId", "InventoryTransactionId", "SourceWarehouseId", "VariantId")
+                        .HasPrincipalKey("StoreId", "Id", "InventoryTransactionId", "WarehouseId", "ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("GaoApp.Domain.Entities.InventoryCostBudgetDebit", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "InventoryCostBudgetDebitId", "SourceWarehouseId", "VariantId", "SourceLegalEntityId", "InventoryCostLayerId", "InventoryTransactionId", "InventoryValuationEntryId", "InventoryCostLayerAllocationId")
                         .HasPrincipalKey("StoreId", "Id", "WarehouseId", "ProductVariantId", "SourceLegalEntityId", "InventoryCostLayerId", "InventoryTransactionId", "InventoryValuationEntryId", "InventoryCostLayerAllocationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Store");
                 });
@@ -16530,15 +23255,13 @@ namespace GaoApp.Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("StoreId", "SourceCartId")
                         .HasPrincipalKey("StoreId", "Id")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("GaoApp.Domain.Entities.POSShift", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "CreatedShiftId", "CreatedTerminalId")
                         .HasPrincipalKey("StoreId", "Id", "TerminalId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("GaoApp.Domain.Entities.Warehouse", null)
                         .WithMany()
@@ -16546,6 +23269,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrincipalKey("StoreId", "Id", "LegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "StorefrontFulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Store");
                 });
@@ -16563,6 +23292,13 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasForeignKey("StoreId", "BaseUnitId")
                         .HasPrincipalKey("StoreId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", "DeliveryOrder")
+                        .WithMany("Lines")
+                        .HasForeignKey("StoreId", "DeliveryOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("GaoApp.Domain.Entities.Unit", null)
                         .WithMany()
@@ -16583,17 +23319,16 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrincipalKey("StoreId", "DeliveryOrderId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", "DeliveryOrder")
-                        .WithMany("Lines")
-                        .HasForeignKey("StoreId", "DeliveryOrderId", "SourceCartId")
-                        .HasPrincipalKey("StoreId", "Id", "SourceCartId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("GaoApp.Domain.Entities.OrderLine", null)
                         .WithMany()
                         .HasForeignKey("StoreId", "SourceCartId", "SourceOrderLineId")
                         .HasPrincipalKey("StoreId", "OrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "StorefrontOrderLineId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("GaoApp.Domain.Entities.ProductUnitConversion", null)
@@ -16964,6 +23699,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankVerifiedReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Store");
                 });
 
@@ -17028,6 +23769,17 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Parent");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.AdminMenuPinSetting", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.Navigation("Store");
                 });
@@ -17133,6 +23885,183 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationDevice", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationDismissal", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.BankNotificationReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("ReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankNotificationWait", null)
+                        .WithMany()
+                        .HasForeignKey("WaitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.BankNotificationWait", null)
+                        .WithMany()
+                        .HasForeignKey("AppliedWaitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankNotificationDevice", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.OrderPayment", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankNotificationWait", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.PosPaymentQrRequest", null)
+                        .WithMany()
+                        .HasForeignKey("QrId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShift", null)
+                        .WithMany()
+                        .HasForeignKey("ShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSTerminal", null)
+                        .WithMany()
+                        .HasForeignKey("TerminalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankPaymentReference", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("OriginStoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.PosPaymentQrRequest", null)
+                        .WithMany()
+                        .HasForeignKey("PosQrRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StorefrontPaymentIntentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankReceiptConflict", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("BankVerifiedReceiptId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankReceiptConsumption", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.OrderPayment", null)
+                        .WithMany()
+                        .HasForeignKey("PosPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("StorefrontAllocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("OriginStoreId", "BankVerifiedReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.BankVerifiedReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("BankAccountId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("OriginStoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.Brand", b =>
@@ -17249,6 +24178,76 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasForeignKey("StoreBankAccountId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingCampaign", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingCampaignRecipient", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.InvoiceRecipientBinding", null)
+                        .WithMany()
+                        .HasForeignKey("BindingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.CustomerMarketingCampaign", null)
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingConsent", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.CustomerMarketingConsentEvent", b =>
+                {
                     b.HasOne("GaoApp.Domain.Entities.Store", "Store")
                         .WithMany()
                         .HasForeignKey("StoreId")
@@ -17805,6 +24804,20 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrincipalKey("StoreId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "StorefrontOrderLineId", "ProductVariantId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id", "VariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_InventoryReservations_StorefrontOrderLine");
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "StorefrontFulfillmentSourceId", "WarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_InventoryReservations_StorefrontFulfillmentSource");
+
                     b.Navigation("ProductVariant");
 
                     b.Navigation("Store");
@@ -17988,6 +25001,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasPrincipalKey("StoreId", "Id")
                         .OnDelete(DeleteBehavior.NoAction);
 
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontServiceRevenue", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontServiceRevenueId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("InvoiceHead");
 
                     b.Navigation("OrderLegalEntityAllocation");
@@ -18026,6 +25045,18 @@ namespace GaoApp.Infrastructure.Migrations
                     b.HasOne("GaoApp.Domain.Entities.LegalEntity", "LegalEntity")
                         .WithMany()
                         .HasForeignKey("StoreId", "LegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "NativeServiceActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontServiceRevenue", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontServiceRevenueId")
                         .HasPrincipalKey("StoreId", "Id")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -18086,6 +25117,20 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Store");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceNotificationOutbox", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.InvoiceRecipientBinding", null)
+                        .WithMany()
+                        .HasForeignKey("BindingId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceProviderSetting", b =>
                 {
                     b.HasOne("GaoApp.Domain.Entities.Store", "Store")
@@ -18095,6 +25140,21 @@ namespace GaoApp.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Entities.InvoiceRecipientBinding", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("GaoApp.Domain.Entities.KioskStation", b =>
@@ -18464,6 +25524,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InvoiceUnitId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("GaoApp.Domain.Entities.LegalEntity", "LegalEntity")
                         .WithMany()
                         .HasForeignKey("StoreId", "LegalEntityId")
@@ -18605,6 +25671,12 @@ namespace GaoApp.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "StorefrontOrderLineId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Order");
 
                     b.Navigation("Store");
@@ -18636,6 +25708,24 @@ namespace GaoApp.Infrastructure.Migrations
                         .HasForeignKey("StoreId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankVerifiedReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCarrierWithholding", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontCarrierWithholdingId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCodReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontCodReceiptId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Order");
 
@@ -20540,6 +27630,1613 @@ namespace GaoApp.Infrastructure.Migrations
                     b.Navigation("Store");
                 });
 
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankCollectionAuthority", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankAccountId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReceivingLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankObservation", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankAccountId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "GlobalBankReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReceivingLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankReviewRestriction", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankScanAttempt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontBankScanCompletion", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontBankScanAttempt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ScanAttemptId", "StorefrontOrderId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId", "PaymentIntentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCancellationDecision", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActualDeliveryEvidenceId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActualReturnEvidenceId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCancellationRequest", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CancellationRequestId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCancellationRequest", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCancellationReviewAcknowledgement", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCancellationDecision", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CancellationDecisionId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCarrierWithholding", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "LegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.OperatingExpense", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "OperatingExpenseId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCodBankRouting", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "GlobalBankReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReceivingLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCodCollection", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "RecordedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "FulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCodReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCodBankRouting", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CodBankRoutingId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "GlobalBankReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShiftCashTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "POSShiftCashTransactionId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.TreasuryEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TreasuryEntryId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCommandReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontCustodyIncident", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "EvidenceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "ReconciledByEvidenceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontEvent", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "FulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Warehouse", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "SourceWarehouseId", "SourceLegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontFulfillmentWork", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CourierUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Delivery.DeliveryOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "FulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentEvidence", "LatestEvidence")
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "LatestEvidenceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("LatestEvidence");
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontInventoryIssueSource", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryCostLayerAllocation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryCostLayerAllocationId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryValuationEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryValuationEntryId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.OrderInventoryIssue", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "OrderInventoryIssueId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.OrderInventoryIssueLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "OrderInventoryIssueLineId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontInvoiceWork", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SaleOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontServiceRevenue", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ServiceRevenueId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontLineSource", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryTransactionId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "FulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "OrderLineId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontMedia", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.MediaAsset", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "MediaAssetId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontProduct", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontProductId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontNotificationAttestation", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankAccountId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankNotificationReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankNotificationReceiptId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankNotificationDevice", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeviceId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontNotificationCertification", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "GlobalBankReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontNotificationAttestation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "NotificationAttestationId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontOrder", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontQuote", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "QuoteId", "GoodsAmount", "ShippingCharge", "TotalDue")
+                        .HasPrincipalKey("StoreId", "Id", "GoodsAmount", "ShippingCharge", "TotalDue")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontOrderLine", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Unit", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SellingUnitId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId", "ProductId")
+                        .HasPrincipalKey("StoreId", "Id", "ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductUnitConversion", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId", "ProductUnitConversionId", "SellingUnitId")
+                        .HasPrincipalKey("StoreId", "ProductVariantId", "Id", "UnitId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontOutboxMessage", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontEvent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "EventId", "StorefrontOrderId", "Revision")
+                        .HasPrincipalKey("StoreId", "EventId", "StorefrontOrderId", "Revision")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontPaymentAllocation", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontBankReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankReceiptId", "BankAccountId", "ReceivingLegalEntityId", "Amount", "ReceiptVerified")
+                        .HasPrincipalKey("StoreId", "Id", "BankAccountId", "ReceivingLegalEntityId", "Amount", "IsVerified")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId", "StorefrontOrderId", "BankAccountId", "ReceivingLegalEntityId", "Amount")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId", "BankAccountId", "ReceivingLegalEntityId", "AmountDue")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontPaymentIntent", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankAccountId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReceivingLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "AmountDue")
+                        .HasPrincipalKey("StoreId", "Id", "TotalDue")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontProduct", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ProductId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontQrClosureProof", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontBankObservation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CancellationObservationId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontBankScanCompletion", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ScanCompletionId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontQrProcessing", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontQuote", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontShippingRate", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ShippingRateId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefund", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ApprovedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefundDecision", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontRefund", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "RefundId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefundEvidence", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontBankReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankReceiptId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ConfirmedByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShiftCashTransaction", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "POSShiftCashTransactionId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PayerBankAccountId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PayerLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.TreasuryEntry", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TreasuryEntryId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontRefund", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "RefundId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontRefundFunding", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "FundingId", "RefundId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "RefundId", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontRefundFunding", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCodReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CodReceiptId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "GlobalBankReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReceivingLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontRefund", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "RefundId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id", "StorefrontOrderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontReservationLink", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryReservation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "InventoryReservationId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "OrderLineId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontReservationTransfer", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryReservation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "DeliveryReservationId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.InventoryReservation", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "WebReservationId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "FulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrderLine", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "OrderLineId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSaleBinding", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SaleOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShift", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SettlingShiftId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "Id", "OpenedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSellingUnit", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontVariant", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontVariantId", "VariantId")
+                        .HasPrincipalKey("StoreId", "Id", "VariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductUnitConversion", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId", "ProductUnitConversionId", "UnitId")
+                        .HasPrincipalKey("StoreId", "ProductVariantId", "Id", "UnitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontServiceFunding", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCarrierWithholding", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CarrierWithholdingId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontCodReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "CodReceiptId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.BankVerifiedReceipt", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "GlobalBankReceiptId")
+                        .HasPrincipalKey("OriginStoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontServiceRevenue", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ServiceRevenueId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontServiceRevenue", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "LegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Tax", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TaxId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShift", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SettlingShiftId", "ActorUserId")
+                        .HasPrincipalKey("StoreId", "Id", "OpenedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontServiceRevenueSetting", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "LegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Tax", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "TaxId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSettings", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.StoreBankAccount", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "BankAccountId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.LegalEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ReceivingLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("GaoApp.Domain.Entities.Warehouse", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SourceWarehouseId", "SourceLegalEntityId")
+                        .HasPrincipalKey("StoreId", "Id", "LegalEntityId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontSettlementLink", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.UserInStore", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SettledByUserId")
+                        .HasPrincipalKey("StoreId", "UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontOrder", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.Order", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SaleOrderId", "SettlingShiftId")
+                        .HasPrincipalKey("StoreId", "Id", "POSShiftId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.POSShift", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "SettlingShiftId", "SettledByUserId")
+                        .HasPrincipalKey("StoreId", "Id", "OpenedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontFulfillmentSource", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "FulfillmentSourceId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontSaleBinding", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontOrderId", "SaleOrderId", "SettlingShiftId", "SettledByUserId")
+                        .HasPrincipalKey("StoreId", "StorefrontOrderId", "SaleOrderId", "SettlingShiftId", "ActorUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontShippingRate", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontShippingZone", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "ShippingZoneId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontShippingZone", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontUnattributedBankReceipt", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontPaymentIntent", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "PaymentIntentId")
+                        .HasPrincipalKey("StoreId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
+            modelBuilder.Entity("GaoApp.Domain.Storefront.StorefrontVariant", b =>
+                {
+                    b.HasOne("GaoApp.Domain.Entities.Store", "Store")
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Storefront.StorefrontProduct", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "StorefrontProductId", "ProductId")
+                        .HasPrincipalKey("StoreId", "Id", "ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("GaoApp.Domain.Entities.ProductVariant", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId", "VariantId", "ProductId")
+                        .HasPrincipalKey("StoreId", "Id", "ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Store");
+                });
+
             modelBuilder.Entity("GaoApp.Domain.Delivery.DeliveryOrder", b =>
                 {
                     b.Navigation("Lines");
@@ -20886,3 +29583,4 @@ namespace GaoApp.Infrastructure.Migrations
         }
     }
 }
+

@@ -1,0 +1,43 @@
+@using System.Text.Json
+@using GaoApp.Web.Services.Printing
+@{
+    ViewData["Title"] = "Máy in của quầy";
+    var current = (ReceiptDefault)ViewBag.ReceiptDefault;
+    var info = (ReceiptStoreInfo)ViewBag.StoreInfo;
+    var setup = new { storeId = (int)ViewBag.StoreId, terminalId = (int?)ViewBag.TerminalId, receiptDefault = current, storeInfo = info };
+}
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos.printer-settings.css" asp-append-version="true" />
+}
+<main id="posPrinterSettings" class="pos-printer-settings">
+    @Html.AntiForgeryToken()
+    <header class="pps-heading"><div><p class="pps-eyebrow">THIẾT LẬP MÁY IN TẠI QUẦY</p><h1>Máy in của quầy</h1>
+        <p>@info.StoreName · @ViewBag.TerminalName</p></div><a class="btn btn-outline-secondary" href="@Url.Content("~/admin/pos")">Về bán hàng</a></header>
+    <p id="printerSettingsMessage" class="alert" role="status" hidden></p>
+    <section class="pps-card" aria-labelledby="printerConnectionTitle">
+        <h2 id="printerConnectionTitle">Chọn cách in</h2>
+        <p>Cấu hình được lưu riêng trên trình duyệt và quầy đang dùng. Nhân viên có thể tự chọn máy in trên thiết bị này.</p>
+        <label for="printMode">Cách in</label>
+        <select id="printMode" class="form-select"><option value="browser">Hộp thoại in của trình duyệt</option><option value="qz">Máy in đã cài trên thiết bị · QZ Tray</option><option value="helper">Linux Print Helper</option></select>
+        <div id="qzSettings" class="pps-section" hidden>
+            <div class="pps-connect"><label for="clientPrinter">Máy in Windows / Linux</label><button type="button" id="connectPrinters" class="btn btn-outline-primary">Kết nối máy in</button></div>
+            <select id="clientPrinter" class="form-select"><option value="">Chưa chọn máy in</option></select>
+            <p class="pps-help">Cài và mở <a href="https://qz.io/download/" target="_blank" rel="noopener">QZ Tray</a> trên thiết bị này rồi kết nối để chọn máy in đã cài.</p>
+        </div>
+        <div id="helperSettings" class="pps-section" hidden><p class="pps-help">Dùng Print Helper trên máy Linux với giấy 80 mm. Cho phép truy cập mạng cục bộ khi trình duyệt hỏi.</p><button id="checkHelper" type="button" class="btn btn-outline-primary">Kiểm tra Print Helper</button></div>
+        <div id="printCopySettings" class="pps-section" hidden><label for="printCopies">Số bản in</label><input id="printCopies" type="number" min="1" max="5" step="1" value="1" class="form-control" inputmode="numeric" /></div>
+        <p id="activePrintProfile" class="pps-profile" role="status"></p>
+        <div class="pps-actions"><button id="applyTemplate" type="button" class="btn btn-primary">Lưu máy in tại quầy</button><button id="testPrint" type="button" class="btn btn-outline-secondary">In thử</button></div>
+        <p class="pps-help">In đen trắng. Chọn đúng khổ giấy trong driver máy in; giấy 58 mm có thể có vùng in khoảng 45 mm.</p>
+    </section>
+    <section class="pps-card pps-default" aria-labelledby="printerDefaultTitle"><h2 id="printerDefaultTitle">Mẫu hóa đơn đang dùng</h2><strong>@current.Template.Design.Name</strong>
+        <p>Khổ @current.Template.Design.PaperSize@(current.Template.Design.PaperSize is "45" or "80" ? " mm" : ""). Mẫu và thông tin tiệm do admin quản lý, dùng chung cho cửa hàng.</p></section>
+</main>
+<script id="posPrinterSettingsData" type="application/json">@Html.Raw(JsonSerializer.Serialize(setup, ReceiptTemplateService.Json))</script>
+@section PageScripts {
+    <script src="~/Admin/js/printing/qz-tray.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/receipt.templates.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/pos.printing.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/printing/pos.printer-settings.js" asp-append-version="true"></script>
+}

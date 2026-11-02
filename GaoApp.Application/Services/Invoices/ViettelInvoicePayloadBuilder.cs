@@ -108,6 +108,19 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
 
         var preBuild = preBuildValidationResult.Value;
 
+        if (invoice.RevenueTaxPercentage.HasValue && (invoice.IsAutoInvoiceGroup ||
+            (invoice.InvoiceIssuanceRoute == GaoApp.Domain.Enums.InvoiceIssuanceRoute.Automatic && !invoice.IsReplacementInvoice)))
+            return Result<ViettelInvoicePayloadResultDto>.Failure(Error.Validation("Invoice.RevenueTaxManualOnly", "Giảm thuế theo doanh thu chỉ được cấu hình trên hóa đơn thủ công."));
+
+        var revenueTaxError = InvoiceRevenueTaxPolicy.Validate(invoice.RevenueTaxPercentage, snapshot.InvoiceType,
+            invoice.CorrectionType, VietnamTime.Today,
+            preBuild.ActiveDetails.Any(x => x.VatRate != 0 || x.VatAmount != 0));
+        if (revenueTaxError != null)
+            return Result<ViettelInvoicePayloadResultDto>.Failure(revenueTaxError);
+        if (invoice.RevenueTaxPercentage.HasValue &&
+            !string.Equals(string.IsNullOrWhiteSpace(setting.CurrencyCode) ? "VND" : setting.CurrencyCode, "VND", StringComparison.OrdinalIgnoreCase))
+            return Result<ViettelInvoicePayloadResultDto>.Failure(Error.Validation("Invoice.RevenueTaxCurrencyInvalid", "Giảm thuế theo doanh thu hiện hỗ trợ hóa đơn VND."));
+
         var warnings = new List<string>();
         if (useCurrentSetting)
             warnings.Add("Hóa đơn nháp GaoStore sử dụng cấu hình Viettel đang hoạt động của cửa hàng.");
@@ -119,7 +132,12 @@ public class ViettelInvoicePayloadBuilder : IViettelInvoicePayloadBuilder
             warnings,
             invoice.CorrectionType);
 
-        var summaryResult = ViettelSummaryInfoBuilder.Build(itemInfo);
+        var summaryResult = ViettelSummaryInfoBuilder.Build(itemInfo, invoice.RevenueTaxPercentage);
+        if (invoice.RevenueTaxPercentage.HasValue &&
+            (invoice.GrandTotal != summaryResult.TotalAmountWithTax || invoice.RevenueTaxReductionAmount !=
+                InvoiceRevenueTaxPolicy.Reduction(itemInfo.Sum(x => x.ItemTotalAmountWithTax), invoice.RevenueTaxPercentage)))
+            return Result<ViettelInvoicePayloadResultDto>.Failure(Error.Validation("Invoice.RevenueTaxTotalsChanged",
+                "Số tiền giảm thuế chưa khớp chi tiết hóa đơn. Lưu lại lựa chọn giảm thuế và kiểm tra tổng tiền trước khi phát hành."));
 
         AddTotalMismatchWarnings(
             invoice,

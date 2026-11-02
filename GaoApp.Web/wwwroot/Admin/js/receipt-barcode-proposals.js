@@ -30,14 +30,14 @@
             byId('rbpCount').textContent = pending ? `${pending} chờ duyệt` : '';
             byId('rbpItems').innerHTML = state.items.length ? state.items.map(item => {
                 const review = state.canReview && Number(item.status) === 1;
-                const stamp = `${item.requestedByUserName || `Nhân viên #${item.requestedByUserId}`} · ${new Date(item.requestedAtUtc).toLocaleString('vi-VN')}`;
+                const stamp = `${item.requestedByUserName || `Nhân viên #${item.requestedByUserId}`} · ${new Date(typeof item.requestedAtUtc === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(item.requestedAtUtc) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(item.requestedAtUtc) ? item.requestedAtUtc + 'Z' : item.requestedAtUtc).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`;
                 return `<article class="border rounded p-3 mt-2" data-proposal-id="${Number(item.id)}">
                     <div class="d-flex justify-content-between flex-wrap gap-2"><strong>${escape(item.suggestedBarcode || 'Không có mã hãng')}</strong>
                         <span class="badge ${Number(item.status) === 1 ? 'bg-label-warning' : 'bg-label-secondary'}">${escape(item.statusText)}</span></div>
                     <div>${escape(item.productNameSnapshot)} · <strong>${escape(item.unitNameSnapshot)}</strong> · Quy đổi ×${number(item.factorSnapshot)}</div>
                     <div class="small text-muted mt-1">${escape(stamp)}</div>
                     ${item.employeeNote ? `<div class="small mt-1">Ghi chú: ${escape(item.employeeNote)}</div>` : ''}
-                    ${item.resolvedAtUtc ? `<div class="small text-muted mt-1">Xử lý: ${escape(item.resolvedByUserName || `Nhân viên #${item.resolvedByUserId}`)} · ${escape(new Date(item.resolvedAtUtc).toLocaleString('vi-VN'))}</div>` : ''}
+                    ${item.resolvedAtUtc ? `<div class="small text-muted mt-1">Xử lý: ${escape(item.resolvedByUserName || `Nhân viên #${item.resolvedByUserId}`)} · ${escape(new Date(typeof item.resolvedAtUtc === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(item.resolvedAtUtc) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(item.resolvedAtUtc) ? item.resolvedAtUtc + 'Z' : item.resolvedAtUtc).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }))}</div>` : ''}
                     ${item.managerNote ? `<div class="small">Ý kiến quản lý: ${escape(item.managerNote)}</div>` : ''}
                     ${review ? `<label class="form-label small mt-2" for="rbpReviewNote${Number(item.id)}">Ghi chú duyệt / từ chối</label>
                         <input id="rbpReviewNote${Number(item.id)}" class="form-control form-control-sm" maxlength="1000" />

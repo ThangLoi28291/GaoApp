@@ -1,0 +1,50 @@
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService Authorization
+@model GaoApp.Web.Areas.Admin.ViewModels.Products.BarcodeManagerVm
+@{
+    Layout = "_ContentNavbarLayout";
+    ViewData["Title"] = "Quản lý barcode";
+    var canUpdate = (await Authorization.AuthorizeAsync(User, PermissionCodes.Catalog.Barcode.Update)).Succeeded;
+}
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/barcode-manager.mobile.css" asp-append-version="true" />
+}
+<section id="barcodeManagerPage" class="container-xxl" data-conversion="@Model.ProductUnitConversionId"
+         data-read="@Url.Content("~/admin/api/barcodes/conversion/")" data-change="@Url.Content("~/admin/api/barcodes/change")">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+        <div><h1 class="h4 mb-2">Quản lý barcode</h1><p class="text-muted mb-0">@Model.ProductName · @Model.UnitName · @Model.VariantSku</p></div>
+        @if (canUpdate)
+        {
+            <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#barcodeChangeDialog">Đổi barcode</button>
+        }
+    </div>
+    <p id="barcodeManagerNotice" role="status" aria-live="polite"></p>
+    <div class="card mb-3"><div class="card-body"><h2 class="h6">Barcode hiện có</h2><div id="barcodeManagerList">Đang tải barcode…</div></div></div>
+    <div class="card"><div class="card-body"><h2 class="h6">20 thay đổi gần nhất</h2><div id="barcodeManagerHistory">Đang tải lịch sử…</div></div></div>
+    <button type="button" class="btn btn-outline-secondary mt-3" id="barcodeManagerReload">Tải lại dữ liệu</button>
+    @if (canUpdate)
+    {
+        <div class="modal fade" id="barcodeChangeDialog" tabindex="-1" aria-labelledby="barcodeChangeTitle" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-scrollable"><div class="modal-content">
+                <form id="barcodeManagerForm" action="@Url.Content("~/admin/api/barcodes/change")" method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="modal-header"><h2 class="modal-title h5" id="barcodeChangeTitle">Đổi barcode</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button></div>
+                    <div class="modal-body">
+                        <input type="hidden" name="ProductUnitConversionId" value="@Model.ProductUnitConversionId" />
+                        <label class="form-label" for="barcodeManagerNew">Barcode mới</label>
+                        <input class="form-control mb-3" id="barcodeManagerNew" name="NewBarcode" maxlength="64" required autocomplete="off" />
+                        <label class="form-label" for="barcodeManagerReason">Lý do</label>
+                        <textarea class="form-control mb-3" id="barcodeManagerReason" name="Reason" maxlength="500" rows="3"></textarea>
+                        <p class="text-muted small">Mã mới sẽ là barcode chính theo quy trình đổi mã hiện hành; mã cũ được lưu trong lịch sử.</p>
+                        <p id="barcodeManagerError" role="alert" class="text-danger mb-0"></p>
+                    </div>
+                    <div class="modal-footer"><button class="btn btn-outline-secondary" type="button" data-bs-dismiss="modal">Hủy</button><button class="btn btn-primary" type="submit">Lưu thay đổi</button></div>
+                </form>
+            </div></div>
+        </div>
+    }
+</section>
+@section PageScripts {
+    <script src="~/Admin/js/barcode-manager.js" asp-append-version="true"></script>
+}

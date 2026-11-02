@@ -1,0 +1,14 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceHeader
+<header class="gds-page-header">
+    <div class="gds-page-header__main">
+        @if (!string.IsNullOrWhiteSpace(Model.Context))
+        {
+            <p class="gds-eyebrow">@Model.Context</p>
+        }
+        <h1 class="gds-page-header__title">@Model.Title</h1>
+        @if (!string.IsNullOrWhiteSpace(Model.Description))
+        {
+            <p class="gds-page-header__description">@Model.Description</p>
+        }
+    </div>
+</header>

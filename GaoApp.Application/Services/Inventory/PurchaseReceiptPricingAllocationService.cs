@@ -31,7 +31,8 @@ public sealed class PurchaseReceiptPricingAllocationService(
         return new()
         {
             PlanId = plan?.Id, State = plan?.State, ReceiptRowVersion = Version(receipt.RowVersion), PlanRowVersion = plan is null ? null : Version(plan.RowVersion),
-            CanEdit = receipt.Status == StockDocumentStatus.PendingApproval,
+            CanEdit = receipt.Status == StockDocumentStatus.PendingApproval &&
+                (!receipt.PurchaseOrderId.HasValue || receipt.ReceiptSource == PurchaseReceiptSource.PurchaseOrder),
             IsStale = plan is not null && plan.State != PurchaseReceiptPricingPlanState.Confirmed && !Fresh(plan, receipt, context),
             PhysicalLines = context, Draft = draft,
             Preview = plan is null ? null : calculator.Calculate(draft, context, Values(plan))
@@ -75,6 +76,7 @@ public sealed class PurchaseReceiptPricingAllocationService(
             plan.AppliedAtUtc = null;
             plan.ActualBillTotal = request.ActualBillTotal;
             plan.GlobalDiscountPercent = request.GlobalDiscountPercent;
+            plan.GlobalDiscountAmount = request.GlobalDiscountAmount;
             plan.SystemTotal = preview.SystemTotal;
             plan.ReceiptRowVersionSnapshot = receipt.RowVersion.ToArray();
             plan.PhysicalDependencyHash = DependencyHash(receipt, context);
@@ -317,6 +319,9 @@ public sealed class PurchaseReceiptPricingAllocationService(
     }
     private static void EnsureEditable(StockDocument receipt)
     {
+        if (receipt.PurchaseOrderId.HasValue && receipt.ReceiptSource != PurchaseReceiptSource.PurchaseOrder)
+            throw new BusinessRuleException(
+                "Nguồn phiếu không khớp đơn mua đang liên kết. Vui lòng yêu cầu quản lý kiểm tra dữ liệu nguồn trước khi chỉnh kế hoạch giá.");
         if (receipt.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu chờ duyệt mới được chỉnh sửa, Preview, Save hoặc Apply kế hoạch giá.");
     }
@@ -349,6 +354,8 @@ public sealed class PurchaseReceiptPricingAllocationService(
             request.BillLines.Any(x => decimal.Round(x.BillQuantity, 9) != x.BillQuantity || decimal.Round(x.BillUnitPriceBeforeVat, 12) != x.BillUnitPriceBeforeVat) ||
             request.Rules.Any(x => x.BillSources is null || x.BillSources.Count > 500 || x.BillSources.Any(s => s is null || decimal.Round(s.Quantity, 9) != s.Quantity))))
             throw new BusinessRuleException("Danh sách bill hoặc số lượng tham gia vượt giới hạn kế hoạch.");
+        if (decimal.Round(request.GlobalDiscountAmount, 2) != request.GlobalDiscountAmount)
+            throw new BusinessRuleException("Tiền giảm toàn bill chỉ được có tối đa hai số lẻ.");
         if (decimal.Round(request.GlobalDiscountPercent, 4) != request.GlobalDiscountPercent ||
             request.Lines.Any(x => decimal.Round(x.BillQuantity, 9) != x.BillQuantity || decimal.Round(x.BillUnitPriceBeforeVat, 12) != x.BillUnitPriceBeforeVat) ||
             request.Rules.Any(x => decimal.Round(x.GiftQuantity, 9) != x.GiftQuantity || decimal.Round(x.DiscountPercent, 4) != x.DiscountPercent || decimal.Round(x.DiscountAmount, 2) != x.DiscountAmount) ||
@@ -387,6 +394,7 @@ public sealed class PurchaseReceiptPricingAllocationService(
         {
             ReceiptRowVersion = Version(plan.ReceiptRowVersionSnapshot), PlanRowVersion = Version(plan.RowVersion), ActualBillTotal = plan.ActualBillTotal,
             GlobalDiscountPercent = plan.GlobalDiscountPercent,
+            GlobalDiscountAmount = plan.GlobalDiscountAmount,
             BillLines = plan.BillLayoutVersion == 1 ? bill.Values.OrderBy(x => x.LineNo).Select(x => new PurchaseReceiptBillLineInput
             { BillLineKey = x.BillLineKey, LineNo = x.LineNo, ProductVariantId = x.ProductVariantIdSnapshot, BillUnitId = x.BillUnitId,
                 BillQuantity = x.BillQuantity, BillUnitPriceBeforeVat = x.BillUnitPriceBeforeVat, IsGift = x.IsGift }).ToList() : null,

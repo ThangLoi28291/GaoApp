@@ -1,0 +1,18 @@
+@model GaoApp.Web.Areas.Admin.Controllers.CustomerMarketingCampaignPreviewPage
+@{
+    ViewData["Title"] = "Xem trước chiến dịch Zalo";
+}
+<main class="container-fluid py-3">
+    <h1>Xem trước chiến dịch</h1>
+    <div class="alert alert-info">Đây là bản xem trước. Chưa gửi tin nhắn.</div>
+    <dl class="row"><dt class="col-sm-3">Tên chiến dịch</dt><dd class="col-sm-9">@Model.Name</dd><dt class="col-sm-3">Tài khoản</dt><dd class="col-sm-9">@Model.ConnectionLabel · @Model.SenderProfileId</dd><dt class="col-sm-3">Lịch gửi</dt><dd class="col-sm-9">@(new DateTimeOffset(Model.ScheduledAtUtc, TimeSpan.Zero).ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm")) (UTC+7)</dd><dt class="col-sm-3">Khách đủ điều kiện</dt><dd class="col-sm-9">@Model.RecipientCount</dd></dl>
+    <section class="card mb-3"><div class="card-header"><strong>Nội dung</strong></div><div class="card-body"><pre class="mb-0" style="white-space:pre-wrap">@Model.MessageText</pre></div></section>
+    @if (Model.AssetFileName is not null) { <section class="card mb-3"><div class="card-header"><strong>Tệp đính kèm</strong></div><div class="card-body">@Model.AssetFileName · @Model.AssetContentType · @((Model.AssetLength ?? 0) / 1024) KiB<br /><small class="text-muted">SHA-256: @Model.AssetSha256</small></div></section> }
+    <section class="card mb-3"><div class="card-header"><strong>Danh sách khách (ẩn một phần số điện thoại)</strong></div><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>Mã khách</th><th>Tên</th><th>Điện thoại</th></tr></thead><tbody>@foreach (var r in Model.Recipients) { <tr><td>@r.CustomerId</td><td>@r.Name</td><td>@r.MaskedPhone</td></tr> }</tbody></table></div>@if (Model.HasMoreRecipients) { <div class="card-footer">Đang hiển thị 100 trong @Model.RecipientCount khách. Danh sách người gửi đã được chụp cố định.</div> }</section>
+    <form method="post" action="/admin/customer-service/marketing-campaigns/@Model.Id/schedule" class="d-flex gap-2">
+        @Html.AntiForgeryToken()<input type="hidden" name="SnapshotSha256" value="@Model.SnapshotSha256" />
+        <button type="submit" class="btn btn-primary">Xác nhận lịch gửi</button>
+        <a href="/admin/customer-service/marketing-campaigns" class="btn btn-outline-secondary">Quay lại</a>
+    </form>
+    <p class="small text-muted mt-2">Mã chiến dịch: @Model.CampaignKey</p>
+</main>

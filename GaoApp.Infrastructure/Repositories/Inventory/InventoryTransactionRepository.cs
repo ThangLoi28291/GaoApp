@@ -147,8 +147,8 @@ public sealed class InventoryTransactionRepository : IInventoryTransactionReposi
         // Quy ước date filter:
         // - FromDate: lấy từ đầu ngày
         // - ToDate: lấy đến trước ngày kế tiếp
-        DateTime? fromUtc = request.FromDate?.Date;
-        DateTime? toUtcExclusive = request.ToDate?.Date.AddDays(1);
+        DateTime? fromUtc = request.FromDate.HasValue ? VietnamTime.ToUtc(request.FromDate.Value.Date) : null;
+        DateTime? toUtcExclusive = request.ToDate.HasValue ? VietnamTime.ToUtc(request.ToDate.Value.Date.AddDays(1)) : null;
 
         var query = _db.InventoryTransactions
             .AsNoTracking()

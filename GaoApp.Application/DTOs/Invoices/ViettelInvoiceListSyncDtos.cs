@@ -2,9 +2,9 @@
 
 public class ViettelInvoiceListSyncRequestDto
 {
-    public DateTime FromDate { get; set; } = DateTime.Today;
+    public DateTime FromDate { get; set; } = VietnamTime.Today;
 
-    public DateTime ToDate { get; set; } = DateTime.Today;
+    public DateTime ToDate { get; set; } = VietnamTime.Today;
 
     public int PageSize { get; set; } = 100;
 

@@ -14,6 +14,8 @@ const { chromium } = require('playwright');
     async function save() {
         await page.locator('#reviewChanges').click();
         assert.equal(await page.locator('#changesDialog').evaluate(node => node.open), true);
+        await page.locator('#changesDialog [name=AdministratorPassword]').fill(info.password);
+        await page.locator('#changesDialog [name=Reason]').fill('Kiểm thử thay đổi quyền theo từng vai trò');
         await Promise.all([page.waitForNavigation(), page.locator('#confirmSave').click()]);
         assert.equal(await page.locator('#changedPermissionCount').innerText(), '0');
     }

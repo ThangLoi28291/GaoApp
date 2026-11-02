@@ -15,33 +15,31 @@ public sealed class InputInvoiceLibraryController(InputInvoiceCatalogService ser
     [HttpGet("")]
     public async Task<IActionResult> Index()
     {
-        ViewBag.CanReview = (await authorization.AuthorizeAsync(User, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded;
         ViewBag.CanImport = (await authorization.AuthorizeAsync(User, PermissionCodes.Inventory.StockDocument.Update)).Succeeded;
         return View();
     }
     [HttpGet("list")]
     public Task<IActionResult> List([FromQuery] InvoiceCatalogFilter filter, CancellationToken ct) =>
-        Run(async () => Json(await service.ListAsync(CurrentStoreId, filter, ct)));
+        Run(async () => Json(await service.ListAsync(CurrentStoreId, filter, await AccessAsync(), ct)));
     [HttpGet("{id:int}")]
-    public Task<IActionResult> Detail(int id, CancellationToken ct) => Run(async () => Json(await service.DetailAsync(CurrentStoreId, id, ct)));
+    public Task<IActionResult> Detail(int id, CancellationToken ct) => Run(async () => Json(await service.DetailAsync(CurrentStoreId, id, await AccessAsync(), ct)));
     [HttpGet("{id:int}/preview")]
     public Task<IActionResult> Preview(int id, CancellationToken ct) => Run(async () =>
-        PartialView("~/Areas/Admin/Views/StockDocumentManagement/_InputInvoiceXmlPreview.cshtml", await service.PreviewAsync(CurrentStoreId, id, ct)));
+        PartialView("~/Areas/Admin/Views/StockDocumentManagement/_InputInvoiceXmlPreview.cshtml", await service.PreviewAsync(CurrentStoreId, id, await AccessAsync(), ct)));
     [HttpGet("{id:int}/pdf")]
     public Task<IActionResult> Pdf(int id, CancellationToken ct) => Run(async () =>
     {
-        var pdf = await service.PdfAsync(CurrentStoreId, id, ct);
+        var pdf = await service.PdfAsync(CurrentStoreId, id, await AccessAsync(), ct);
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(pdf.Content, "application/pdf");
     });
     [HttpGet("{id:int}/xml")]
     public Task<IActionResult> Xml(int id, CancellationToken ct) => Run(async () =>
-        File(await service.XmlAsync(CurrentStoreId, id, ct), "application/xml", $"hoa-don-{id}.xml"));
+        File(await service.XmlAsync(CurrentStoreId, id, await AccessAsync(), ct), "application/xml", $"hoa-don-{id}.xml"));
     [HttpPost("{id:int}/review"), ValidateAntiForgeryToken]
-    [Authorize(Policy = PermissionCodes.Inventory.StockDocument.Approve)]
     public Task<IActionResult> Review(int id, [FromBody] InvoiceCatalogReviewRequest request, CancellationToken ct) => Run(async () =>
     {
-        await service.ReviewAsync(CurrentStoreId, id, CurrentUserId, request, ct);
+        await service.ReviewAsync(CurrentStoreId, id, CurrentUserId, request, await AccessAsync(), ct);
         return Json(new { message = "Đã lưu xác nhận và lịch sử kiểm tra." });
     });
     [HttpPost("sync"), ValidateAntiForgeryToken]
@@ -61,12 +59,18 @@ public sealed class InputInvoiceLibraryController(InputInvoiceCatalogService ser
         using var pdfBuffer = new MemoryStream(); if (pdf != null) await pdf.CopyToAsync(pdfBuffer, ct);
         return Json(await service.UploadAsync(CurrentStoreId, xmlBuffer.ToArray(), pdf == null ? null : pdfBuffer.ToArray(), ct));
     });
+    private async Task<InvoiceCatalogAccess> AccessAsync() => new(
+        (await authorization.AuthorizeAsync(User, PermissionCodes.Purchase.Order.ViewCost)).Succeeded,
+        (await authorization.AuthorizeAsync(User, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded,
+        (await authorization.AuthorizeAsync(User, PermissionCodes.Purchase.Receipt.Approve)).Succeeded);
+
     private async Task<IActionResult> Run(Func<Task<IActionResult>> action)
     {
         Response.Headers.CacheControl = "no-store";
         if (!ModelState.IsValid) return BadRequest(new { message = "Dữ liệu gửi lên không hợp lệ." });
         try { return await action(); }
         catch (KeyNotFoundException ex) { return NotFound(new { message = ex.Message }); }
+        catch (ForbiddenAppException ex) { return StatusCode(403, new { message = ex.Message }); }
         catch (BusinessRuleException ex) { return BadRequest(new { message = ex.Message }); }
         catch (DbUpdateConcurrencyException) { return Conflict(new { message = "Dữ liệu đã thay đổi. Mở lại hóa đơn trước khi lưu." }); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or DbUpdateException)

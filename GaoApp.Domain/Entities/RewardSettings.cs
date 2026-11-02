@@ -1,11 +1,11 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 
 namespace GaoApp.Domain.Entities;
 
 [Table("RewardSettings")]
-public class RewardSettings : BaseStoreEntity
+public class RewardSettings : BaseStoreEntity, IAuditTrackedEntity
 {
     /// <summary>
     /// Bao nhiêu tiền tích lũy được 1 điểm.

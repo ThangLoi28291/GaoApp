@@ -62,6 +62,9 @@ public sealed class ApprovePurchaseReceiptCommercialRequest
     /// </summary>
     public bool AcceptPriceVariance { get; set; }
 
+    /// <summary>Optional explicit XML review, saved atomically with approval.</summary>
+    public ReceiptInvoiceReviewAcknowledgement? InputInvoiceReview { get; set; }
+
     public bool HasVat { get; set; }
     public bool IncludeVatInInventoryCost { get; set; }
     public int? SupplierId { get; set; }
@@ -85,6 +88,15 @@ public sealed class ApprovePurchaseReceiptCommercialRequest
     public bool IsFreightPaid { get; set; }
     public bool ResetAutomaticAllocation { get; set; }
     public List<FreightAllocationInputDto> Allocations { get; set; } = new();
+}
+
+public sealed class ReceiptInvoiceReviewAcknowledgement
+{
+    [Range(1, int.MaxValue)]
+    public int MapId { get; set; }
+
+    [Required, StringLength(64, MinimumLength = 1)]
+    public string EvidenceFingerprint { get; set; } = string.Empty;
 }
 
 public sealed class UpdatePurchaseReceiptApprovalRequest

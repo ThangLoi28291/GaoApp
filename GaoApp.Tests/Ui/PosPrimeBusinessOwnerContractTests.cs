@@ -19,6 +19,7 @@ public sealed class PosPrimeBusinessOwnerContractTests
                 "POS",
                 "Index.cshtml");
 
+        index = System.Text.RegularExpressions.Regex.Replace(index, @"(?<=\.js)\?[^""]+", "");
         var scripts = new[]
         {
             "pos.state.js",

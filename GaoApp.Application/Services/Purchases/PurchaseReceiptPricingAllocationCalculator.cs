@@ -34,6 +34,10 @@ public sealed partial class PurchaseReceiptPricingAllocationCalculator
             result.Errors.Add("Tiền hàng thực tế phải lớn hơn 0, tối đa hai số lẻ và trong giới hạn cho phép.");
         if (request.GlobalDiscountPercent is < 0 or >= 100)
             result.Errors.Add("Giảm giá toàn bill phải từ 0% đến dưới 100%.");
+        if (request.GlobalDiscountAmount < 0 || request.GlobalDiscountAmount > MaximumMoney || request.GlobalDiscountAmount != Money(request.GlobalDiscountAmount))
+            result.Errors.Add("Tiền giảm toàn bill phải từ 0, tối đa hai số lẻ và trong giới hạn cho phép.");
+        if (request.GlobalDiscountAmount > 0 && request.GlobalDiscountPercent > 0)
+            result.Errors.Add("Chỉ chọn giảm tiền hoặc giảm % cho toàn bill.");
         if (physicalLines.Select(x => x.StockDocumentLineId).Distinct().Count() != physicalLines.Count ||
             request.Lines.Select(x => x.StockDocumentLineId).Distinct().Count() != request.Lines.Count ||
             !physicalLines.Select(x => x.StockDocumentLineId).ToHashSet().SetEquals(request.Lines.Select(x => x.StockDocumentLineId)))
@@ -135,6 +139,9 @@ public sealed partial class PurchaseReceiptPricingAllocationCalculator
         foreach (var id in rawBaseline.Keys.ToArray()) rawBaseline[id] = checked(rawBaseline[id] * (1m - request.GlobalDiscountPercent / 100m));
         var baselineTotal = fixedRules.Length == 0 ? Money(rawBaseline.Values.Sum())
             : Money(checked((beforeFixedDiscount - fixedRules.Sum(x => x.DiscountAmount)) * (1m - request.GlobalDiscountPercent / 100m)));
+        if (request.GlobalDiscountAmount > 0 && request.GlobalDiscountAmount >= baselineTotal)
+        { result.Errors.Add("Tiền giảm toàn bill phải nhỏ hơn tiền hàng sau các chương trình giảm giá."); return; }
+        baselineTotal = checked(baselineTotal - request.GlobalDiscountAmount);
         if (baselineTotal <= 0 || baselineTotal > MaximumMoney) { result.Errors.Add("Tổng tiền hàng bill không hợp lệ."); return; }
         var baselines = Allocate(baselineTotal, rawBaseline, physical, result, "baseline", null);
         foreach (var line in result.Lines) line.BaselineAmount = baselines[line.StockDocumentLineId];

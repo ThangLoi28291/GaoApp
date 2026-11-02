@@ -6,6 +6,8 @@ using GaoApp.Application.Interfaces.Repositories.Security;
 using GaoApp.Application.Interfaces.Repositories.Users;
 using GaoApp.Application.Interfaces.Services.Security;
 using GaoApp.Domain.Entities;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Security;
 
 namespace GaoApp.Application.Services.Security;
 
@@ -16,19 +18,22 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     private readonly IUserRepository _userRepository;
     private readonly IAppUnitOfWork _uow;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ISecurityAdministrationGuard _security;
 
     public UserInStoreAdminService(
         IUserInStoreRepository userInStoreRepository,
         IRoleRepository roleRepository,
         IUserRepository userRepository,
         IAppUnitOfWork uow,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        ISecurityAdministrationGuard security)
     {
         _userInStoreRepository = userInStoreRepository;
         _roleRepository = roleRepository;
         _userRepository = userRepository;
         _uow = uow;
         _passwordHasher = passwordHasher;
+        _security = security;
     }
 
     public async Task<UserInStoreIndexVm> GetPagedAsync(int storeId, UserInStoreIndexQueryDto query, CancellationToken ct = default)
@@ -90,6 +95,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         {
             Id = entity.Id,
             UserId = entity.UserId,
+            IsHostAdmin = entity.User?.IsHostAdmin == true,
+            RoleCode = entity.Role?.Code ?? string.Empty,
             Username = entity.User?.UserName ?? string.Empty,
             FullName = entity.User?.FullName ?? string.Empty,
             Email = entity.User?.Email,
@@ -117,7 +124,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     {
         // Linking an existing global identity is a host operation. A store's
         // employee manager must not claim another store's account by guessing its ID.
-        if (!await CanAssignExistingUsersAsync(actorUserId, ct))
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.UserInStore.Create, ct);
+        if (!security.Actor.IsHostAdmin)
             return (false, "Chỉ quản trị hệ thống được gán tài khoản đã tồn tại. Hãy dùng chức năng tạo nhân viên mới.", null);
 
         var user = await _userRepository.GetByIdAsync(request.UserId, ct);
@@ -135,6 +143,9 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         if (exists)
             return (false, "Người dùng đã được gán vào cửa hàng này.", null);
 
+        if (role.Code.Equals("ADMIN", StringComparison.OrdinalIgnoreCase))
+            await security.ConfirmAsync(request, true, ct);
+
         var entity = new UserInStore
         {
             StoreId = storeId,
@@ -150,7 +161,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         };
 
         await _userInStoreRepository.AddAsync(entity, ct);
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Gán tài khoản vào cửa hàng", nameof(UserInStore), 0, null,
+            Snapshot(entity), request.Reason, [entity.UserId], ct);
 
         return (true, null, entity.Id);
     }
@@ -161,20 +173,47 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         UpdateUserInStoreRequest request,
         CancellationToken ct = default)
     {
-
-
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.UserInStore.Update, ct);
         var entity = await _userInStoreRepository.GetByIdAsync(storeId, request.Id, ct);
         if (entity == null)
             return (false, "Không tìm thấy bản ghi gán người dùng.");
-        if (actorUserId.HasValue && entity.UserId == actorUserId.Value && request.IsActive == false)
+        if (actorUserId.HasValue && entity.UserId == actorUserId.Value && entity.IsActive && request.IsActive == false)
             return (false, "Không được tự khóa chính mình.");
 
-        if (entity.User?.IsHostAdmin == true)
-            return (false, "Không được sửa tài khoản Host Admin.");
+        var hostProfile = entity.User?.IsHostAdmin == true;
+        var ownsProfile = actorUserId.HasValue && entity.UserId == actorUserId.Value &&
+            entity.User is { IsActive: true, IsDeleted: false };
+        var actorIsHost = security.Actor.IsHostAdmin;
+        if (hostProfile && (!ownsProfile || !actorIsHost))
+            return (false, "Host Admin chỉ được tự sửa thông tin cá nhân của mình.");
+        if (hostProfile && (request.RoleId != entity.RoleId || request.IsActive != entity.IsActive))
+            return (false, "Vai trò và trạng thái của Host Admin được bảo vệ.");
+        var roleChanged = request.RoleId != entity.RoleId;
+        var statusChanged = request.IsActive != entity.IsActive;
+        if (!ownsProfile || roleChanged || statusChanged)
+            security.RequireTarget(entity, roleChanged || statusChanged);
+        if (request.UpdateProfile)
+        {
+            if (!ownsProfile && !actorIsHost)
+                return (false, "Chỉ chủ tài khoản hoặc quản trị hệ thống được sửa họ tên và email.");
+            if (string.IsNullOrWhiteSpace(request.FullName) || request.FullName.Trim().Length > 200)
+                return (false, "Nhập họ tên, tối đa 200 ký tự.");
+            if (request.Email?.Length > 200 || !new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(
+                string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim()))
+                return (false, "Email không hợp lệ hoặc vượt quá 200 ký tự.");
+            if (entity.User is null)
+                return (false, "Không tìm thấy tài khoản người dùng.");
+        }
 
         var role = await _roleRepository.GetByIdAsync(storeId, request.RoleId, ct);
         if (role == null || role.IsDeleted)
             return (false, "Vai trò không thuộc cửa hàng hiện tại.");
+
+        if (roleChanged)
+            security.RequireTarget(entity, true, role);
+        if (roleChanged || statusChanged)
+            await security.ConfirmAsync(request, roleChanged, ct);
+        var before = Snapshot(entity);
 
         entity.RoleId = request.RoleId;
         entity.IsActive = request.IsActive;
@@ -185,8 +224,18 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = actorUserId;
 
+        if (request.UpdateProfile && entity.User is { } profileUser)
+        {
+            profileUser.FullName = request.FullName!.Trim();
+            profileUser.Email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+            profileUser.UpdatedAtUtc = entity.UpdatedAtUtc;
+            profileUser.UpdatedBy = actorUserId;
+        }
+
         await _userInStoreRepository.UpdateAsync(entity, ct);
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync(roleChanged ? "Đổi vai trò nhân viên" : statusChanged ? "Đổi trạng thái nhân viên" : "Cập nhật thông tin nhân viên",
+            nameof(UserInStore), entity.Id, before, Snapshot(entity), request.Reason,
+            roleChanged || statusChanged || request.UpdateProfile ? [entity.UserId] : [], ct);
 
         return (true, null);
     }
@@ -195,8 +244,10 @@ public class UserInStoreAdminService : IUserInStoreAdminService
      int storeId,
      int id,
      int? actorUserId,
-     CancellationToken ct = default)
+     CancellationToken ct = default,
+     SecurityActionConfirmation? confirmation = null)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.UserInStore.Delete, ct);
         var entity = await _userInStoreRepository.GetByIdAsync(storeId, id, ct);
         if (entity == null)
             return (false, "Không tìm thấy nhân viên.");
@@ -207,11 +258,16 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         if (entity.User?.IsHostAdmin == true)
             return (false, "Không được khóa tài khoản Host Admin.");
 
+        security.RequireTarget(entity, true);
+        await security.ConfirmAsync(confirmation, false, ct);
+        var before = Snapshot(entity);
+
         var ok = await _userInStoreRepository.SoftDeleteAsync(storeId, id, actorUserId, ct);
         if (!ok)
             return (false, "Xóa bản ghi gán người dùng không thành công.");
 
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Xóa nhân viên khỏi cửa hàng", nameof(UserInStore), entity.Id,
+            before, Snapshot(entity), confirmation?.Reason, [entity.UserId], ct);
         return (true, null);
     }
 
@@ -252,6 +308,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     CreateEmployeeInStoreRequest request,
     CancellationToken ct = default)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.UserInStore.Create, ct);
+        security.RequireAdministrator();
         if (!IsAcceptablePassword(request.Password))
             return (false, "Mật khẩu phải có từ 12 đến 128 ký tự.", null);
         var userName = request.UserName.Trim();
@@ -276,6 +334,13 @@ public class UserInStoreAdminService : IUserInStoreAdminService
             CreatedBy = actorUserId
         };
 
+        if (role.Code.Equals("ADMIN", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!security.Actor.IsHostAdmin)
+                return (false, "Chỉ Host Admin được cấp vai trò ADMIN.", null);
+            await security.ConfirmAsync(request, true, ct);
+        }
+
         await _userRepository.AddAsync(user, ct);
         await _uow.SaveChangesAsync(ct);
 
@@ -296,7 +361,8 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         };
 
         await _userInStoreRepository.AddAsync(userInStore, ct);
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Tạo nhân viên", nameof(UserInStore), 0,
+            null, Snapshot(userInStore), request.Reason, ct: ct);
 
         return (true, null, userInStore.Id);
     }
@@ -305,8 +371,10 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     int userId,
     string newPassword,
     int? actorUserId,
-    CancellationToken ct = default)
+    CancellationToken ct = default,
+    SecurityActionConfirmation? confirmation = null)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.UserInStore.Update, ct);
         if (!IsAcceptablePassword(newPassword))
             return (false, "Mật khẩu phải có từ 12 đến 128 ký tự.");
         var mapping = await _userInStoreRepository
@@ -318,6 +386,9 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         if (mapping.User.IsHostAdmin)
             return (false, "Không được đổi mật khẩu Host Admin.");
 
+        security.RequireTarget(mapping, true);
+        await security.ConfirmAsync(confirmation, true, ct);
+
         if (await _userRepository.HasOtherStoreMembershipAsync(userId, storeId, ct))
             return (false, "Tài khoản dùng ở nhiều cửa hàng cần quản trị hệ thống xử lý mật khẩu.");
 
@@ -327,7 +398,9 @@ public class UserInStoreAdminService : IUserInStoreAdminService
         mapping.User.UpdatedAtUtc = DateTime.UtcNow;
         mapping.User.UpdatedBy = actorUserId;
 
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Đặt lại mật khẩu nhân viên", nameof(UserInStore), mapping.Id,
+            new { mapping.UserId, CredentialChanged = false }, new { mapping.UserId, CredentialChanged = true },
+            confirmation?.Reason, [userId], ct);
 
         return (true, null);
     }
@@ -337,8 +410,10 @@ public class UserInStoreAdminService : IUserInStoreAdminService
     int storeId,
     int id,
     int? actorUserId,
-    CancellationToken ct = default)
+    CancellationToken ct = default,
+    SecurityActionConfirmation? confirmation = null)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.UserInStore.Update, ct);
         var entity = await _userInStoreRepository.GetByIdAsync(
             storeId,
             id,
@@ -356,13 +431,24 @@ public class UserInStoreAdminService : IUserInStoreAdminService
             return (false, "Không được tự khóa chính mình.");
         }
 
+        security.RequireTarget(entity, true);
+        await security.ConfirmAsync(confirmation, false, ct);
+        var before = Snapshot(entity);
         entity.IsActive = !entity.IsActive;
 
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = actorUserId;
 
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Đổi trạng thái nhân viên", nameof(UserInStore), entity.Id,
+            before, Snapshot(entity), confirmation?.Reason, [entity.UserId], ct);
 
         return (true, null);
     }
+
+    private static object Snapshot(UserInStore entity) => new
+    {
+        entity.UserId, entity.StoreId, entity.RoleId, entity.IsActive, entity.IsDeleted,
+        entity.PhoneNumber, entity.PositionName, entity.JoinedDate, entity.Note,
+        FullName = entity.User?.FullName, Email = entity.User?.Email
+    };
 }

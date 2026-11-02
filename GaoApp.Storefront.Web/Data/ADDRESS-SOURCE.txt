@@ -1,0 +1,16 @@
+Vietnam administrative address directory, observed 2026-10-31.
+Primary source: https://danhmuchanhchinh.nso.gov.vn/DiaBan1.aspx
+Bundled JSON: vn-address-catalog-observed-20261031.json
+SHA256: 688F1A761199A2315C3C3B0F68F642493A961D775E5ADA2233411291D518A23D
+UTF8 bytes: 287104. Provinces:34. Wards:3321, globally unique with explicit parent membership.
+
+The coordinator captured the public NSO lookup separately for each province.
+Independent reviewer parsed all34 raw HTML pages, checked each raw page hash,
+and compared all province/ward code-name-parent triples:0 mismatches.
+Evidence: .artifacts/storefront-rollout/WEB04/coordinator/address-research/
+and .artifacts/storefront-rollout/WEB04/review/address-audit.md.
+
+This is an observed directory version, not geocoding or automatic future updates.
+The app never downloads it at runtime. An operator may set an explicit local
+StorefrontAddressCatalog:Path to another reviewed version; invalid/missing
+files close checkout. Customer street/house details remain unverified free text.

@@ -1,0 +1,7 @@
+#assistantKnowledgeAdmin .btn, #assistantKnowledgeAdmin .form-control, #assistantKnowledgeAdmin .form-select { min-height:44px; }
+#assistantKnowledgeAdmin label { cursor:pointer; }
+#assistantKnowledgeAdmin input[type=checkbox] { width:20px; height:20px; flex-shrink:0; }
+#assistantKnowledgeAdmin form, #assistantKnowledgeAdmin .card-body, #assistantKnowledgeAdmin .form-control, #assistantKnowledgeAdmin .form-select { min-width:0; max-width:100%; }
+#assistantKnowledgeAdmin article { scroll-margin-top:80px; }
+@media(max-width:575px) { #assistantKnowledgeAdmin .card-body { padding:16px; } #assistantKnowledgeAdmin h3 { font-size:1.35rem; } }
+#assistantKnowledgeAdmin > .row { margin-inline:0; }

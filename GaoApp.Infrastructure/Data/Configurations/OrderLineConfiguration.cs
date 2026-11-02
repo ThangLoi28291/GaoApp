@@ -23,7 +23,7 @@ public sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLine>
             .HasMaxLength(50);
 
         b.Property(x => x.Sku)
-            .HasMaxLength(50);
+            .HasMaxLength(60); // Preserve every SKU accepted by ProductVariantConfiguration.
 
         b.Property(x => x.Barcode)
             .HasMaxLength(50);

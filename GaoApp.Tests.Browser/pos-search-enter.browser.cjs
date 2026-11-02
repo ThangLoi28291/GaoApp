@@ -70,14 +70,12 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
         await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=12&qty=1');
         console.log('PASS cached result and arrow navigation');
         await search('893');
-        await selected(() => input.press('Enter'), '/admin/pos/cart/current/scan');
-        assert.deepEqual(await page.evaluate(() => commands.at(-1).body), { barcode: '893', quantity: 1 });
-        console.log('PASS partial numeric input preserves exact scan instead of choosing a fuzzy product');
+        await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=11&qty=1');
+        console.log('PASS visible numeric search chooses the highlighted product');
 
         await search('3+893');
-        await selected(() => input.press('Enter'), '/admin/pos/cart/current/scan');
-        assert.deepEqual(await page.evaluate(() => commands.at(-1).body), { barcode: '893', quantity: 3 });
-        console.log('PASS partial numeric input retains quantity prefix without choosing a fuzzy product');
+        await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=11&qty=3');
+        console.log('PASS visible numeric search retains quantity prefix on the highlighted product');
 
         await search('4+sua');
         await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=11&qty=4');
@@ -102,7 +100,8 @@ const scripts = path.resolve(__dirname, '../GaoApp.Web/wwwroot/Admin/js/pos');
         await selected(() => input.press('Enter'), '/admin/pos/7/items?variantId=11&qty=1');
         console.log('PASS visual first selection when keyboard cursor is unset');
 
-        await search('8931234567891');
+        // A scanner sends Enter before autocomplete opens. A visible search uses the selected row.
+        await input.fill('8931234567891');
         await selected(() => input.press('Enter'), '/admin/pos/cart/current/scan');
         assert.equal(await page.evaluate(() => commands.at(-1).body.barcode), '8931234567891');
         console.log('PASS full pack barcode retains exact scan resolution');

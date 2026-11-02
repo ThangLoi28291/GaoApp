@@ -153,6 +153,15 @@ public class StockDocumentsController : Controller
             return Forbid();
 
         var result = await _stockDocumentService.GetReceiptListAsync(ct);
+        var viewCost = await HasAnyPermissionAsync(PermissionCodes.Purchase.Order.ViewCost);
+        var approvePurchase = await HasAnyPermissionAsync(PermissionCodes.Purchase.Receipt.Approve);
+        var approveDirect = await HasAnyPermissionAsync(PermissionCodes.Inventory.StockDocument.Approve);
+        foreach (var item in result)
+        {
+            item.CanViewCost = viewCost || (item.PurchaseOrderId.HasValue || item.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+                ? approvePurchase : approveDirect);
+            if (!item.CanViewCost) item.TotalAmount = 0m;
+        }
         return Ok(result);
     }
 
@@ -231,7 +240,7 @@ public class StockDocumentsController : Controller
             resource: null,
             policyName: PermissionCodes.Purchase.Order.ViewCost)).Succeeded;
         if (!canViewCost)
-            RedactCommercialValues(result);
+            ReceiptCommercialRedaction.Apply(result);
 
         return Ok(result);
     }
@@ -289,6 +298,17 @@ public class StockDocumentsController : Controller
         // Lookup chứng từ kho phải thấy cả sản phẩm đang chờ hoàn thiện
         // (IsSellable = false); chỉ POS mới được phép lọc theo IsSellable.
         var result = await _barcodeLookupService.SearchForStockDocumentSelect2Async(keyword, 20, ct);
+        var canViewCost = await HasAnyPermissionAsync(PermissionCodes.Purchase.Order.ViewCost) ||
+            (stockDocumentId is > 0 && await HasWorkflowPermissionAsync(stockDocumentId.Value,
+                PermissionCodes.Purchase.Receipt.Approve, PermissionCodes.Inventory.StockDocument.Approve, ct));
+        if (!canViewCost)
+        {
+            foreach (var item in result)
+            {
+                item.CostPrice = null;
+                item.Price = null;
+            }
+        }
         return Ok(result);
     }
 
@@ -298,6 +318,11 @@ public class StockDocumentsController : Controller
         int id,
         CancellationToken ct)
     {
+        // Receipt audit snapshots contain commercial evidence as well as physical changes.
+        if (!await HasAnyPermissionAsync(PermissionCodes.Purchase.Order.ViewCost) &&
+            !await HasWorkflowPermissionAsync(id, PermissionCodes.Purchase.Receipt.Approve,
+                PermissionCodes.Inventory.StockDocument.Approve, ct))
+            return Forbid();
         var result = await _stockDocumentService.GetAuditTimelineAsync(id, ct);
         if (result is null)
         {
@@ -382,6 +407,9 @@ public class StockDocumentsController : Controller
         [FromBody] UpdateStockDocumentLineRequest request,
         CancellationToken ct)
     {
+        var document = await _stockDocumentService.GetDetailAsync(documentId, ct);
+        if (document is null || !document.Lines.Any(line => line.Id == lineId))
+            return NotFound(new { message = "Dòng hàng không thuộc phiếu nhập này. Vui lòng tải lại danh sách." });
         if (!await HasWorkflowPermissionAsync(
                 documentId,
                 PermissionCodes.Purchase.Receipt.Approve,
@@ -392,13 +420,15 @@ public class StockDocumentsController : Controller
             request.TaxId = null;
         }
 
-        await _stockDocumentService.UpdateLineAsync(lineId, request, ct);
+        await _stockDocumentService.UpdateLineAsync(documentId, lineId, request, ct);
 
         return Ok(new
         {
             message = "Cập nhật dòng phiếu nhập kho thành công.",
-            rowVersion = _db == null ? null : Convert.ToBase64String((await _db.StockDocuments.SingleAsync(x => x.Id == documentId, ct)).RowVersion),
-            lineRowVersion = _db == null ? null : Convert.ToBase64String((await _db.StockDocumentLines.SingleAsync(x => x.Id == lineId && x.StockDocumentId == documentId, ct)).RowVersion)
+            rowVersion = _db?.StockDocuments.Local.FirstOrDefault(x => x.Id == documentId) is { } savedDocument
+                ? Convert.ToBase64String(savedDocument.RowVersion) : null,
+            lineRowVersion = _db?.StockDocumentLines.Local.FirstOrDefault(x => x.Id == lineId && x.StockDocumentId == documentId) is { } savedLine
+                ? Convert.ToBase64String(savedLine.RowVersion) : null
         });
     }
 
@@ -411,12 +441,14 @@ public class StockDocumentsController : Controller
     public async Task<IActionResult> DeleteLine(
         int documentId,
         int lineId,
+        [FromBody] DeleteStockDocumentLineRequest? request,
         CancellationToken ct)
     {
         var document = await _stockDocumentService.GetDetailAsync(documentId, ct);
         if (document is null || !document.Lines.Any(x => x.Id == lineId))
             return NotFound(new { message = "Dòng hàng không còn trong phiếu nhập này. Vui lòng tải lại danh sách." });
-        await _stockDocumentService.DeleteLineAsync(lineId, ct);
+        await _stockDocumentService.DeleteLineAsync(documentId, lineId,
+            request ?? new DeleteStockDocumentLineRequest(), ct);
 
         return Ok(new
         {
@@ -515,8 +547,8 @@ public class StockDocumentsController : Controller
     {
         var document = await _stockDocumentService.GetDetailAsync(id, ct);
         if (document is null) return NotFound(new { message = "Không tìm thấy phiếu nhập." });
-        var authorized = (await _authorizationService.AuthorizeAsync(User, null, PermissionCodes.Purchase.Receipt.Approve)).Succeeded ||
-            (await _authorizationService.AuthorizeAsync(User, null, PermissionCodes.Inventory.StockDocument.Approve)).Succeeded;
+        var authorized = await HasWorkflowPermissionAsync(id, PermissionCodes.Purchase.Receipt.Approve,
+            PermissionCodes.Inventory.StockDocument.Approve, ct);
         if (!authorized) return Forbid();
         if (_pricingAllocation is null) return StatusCode(503, new { message = "Chức năng kế hoạch giá chưa sẵn sàng." });
         try { return Ok(await action(_pricingAllocation)); }
@@ -625,9 +657,9 @@ public class StockDocumentsController : Controller
         string directReceiptPolicy,
         CancellationToken ct)
     {
-        var document = await _stockDocumentService.GetDetailAsync(documentId, ct);
+        var document = await _stockDocumentService.GetWorkflowContextAsync(documentId, ct);
         if (document == null) return false;
-        var policy = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder
+        var policy = document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || document.PurchaseOrderId.HasValue
             ? purchaseReceiptPolicy
             : directReceiptPolicy;
         return (await _authorizationService.AuthorizeAsync(User, null, policy)).Succeeded;
@@ -1358,28 +1390,6 @@ public class StockDocumentsController : Controller
         return false;
     }
 
-    private static void RedactCommercialValues(StockDocumentDto document)
-    {
-        document.TotalAmount = 0m;
-        document.SubtotalBeforeVat = 0m;
-        document.VatAmount = 0m;
-        document.FreightTotal = 0m;
-
-        foreach (var line in document.Lines)
-        {
-            line.UnitCost = 0m;
-            line.LineTotal = 0m;
-            line.TaxId = null;
-            line.TaxNameSnapshot = null;
-            line.UnitPriceBeforeVat = 0m;
-            line.LastPurchaseUnitPriceBeforeVat = null;
-            line.TaxRate = 0m;
-            line.VatAmount = 0m;
-            line.UnitPriceAfterVat = 0m;
-            line.FreightAllocation = 0m;
-            line.AmountDifference = 0m;
-        }
-    }
 
 
 }

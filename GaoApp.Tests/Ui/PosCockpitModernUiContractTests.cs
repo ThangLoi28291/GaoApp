@@ -103,13 +103,12 @@ public sealed class PosCockpitModernUiContractTests
         Assert.Contains("Model.UserName", header, StringComparison.Ordinal);
         Assert.Contains("Model.HasOpenShift", header, StringComparison.Ordinal);
 
-        Assert.Contains("btnOpenCustomerDisplay", header, StringComparison.Ordinal);
-        Assert.Contains("/admin/pos/customer-display", header, StringComparison.Ordinal);
-
-        Assert.Contains("/admin/pos-shift", header, StringComparison.Ordinal);
-        Assert.Contains("/admin/pos-shift/history", header, StringComparison.Ordinal);
-        Assert.Contains("/admin/pos/orders-page", header, StringComparison.Ordinal);
-        Assert.Contains("/admin/pos/dashboard", header, StringComparison.Ordinal);
+        Assert.Contains("_ConfiguredMoreMenu", header, StringComparison.Ordinal);
+        Assert.DoesNotContain("href=\"/admin/", header, StringComparison.Ordinal);
+        var configuredMenu = File.ReadAllText(Path.Combine(RepositoryRoot,
+            "GaoApp.Web", "Areas", "Admin", "Views", "POS", "_ConfiguredMoreMenu.cshtml"));
+        Assert.Contains("Navigation.GetAsync(ViewContext)", configuredMenu, StringComparison.Ordinal);
+        Assert.Contains("navigation.PosNodes", configuredMenu, StringComparison.Ordinal);
 
         Assert.Contains("data-pos-shortcuts-toggle", header, StringComparison.Ordinal);
         Assert.Contains("F8", header, StringComparison.Ordinal);
@@ -132,6 +131,8 @@ public sealed class PosCockpitModernUiContractTests
      File.ReadAllText(SummaryPath),
      File.ReadAllText(ActionsPath),
      File.ReadAllText(DraftMetaPath),
+     File.ReadAllText(Path.Combine(Path.GetDirectoryName(DraftMetaPath)!, "_OrderNoteBox.cshtml")),
+     File.ReadAllText(Path.Combine(Path.GetDirectoryName(DraftMetaPath)!, "_OrderDiscountBox.cshtml")),
      File.ReadAllText(HeldPath));
         markup = System.Text.RegularExpressions.Regex.Replace(
     markup,
@@ -203,7 +204,11 @@ public sealed class PosCockpitModernUiContractTests
         Assert.Contains("syncAvailableHeight", script, StringComparison.Ordinal);
         Assert.Contains("MutationObserver", script, StringComparison.Ordinal);
         Assert.Contains("data-pos-command-prefix", script, StringComparison.Ordinal);
-        Assert.Contains("btnOpenCustomerDisplay", script, StringComparison.Ordinal);
+        var sharedShortcuts = File.ReadAllText(Path.Combine(RepositoryRoot,
+            "GaoApp.Web", "wwwroot", "Admin", "js", "gaoapp.configured-shortcuts.js"));
+        Assert.Contains("data-configured-customer-display", sharedShortcuts, StringComparison.Ordinal);
+        Assert.DoesNotContain("/admin/pos/customer-display", sharedShortcuts, StringComparison.Ordinal);
+        Assert.DoesNotContain("bindCustomerDisplay", script, StringComparison.Ordinal);
 
         Assert.DoesNotContain("fetch(", script, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("XMLHttpRequest", script, StringComparison.OrdinalIgnoreCase);

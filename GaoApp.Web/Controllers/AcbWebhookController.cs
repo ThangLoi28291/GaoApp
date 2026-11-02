@@ -14,20 +14,8 @@ public sealed class AcbWebhookController(AcbPaymentService service, AcbProtocol 
     [HttpPost, RequestSizeLimit(4194304)]
     public async Task<IActionResult> Receive([FromBody] JsonElement payload, CancellationToken ct)
     {
-        var settings = await service.SettingsAsync(ct);
-        // This merchant registered x-api-key. Authorization remains compatible with ACB's documented API-key mode.
-        var registeredKey = Request.Headers["x-api-key"].ToString().Trim();
-        var authorizationKey = Request.Headers.Authorization.ToString().Trim();
-        if (authorizationKey.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) authorizationKey = authorizationKey[7..].Trim();
-        if (registeredKey.Length > 0 && authorizationKey.Length > 0 && registeredKey != authorizationKey)
-            return Rejected(403, "CONFLICTING_AUTH_HEADERS");
-        var key = registeredKey.Length > 0 ? registeredKey : authorizationKey;
-        if (settings == null) return Rejected(503, "STORE_ACB_NOT_CONFIGURED");
-        try
-        {
-            if (!protocol.VerifyKey(settings, key)) return Rejected(403, "AUTH_REJECTED");
-        }
-        catch (System.Security.Cryptography.CryptographicException error) { HttpContext.Items["AcbCallbackFailure"] = error; return Rejected(503, "CONFIG_DECRYPT_FAILED"); }
+        var authentication = await AcbCallbackAuthentication.AuthenticateAsync(HttpContext, service, protocol, ct);
+        if (!authentication.IsAuthenticated) return Rejected(authentication.Status, authentication.Code!);
         if (!ModelState.IsValid) return Rejected(400, "INVALID_JSON");
         int receiptId;
         try { receiptId = await inbox.AcceptAsync(payload, ct); }

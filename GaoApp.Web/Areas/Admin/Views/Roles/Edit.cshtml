@@ -118,7 +118,7 @@
                     <div class="col-md-6">
                         <div class="text-muted small">Ngày tạo</div>
                         <div class="fw-semibold mt-1">
-                            @roleInfo.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                            @roleInfo.CreatedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")
                         </div>
                     </div>
 
@@ -126,7 +126,7 @@
                         <div class="text-muted small">Cập nhật gần nhất</div>
                         <div class="fw-semibold mt-1">
                             @(roleInfo.UpdatedAtUtc.HasValue
-                                ? roleInfo.UpdatedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                ? roleInfo.UpdatedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")
                                 : "Chưa cập nhật")
                         </div>
                     </div>
@@ -192,3 +192,10 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
 }
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
+}
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="Roles/Edit"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

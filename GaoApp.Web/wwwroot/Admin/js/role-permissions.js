@@ -23,6 +23,11 @@
         location.assign(url);
     });
     if (!form) return;
+    if (root.dataset.canManage === 'false') {
+        form.querySelectorAll('input, textarea, button').forEach(control => { control.disabled = true; });
+        form.addEventListener('submit', event => event.preventDefault());
+        return;
+    }
     function refresh() {
         const selected = items.filter(item => item.box.checked).length;
         const changed = changes(), added = changed.filter(item => item.box.checked).length, removed = changed.length - added;
@@ -80,6 +85,7 @@
     $('clearVisible').addEventListener('click', () => { visible().forEach(item => item.box.checked = false); refresh(); });
     $('undoChanges').addEventListener('click', () => { items.forEach(item => item.box.checked = item.initial); refresh(); });
     const dialog = $('changesDialog');
+    dialog.addEventListener('input', event => event.target.setCustomValidity?.(''));
     form.addEventListener('submit', event => {
         if (submitting) return;
         event.preventDefault();
@@ -103,6 +109,10 @@
     root.querySelectorAll('[data-close-dialog]').forEach(button => button.addEventListener('click', () => dialog.close()));
     $('confirmSave').addEventListener('click', () => {
         if (submitting) return;
+        for (const input of dialog.querySelectorAll('[name="AdministratorPassword"], [name="Reason"]')) {
+            input.setCustomValidity(input.value.trim().length < (input.name === 'Reason' ? 3 : 1) ? 'Vui lòng nhập thông tin xác minh.' : '');
+            if (!input.reportValidity()) return;
+        }
         submitting = true;
         $('confirmSave').disabled = true; $('confirmSave').textContent = 'Đang lưu…';
         // Hidden filtered checkboxes stay enabled and are all submitted with the form.

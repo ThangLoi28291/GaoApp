@@ -65,19 +65,19 @@
 
     function parseDate(value) {
         if (!value) return null;
-        const parsed = new Date(value);
+        const parsed = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }
 
     function dateOnly(value) {
         const parsed = parseDate(value);
-        return parsed ? parsed.toLocaleDateString('vi-VN') : '—';
+        return parsed ? parsed.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
     }
 
     function dateTime(value) {
         const parsed = parseDate(value);
         return parsed
-            ? parsed.toLocaleString('vi-VN', {
+            ? parsed.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
                 day: '2-digit', month: '2-digit', year: 'numeric',
                 hour: '2-digit', minute: '2-digit'
             })
@@ -93,6 +93,7 @@
         if (numeric === 3 || normalized === 'cancelled') return 'Cancelled';
         if (numeric === 4 || normalized === 'expired') return 'Expired';
         if (numeric === 5 || normalized === 'locked') return 'Locked';
+        if (numeric === 6 || normalized === 'reservedfordelivery') return 'ReservedForDelivery';
         return '';
     }
 
@@ -103,6 +104,7 @@
             case 'Cancelled': return 'Đã hủy';
             case 'Expired': return 'Hết hạn';
             case 'Locked': return 'Đã khóa';
+            case 'ReservedForDelivery': return 'Đang giữ cho đơn giao';
             default: return 'Chưa xác định';
         }
     }
@@ -114,6 +116,7 @@
             case 'Cancelled': return 'is-cancelled';
             case 'Expired': return 'is-expired';
             case 'Locked': return 'is-locked';
+            case 'ReservedForDelivery': return 'is-locked';
             default: return '';
         }
     }
@@ -508,9 +511,10 @@
                 return;
             }
             printWindow.document.open();
-            printWindow.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu giảm giá ${escapeHtml(voucherCode)}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#2b2c40}.sheet{max-width:380px;margin:auto;border:2px dashed #696cff;border-radius:18px;padding:24px;text-align:center}.code{font-size:22px;font-weight:800;color:#696cff}.value{font-size:34px;font-weight:900;margin:18px 0}.meta{margin-top:8px;color:#697a8d}.status{display:inline-block;margin-top:16px;padding:7px 14px;border-radius:999px;background:#eef0ff;color:#696cff;font-weight:700}@media print{body{padding:0}.sheet{border-color:#444}}</style></head><body><div class="sheet"><h2>PHIẾU GIẢM GIÁ</h2><div class="code">${escapeHtml(voucherCode)}</div><div class="value">${escapeHtml(money(value))}</div><strong>${escapeHtml(customerName)}</strong><div class="meta">${escapeHtml(customerPhone)}</div><div class="meta">Phát hành: ${escapeHtml(dateTime(issuedAt))}</div><div class="status">${escapeHtml(statusText(status))}</div></div><script>window.addEventListener('load',function(){window.print();});<\/script></body></html>`);
+            printWindow.document.write(`<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Phiếu giảm giá ${escapeHtml(voucherCode)}</title><style>body{font-family:Arial,sans-serif;padding:28px;color:#2b2c40}.sheet{max-width:380px;margin:auto;border:2px dashed #696cff;border-radius:18px;padding:24px;text-align:center}.code{font-size:22px;font-weight:800;color:#696cff}.value{font-size:34px;font-weight:900;margin:18px 0}.meta{margin-top:8px;color:#697a8d}.status{display:inline-block;margin-top:16px;padding:7px 14px;border-radius:999px;background:#eef0ff;color:#696cff;font-weight:700}@media print{body{padding:0}.sheet{border-color:#444}}</style></head><body><div class="sheet"><h2>PHIẾU GIẢM GIÁ</h2><div class="code">${escapeHtml(voucherCode)}</div><div class="value">${escapeHtml(money(value))}</div><strong>${escapeHtml(customerName)}</strong><div class="meta">${escapeHtml(customerPhone)}</div><div class="meta">Phát hành: ${escapeHtml(dateTime(issuedAt))}</div><div class="status">${escapeHtml(statusText(status))}</div></div></body></html>`);
             GaoPrintLifecycle.autoClose(printWindow);
             printWindow.document.close();
+            printWindow.addEventListener('load', () => printWindow.print(), { once: true });
         } catch (error) {
             showError(error?.message || 'Không thể chuẩn bị bản in phiếu.');
         }

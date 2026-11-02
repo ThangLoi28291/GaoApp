@@ -3,7 +3,7 @@
     const $ = id => document.getElementById(id);
     if (!$('xsBackfillOpen')) return;
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    const date = value => new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+    const date = value => new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     const endpoint = '/admin/api/receipt-invoice-backfill';
     let rows = [], selected = new Set(), page = 1, totalPages = 1, busy = false, scannedRange = null;
 

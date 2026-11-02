@@ -73,7 +73,7 @@ public sealed class InventoryLedgerIndexModernUiContractTests
         Assert.Contains("ledgerImageHoverPreview", script, StringComparison.Ordinal);
         Assert.Contains("pointerenter", script, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("dblclick", script, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("toLocaleDateString(\"vi-VN\")", script, StringComparison.Ordinal);
+        Assert.Contains("toLocaleDateString(\"vi-VN\", { timeZone: 'Asia/Ho_Chi_Minh' })", script, StringComparison.Ordinal);
         Assert.Contains("Số dư đầu kỳ", script, StringComparison.Ordinal);
         Assert.Contains("Nhập mua hàng", script, StringComparison.Ordinal);
         Assert.Contains("Chứng từ kho", script, StringComparison.Ordinal);

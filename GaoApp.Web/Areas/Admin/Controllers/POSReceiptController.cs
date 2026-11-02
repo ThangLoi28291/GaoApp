@@ -45,7 +45,8 @@ public class POSReceiptController : BasePOSPageController
       [FromServices]
     LinkGenerator links,
       [FromServices] GaoApp.Application.Interfaces.Services.Security.IStoreAdminAccess receiptAdmin,
-      CancellationToken ct)
+      CancellationToken ct,
+      [FromQuery] bool data = false)
     {
         await BindPOSHeaderContextAsync(ct);
 
@@ -64,7 +65,7 @@ public class POSReceiptController : BasePOSPageController
         {
             return NotFound();
         }
-        if (receipt.Delivery is not null)
+        if (receipt.Delivery is { IsSettlementSale: false })
             return Redirect(receipt.Delivery.BillUrl);
 
         string? selfServiceUrl = null;
@@ -78,41 +79,28 @@ public class POSReceiptController : BasePOSPageController
                     orderId,
                     ct);
 
-            if (!link.IsSuccess)
+            if (!link.IsSuccess && link.Error.Code != "Closed")
             {
                 return Conflict(
                     link.Error?.Message ??
                     "Không thể tạo mã QR nhập thông tin hóa đơn.");
             }
 
-            selfServiceUrl =
-                links.GetUriByName(
-                    HttpContext,
-                    "invoice-buyer-self-service",
-                    new
-                    {
-                        token = link.Value.Token
-                    });
-
-            if (string.IsNullOrWhiteSpace(
-                    selfServiceUrl))
+            if (link.IsSuccess)
             {
-                return StatusCode(
-                    StatusCodes
-                        .Status500InternalServerError,
-                    "Không thể tạo liên kết QR hóa đơn.");
+                selfServiceUrl = links.GetUriByName(
+                    HttpContext, "invoice-buyer-self-service", new { token = link.Value.Token });
+                if (string.IsNullOrWhiteSpace(selfServiceUrl))
+                    return StatusCode(StatusCodes.Status500InternalServerError,
+                        "Không thể tạo liên kết QR hóa đơn.");
+                selfServiceExpiresAtUtc = link.Value.ExpiresAtUtc;
             }
-
-            selfServiceExpiresAtUtc =
-                link.Value.ExpiresAtUtc;
         }
 
         ViewData["Title"] =
             $"Phiếu in #{orderId}";
 
-        return View(
-            "~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml",
-            new GaoApp.Web.Services.Printing.ReceiptPrintModel(
+        var printModel = new GaoApp.Web.Services.Printing.ReceiptPrintModel(
                 receipt,
                 [],
                 CurrentStoreId,
@@ -124,6 +112,23 @@ public class POSReceiptController : BasePOSPageController
                 InvoiceBuyerSelfServiceExpiresAtUtc:
                     selfServiceExpiresAtUtc,
                 ReceiptDefault: await templates.GetDefaultAsync(ct),
-                CanManageTemplates: await receiptAdmin.IsAdminAsync(ct)));
+                CanManageTemplates: await receiptAdmin.IsAdminAsync(ct));
+        return data
+            ? new JsonResult(printModel, GaoApp.Web.Services.Printing.ReceiptTemplateService.Json)
+            : View("~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml", printModel);
+    }
+
+    [HttpPost("{orderId:int}/buyer-link/replace")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReplaceBuyerLink(int orderId, [FromServices] LinkGenerator links, CancellationToken ct)
+    {
+        await BindPOSHeaderContextAsync(ct);
+        var order = await _orders.GetByIdAsync(orderId, ct);
+        if (order == null || order.StoreId != CurrentStoreId) return NotFound();
+        var result = await _buyerSelfService.ReplaceLinkAsync(orderId, ct);
+        if (!result.IsSuccess)
+            return result.Error.Code == "NotFound" ? NotFound() : Conflict(result.Error.Message);
+        var url = links.GetUriByName(HttpContext, "invoice-buyer-self-service", new { token = result.Value.Token });
+        return Json(new { url, expiresAtUtc = result.Value.ExpiresAtUtc });
     }
 }

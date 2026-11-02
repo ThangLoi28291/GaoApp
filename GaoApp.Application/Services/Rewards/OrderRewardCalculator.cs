@@ -2,6 +2,7 @@
 using GaoApp.Application.Interfaces.Repositories.Rewards;
 using GaoApp.Application.Interfaces.Services.Rewards;
 using GaoApp.Domain.Enums;
+using GaoApp.Domain.Constants;
 
 namespace GaoApp.Application.Services.Rewards;
 
@@ -49,6 +50,13 @@ public sealed class OrderRewardCalculator : IOrderRewardCalculator
         if (order.Status != OrderStatus.Completed)
         {
             AddAllLinesAsNotRewardable(order, result, "Đơn chưa hoàn tất.");
+            return result;
+        }
+
+        // Returns must reverse points actually recorded before a customer changed price tier.
+        if (!legacyWhenNoSnapshot && CustomerPriceTiers.IsWholesale(order.CustomerPriceTierSnapshot ?? order.Customer?.PriceTier))
+        {
+            AddAllLinesAsNotRewardable(order, result, "Khách sỉ không tích điểm.");
             return result;
         }
 

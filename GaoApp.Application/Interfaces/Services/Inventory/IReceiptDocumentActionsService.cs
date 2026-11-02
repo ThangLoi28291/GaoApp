@@ -9,4 +9,5 @@ public interface IReceiptDocumentActionsService
     Task RequestTitleAsync(int id, ReceiptTitleRequest request, CancellationToken ct);
     Task ReviewTitleAsync(int id, ReviewReceiptTitleRequest request, CancellationToken ct);
     Task DeleteDraftAsync(int id, ReceiptVersionRequest request, CancellationToken ct);
+    Task CorrectSupplierAsync(int id, CorrectReceiptSupplierRequest request, CancellationToken ct);
 }

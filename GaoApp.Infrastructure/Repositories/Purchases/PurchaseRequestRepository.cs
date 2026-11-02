@@ -90,8 +90,9 @@ public sealed class PurchaseRequestRepository : IPurchaseRequestRepository
 
     public async Task<int> GetNextLineNumberAsync(int purchaseRequestId, CancellationToken ct = default)
     {
+        var storeId = _db.CurrentStoreId ?? throw new TenantDataScopeException();
         var max = await _db.PurchaseRequestLines.IgnoreQueryFilters()
-            .Where(x => x.PurchaseRequestId == purchaseRequestId)
+            .Where(x => x.StoreId == storeId && x.PurchaseRequestId == purchaseRequestId)
             .Select(x => (int?)x.LineNo)
             .MaxAsync(ct) ?? 0;
         return checked(max + 1);

@@ -40,7 +40,11 @@ public sealed partial class OrderRepository
     {
         if (filters == null) return orders;
         if (filters.DeliveryOnly)
-            orders = orders.Where(o => _db.DeliveryOrders.Any(d => d.StoreId == storeId && !d.IsDeleted && d.SourceCartId == o.Id));
+        {
+            var deliverySales = DeliverySaleLinks(storeId);
+            orders = orders.Where(o => _db.DeliveryOrders.Any(d => d.StoreId == storeId && !d.IsDeleted && d.SourceCartId == o.Id)
+                || deliverySales.Any(link => link.SaleOrderId == o.Id));
+        }
         // Keep unfiltered count/timeline queries free of joins. Match dimensions only when requested.
         if (filters.EmployeeId.HasValue || !string.IsNullOrWhiteSpace(filters.Employee))
         {
@@ -93,10 +97,51 @@ public sealed partial class OrderRepository
         return orders;
     }
 
+    private async Task<IQueryable<Order>> ApplyProductFilterAsync(
+        IQueryable<Order> orders, int storeId, string? product, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(product)) return orders;
+        var term = SearchTerm(product);
+        var catalog = _db.ProductVariants.AsNoTracking().Where(v => v.StoreId == storeId && !v.IsDeleted &&
+            v.Product.StoreId == storeId && !v.Product.IsDeleted);
+        var names = catalog.Where(v => EF.Functions.Collate(v.Sku, OrderSearchCollation).Contains(term)
+            || (v.ProductVariantName != null && EF.Functions.Collate(
+                v.ProductVariantName.Replace("Đ", "D").Replace("đ", "d"), OrderSearchCollation).Contains(term))
+            || EF.Functions.Collate(v.Product.Name.Replace("Đ", "D").Replace("đ", "d"), OrderSearchCollation).Contains(term))
+            .Select(v => v.Id);
+        var barcodes = from b in _db.ProductVariantUnitBarcodes.AsNoTracking().Where(b => b.StoreId == storeId && !b.IsDeleted &&
+                           EF.Functions.Collate(b.Barcode, OrderSearchCollation).Contains(term))
+                       join c in _db.ProductUnitConversions.Where(c => c.StoreId == storeId && !c.IsDeleted)
+                           on b.ProductUnitConversionId equals c.Id
+                       join v in catalog on c.ProductVariantId equals v.Id
+                       select v.Id;
+        // Resolve the small catalog once, outside the history count/page queries.
+        var variantIds = await names.Union(barcodes).TagWith("POS orders: product catalog matches").ToArrayAsync(ct);
+        var lines = _db.OrderLines.AsNoTracking().Where(l => l.StoreId == storeId && !l.IsDeleted);
+        var foldD = term.Contains('d', StringComparison.OrdinalIgnoreCase);
+        var snapshots = lines.Where(l =>
+            EF.Functions.Collate(foldD ? l.ItemName.Replace("Đ", "D").Replace("đ", "d") : l.ItemName,
+                OrderSearchCollation).Contains(term)
+            || (l.Sku != null && EF.Functions.Collate(l.Sku, OrderSearchCollation).Contains(term))
+            || (l.Barcode != null && EF.Functions.Collate(l.Barcode, OrderSearchCollation).Contains(term))
+            || (l.ScannedBarcode != null && EF.Functions.Collate(l.ScannedBarcode, OrderSearchCollation).Contains(term)))
+            .Select(l => l.OrderId);
+        var catalogOrderIds = variantIds.Length == 0 ? [] : await lines.Where(l => variantIds.Contains(l.VariantId))
+            .Select(l => l.OrderId).Distinct().TagWith("POS orders: product catalog invoice matches").ToArrayAsync(ct);
+        // Materialize only the distinct integer IDs once. Otherwise SQL Server
+        // can push the outer Orders/delivery joins into the snapshot union and
+        // repeat the expensive text scan for both count and page queries.
+        var snapshotOrderIds = await snapshots.Distinct().TagWith("POS orders: product snapshot invoice matches").ToArrayAsync(ct);
+        var orderIds = catalogOrderIds.Concat(snapshotOrderIds).Distinct().ToArray();
+        return orders.Where(o => orderIds.Contains(o.Id));
+    }
+
     private async Task EnrichListPageAsync(List<OrderListItemDto> items, int storeId, CancellationToken ct)
     {
         if (items.Count == 0) return;
         var ids = items.Select(o => o.OrderId).ToArray();
+        var settledLinks = await DeliverySaleLinks(storeId).Where(link => ids.Contains(link.SaleOrderId))
+            .TagWith("POS orders: page delivery settlements").ToDictionaryAsync(link => link.SaleOrderId, ct);
         // All related information is loaded only for the already paged IDs. Missing/deleted
         // dimensions must not drop orders or change their count/pagination.
         var details = await (from o in _db.Orders.AsNoTracking().Where(o => o.StoreId == storeId && !o.IsDeleted && ids.Contains(o.Id))
@@ -126,7 +171,12 @@ public sealed partial class OrderRepository
             item.PaymentMethods = byOrder[item.OrderId].OrderBy(m => m).Select(m => m.ToString()).ToList();
             if (!details.TryGetValue(item.OrderId, out var detail)) continue;
             if (detail.DeliveryOrderId is int deliveryId && detail.DeliveryState is DeliveryState state)
+            {
                 item.Delivery = DeliveryInfo(deliveryId, detail.DeliveryCode, state);
+                item.Delivery.SourceOrderId = item.OrderId;
+            }
+            if (settledLinks.TryGetValue(item.OrderId, out var settlement))
+                item.Delivery = DeliverySaleInfo(settlement, item.OrderId);
             item.CustomerName = detail.CustomerName ?? (detail.CustomerId.HasValue ? "Khách đã xóa / không còn thông tin" : "Khách lẻ");
             item.CustomerPhone = detail.CustomerPhone;
             item.CashierName = detail.CashierName;

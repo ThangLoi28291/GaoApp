@@ -28,16 +28,23 @@ public class POSRuntimeContextAccessor : IPOSRuntimeContextAccessor
            ?? User?.FindFirst("store_name")?.Value;
 
     public int? TerminalId
-        => GetIntFromItems("CurrentTerminalId")
-           ?? GetIntClaim("terminal_id");
+        => User?.Identity?.IsAuthenticated == true
+            ? GetIntClaim("terminal_id")
+            : GetIntFromItems("CurrentTerminalId");
 
     public string? TerminalName
-        => GetStringFromItems("CurrentTerminalName")
-           ?? User?.FindFirst("terminal_name")?.Value;
+        => TerminalValue("CurrentTerminalName", "terminal_name");
 
     public string? TerminalCode
-        => GetStringFromItems("CurrentTerminalCode")
-           ?? User?.FindFirst("terminal_code")?.Value;
+        => TerminalValue("CurrentTerminalCode", "terminal_code");
+
+    private string? TerminalValue(string item, string claim)
+    {
+        if (User?.Identity?.IsAuthenticated != true) return GetStringFromItems(item);
+        return GetIntClaim("terminal_id") is > 0 && GetIntClaim("terminal_id") == GetIntFromItems("CurrentTerminalId")
+            ? GetStringFromItems(item) ?? User.FindFirst(claim)?.Value
+            : User.FindFirst(claim)?.Value;
+    }
 
     public int? UserId
         => GetIntClaim(ClaimTypes.NameIdentifier);

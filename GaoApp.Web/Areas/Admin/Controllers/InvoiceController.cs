@@ -1,5 +1,6 @@
 ﻿using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Application.Interfaces.Repositories.Invoices;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,6 +20,7 @@ public partial class InvoiceController : Controller
     private readonly IInvoiceCorrectionService _invoiceCorrectionService;
     private readonly IInvoiceViettelDashboardService _viettelDashboardService;
     private readonly IAutoInvoiceService _autoInvoiceService;
+    private readonly IInvoiceInputStockRepository _inputStockRepository;
     public InvoiceController(
         IInvoiceService invoiceService,
         IViettelInvoicePayloadBuilder viettelPayloadBuilder,
@@ -29,7 +31,8 @@ public partial class InvoiceController : Controller
         IViettelInvoiceEmailService viettelInvoiceEmailService,
         IInvoiceCorrectionService invoiceCorrectionService,
         IInvoiceViettelDashboardService viettelDashboardService,
-        IAutoInvoiceService autoInvoiceService)
+        IAutoInvoiceService autoInvoiceService,
+        IInvoiceInputStockRepository inputStockRepository)
     {
         _invoiceService = invoiceService;
         _viettelPayloadBuilder = viettelPayloadBuilder;
@@ -41,5 +44,6 @@ public partial class InvoiceController : Controller
         _invoiceCorrectionService = invoiceCorrectionService;
         _viettelDashboardService = viettelDashboardService;
         _autoInvoiceService = autoInvoiceService;
+        _inputStockRepository = inputStockRepository;
     }
 }

@@ -16,6 +16,10 @@
     var canSave = await ViewPermissionHelper.HasPermissionAsync(PermissionService, TenantContext, User, permission);
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/customer-directory.mobile.css" asp-append-version="true" />
+}
+
 @section header {
     <div class="gds-page-header gds-page-header--compact w-100"><div class="gds-page-header__main"><h3 class="gds-page-header__title">@ViewData["Title"]</h3><p class="gds-page-header__subtitle mb-0">Thông tin hồ sơ và chính sách bán hàng của khách tại cửa hàng hiện tại.</p></div></div>
 }
@@ -44,3 +48,7 @@
 </section></div></div></div></div>
 
 @section Scripts { @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); } }
+
+@section PageScripts {
+    <script src="~/Admin/js/customer-directory.mobile.js" asp-append-version="true"></script>
+}

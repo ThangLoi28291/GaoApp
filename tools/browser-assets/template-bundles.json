@@ -1,0 +1,40 @@
+[
+  {
+    "file": "vendor/js/helpers.js",
+    "originalSha256": "81ca40868e5df4d700c3729d6d2f24b41d7374e42c83bf20e61f4b7014e7afaf",
+    "sha256": "ed8e5b155d788e0e686a1bf6e7d306a6e3a529bb5b0e05317bce24d095066802"
+  },
+  {
+    "file": "vendor/js/menu.js",
+    "originalSha256": "0f79dca3acfcaacb7677e0a23fb6488aa79c97b4b225e748b0cd8a454c85b621",
+    "sha256": "325babaf3c21875ebea0ff4578edc9df76c220bce5d2b63bbf13dcbde4ab2855"
+  },
+  {
+    "file": "vendor/libs/perfect-scrollbar/perfect-scrollbar.js",
+    "originalSha256": "b5ee1c29427e147ec0448b67d2c0f7850e01576eddd77a3c1fedfd8245bea4e2",
+    "sha256": "ae318f877f59b087b17aa761cb4f50be25277ad488c9d073628ba8c1981f1639",
+    "package": "perfect-scrollbar",
+    "version": "1.5.6"
+  },
+  {
+    "file": "vendor/libs/apex-charts/apexcharts.js",
+    "originalSha256": "f4243e83e334e29b8ddafa63d1630388de01a90738a71f1a70e073fb26e0bdf1",
+    "sha256": "807545f6fd60ca3e66fba288988b9668afde7a51e2716128263e9b411791c04a",
+    "package": "apexcharts",
+    "version": "4.2.0"
+  },
+  {
+    "file": "vendor/libs/masonry/masonry.js",
+    "originalSha256": "4ed69fc25c88ceac60a19b0b8eeecc3ca3608ef55da34f17fff5a63c739beb80",
+    "sha256": "d94e98226fd2c606de5618bd45047ac9b703372070a6c5e9963dea07c0e1d535",
+    "package": "masonry-layout",
+    "version": "4.2.2"
+  },
+  {
+    "file": "vendor/libs/highlight/highlight.js",
+    "originalSha256": "9c0ed2f023fd5523b81deda7b7b8c28e3c6208862cc3bf72d94c49a06c74e9ad",
+    "sha256": "1ae83f73e61771930467399e4b51b582184b3c19f9241314f01d4002aca9f5cf",
+    "package": "highlight.js",
+    "version": "11.10.0"
+  }
+]

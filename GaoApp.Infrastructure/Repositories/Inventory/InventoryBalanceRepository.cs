@@ -67,6 +67,10 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
                 "Inventory balance identity values must be greater than zero.");
         }
 
+        if (!_db.CanWriteStoreData) throw new TenantDataScopeException();
+        if (_db.CurrentStoreId is > 0 && _db.CurrentStoreId != storeId)
+            throw new InvalidOperationException("Inventory balance store does not match the current store.");
+
         if (!_db.Database.IsSqlServer())
         {
             throw new InvalidOperationException(
@@ -76,6 +80,12 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
         var currentTransaction = _db.Database.CurrentTransaction
             ?? throw new InvalidOperationException(
                 "Inventory balance locking requires an active database transaction.");
+
+        if (InventoryPostingLockState.LockedBalance(_db, storeId, warehouseId, productVariantId) is { } owned)
+        {
+            if (owned.IsDeleted) throw new ConcurrencyException("The inventory balance identity is occupied by a soft-deleted row.");
+            return owned;
+        }
 
         var connection = _db.Database.GetDbConnection();
         if (connection.State != ConnectionState.Open)
@@ -106,23 +116,23 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
             _ = await command.ExecuteScalarAsync(ct);
         }
 
-        var entity = await _db.InventoryBalances
+        var snapshot = await _db.InventoryBalances
             .IgnoreQueryFilters()
+            .AsNoTracking()
             .SingleOrDefaultAsync(x =>
                 x.StoreId == storeId
                 && x.WarehouseId == warehouseId
                 && x.ProductVariantId == productVariantId,
                 ct);
-
+        var entity = snapshot is null ? null : InventoryPostingLockState.TrackFresh(_db, [snapshot])[0];
         if (entity is not null)
         {
-            await InventoryPostingLockState.RefreshOnceAsync(_db, entity, ct);
             if (entity.IsDeleted)
             {
                 throw new ConcurrencyException(
                     "The inventory balance identity is occupied by a soft-deleted row.");
             }
-
+            InventoryPostingLockState.MarkBalanceLocked(_db, entity);
             return entity;
         }
 
@@ -140,11 +150,86 @@ public sealed class InventoryBalanceRepository : IInventoryBalanceRepository
         await _db.InventoryBalances.AddAsync(entity, ct);
         InventoryPostingLockState.MarkOwned(_db, entity);
         await _db.SaveChangesAsync(ct);
+        InventoryPostingLockState.MarkBalanceLocked(_db, entity);
         return entity;
     }
 
     public Task AddAsync(InventoryBalance balance, CancellationToken ct = default)
         => _db.InventoryBalances.AddAsync(balance, ct).AsTask();
+
+    public async Task LockBatchAsync(IReadOnlyList<InventoryPostingLockKey> keys, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (keys.Count == 0) return;
+        if (!_db.CanWriteStoreData) throw new TenantDataScopeException();
+        if (!_db.Database.IsSqlServer()) throw new InvalidOperationException("Durable inventory balance locking requires SQL Server.");
+        var transaction = _db.Database.CurrentTransaction
+            ?? throw new InvalidOperationException("Inventory balance locking requires an active database transaction.");
+        var ordered = keys.Distinct().OrderBy(x => x.StoreId).ThenBy(x => x.WarehouseId).ThenBy(x => x.ProductVariantId).ToArray();
+        foreach (var key in ordered)
+        {
+            if (key.StoreId <= 0 || key.WarehouseId <= 0 || key.ProductVariantId <= 0 ||
+                (_db.CurrentStoreId is > 0 && _db.CurrentStoreId != key.StoreId))
+                throw new InvalidOperationException("Inventory balance batch does not match the current store.");
+            if (InventoryPostingLockState.LockedBalance(_db, key.StoreId, key.WarehouseId, key.ProductVariantId)?.IsDeleted == true)
+                throw new ConcurrencyException("The inventory balance identity is occupied by a soft-deleted row.");
+        }
+        var connection = _db.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open) await connection.OpenAsync(ct);
+        var added = new List<InventoryBalance>();
+        foreach (var group in ordered.Where(key => InventoryPostingLockState.LockedBalance(_db,
+                     key.StoreId, key.WarehouseId, key.ProductVariantId) is null)
+                     .GroupBy(key => (key.StoreId, key.WarehouseId)))
+        {
+            foreach (var chunk in group.Chunk(500))
+            {
+                // Separate SELECT statements preserve canonical lock order. A
+                // single IN/ORDER BY query cannot promise acquisition order.
+                await using var command = connection.CreateCommand();
+                command.Transaction = transaction.GetDbTransaction(); command.CommandTimeout = 15;
+                AddInt32Parameter(command, "@storeId", group.Key.StoreId);
+                AddInt32Parameter(command, "@warehouseId", group.Key.WarehouseId);
+                var statements = new List<string>();
+                for (var index = 0; index < chunk.Length; index++)
+                {
+                    var parameter = "@variant" + index;
+                    AddInt32Parameter(command, parameter, chunk[index].ProductVariantId);
+                    statements.Add("SELECT TOP (1) Id FROM InventoryBalances WITH (UPDLOCK,HOLDLOCK,ROWLOCK) " +
+                        "WHERE StoreId=@storeId AND WarehouseId=@warehouseId AND ProductVariantId=" + parameter + ";");
+                }
+                command.CommandText = string.Join("\n", statements);
+                await using (var reader = await command.ExecuteReaderAsync(ct))
+                    while (await reader.NextResultAsync(ct)) { }
+                var ids = chunk.Select(x => x.ProductVariantId).ToArray();
+                var snapshots = await _db.InventoryBalances.IgnoreQueryFilters().AsNoTracking()
+                    .Where(x => x.StoreId == group.Key.StoreId && x.WarehouseId == group.Key.WarehouseId &&
+                        ids.Contains(x.ProductVariantId)).ToListAsync(ct);
+                var existing = InventoryPostingLockState.TrackFresh(_db, snapshots).ToDictionary(x => x.ProductVariantId);
+                foreach (var key in chunk)
+                {
+                    if (existing.TryGetValue(key.ProductVariantId, out var balance))
+                    {
+                        if (balance.IsDeleted) throw new ConcurrencyException("The inventory balance identity is occupied by a soft-deleted row.");
+                        InventoryPostingLockState.MarkBalanceLocked(_db, balance);
+                    }
+                    else
+                    {
+                        balance = new InventoryBalance { StoreId = key.StoreId, WarehouseId = key.WarehouseId, ProductVariantId = key.ProductVariantId };
+                        await _db.InventoryBalances.AddAsync(balance, ct); added.Add(balance);
+                    }
+                }
+            }
+        }
+        if (added.Count > 0)
+        {
+            await _db.SaveChangesAsync(ct);
+            foreach (var balance in added)
+            {
+                InventoryPostingLockState.MarkOwned(_db, balance);
+                InventoryPostingLockState.MarkBalanceLocked(_db, balance);
+            }
+        }
+    }
 
     public async Task<List<InventoryBalance>> GetByVariantAsync(int productVariantId, CancellationToken ct = default)
     {

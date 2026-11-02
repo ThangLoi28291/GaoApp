@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { sourceLineMarkup, priceBreakdownRows, priceBreakdownMarkup, displayStatus, deliveryBillUrl, appendDeliveryOnly } =
+const { sourceLineMarkup, priceBreakdownRows, priceBreakdownMarkup, displayStatus, deliveryBillUrl, appendDeliveryOnly, isDeliverySource, deliveryDocumentsMarkup } =
     require('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.orders.page.js');
 
 test('saved line gross, promotion and net remain distinct and escaped, including free gifts', () => {
@@ -52,4 +52,22 @@ test('delivery-only URL filtering is explicit and preserves other lookup filters
     assert.equal(query.get('status'), 'Cancelled'); assert.equal(query.get('page'), '2');
     appendDeliveryOnly(query, false); assert.equal(query.has('deliveryOnly'), false);
     appendDeliveryOnly(query, 'true'); assert.equal(query.get('deliveryOnly'), 'true');
+});
+
+test('settled sale is financial while source remains a quote, and linked documents retain QR and safe IDs', () => {
+    const sale = { orderId: 22, status: 'Completed', grandTotal: 23500, paidTotal: 23500,
+        delivery: { deliveryOrderId: 7, code: 'GH-7', settlementStatus: 'settled', isSettlementSale: true,
+            sourceOrderId: 11, saleOrderId: 22, saleOrderNumber: 'POS-<saved>' } };
+    const before = JSON.stringify(sale);
+    assert.equal(isDeliverySource(sale), false);
+    assert.equal(isDeliverySource({ ...sale, orderId: 11, delivery: { ...sale.delivery, isSettlementSale: false } }), true);
+    assert.equal(isDeliverySource({ status: 'Completed' }), false);
+    const docs = deliveryDocumentsMarkup(sale);
+    assert.ok(docs.includes('/admin/deliveries/7/bill'));
+    assert.ok(docs.includes('/admin/pos/order-detail/11'));
+    assert.ok(docs.includes('/admin/pos/order-detail/22'));
+    assert.ok(docs.includes('/admin/pos/orders/22/print?autoPrint=false'));
+    assert.ok(docs.includes('POS-&lt;saved&gt;')); assert.ok(!docs.includes('<saved>'));
+    assert.ok(!deliveryDocumentsMarkup({ delivery: { sourceOrderId: 'javascript:bad', saleOrderId: -1 } }).includes('href='));
+    assert.equal(JSON.stringify(sale), before);
 });

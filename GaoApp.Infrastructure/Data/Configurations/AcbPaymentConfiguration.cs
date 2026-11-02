@@ -17,6 +17,7 @@ public sealed class AcbPaymentConfiguration : IEntityTypeConfiguration<StoreAcbS
     public void Configure(EntityTypeBuilder<AcbCallbackRouteChange> b)
     {
         b.ToTable("AcbCallbackRouteChanges");
+        b.HasQueryFilter(x => !x.Route.IsDeleted);
         b.HasOne(x => x.Route).WithMany().HasForeignKey(x => x.RouteId).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.RouteId, x.ChangedAtUtc });
     }
@@ -56,6 +57,7 @@ public sealed class AcbPaymentConfiguration : IEntityTypeConfiguration<StoreAcbS
     }
     public void Configure(EntityTypeBuilder<AcbPaymentTransaction> b)
     {
+        b.HasOne<BankVerifiedReceipt>().WithMany().HasForeignKey(x=>new{x.StoreId,x.BankVerifiedReceiptId}).HasPrincipalKey(x=>new{x.OriginStoreId,x.Id}).OnDelete(DeleteBehavior.Restrict);
         b.ToTable("AcbPaymentTransactions");
         b.Property(x => x.Amount).HasPrecision(18, 2);
         b.HasIndex(x => new { x.SessionId, x.TransactionNumber }).IsUnique();

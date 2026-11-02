@@ -1,3 +1,4 @@
+using GaoApp.Application.Common.Security;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
@@ -86,7 +87,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             .Select(x => x.InvoiceHeadId).ToHashSet();
         var visible = candidates.Where(x =>
                 x.StoreId == storeId && !x.IsDeleted && !x.LegacyReadOnly && !x.IsAutoInvoiceGroup &&
-                x.Order?.InvoiceIssuanceRoute == InvoiceIssuanceRoute.Automatic &&
+                EffectiveRoute(x) == InvoiceIssuanceRoute.Automatic &&
                 !InvoiceIssuanceStatePolicy.IsIssuedLike(x) && x.IssuedAtUtc == null &&
                 !coveredIds.Contains(x.Id) && SaleAtUtc(x) >= scope.FromUtc && SaleAtUtc(x) < scope.ToUtc)
             .OrderBy(SaleAtUtc).ThenBy(x => x.Id).ToList();
@@ -497,19 +498,18 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
 
         Result<bool> validation;
 
-        if (invoice.Order?.InvoiceIssuanceRoute ==
+        if (EffectiveRoute(invoice) ==
             InvoiceIssuanceRoute.Automatic)
         {
             validation =
                 ValidateInvoiceForAutomaticClaim(
                     invoice);
         }
-        else if (invoice.Order?.InvoiceIssuanceRoute ==
+        else if (EffectiveRoute(invoice) ==
                  InvoiceIssuanceRoute.Manual)
         {
             validation =
-                ValidateInvoiceForManualIssue(
-                    invoice);
+                await ValidateInvoiceForManualIssueAsync(invoice, ct);
         }
         else
         {
@@ -682,6 +682,10 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             ct);
         var activeIds = active.SelectMany(x => x.Sources).Where(x => x.IsActive).Select(x => x.InvoiceHeadId).ToHashSet();
         var ready = candidates
+            // Match the cockpit's sale window and issueable-content guard.
+            // Empty drafts must never win selection only to be skipped at claim.
+            .Where(x => SaleAtUtc(x) >= scope.FromUtc && SaleAtUtc(x) < scope.ToUtc)
+            .Where(HasIssueableDetails)
             .Where(x => !activeIds.Contains(x.Id))
             // A blocked/failed invoice is visible in Cần xử lý and must not
             // stop the chronological queue. It can be retried only after an
@@ -961,8 +965,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             {
                 // Route có thể đã được Manager đổi trong khoảng
                 // scan -> claim.
-                if (invoice.Order == null ||
-                    invoice.Order.InvoiceIssuanceRoute !=
+                if (EffectiveRoute(invoice) !=
                         InvoiceIssuanceRoute.Automatic)
                 {
                     continue;
@@ -978,14 +981,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
 
                 // Full return hoặc không còn detail có giá trị
                 // => không còn gì để phát hành.
-                var hasIssueableDetail =
-                    invoice.Details.Any(x =>
-                        !x.IsDeleted &&
-                        x.Quantity > 0m &&
-                        x.TotalAmount > 0m);
-
-                if (!hasIssueableDetail ||
-                    invoice.GrandTotal <= 0m)
+                if (!HasIssueableDetails(invoice))
                 {
                     continue;
                 }
@@ -1389,7 +1385,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
 
             var routeGuard =
                 isManual
-                    ? ValidateInvoiceForManualIssue(invoice)
+                    ? await ValidateInvoiceForManualIssueAsync(invoice, ct)
                     : ValidateInvoiceForAutomaticClaim(invoice);
 
             if (!routeGuard.IsSuccess)
@@ -1438,6 +1434,20 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                 return Result<AutoInvoiceOperation>.Failure(
                     Error.Conflict(
                         "Hóa đơn đang được phát hành bởi một thao tác khác."));
+            }
+
+            // Original manual invoices need the same stock preflight as the
+            // final issuing service. Reject before creating a durable claim.
+            // Corrections retain their delta-specific stock validation below.
+            if (isManual && !invoice.OriginalInvoiceHeadId.HasValue && !invoice.CorrectionType.HasValue)
+            {
+                var availability = await _inputStockRepository.GetAvailabilityAsync(invoiceHeadId, ct);
+                if (!availability.IsSufficient)
+                {
+                    await transaction.RollbackAsync(ct);
+                    return Result<AutoInvoiceOperation>.Failure(Error.Validation(
+                        "Invoice.InputInvoiceStockInsufficient", BuildShortageMessage(availability)));
+                }
             }
 
             var operation = new AutoInvoiceOperation
@@ -1612,8 +1622,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             return Result<bool>.Failure(Error.Conflict(
                 "Hóa đơn điều chỉnh/thay thế phải được phát hành thủ công."));
 
-        if (invoice.Order == null ||
-            invoice.Order.InvoiceIssuanceRoute !=
+        if (EffectiveRoute(invoice) !=
                 InvoiceIssuanceRoute.Automatic)
         {
             return Result<bool>.Failure(
@@ -1633,9 +1642,35 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         return ValidateInvoiceForAutomaticIssue(invoice);
     }
 
+    private async Task<Result<bool>> ValidateInvoiceForManualIssueAsync(
+        InvoiceHead invoice, CancellationToken ct)
+    {
+        if (invoice.OriginalInvoiceHeadId.HasValue || invoice.CorrectionType.HasValue ||
+            !LegacyInvoiceIssueConfiguration.UseCurrent(invoice))
+            return ValidateInvoiceForManualIssue(invoice);
+
+        // Match JSON/preview/issue configuration for an unsubmitted GaoStore
+        // draft. Only read the current setting; never rewrite its old snapshot.
+        InvoiceProviderSetting? current;
+        try
+        {
+            current = _providerSettings == null ? null :
+                await _providerSettings.GetActiveViettelAsync(invoice.StoreId, ct);
+        }
+        catch (CryptographicException error)
+        {
+            return Result<bool>.Failure(InvoiceCredentialErrors.CannotDecrypt(error,
+                "Không giải mã được mật khẩu cấu hình Viettel đang hoạt động."));
+        }
+        if (current == null)
+            return Result<bool>.Failure(Error.Validation("InvoiceProvider.NotConfigured",
+                $"Hóa đơn #{invoice.Id} chưa có cấu hình Viettel đang hoạt động của cửa hàng."));
+        return ValidateInvoiceForManualIssue(invoice, current);
+    }
+
     private static Result<bool>
         ValidateInvoiceForManualIssue(
-            InvoiceHead invoice)
+            InvoiceHead invoice, InvoiceProviderSetting? currentSetting = null)
     {
         if (invoice.OriginalInvoiceHeadId.HasValue || invoice.CorrectionType.HasValue)
         {
@@ -1657,8 +1692,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             return Result<bool>.Success(true);
         }
 
-        if (invoice.Order == null ||
-            invoice.Order.InvoiceIssuanceRoute !=
+        if (EffectiveRoute(invoice) !=
                 InvoiceIssuanceRoute.Manual)
         {
             return Result<bool>.Failure(
@@ -1700,17 +1734,25 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         if (!validation.IsSuccess)
             return validation;
 
-        return ValidateInvoiceForAutomaticIssue(invoice);
+        return ValidateInvoiceForAutomaticIssue(invoice, currentSetting);
     }
-    private static Result<bool> ValidateInvoiceForAutomaticIssue(InvoiceHead invoice)
+    private static Result<bool> ValidateInvoiceForAutomaticIssue(
+        InvoiceHead invoice, InvoiceProviderSetting? currentSetting = null)
     {
-        if (invoice.InvoiceProviderSettingId == null ||
-            invoice.InvoiceProviderSetting == null ||
-            !invoice.InvoiceProviderSetting.IsActive ||
-            invoice.InvoiceProviderSetting.IsDeleted ||
-            !string.Equals(invoice.InvoiceProviderSetting.ProviderCode, "VIETTEL", StringComparison.OrdinalIgnoreCase))
+        var setting = currentSetting ?? invoice.InvoiceProviderSetting;
+        var settingId = currentSetting?.Id ?? invoice.InvoiceProviderSettingId;
+        string? settingProblem = settingId is not > 0
+            ? "chưa gắn cấu hình Viettel"
+            : setting == null ? $"không tìm thấy cấu hình Viettel #{settingId} đã gắn"
+            : setting.StoreId != invoice.StoreId ? "cấu hình Viettel không thuộc cửa hàng của hóa đơn"
+            : setting.IsDeleted ? $"cấu hình Viettel #{settingId} đã bị xóa"
+            : !setting.IsActive ? $"cấu hình Viettel #{settingId} đang bị tắt"
+            : !string.Equals(setting.ProviderCode, "VIETTEL", StringComparison.OrdinalIgnoreCase)
+                ? $"cấu hình #{settingId} không phải nhà cung cấp Viettel" : null;
+        if (settingProblem != null)
         {
-            return Result<bool>.Failure(Error.Validation("InvoiceProvider.NotConfigured", "Hóa đơn chưa có cấu hình Viettel hợp lệ."));
+            return Result<bool>.Failure(Error.Validation("InvoiceProvider.NotConfigured",
+                $"Hóa đơn #{invoice.Id}: {settingProblem}. Vui lòng kiểm tra cấu hình hóa đơn."));
         }
 
         var missingUnit = invoice.Details
@@ -1732,7 +1774,17 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             .Where(x => !x.IsSufficient)
             .Take(10)
             .Select(x =>
-                $"{x.ItemName}: cần {x.RequiredBaseQuantity:0.####}, có {Math.Max(0m, x.AvailableBaseQuantity):0.####}, thiếu {x.ShortageBaseQuantity:0.####} tại {FormatWarehouse(x.WarehouseId)}")
+            {
+                var detail = availability.DetailLines.FirstOrDefault(d =>
+                    d.WarehouseId == x.WarehouseId && d.ProductVariantId == x.ProductVariantId);
+                var factor = detail?.UnitFactor > 0m ? detail.UnitFactor : 1m;
+                var unit = string.IsNullOrWhiteSpace(detail?.UnitName) ? string.Empty : " " + detail.UnitName;
+                var warehouse = string.IsNullOrWhiteSpace(detail?.WarehouseName)
+                    ? FormatWarehouse(x.WarehouseId) : detail.WarehouseName;
+                return $"{x.ItemName}: cần {x.RequiredBaseQuantity / factor:0.####}{unit}, " +
+                    $"có {Math.Max(0m, x.AvailableBaseQuantity) / factor:0.####}{unit}, " +
+                    $"thiếu {x.ShortageBaseQuantity / factor:0.####}{unit} tại {warehouse}";
+            })
             .ToList();
         return "Tồn hóa đơn đầu vào không đủ: " + string.Join("; ", shortages);
     }
@@ -1755,7 +1807,8 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                 OrderLineId = d.OrderLineId,
                 OrderLegalEntityAllocationId = d.OrderLegalEntityAllocationId,
                 LegacyUnitFactor = d.LegacyUnitFactor,
-                SourceType = InvoiceDetailSourceType.FromOrderLine,
+                SourceType = d.SourceType,
+                StorefrontServiceRevenueId = d.StorefrontServiceRevenueId,
                 ItemName = d.ItemName,
                 UnitName = d.UnitName,
                 Quantity = d.Quantity,
@@ -1848,8 +1901,8 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             SaleDateLocal = operation.SaleDateLocal,
             SourceCount = operation.Sources.Count,
             InvoiceHeadId = operation.InvoiceHeadId,
-            ErrorCode = operation.ErrorCode,
-            ErrorMessage = operation.ErrorMessage,
+            ErrorCode = InvoiceErrorReadSanitizer.Code(operation.ErrorCode),
+            ErrorMessage = InvoiceErrorReadSanitizer.Message(operation.ErrorMessage, operation.ErrorCode),
             CompletedAtUtc = operation.CompletedAtUtc,
             IsManual = operation.IsManual,
             RequestedByUserName = operation.RequestedByUserName
@@ -1870,7 +1923,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             .ThenByDescending(x => x.Id).FirstOrDefault() ?? related.OrderByDescending(x => x.Id).FirstOrDefault();
         var unknown = IsUnknown(invoice) || active.Any(x => x.Status == AutoInvoiceOperationStatus.Unknown);
         var safeState = InvoiceIssuanceStatePolicy.CanChangeRoute(invoice) && invoice.IssuedAtUtc == null;
-        var hasDetails = invoice.GrandTotal > 0 && invoice.Details.Any(x => !x.IsDeleted && x.Quantity > 0 && x.TotalAmount > 0);
+        var hasDetails = HasIssueableDetails(invoice);
         var validation = ValidateInvoiceForAutomaticClaim(invoice);
         var storedError = !string.IsNullOrWhiteSpace(invoice.LastErrorCode) || !string.IsNullOrWhiteSpace(invoice.LastErrorMessage);
         var hasIncident = unknown || storedError || (active.Count == 0 && (!safeState || !hasDetails || !validation.IsSuccess));
@@ -1895,7 +1948,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         return new AutoInvoiceQueueItemDto
         {
             InvoiceHeadId = invoice.Id, OrderId = invoice.OrderId, OrderNumber = invoice.Order?.OrderNumber,
-            InvoiceIssuanceRoute = invoice.Order!.InvoiceIssuanceRoute,
+            InvoiceIssuanceRoute = EffectiveRoute(invoice),
             SaleAtUtc = SaleAtUtc(invoice), SaleAtLocal = SaleDateLocal(invoice, settings, nowUtc),
             SaleDateLocal = SaleDateLocal(invoice, settings, nowUtc).Date,
             StableAtUtc = stable,
@@ -1904,7 +1957,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
             IsReady = !hasIncident && active.Count == 0 && safeState && hasDetails && ageEligible,
             HasIncident = hasIncident, IsUnknown = unknown,
             CanRecheck = !unknown && active.Count == 0 && safeState && IsLocallyRecheckableIncident(invoice.LastErrorCode?.Trim()),
-            CanChangeToManual = safeState && active.Count == 0 && invoice.Order.Status == OrderStatus.Completed,
+            CanChangeToManual = safeState && active.Count == 0 && invoice.Order?.Status == OrderStatus.Completed,
             UuidLookupInvoiceHeadId = operation is { IsManual: false, Status: AutoInvoiceOperationStatus.Unknown, InvoiceHeadId: not null } &&
                 uuidTargets.Contains(operation.InvoiceHeadId.Value) ? operation.InvoiceHeadId : null,
             OperationId = operation?.Id, OperationStatus = operation?.Status,
@@ -1915,7 +1968,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                 !ageEligible ? "Chờ đủ tuổi" : group ? "Đợi gộp" : "Đơn lẻ sẵn sàng",
             StoreName = invoice.Store?.Name, LegalEntityId = invoice.LegalEntityId,
             InvoiceProviderSettingId = invoice.InvoiceProviderSettingId, ProviderCode = invoice.ProviderCode,
-            ErrorCode = errorCode, ErrorMessage = errorMessage, IsGroupedConsumer = group
+            ErrorCode = InvoiceErrorReadSanitizer.Code(errorCode), ErrorMessage = InvoiceErrorReadSanitizer.Message(errorMessage, errorCode), IsGroupedConsumer = group
         };
     }
     private static AutoInvoiceSettingsDto MapSettings(AutoInvoiceSettings x)
@@ -1951,9 +2004,9 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
                 CurrentOperationId = x.CurrentOperationId,
                 CurrentInvoiceHeadId = x.CurrentInvoiceHeadId,
                 NextRunAtUtc = x.NextRunAtUtc,
-                LastErrorCode = x.LastErrorCode,
-                LastErrorMessage = x.LastErrorMessage,
-                LastResult = x.LastResult
+                LastErrorCode = InvoiceErrorReadSanitizer.Code(x.LastErrorCode),
+                LastErrorMessage = InvoiceErrorReadSanitizer.Message(x.LastErrorMessage, x.LastErrorCode),
+                LastResult = InvoiceErrorReadSanitizer.WorkerResult(x.LastResult)
             };
 
     private async Task<AutoInvoiceSettings> EnsureSettingsAsync(int storeId, CancellationToken ct)
@@ -2005,12 +2058,8 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         }
         catch (CryptographicException ex)
         {
-            return Result.Failure(Error.Validation(
-                "InvoiceProvider.CredentialKeyUnavailable",
-                "Không giải mã được mật khẩu Viettel của cấu hình đang hoạt động. " +
-                "Hãy vào Sửa cấu hình, nhập lại mật khẩu Viettel và bấm Lưu; " +
-                "sau đó worker sẽ chạy lại bằng key hiện tại. " +
-                $"Chi tiết kỹ thuật: {ex.Message}"));
+            return Result.Failure(InvoiceCredentialErrors.CannotDecrypt(ex,
+                "Worker không giải mã được mật khẩu Viettel của cấu hình đang hoạt động."));
         }
     }
 
@@ -2045,7 +2094,7 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
         }
         catch
         {
-            return TimeZoneInfo.Local.Id;
+            return VietnamTime.Zone.Id;
         }
     }
 
@@ -2081,19 +2130,23 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
     {
         try
         {
-            return TimeZoneInfo.FindSystemTimeZoneById(string.IsNullOrWhiteSpace(id) ? TimeZoneInfo.Local.Id : id);
+            return TimeZoneInfo.FindSystemTimeZoneById(string.IsNullOrWhiteSpace(id) ? VietnamTime.Zone.Id : id);
         }
         catch
         {
-            return TimeZoneInfo.Local;
+            return VietnamTime.Zone;
         }
     }
 
     private static DateTime LocalNow(AutoInvoiceSettings settings, DateTime nowUtc)
         => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), GetZone(settings.TimeZoneId));
 
+    private static bool HasIssueableDetails(InvoiceHead invoice)
+        => invoice.GrandTotal > 0m && invoice.Details.Any(x =>
+            !x.IsDeleted && x.Quantity > 0m && x.TotalAmount > 0m);
+
     private static DateTime SaleAtUtc(InvoiceHead invoice)
-        => invoice.Order?.CompletedAtUtc ?? DateTime.SpecifyKind(invoice.InvoiceDate, DateTimeKind.Utc);
+        => invoice.Order?.CompletedAtUtc ?? invoice.NativeServiceRecognizedAtUtc ?? DateTime.SpecifyKind(invoice.InvoiceDate, DateTimeKind.Utc);
     private static DateTime StableAtUtc(
     InvoiceHead invoice)
     => invoice.LastIssuanceRelevantChangeAtUtc
@@ -2101,8 +2154,11 @@ public sealed class AutoInvoiceService : IAutoInvoiceService
     private static DateTime SaleDateLocal(InvoiceHead invoice, AutoInvoiceSettings settings, DateTime nowUtc)
         => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(SaleAtUtc(invoice), DateTimeKind.Utc), GetZone(settings.TimeZoneId));
 
+    private static InvoiceIssuanceRoute EffectiveRoute(InvoiceHead invoice) => invoice.Order?.InvoiceIssuanceRoute ?? invoice.NativeServiceInvoiceRoute ?? InvoiceIssuanceRoute.Unselected;
+
     private static bool IsCashOnlyAutomaticOrder(InvoiceHead invoice)
     {
+        if (invoice.StorefrontServiceRevenueId.HasValue) return invoice.NativeServiceCashOnly && EffectiveRoute(invoice) == InvoiceIssuanceRoute.Automatic && invoice.GrandTotal > 0 && invoice.Details.All(x => x.IsDeleted || x.VatRate == 0);
         var order = invoice.Order;
         if (order == null || order.StoreId != invoice.StoreId ||
             order.InvoiceIssuanceRoute != InvoiceIssuanceRoute.Automatic ||

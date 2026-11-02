@@ -1,0 +1,17 @@
+/* Approved mobile v2 palette. Opt-in only; no Bootstrap/global token overrides. */
+[data-gao-theme="commerce"] {
+    --commerce-font: "Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --commerce-ink: #19253b;
+    --commerce-muted: #647188;
+    --commerce-primary: #3858df;
+    --commerce-primary-hover: #2945c3;
+    --commerce-navy: #192c4a;
+    --commerce-surface: #fff;
+    --commerce-canvas: #f4f6fa;
+    --commerce-line: #e5eaf1;
+    --commerce-control-line: #8794aa;
+    --commerce-focus: #315bd7;
+    --commerce-ease: cubic-bezier(.22,.68,0,1);
+    --commerce-enter-duration: 220ms;
+    --commerce-sheet-duration: 230ms;
+}

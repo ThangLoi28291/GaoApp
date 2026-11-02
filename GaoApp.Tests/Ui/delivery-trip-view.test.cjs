@@ -80,6 +80,15 @@ async function fixture(options = {}) {
     document.querySelector = selector => selector === 'meta[name=request-verification-token]' ? { content: 'csrf' } : document.body.querySelector(selector);
     const disk = new Map(), storage = { getItem: key => disk.get(key) ?? null, setItem: (key, value) => disk.set(key, String(value)), removeItem: key => disk.delete(key) };
     const state = { model: detail(options.state), posts: [], reads: [], failFresh: false, monotonic: 0 };
+    if (options.completed) {
+        state.model.isCompleted = true;
+        state.model.orders[0].state = 'Settled'; state.model.orders[0].canRequestCancellation = false;
+        state.model.capabilities.canRequestCancellation = false;
+        for (const line of state.model.orders[0].lines) line.inCustodyBaseQuantityText = '0';
+    }
+    if (options.returned || options.completed) state.model.returnToStore = {
+        actorName:'Nhân viên Bình', recordedAtUtc:'2026-10-08T08:59:00Z'
+    };
     if (options.readonly) for (const key of Object.keys(state.model.capabilities)) state.model.capabilities[key] = false;
     if (options.stale) { state.model.orders[0].isStale = true; state.model.capabilities.canHandover = false; }
     const intervals = [], location = { origin: 'https://synthetic.test', href: 'https://synthetic.test/trips?trip=11' };
@@ -153,6 +162,33 @@ test('HandedOver and Departed render confirmed per-line quantities and only capa
         assert.equal(Boolean(f.document.getElementById('deliveryTripTransferPanel')), state === 'HandedOver');
         if (state === 'Departed') assert.match(f.get('deliveryTripElapsed').textContent, /0 giờ 15 phút/);
     }
+});
+
+test('Closed trips show completion in list and detail, with settled orders and no pending reconciliation text', async () => {
+    const f = await fixture({state:'Departed', completed:true}), panel=f.get('deliveryTripDetail');
+    assert.match(panel.querySelector('.delivery-trip-title').textContent,/Đã hoàn thành/);
+    assert.match(f.get('deliveryTripList').textContent,/Đã hoàn thành/);
+    assert.doesNotMatch(panel.textContent,/Hàng và tiền còn chờ đối chiếu/);
+    assert.match(panel.textContent,/Đã chốt hàng và tiền của toàn bộ chuyến/);
+    assert.match(panel.querySelector('[data-order-id="21"]').textContent,/Đã chốt/);
+    assert.equal(f.document.getElementById('deliveryTripElapsed'),null);
+    assert.match(f.get('deliveryTripOutcomes').textContent,/Xem bàn giao/);
+});
+
+test('Returned and partly settled trips remain unfinished, and polling updates the cached list when closure arrives', async () => {
+    const f = await fixture({state:'Departed',returned:true});
+    assert.match(f.get('deliveryTripDetail').textContent,/Đã trở về/);
+    assert.doesNotMatch(f.get('deliveryTripList').textContent,/Đã hoàn thành/);
+    assert.match(f.get('deliveryTripDetail').textContent,/Hàng và tiền còn chờ đối chiếu/);
+    const reads = f.state.reads.filter(url=>url.startsWith('/admin/api/delivery-trips?')).length;
+    f.state.model.isCompleted=true; f.state.model.orders[0].state='Cancelled';
+    f.state.model.orders[0].canRequestCancellation=false; f.state.model.capabilities.canRequestCancellation=false;
+    for(const line of f.state.model.orders[0].lines) line.inCustodyBaseQuantityText='0';
+    await f.poll();
+    assert.match(f.get('deliveryTripList').textContent,/Đã hoàn thành/);
+    assert.match(f.get('deliveryTripDetail').textContent,/Đã hoàn thành/);
+    assert.doesNotMatch(f.get('deliveryTripDetail').textContent,/Hàng và tiền còn chờ đối chiếu/);
+    assert.ok(f.state.reads.filter(url=>url.startsWith('/admin/api/delivery-trips?')).length>reads);
 });
 
 test('Recall starts collapsed, stays open across polling, preserves typed reason and sends only genuine recall fields', async () => {

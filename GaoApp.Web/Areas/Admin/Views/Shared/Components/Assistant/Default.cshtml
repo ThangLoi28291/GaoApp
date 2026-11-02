@@ -1,0 +1,55 @@
+<link rel="stylesheet" href="~/Admin/css/assistant.css" asp-append-version="true" />
+<link rel="stylesheet" href="~/Admin/css/assistant-widget.mobile.css" asp-append-version="true" />
+<div id="gaoAssistant" data-context-url="@Url.Content("~/admin/api/assistant/context")" data-call-url="@Url.Content("~/admin/api/assistant/call/")" data-search-url="@Url.Content("~/admin/api/assistant/search/")" data-barcode-decoder-url="@Url.Content("~/lib/zxing-browser/0.1.5/zxing-browser.min.js")">
+    <div hidden>@Html.AntiForgeryToken()</div>
+    <button type="button" id="gaOpen" class="ga-launch" aria-label="Mở trợ lý" aria-expanded="false" aria-controls="gaPanel">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8 8H5l-3 2V11.5a8 8 0 0 1 16-5" /><path d="m19 2 .7 2.3L22 5l-2.3.7L19 8l-.7-2.3L16 5l2.3-.7Z" /><path d="M7 11h7M7 15h4" /></svg>
+    </button>
+    <section id="gaPanel" class="ga-panel" hidden aria-labelledby="gaPanelTitle">
+        <header class="ga-header">
+            <div class="ga-heading"><span class="ga-brand" aria-hidden="true">G</span><div><strong id="gaPanelTitle">Trợ lý GaoApp</strong><span id="gaConnectionState" class="ga-connection" data-state="loading">Đang mở hội thoại</span></div></div>
+            <div class="ga-header-actions">
+                <button type="button" id="gaHistoryToggle" class="ga-history-toggle" aria-label="Lịch sử hội thoại" aria-expanded="false" aria-controls="gaHistoryDrawer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 7M3 4v7h7M12 7v5l3 2" /></svg><span>Lịch sử</span></button>
+                <button type="button" id="gaExpand" class="ga-icon-button" aria-label="Mở rộng cửa sổ chat" title="Mở rộng cửa sổ chat" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5" /></svg></button>
+                <button type="button" id="gaClose" class="ga-icon-button" aria-label="Đóng trợ lý" title="Đóng trợ lý"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+            </div>
+        </header>
+        <div class="ga-context"><span class="ga-store"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10 5 3h14l2 7M4 10v11h16V10M9 21v-7h6v7M3 10c0 3 4 3 4 0 0 3 5 3 5 0 0 3 5 3 5 0 0 3 4 3 4 0" /></svg><strong id="gaStoreName">Đang xác định cửa hàng…</strong></span><span id="gaWelcome"></span></div>
+        <div id="gaScreenEntry" class="ga-screen-entry" hidden><span id="gaScreenLabel"></span><button type="button" id="gaScreenToggle" aria-expanded="false" aria-controls="gaScreenView">Hỗ trợ màn hình</button></div>
+        <div class="ga-body">
+            <section id="gaScreenView" class="ga-screen-view" hidden aria-labelledby="gaScreenTitle">
+                <div class="ga-screen-heading"><h3 id="gaScreenTitle">Hỗ trợ màn hình hiện tại</h3><button type="button" id="gaScreenBack">Quay lại chat</button></div>
+                <p id="gaScreenHint" class="ga-screen-hint"></p>
+                <label id="gaTaskLabel" for="gaTaskInput">Nội dung cần đề xuất</label><textarea id="gaTaskInput" rows="3" maxlength="2000"></textarea>
+                <div class="ga-tools"><button type="button" id="gaTaskMic">Nói</button><button type="button" id="gaTaskSend">Tạo đề xuất</button></div>
+                <p id="gaTaskStatus" class="ga-status" role="status" aria-live="polite" aria-atomic="true"></p>
+                <div id="gaTaskPreview" class="ga-task-preview" hidden></div><div id="gaTaskChoices" class="ga-form-choices"></div>
+                <button type="button" id="gaTaskApply" class="ga-task-apply" hidden>Điền vào form để kiểm tra</button>
+                <div id="gaTaskRecovery" class="ga-tools" hidden><button type="button" id="gaTaskCheck">Kiểm tra lượt này</button><button type="button" id="gaTaskRetry" hidden>Gửi lại lượt này</button><button type="button" id="gaTaskCancel">Hủy đề xuất</button></div>
+                <p class="ga-screen-footnote">Mỗi lần một mặt hàng. Bạn kiểm tra và xác nhận ở form trước khi lưu.</p>
+            </section>
+            <section id="gaHistoryDrawer" class="ga-history" hidden aria-labelledby="gaHistoryTitle">
+                <div class="ga-history-heading"><div><h3 id="gaHistoryTitle">Lịch sử hội thoại</h3><p>Các cuộc chat của bạn tại cửa hàng này.</p></div><button type="button" id="gaHistoryBack">Quay lại chat</button></div>
+                <label for="gaConversations">Chọn cuộc trò chuyện</label>
+                <select id="gaConversations" aria-label="Chọn hội thoại"></select>
+                <nav class="ga-tools ga-history-actions" aria-label="Quản lý hội thoại"><button type="button" id="gaNew">Cuộc chat mới</button><button type="button" id="gaRename">Đổi tên</button><button type="button" id="gaDelete" class="ga-danger">Xóa</button><button type="button" id="gaListMore" hidden>Thêm hội thoại</button></nav>
+                <div id="gaManage" hidden><label id="gaTitleLabel" for="gaTitle">Tên hội thoại</label><input id="gaTitle" maxlength="120" /><p id="gaDeleteHint" hidden>Xóa cuộc trò chuyện này và nội dung trong lịch sử?</p><div class="ga-tools"><button type="button" id="gaRenameSave">Lưu tên</button><button type="button" id="gaDeleteConfirm" class="ga-danger">Xác nhận xóa</button><button type="button" id="gaManageCancel">Hủy</button></div></div>
+            </section>
+            <div id="gaThread" class="ga-thread">
+                <div class="ga-thread-heading"><span id="gaThreadTitle">Cuộc trò chuyện</span><button type="button" id="gaHistoryMore" hidden>Tải tin nhắn trước</button></div>
+                <div id="gaMessages" class="ga-messages" role="log" aria-label="Hội thoại" aria-relevant="additions text"></div>
+            </div>
+        </div>
+        <div class="ga-footer">
+            <p id="gaStatus" class="ga-status" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+            <div id="gaRecovery" class="ga-tools ga-recovery" hidden><button type="button" id="gaCheck">Kiểm tra lượt này</button><button type="button" id="gaRetry" hidden>Gửi lại lượt này</button><button type="button" id="gaCancel">Hủy lượt này</button></div>
+            <div id="gaScanner" class="ga-scanner" hidden aria-label="Quét mã sản phẩm"><div><span>Đưa mã vạch vào khung để xem giá</span><button type="button" id="gaScanStop">Dừng quét</button></div><video id="gaScanVideo" playsinline muted></video></div>
+            <form id="gaComposer"><label class="ga-sr" for="gaInput">Câu hỏi hoặc mã vạch</label><textarea id="gaInput" rows="2" maxlength="2000" placeholder="Gõ câu hỏi, nói hoặc quét mã sản phẩm…" aria-describedby="gaInputHint"></textarea><div class="ga-tools ga-compose-tools"><button type="button" id="gaMic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8" /></svg>Nói</button><button type="button" id="gaScan" aria-controls="gaScanner" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16M7 4v16M11 4v16M14 4v16M18 4v16M21 4v16" /></svg>Quét mã</button><button type="submit" id="gaSend">Gửi <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-7-7 14-1-6-6-1ZM11 13l8-8" /></svg></button></div><small id="gaInputHint">Enter gửi · Shift+Enter xuống dòng</small></form>
+        </div>
+    </section>
+</div>
+<script src="~/Admin/js/assistant-core.js" asp-append-version="true" defer></script>
+<script src="~/Admin/js/assistant-ui.js" asp-append-version="true" defer></script>
+<script src="~/Admin/js/assistant-forms.js" asp-append-version="true" defer></script>
+<script src="~/Admin/js/assistant-screen.js" asp-append-version="true" defer></script>
+<script src="~/Admin/js/assistant-widget.mobile.js" asp-append-version="true" defer></script>

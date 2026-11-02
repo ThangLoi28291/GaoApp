@@ -2,11 +2,13 @@ using System.Text.Json;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using GaoApp.Application.Storefront;
+using System.Text.Json.Nodes;
 
 namespace GaoApp.Web.Services.Acb;
 
 public sealed class AcbCallbackInbox(AppDbContext db, IAcbOrderLockProvider locks,
-    AcbPaymentService payments, AcbCallbackSignal signal, AcbCallbackDiagnostics diagnostics)
+    AcbPaymentService payments, AcbCallbackSignal signal, AcbCallbackDiagnostics diagnostics, IStorefrontBankProcessor? storefront = null)
 {
     private int StoreId => db.CurrentStoreId is > 0 ? db.CurrentStoreId.Value : throw new InvalidOperationException("Chưa xác định cửa hàng.");
 
@@ -54,7 +56,22 @@ public sealed class AcbCallbackInbox(AppDbContext db, IAcbOrderLockProvider lock
         try
         {
             using var json = JsonDocument.Parse(receipt.PayloadJson);
-            var result = await payments.CallbackAsync(json.RootElement, ct, receipt.Id);
+            var posPayload=json.RootElement;
+            if(storefront is not null)
+            {
+                var full=JsonNode.Parse(receipt.PayloadJson)!;
+                var transactions=full["requestParameters"]?["request"]?["requestParams"]?["transactions"] as JsonArray;
+                var claimedRefs=AcbProtocol.Items(AcbProtocol.Path(json.RootElement,"requestParameters","request","requestParams","transactions"))
+                    .Select(item=>AcbProtocol.Text(AcbProtocol.Path(item,"transactionEntityAttribute"),"custom4")).Distinct(StringComparer.Ordinal).Take(1000).ToList();
+                var webRefs=await db.Set<BankPaymentReference>().AsNoTracking().Where(x=>x.Provider=="ACB"&&x.OriginStoreId==StoreId&&x.Channel==BankPaymentChannel.Storefront&&claimedRefs.Contains(x.Reference)).Select(x=>x.Reference).ToListAsync(ct);
+                await storefront.ProcessCallbackAsync(json.RootElement,ct);
+                if(transactions is not null)for(var index=transactions.Count-1;index>=0;index--)
+                    if(webRefs.Contains(transactions[index]?["transactionEntityAttribute"]?["custom4"]?.ToString()??"",StringComparer.Ordinal))transactions.RemoveAt(index);
+                posPayload=JsonSerializer.SerializeToElement(full);
+                // Processing uses fresh aggregate reads; restore this inbox row after its tracker was cleared.
+                receipt=await db.Set<AcbCallbackReceipt>().SingleAsync(x=>x.StoreId==StoreId&&x.Id==id,ct);receipt.Attempts=attempt;
+            }
+            var result = await payments.CallbackAsync(posPayload, ct, receipt.Id);
             receipt.NeedsReview = result.Unmatched || result.NeedsReview;
             receipt.LastErrorCode = result.Unmatched ? "UNMATCHED_QR" : result.NeedsReview ? "QR_REVIEW_REQUIRED" : result.AwaitingBank ? "AWAITING_BANK_EVIDENCE" : null;
             if (!result.AwaitingBank) receipt.ProcessedAtUtc = DateTime.UtcNow;

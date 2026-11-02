@@ -40,7 +40,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
         var protectionPosition = Array.IndexOf(ids, Protection);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids[..(protectionPosition + 1)], out var protection));
         Assert.Equal(10, protection.Tables.Sum(x => x.Triggers.Count));
-        Assert.Equal(27, catalog.GetCurrentManifest().Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(41, catalog.GetCurrentManifest().Tables.Sum(x => x.Triggers.Count));
     }
 
     [Fact]
@@ -51,7 +51,7 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
         var expected = new EfCoreDatabaseSchemaManifestCatalog(db).GetCurrentManifest();
         await db.Database.OpenConnectionAsync();
         var actual = await new SqlServerSchemaSnapshotReader(db).ReadAsync((await db.Database.GetAppliedMigrationsAsync()).ToArray());
-        Assert.Equal(27, actual.Tables.Sum(x => x.Triggers.Count));
+        Assert.Equal(41, actual.Tables.Sum(x => x.Triggers.Count));
         var expectedRecords = DatabaseSchemaCanonicalizer.CreateCategoryRecords(expected).All;
         var actualRecords = DatabaseSchemaCanonicalizer.CreateCategoryRecords(actual).All;
         Assert.True(DatabaseSchemaComparer.Compare(expected, actual).IsMatch,
@@ -136,7 +136,6 @@ public sealed class DeliveryD03SchemaTests : IClassFixture<DeliveryD03SchemaFixt
         await using var transaction = await db.Database.BeginTransactionAsync();
         // Remove only its dependent FK first; recreate both against a wrong key.
         await db.Database.ExecuteSqlRawAsync("""
-            ALTER TABLE [DeliveryDispatchCostFragments] DROP CONSTRAINT [FK_DeliveryDispatchCostFragments_InventoryCostLayerAllocations_StoreId_InventoryCostLayerAllocationId];
             ALTER TABLE [InventoryCostLayerAllocations] DROP CONSTRAINT [AK_InventoryCostLayerAllocations_StoreId_Id];
             ALTER TABLE [InventoryCostLayerAllocations] ADD CONSTRAINT [AK_InventoryCostLayerAllocations_StoreId_Id] UNIQUE ([Id]);
             """);

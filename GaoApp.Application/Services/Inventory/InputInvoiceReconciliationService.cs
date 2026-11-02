@@ -110,7 +110,7 @@ public sealed class InputInvoiceReconciliationService(
         if (existing.Count > 1)
             throw new BusinessRuleException("Phiếu có nhiều snapshot đối chiếu không hợp lệ.");
         var result = await BuildAsync(receipt, existing.SingleOrDefault(), ct,
-            commercialAmounts);
+            commercialAmounts, request.HasVat);
         result.IsCommercialPreview = true;
         return result;
     }
@@ -471,7 +471,7 @@ public sealed class InputInvoiceReconciliationService(
         StockDocumentInputInvoiceReconciliation? previous,
         CancellationToken ct,
         IReadOnlyDictionary<int, PurchasePricingPolicy.LineAmounts>?
-            commercialAmounts = null)
+            commercialAmounts = null, bool? hasVatOverride = null)
     {
         var links = receipt.InputInvoiceMaps.Where(x => !x.IsDeleted).ToList();
         if (links.Count == 0) return NotApplicable(receipt);
@@ -479,6 +479,7 @@ public sealed class InputInvoiceReconciliationService(
             throw new BusinessRuleException("Phiếu nhập đang liên kết nhiều hơn một hóa đơn.");
         var link = links[0];
         var invoice = link.InputInvoiceHead;
+        var compareVatBreakdown = hasVatOverride ?? receipt.HasVat;
         var itemMappings = await itemCatalogMapping.ResolveForReceiptAsync(
             receipt.StoreId, receipt.Id, ct);
         var previousIgnored = previous?.Details.Where(x => !x.IsDeleted && x.IsIgnored)
@@ -562,7 +563,8 @@ public sealed class InputInvoiceReconciliationService(
                 .Distinct().ToList();
             var xmlVatComparable = InputInvoiceVatRateNormalizer.TryNormalize(
                 xml.VatRate, out var xmlVatRate, out var vatReason);
-            var vatComparable = complete && xmlVatComparable && receiptRates.Count == 1;
+            var vatComparable = complete && xmlVatComparable &&
+                (!compareVatBreakdown || receiptRates.Count == 1);
             if (receiptRates.Count > 1)
                 vatReason = "Các dòng nhập được gom có nhiều thuế suất khác nhau.";
             var receiptRate = receiptRates.Count == 1 ? receiptRates[0] : (decimal?)null;
@@ -573,15 +575,20 @@ public sealed class InputInvoiceReconciliationService(
             var basePriceDifference = receiptBasePrice.HasValue && xmlBasePrice.HasValue
                 ? receiptBasePrice.Value - xmlBasePrice.Value
                 : (decimal?)null;
-            var vatDifference = receiptVat - xml.VatAmount;
+            var xmlVat = InputInvoiceVatAmounts.VatAmount(xml.LineAmount, xml.VatRate, xml.VatAmount);
+            var vatDifference = receiptVat - xmlVat;
+            var receiptAfterVatPrice = BaseUnitPrice(receiptBeforeVat + receiptVat, receiptBase);
+            var xmlAfterVatPrice = BaseUnitPrice(xml.LineAmount + xmlVat, derived);
+            var afterVatPriceDifference = receiptAfterVatPrice - xmlAfterVatPrice;
             var state = lines.Count == 0
                 ? ignored
                     ? InputInvoiceDetailReconciliationState.Ignored
                     : InputInvoiceDetailReconciliationState.Unmatched
                 : InputInvoiceReconciliationPolicy.ResolveDetailState(
                     complete, ignored, vatComparable, quantityDifference,
-                    basePriceDifference ?? 0m, vatDifference, receiptRate,
-                    xmlVatComparable ? xmlVatRate : null);
+                    (compareVatBreakdown ? basePriceDifference : afterVatPriceDifference) ?? 0m,
+                    vatDifference, receiptRate,
+                    xmlVatComparable ? xmlVatRate : null, compareVatBreakdown);
             dto.Details.Add(new InputInvoiceDetailReconciliationDto
             {
                 InputInvoiceDetailId = xml.Id,
@@ -607,8 +614,9 @@ public sealed class InputInvoiceReconciliationService(
                 ReceiptVatRate = receiptRate,
                 XmlVatRate = xmlVatComparable ? xmlVatRate : null,
                 ReceiptVatAmount = receiptVat,
-                XmlVatAmount = xml.VatAmount,
+                XmlVatAmount = xmlVat,
                 VatAmountDifference = vatDifference,
+                VatBreakdownComparable = compareVatBreakdown,
                 IsIgnored = ignored,
                 IgnoreReason = ignoredSnapshot?.IgnoreReason,
                 StockDocumentLineIds = lines.Select(x => x.Id).Order().ToList(),
@@ -640,6 +648,7 @@ public sealed class InputInvoiceReconciliationService(
             InputInvoiceReconciliationPolicy.MoneyTolerance;
         dto.Header = new InputInvoiceHeaderReconciliationDto
         {
+            VatBreakdownComparable = compareVatBreakdown,
             ReceiptSubtotalBeforeVat = receiptSubtotalBeforeVat,
             XmlTotalBeforeTax = invoice.TotalBeforeTax,
             SubtotalDifference = receiptSubtotalBeforeVat - invoice.TotalBeforeTax,
@@ -662,8 +671,9 @@ public sealed class InputInvoiceReconciliationService(
             dto.Details.Any(x => x.State is InputInvoiceDetailReconciliationState.Incomplete
                 or InputInvoiceDetailReconciliationState.Unmatched);
         var headerMismatch = unsupported ||
-            !InputInvoiceReconciliationPolicy.MoneyMatches(dto.Header.SubtotalDifference) ||
-            !InputInvoiceReconciliationPolicy.MoneyMatches(dto.Header.VatDifference) ||
+            (compareVatBreakdown &&
+                (!InputInvoiceReconciliationPolicy.MoneyMatches(dto.Header.SubtotalDifference) ||
+                 !InputInvoiceReconciliationPolicy.MoneyMatches(dto.Header.VatDifference))) ||
             !InputInvoiceReconciliationPolicy.MoneyMatches(dto.Header.PaymentDifference);
         var mismatch = headerMismatch || dto.ExcludedLines.Count > 0 ||
             dto.Details.Any(x => x.State != InputInvoiceDetailReconciliationState.Matched);
@@ -800,6 +810,7 @@ public sealed class InputInvoiceReconciliationService(
         AcceptedAtUtc = row.AcceptedAtUtc,
         Header = new InputInvoiceHeaderReconciliationDto
         {
+            VatBreakdownComparable = receipt.HasVat,
             ReceiptSubtotalBeforeVat = row.ReceiptSubtotalBeforeVat,
             XmlTotalBeforeTax = row.XmlTotalBeforeTax,
             SubtotalDifference = row.SubtotalDifference,
@@ -843,8 +854,11 @@ public sealed class InputInvoiceReconciliationService(
                 ReceiptVatRate = x.ReceiptVatRate,
                 XmlVatRate = x.XmlVatRate,
                 ReceiptVatAmount = x.ReceiptVatAmount,
-                XmlVatAmount = x.XmlVatAmount,
+                XmlVatAmount = InputInvoiceVatAmounts.VatAmount(x.XmlBeforeVatAmount,
+                    x.XmlVatRate?.ToString(System.Globalization.CultureInfo.InvariantCulture) ??
+                        x.InputInvoiceDetail?.VatRate, x.XmlVatAmount),
                 VatAmountDifference = x.VatAmountDifference,
+                VatBreakdownComparable = receipt.HasVat,
                 IsIgnored = x.IsIgnored,
                 IgnoreReason = x.IgnoreReason,
                 StockDocumentLineIds = ReceiptLinesForDetail(
@@ -1028,8 +1042,15 @@ public sealed class InputInvoiceReconciliationService(
                 LineBeforeVat(x, commercialAmounts)));
             var xmlBeforeVat = PurchasePricingPolicy.RoundMoney(
                 xmlDetails.Sum(x => x.XmlBeforeVatAmount));
+            var receiptVat = PurchasePricingPolicy.RoundMoney(
+                receiptLines.Sum(x => LineVat(x, commercialAmounts)));
+            var xmlVat = PurchasePricingPolicy.RoundMoney(
+                xmlDetails.Sum(x => x.XmlVatAmount));
             var receiptBasePrice = BaseUnitPrice(receiptBeforeVat, receiptBaseQuantity);
             var xmlBasePrice = BaseUnitPrice(xmlBeforeVat, xmlBaseQuantity);
+            var receiptAfterVatPrice = BaseUnitPrice(receiptBeforeVat + receiptVat, receiptBaseQuantity);
+            var xmlAfterVatPrice = BaseUnitPrice(xmlBeforeVat + xmlVat, xmlBaseQuantity);
+            var afterVatPriceDifference = xmlAfterVatPrice - receiptAfterVatPrice;
             var priceDifference = receiptBasePrice.HasValue && xmlBasePrice.HasValue
                 ? xmlBasePrice.Value - receiptBasePrice.Value
                 : (decimal?)null;
@@ -1043,10 +1064,6 @@ public sealed class InputInvoiceReconciliationService(
                 x.ReceiptVatRate.HasValue && x.XmlVatRate.HasValue &&
                 (x.ReceiptVatRate.Value != x.XmlVatRate.Value ||
                  !InputInvoiceReconciliationPolicy.MoneyMatches(x.VatAmountDifference)));
-            var receiptVat = PurchasePricingPolicy.RoundMoney(
-                receiptLines.Sum(x => LineVat(x, commercialAmounts)));
-            var xmlVat = PurchasePricingPolicy.RoundMoney(
-                xmlDetails.Sum(x => x.XmlVatAmount));
             var summary = new InputInvoiceProductReconciliationSummaryDto
             {
                 ProductVariantId = group.ProductVariantId,
@@ -1082,16 +1099,17 @@ public sealed class InputInvoiceReconciliationService(
                 ReceiptBaseUnitPriceBeforeVat = receiptBasePrice,
                 XmlBaseUnitPriceBeforeVat = xmlBasePrice,
                 BaseUnitPriceDifference = priceDifference,
-                PriceStatus = !priceDifference.HasValue
+                PriceStatus = !afterVatPriceDifference.HasValue
                     ? "InsufficientData"
-                    : InputInvoiceReconciliationPolicy.MoneyMatches(priceDifference.Value)
+                    : InputInvoiceReconciliationPolicy.MoneyMatches(afterVatPriceDifference.Value)
                         ? "Matched"
-                        : priceDifference.Value > 0m ? "XmlHigher" : "XmlLower",
+                        : afterVatPriceDifference.Value > 0m ? "XmlHigher" : "XmlLower",
                 ReceiptVatAmount = receiptVat,
                 XmlVatAmount = xmlVat,
                 VatAmountDifference = xmlVat - receiptVat,
                 VatStatus = vatNeedsReview
                     ? "NeedsReview"
+                    : dto.Header?.VatBreakdownComparable == false ? "IncludedInPrice"
                     : vatMismatch ? "Mismatch" : "Matched"
             };
             dto.ProductSummaries.Add(summary);

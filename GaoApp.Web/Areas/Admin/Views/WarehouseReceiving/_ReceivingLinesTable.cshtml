@@ -37,6 +37,7 @@ else
                 @foreach (var line in lines.OrderBy(x => x.LineNo))
                 {
                     <tr data-line-id="@line.Id" data-receiving-key="line-@line.Id"
+                        data-row-version="@line.RowVersion"
                         data-receiving-conversion="@line.ProductUnitConversionId"
                         data-receiving-quantity="@line.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)">
                         <td class="wrd-line-no">@line.LineNo</td>

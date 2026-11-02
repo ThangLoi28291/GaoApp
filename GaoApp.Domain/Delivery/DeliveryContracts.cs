@@ -67,6 +67,11 @@ public sealed record DeliveryFragmentCostPlan(decimal SaleCost, decimal Returned
 public sealed record DeliveryPriceLine(int LineId, decimal OrderedQuantity, decimal UnitPrice,
     decimal ApprovedLineDiscount = 0m);
 
+// Authoritative POS snapshot: promotion discounts on lines and header discounts are separate.
+public sealed record DeliveryPosPriceLine(int LineId, decimal OrderedQuantity, decimal UnitPrice,
+    decimal LineDiscount, decimal PromotionDiscount, decimal LineTotal, bool IsGift = false,
+    bool RoundGrossInSubtotal = false);
+
 public sealed record DeliveryApprovedPriceLine(int LineId, decimal OrderedQuantity, decimal Gross,
     decimal LineDiscount, decimal AllocatedOrderDiscount, decimal Net);
 

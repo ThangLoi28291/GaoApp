@@ -1902,6 +1902,18 @@
     line-height: 1.35;
 }
 
+.pos-payment-workspace-modal [data-payment-collection][hidden] {
+    display: none;
+}
+
+.pos-payment-collection-action {
+    display: grid;
+}
+
+.pos-payment-collection-action:empty {
+    display: none;
+}
+
 .pos-payment-method-notes [data-payment-method-note] {
     display: none;
 }

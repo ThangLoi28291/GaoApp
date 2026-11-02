@@ -127,7 +127,7 @@ public sealed class PurchaseRequestsController : Controller
         {
             Request = new SavePurchaseRequestRequest
             {
-                RequestDate = DateTime.Today,
+                RequestDate = VietnamTime.Today,
                 Lines = new List<PurchaseRequestLineInputDto>()
             },
             CanSubmit = await HasPermissionAsync(PermissionCodes.Purchase.Request.Submit),
@@ -159,7 +159,8 @@ public sealed class PurchaseRequestsController : Controller
                 ProductUnitConversionId = x.ProductUnitConversionId,
                 ProductName = x.ProductName,
                 UnitName = x.UnitName,
-                Quantity = x.RequestedQuantity
+                Quantity = x.RequestedQuantity,
+                Note = x.Note
             }).ToList()
         };
 
@@ -319,7 +320,7 @@ public sealed class PurchaseRequestsController : Controller
         }
         else
         {
-            request.RequestDate = DateTime.Today;
+            request.RequestDate = VietnamTime.Today;
             request.NeedByDate = null;
         }
 
@@ -535,7 +536,7 @@ public sealed class PurchaseRequestsController : Controller
             SupplierId = null,
             LegalEntityId = legalEntityId,
             ExpectedWarehouseId = warehouseId,
-            OrderDate = DateTime.Today,
+            OrderDate = VietnamTime.Today,
             HasVat = false,
             Note = $"Tạo từ yêu cầu mua {preparation.RequestNumber}.",
             Lines = remainingLines.Select(line => new PurchaseRequestConversionLineRequest

@@ -10,6 +10,7 @@
 
 @section PageStyles {
     <link rel="stylesheet" href="~/Admin/css/catalog-editor.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/catalog-foundation.mobile.css" asp-append-version="true" />
 }
 <div class="catalog-editor">
     <nav class="ce-breadcrumb" aria-label="Đường dẫn">
@@ -87,6 +88,10 @@
     </form>
 
 </div>
+@section PageScripts {
+    <script src="~/Admin/js/catalog-foundation.mobile.js" asp-append-version="true"></script>
+}
+
 @section Scripts {
     @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
 }

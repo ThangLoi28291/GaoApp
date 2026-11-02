@@ -1,5 +1,8 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
+using GaoApp.Application.Interfaces.Common;
 using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
@@ -126,7 +129,7 @@ public class InvoiceRepository : IInvoiceRepository
     {
         return _db.SaveChangesAsync(ct);
     }
-    public async Task<(List<InvoiceHead> Items, int Total)> QueryInvoiceHeadsAsync(
+    public async Task<(List<InvoiceListItemDto> Items, int Total)> QueryInvoiceHeadsAsync(
         DateTime? fromDate,
         DateTime? toDate,
         int? orderId,
@@ -137,15 +140,12 @@ public class InvoiceRepository : IInvoiceRepository
         int pageSize,
         CancellationToken ct = default)
     {
-        if (page <= 0) page = 1;
-        if (pageSize <= 0) pageSize = 20;
-
-        var query = _db.InvoiceHeads
-            .Include(x => x.Order)
-            .Include(x => x.LegalEntity)
-            .Include(x => x.Details)
-            .AsNoTracking()
-            .AsQueryable();
+        var request = new InvoiceListQueryDto { FromDate = fromDate, ToDate = toDate, OrderId = orderId,
+            Keyword = keyword, DisplayMode = displayMode, SortMode = sortMode, Page = page, PageSize = pageSize };
+        var offset = request.NormalizeAndValidate();
+        pageSize = request.PageSize;
+        keyword = request.Keyword;
+        var query = _db.InvoiceHeads.AsNoTracking().Where(x => !x.IsDeleted);
 
         if (fromDate.HasValue)
         {
@@ -229,6 +229,7 @@ public class InvoiceRepository : IInvoiceRepository
         }
 
         var total = await query.CountAsync(ct);
+        if (offset >= total) return (new List<InvoiceListItemDto>(), total);
 
         // =========================================================
         // SORT DANH SÁCH
@@ -305,10 +306,31 @@ public class InvoiceRepository : IInvoiceRepository
                 .ThenByDescending(x => x.Id)
         };
 
-        var items = await orderedQuery
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
+        var items = await orderedQuery.Skip(offset).Take(pageSize)
+            .Select(InvoiceReadSqlExpressions.ForProvider<InvoiceHead, InvoiceListItemDto>(x => new InvoiceListItemDto
+            {
+                Id = x.Id, OrderId = x.OrderId,
+                InvoiceIssuanceRoute = x.Order == null ? InvoiceIssuanceRoute.Unselected : x.Order.InvoiceIssuanceRoute,
+                ProviderStatus = x.ProviderStatus, LastErrorCode = x.LastErrorCode, LastErrorMessage = x.LastErrorMessage,
+                LegacySourceId = x.LegacySourceId, LegacyOrderCategoryId = x.LegacyOrderCategoryId,
+                LegacyMergeId = x.LegacyMergeId, LegacyReadOnly = x.LegacyReadOnly,
+                LegalEntityId = x.LegalEntityId, LegalEntityCode = x.LegalEntity == null ? null : x.LegalEntity.Code,
+                LegalEntityName = x.LegalEntity == null ? null : x.LegalEntity.Name,
+                OrderNumber = x.Order == null ? null : x.Order.OrderNumber,
+                InvoiceNumber = x.InvoiceNumber, InvoiceDate = x.InvoiceDate,
+                BuyerName = !string.IsNullOrWhiteSpace(x.BuyerLegalName) ? x.BuyerLegalName : x.BuyerName,
+                TotalQuantity = x.TotalQuantity, SubTotal = x.SubTotal, VatAmount = x.VatAmount, GrandTotal = x.GrandTotal,
+                IsLocked = x.IsLocked,
+                DetailCount = x.Details.Count(d => !d.IsDeleted),
+                AutoLineCount = x.Details.Count(d => !d.IsDeleted && d.SourceType == InvoiceDetailSourceType.FromOrderLine),
+                ManualLineCount = x.Details.Count(d => !d.IsDeleted && d.SourceType == InvoiceDetailSourceType.Manual)
+            }, _db.Database.IsSqlServer()))
             .ToListAsync(ct);
+        foreach (var item in items)
+        {
+            item.LastErrorMessage = InvoiceErrorReadSanitizer.Message(item.LastErrorMessage, item.LastErrorCode);
+            item.LastErrorCode = InvoiceErrorReadSanitizer.Code(item.LastErrorCode);
+        }
 
         return (items, total);
     }
@@ -379,6 +401,81 @@ public class InvoiceRepository : IInvoiceRepository
             .FirstOrDefaultAsync(x => x.Id == invoiceDetailId, ct);
     }
 
+    public async Task<(HashSet<int> OrderLineIds, HashSet<int> AllocationIds)> GetGeneratedSourceReferencesAsync(
+        int invoiceHeadId,
+        CancellationToken ct = default)
+    {
+        // Resolve the active parent under normal tenant filters before reading
+        // deleted detail tombstones. Never let IgnoreQueryFilters widen store scope.
+        var parent = await _db.InvoiceHeads.AsNoTracking()
+            .Where(x => x.Id == invoiceHeadId && !x.IsDeleted)
+            .Select(x => new { x.Id, x.StoreId })
+            .SingleOrDefaultAsync(ct);
+        if (parent == null) return (new HashSet<int>(), new HashSet<int>());
+
+        var references = await _db.InvoiceDetails.IgnoreQueryFilters().AsNoTracking()
+            .Where(x => x.InvoiceHeadId == parent.Id && x.StoreId == parent.StoreId &&
+                x.SourceType == InvoiceDetailSourceType.FromOrderLine)
+            .Select(x => new { x.OrderLineId, x.OrderLegalEntityAllocationId })
+            .ToListAsync(ct);
+        return (references.Where(x => x.OrderLineId.HasValue).Select(x => x.OrderLineId!.Value).ToHashSet(),
+            references.Where(x => x.OrderLegalEntityAllocationId.HasValue).Select(x => x.OrderLegalEntityAllocationId!.Value).ToHashSet());
+    }
+
+    public async Task<bool> HasActiveDetailIssuanceAsync(int invoiceHeadId, CancellationToken ct = default)
+    {
+        var storeId = await _db.InvoiceHeads.AsNoTracking()
+            .Where(x => x.Id == invoiceHeadId && !x.IsDeleted)
+            .Select(x => (int?)x.StoreId).SingleOrDefaultAsync(ct);
+        if (!storeId.HasValue) return false;
+        if (await _db.AutoInvoiceOperationSources.AsNoTracking().AnyAsync(source =>
+                source.StoreId == storeId.Value && source.InvoiceHeadId == invoiceHeadId && source.IsActive, ct))
+            return true;
+        return await _db.AutoInvoiceOperations.AsNoTracking()
+            .AnyAsync(operation => operation.StoreId == storeId.Value &&
+                (operation.Status == AutoInvoiceOperationStatus.Pending ||
+                 operation.Status == AutoInvoiceOperationStatus.Processing ||
+                 operation.Status == AutoInvoiceOperationStatus.Unknown ||
+                 operation.Status == AutoInvoiceOperationStatus.Succeeded) && operation.InvoiceHeadId == invoiceHeadId, ct);
+    }
+
+    public async Task<IAppTransaction> BeginDetailMutationAsync(int invoiceHeadId, CancellationToken ct = default)
+    {
+        var storeId = await _db.InvoiceHeads.AsNoTracking()
+            .Where(x => x.Id == invoiceHeadId && !x.IsDeleted)
+            .Select(x => (int?)x.StoreId).SingleOrDefaultAsync(ct);
+        if (!storeId.HasValue) return new NoDetailMutationTransaction();
+
+        IAppTransaction transaction = _db.Database.IsRelational()
+            ? await new AppUnitOfWork(_db).BeginTransactionAsync(ct)
+            : new NoDetailMutationTransaction();
+        try
+        {
+            await new InvoiceInputStockRepository(_db).LockStoreForIssueAsync(storeId.Value, ct);
+            // Requests can wait behind an automatic/group claim. Refresh tracked
+            // values only after the shared store lock, before service revalidation.
+            var entries = _db.ChangeTracker.Entries().Where(entry =>
+                entry.Entity is InvoiceHead head && head.Id == invoiceHeadId ||
+                entry.Entity is InvoiceDetail detail && detail.InvoiceHeadId == invoiceHeadId).ToList();
+            if (entries.Any(entry => entry.State != EntityState.Unchanged))
+                throw new InvalidOperationException("Invoice detail mutation requires unchanged tracked invoice state before acquiring its lock.");
+            foreach (var entry in entries) await entry.ReloadAsync(ct);
+            return transaction;
+        }
+        catch
+        {
+            await transaction.DisposeAsync();
+            throw;
+        }
+    }
+
+    private sealed class NoDetailMutationTransaction : IAppTransaction
+    {
+        public Task CommitAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task RollbackAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     public void UpdateInvoiceHead(InvoiceHead invoiceHead)
     {
         _db.InvoiceHeads.Update(invoiceHead);
@@ -427,22 +524,51 @@ public class InvoiceRepository : IInvoiceRepository
             .ToListAsync(ct);
     }
 
-    public async Task<List<InvoiceHead>> GetInvoiceHeadsForDashboardAsync(
-        DateTime fromDate,
-        DateTime toDate,
-        CancellationToken ct = default)
+    public async Task<List<InvoiceDashboardAggregateRowDto>> GetInvoiceDashboardAggregatesAsync(
+        DateTime fromDate, DateTime toDate, CancellationToken ct = default)
     {
+        InvoiceReadLimits.ValidateDates(fromDate, toDate);
         var from = fromDate.Date;
         var toExclusive = toDate.Date.AddDays(1);
-
-        return await _db.InvoiceHeads
-            .AsNoTracking()
-            .Where(x =>
-                !x.IsDeleted &&
-                x.InvoiceDate >= from &&
-                x.InvoiceDate < toExclusive)
-            .ToListAsync(ct);
+        var inputs = _db.InvoiceHeads.AsNoTracking()
+            .Where(x => !x.IsDeleted && x.InvoiceDate >= from && x.InvoiceDate < toExclusive)
+            .Select(InvoiceReadSqlExpressions.ForProvider<InvoiceHead, DashboardInput>(x => new DashboardInput
+            {
+                ProviderStatus = x.ProviderStatus, GrandTotal = x.GrandTotal,
+                IsIssued = !string.IsNullOrWhiteSpace(x.ProviderInvoiceNo) ||
+                    x.ProviderStatus == InvoiceProviderStatus.Issued || x.ProviderStatus == InvoiceProviderStatus.PdfDownloaded ||
+                    x.ProviderStatus == InvoiceProviderStatus.ZipDownloaded || x.ProviderStatus == InvoiceProviderStatus.EmailSent,
+                HasPdf = !string.IsNullOrWhiteSpace(x.PdfFilePath), HasZip = !string.IsNullOrWhiteSpace(x.ZipFilePath),
+                NeedUuid = x.ProviderStatus == InvoiceProviderStatus.Issuing ||
+                    x.ProviderStatus == InvoiceProviderStatus.IssuedWaitingNumber ||
+                    x.ProviderStatus == InvoiceProviderStatus.IssueFailed && (
+                        // The sentinel prevents SQL's trailing-space equality padding.
+                        InvoiceReadSqlExpressions.FoldAscii(x.LastErrorCode ?? "") + "~" == "TIMEOUT~" ||
+                        InvoiceReadSqlExpressions.FoldAscii(x.LastErrorCode ?? "").StartsWith("HTTP_5") ||
+                        InvoiceReadSqlExpressions.FoldAscii(x.LastErrorMessage ?? "").Contains("TIMEOUT") ||
+                        InvoiceReadSqlExpressions.FoldAscii(x.LastErrorMessage ?? "").Contains("HTTP 500"))
+            }, _db.Database.IsSqlServer()));
+        return await inputs.GroupBy(x => x.ProviderStatus).Select(g => new InvoiceDashboardAggregateRowDto
+        {
+            ProviderStatus = g.Key, Count = g.Count(), Amount = g.Sum(x => x.GrandTotal),
+            IssuedCount = g.Sum(x => x.IsIssued ? 1 : 0), IssuedAmount = g.Sum(x => x.IsIssued ? x.GrandTotal : 0),
+            NeedUuidSyncCount = g.Sum(x => x.NeedUuid ? 1 : 0),
+            PdfDownloadedCount = g.Sum(x => x.HasPdf ? 1 : 0), ZipDownloadedCount = g.Sum(x => x.HasZip ? 1 : 0),
+            MissingPdfCount = g.Sum(x => x.IsIssued && !x.HasPdf ? 1 : 0),
+            MissingZipCount = g.Sum(x => x.IsIssued && !x.HasZip ? 1 : 0)
+        }).ToListAsync(ct);
     }
+
+    private sealed class DashboardInput
+    {
+        public InvoiceProviderStatus ProviderStatus { get; set; }
+        public decimal GrandTotal { get; set; }
+        public bool IsIssued { get; set; }
+        public bool HasPdf { get; set; }
+        public bool HasZip { get; set; }
+        public bool NeedUuid { get; set; }
+    }
+
     public async Task<InvoiceHead?> GetLatestBuyerInfoByTaxCodeAsync(
      int storeId,
      string taxCode,
@@ -468,20 +594,11 @@ public class InvoiceRepository : IInvoiceRepository
     CancellationToken ct = default)
     {
         query ??= new ViettelInvoiceDashboardQueryDto();
-
-        var page = query.Page <= 0 ? 1 : query.Page;
-        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
-
-        var baseQuery = _db.InvoiceHeads
-            .Include(x => x.Order)
-            .Include(x => x.LegalEntity)
-            .AsNoTracking()
+        var offset = query.NormalizeAndValidate();
+        var pageSize = query.PageSize;
+        var baseQuery = _db.InvoiceHeads.AsNoTracking()
             .Where(x => !x.IsDeleted)
-            .Where(x =>
-                x.ProviderCode == null ||
-                x.ProviderCode == "" ||
-                x.ProviderCode == "VIETTEL")
-            .AsQueryable();
+            .Where(x => x.ProviderCode == null || x.ProviderCode == "" || x.ProviderCode == "VIETTEL");
 
         if (query.FromDate.HasValue)
         {
@@ -535,13 +652,24 @@ public class InvoiceRepository : IInvoiceRepository
             query.Filter);
 
         var total = await filteredQuery.CountAsync(ct);
-
-        var items = await filteredQuery
-            .OrderByDescending(x => x.InvoiceDate)
-            .ThenByDescending(x => x.Id)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
+        if (offset >= total) return (summary, new List<InvoiceHead>(), total);
+        // Detached read projection: do not materialize legacy JSON, details or credential navigation.
+        var items = await filteredQuery.OrderByDescending(x => x.InvoiceDate).ThenByDescending(x => x.Id)
+            .Skip(offset).Take(pageSize)
+            .Select(x => new InvoiceHead
+            {
+                Id = x.Id, StoreId = x.StoreId, OrderId = x.OrderId, InvoiceDate = x.InvoiceDate,
+                InvoiceNumber = x.InvoiceNumber, ProviderInvoiceNo = x.ProviderInvoiceNo, TransactionUuid = x.TransactionUuid,
+                ProviderStatus = x.ProviderStatus, BuyerName = x.BuyerName, BuyerLegalName = x.BuyerLegalName,
+                BuyerTaxCode = x.BuyerTaxCode, BuyerEmail = x.BuyerEmail, GrandTotal = x.GrandTotal,
+                IssuedAtUtc = x.IssuedAtUtc, LastSyncedAtUtc = x.LastSyncedAtUtc, LastErrorCode = x.LastErrorCode,
+                LastErrorMessage = x.LastErrorMessage, PdfFilePath = x.PdfFilePath, ZipFilePath = x.ZipFilePath,
+                OfficialPdfStatus = x.OfficialPdfStatus, OfficialPdfDownloadedAtUtc = x.OfficialPdfDownloadedAtUtc, OfficialPdfFileName = x.OfficialPdfFileName,
+                OfficialZipXmlStatus = x.OfficialZipXmlStatus, OfficialZipXmlDownloadedAtUtc = x.OfficialZipXmlDownloadedAtUtc, OfficialZipXmlFileName = x.OfficialZipXmlFileName,
+                EmailStatus = x.EmailStatus, EmailSentAtUtc = x.EmailSentAtUtc, LastEmailTo = x.LastEmailTo,
+                EmailSendCount = x.EmailSendCount, LastEmailErrorMessage = x.LastEmailErrorMessage,
+                Order = x.Order == null ? null : new Order { OrderNumber = x.Order.OrderNumber }
+            }).ToListAsync(ct);
 
         return (summary, items, total);
     }

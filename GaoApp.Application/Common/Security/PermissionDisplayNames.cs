@@ -8,7 +8,10 @@ public static class PermissionDisplayNames
 
     public static string Group(string? group) => (group ?? "").ToLowerInvariant() switch
     {
+        "assistant" => "Trợ lý",
+        "customer service" => "Chăm sóc khách hàng",
         "delivery" => "Giao hàng",
+        "storefront" => "Website bán hàng",
         "admin" => "Tổng quan", "catalog" => "Danh mục & sản phẩm", "customers" => "Chăm sóc khách hàng",
         "inventory" => "Kho hàng", "pos" => "Bán hàng & thu ngân", "purchase" => "Mua & nhập hàng",
         "reports" => "Báo cáo", "security" => "Nhân sự & phân quyền", "system" => "Cấu hình hệ thống",
@@ -17,7 +20,17 @@ public static class PermissionDisplayNames
 
     public static string Feature(string module, string entity) => (module + "." + entity).ToLowerInvariant() switch
     {
+        "assistant.assistant" => "Trợ lý bán hàng",
+        "assistant.receiving" => "Gợi ý nhập hàng",
+        "assistant.product" => "Chuẩn hóa sản phẩm",
+        "assistant.quote" => "Tra giá bán",
+        "customer.service" => "Chăm sóc khách hàng",
         "delivery.order" => "Đơn giao hàng",
+        "storefront.settings" => "Cấu hình website",
+        "storefront.shipping" => "Vùng giao và phí ship",
+        "storefront.products" => "Sản phẩm trên website",
+        "storefront.orders" => "Đơn đặt website",
+        "storefront.refunds" => "Hoàn tiền đơn website",
         "admin.dashboard" => "Tổng quan cửa hàng",
         "admin.storemonitor" => "Giám sát trực tiếp",
         "catalog.category" => "Danh mục sản phẩm", "catalog.brand" => "Thương hiệu", "catalog.unit" => "Đơn vị tính",

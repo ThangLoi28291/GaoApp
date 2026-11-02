@@ -1,6 +1,6 @@
 @model int
 <link rel="stylesheet" href="~/Admin/css/receipt-intake.css" asp-append-version="true" />
-<div id="receiptIntake" data-document-id="@Model">
+<div id="receiptIntake" data-document-id="@Model" data-draft-user="@(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)" data-draft-store="@(User.FindFirst("store_id")?.Value)">
     <div class="d-none">@Html.AntiForgeryToken()</div>
     <details id="receiptIntakePending" class="ri-pending" hidden>
         <summary><i class="bx bx-task" aria-hidden="true"></i><strong>Cần xử lý: <span id="riPendingCount">0</span> mục</strong><span>Xem mã hàng, quy cách và sản phẩm mới</span><i class="bx bx-chevron-down" aria-hidden="true"></i></summary>
@@ -55,6 +55,7 @@
     </div></div>
 </div>
 @await Html.PartialAsync("_ReceiptIntakeReview")
+<script src="~/Admin/js/receiving-draft-recovery.js" asp-append-version="true" defer></script>
 <script src="~/Admin/js/receipt-intake-review-photo.js" asp-append-version="true" defer></script>
 <script src="~/Admin/js/receipt-intake-review.js" asp-append-version="true" defer></script>
 <script src="~/Admin/js/receipt-intake-photo.js" asp-append-version="true" defer></script>

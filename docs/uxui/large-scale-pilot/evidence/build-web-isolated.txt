@@ -1,0 +1,10 @@
+  GaoApp.Domain -> E:\GaoApp\GAOAPP-SA-20260819-01\.artifacts\uxui-large-scale-pilot-v2-20261102\web\GaoApp.Domain.dll
+  GaoApp.Application -> E:\GaoApp\GAOAPP-SA-20260819-01\.artifacts\uxui-large-scale-pilot-v2-20261102\web\GaoApp.Application.dll
+  GaoApp.Infrastructure -> E:\GaoApp\GAOAPP-SA-20260819-01\.artifacts\uxui-large-scale-pilot-v2-20261102\web\GaoApp.Infrastructure.dll
+  GaoApp.Web -> E:\GaoApp\GAOAPP-SA-20260819-01\.artifacts\uxui-large-scale-pilot-v2-20261102\web\GaoApp.Web.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:01:15.14

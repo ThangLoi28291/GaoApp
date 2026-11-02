@@ -31,7 +31,9 @@
     function close(printPage) {
         if (printPage.closed) return;
         if (printPage.parent !== printPage) {
+            const owner = printPage.parent;
             printPage.frameElement?.remove();
+            try { owner.dispatchEvent(new owner.CustomEvent('pos:print-closed')); } catch { /* Foreign or detached print frame. */ }
             return;
         }
         try { if (printPage.opener && !printPage.opener.closed) printPage.opener.focus(); } catch { /* noopener */ }

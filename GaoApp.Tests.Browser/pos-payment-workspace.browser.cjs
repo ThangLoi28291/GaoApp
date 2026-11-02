@@ -36,7 +36,7 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
                 elements:Object.fromEntries(['payMethod','payAmount','payReference','payProvider','btnAddPayment','btnFinalizeFromPaymentModal','btnPayExact'].map(id=>[id,document.getElementById(id)]).concat([['paymentModalEl',modalEl]])),
                 modals:{paymentModal:new bootstrap.Modal(modalEl)},helpers:{
                     renderPaymentModalDraft:PosRender.renderPaymentModalDraft,renderPaymentPreview:PosRender.renderPaymentPreview,
-                    postJson:async(url,body)=>{calls.push({url,body});return url.includes('/acb/')
+                    postJson:async(url,body)=>{calls.push({url,body});return url.endsWith('/payment-qr')
                         ? {id:1,orderId:15,amount:body.amount,requestCode:'QR-TEST',qrDataUrl:''}
                         : {...posState.business.currentDraft,paidTotal:body.amount,balanceDue:215000-body.amount};},
                     runPosAction:async(_,key,action,options)=>{const result=await action();await options.onSuccess?.(result);options.onFinally?.();return result;},
@@ -81,12 +81,18 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         await input.fill('');await input.pressSequentially('20.5');
         assert.equal(await input.inputValue(),'20,5');
         await page.evaluate(()=>payment.addPayment());assert.equal(await page.evaluate(()=>calls.length),0,'Fractional VND cannot be collected');
-        await input.fill('100000');await page.evaluate(()=>payment.addPayment());
+        await input.fill('100000');await input.press('Enter');
+        await page.waitForFunction(()=>calls.length===1);
         assert.equal(await page.evaluate(()=>calls[0].body.amount),100000);
         await page.evaluate(()=>{
             posState.business.currentDraft={orderId:15,status:0,subtotal:215000,grandTotal:215000,paidTotal:0,balanceDue:215000,payments:[]};
             payment.openPaymentModal();
         });
+        await page.locator('[data-pay-method-value="2"]').click();await input.fill('100000');
+        const beforeCard=await page.evaluate(()=>calls.length);
+        await input.press('Enter');
+        assert.equal(await page.evaluate(()=>document.activeElement.id),'payReference','Card payments still require a reference');
+        assert.equal(await page.evaluate(()=>calls.length),beforeCard);
         await page.locator('[data-pay-method-value="1"]').click();await input.fill('250000');
         assert.equal(await input.inputValue(),'250.000');
         assert.equal(await page.locator('#payPreviewChange').innerText(),'35.000');
@@ -100,14 +106,24 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         await input.fill('250000');
         await page.waitForFunction(()=>getComputedStyle(document.getElementById('payPreviewBox')).backgroundColor==='rgb(255, 251, 235)');
         await page.locator('.pos-payment-workspace').screenshot({path:path.join(output,'checkout-transfer-overpay.png'),animations:'disabled'});
-        await page.evaluate(()=>payment.createPaymentQr());
+        assert.equal(await page.locator('#payReference').inputValue(),'');
+        assert.equal(await page.locator('#payProvider').inputValue(),'');
+        const beforeQr=await page.evaluate(()=>calls.length);
+        await input.press('Enter');
+        await page.waitForFunction(()=>calls.at(-1)?.url.endsWith('/payment-qr'),null,{timeout:2000});
+        assert.equal(await page.evaluate(()=>calls.length),beforeQr+1,'Enter creates exactly one QR without manual transfer details');
         assert.equal(await page.evaluate(()=>calls.at(-1).body.amount),250000);
+        assert.equal(await page.evaluate(()=>posState.business.currentDraft.paidTotal),0,'Creating a QR must not record a payment');
         await page.locator('#paymentQrModal').waitFor({state:'visible'});
         await page.locator('#paymentQrModal .modal-dialog').evaluate(async el=>{
             await Promise.all(el.getAnimations().map(animation=>animation.finished));
         });
         await page.evaluate(()=>bootstrap.Modal.getInstance(document.getElementById('paymentQrModal'))?.hide());
         await page.locator('#paymentQrModal').waitFor({state:'hidden'});
+        await page.locator('#payReference').fill('');await page.locator('#payProvider').fill('');
+        await input.press('Enter');
+        await page.waitForFunction(()=>document.getElementById('paymentInlineErrorBox').textContent.includes('QR đã được tạo'));
+        assert.equal(await page.evaluate(()=>calls.length),beforeQr+1,'Enter while a QR is pending cannot create another QR or record money');
         await page.evaluate(()=>{document.body.classList.add('pos-prime-layout');
             posState.business.currentDraft={orderId:15,status:0,subtotal:215000,grandTotal:215000,paidTotal:0,balanceDue:215000,payments:[]};
             payment.openPaymentModal();});
@@ -118,6 +134,6 @@ const read = file => fs.readFileSync(path.join(root, file), 'utf8');
         assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
         const footer=await page.locator('.pos-payment-workspace__footer').boundingBox();assert.ok(footer.y+footer.height<=844);
         assert.deepEqual(errors,[]);
-        console.log('PASS: desktop/mobile sizing, amount formatting, transfer surplus warning and full QR amount, cash/QR payloads and fractional VND rejection.');
+        console.log('PASS: Enter creates one QR with empty transfer details, pending QR cannot record money, cash Enter and card reference checks, desktop/mobile sizing, amount formatting and fractional VND rejection.');
     } finally {await browser.close();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

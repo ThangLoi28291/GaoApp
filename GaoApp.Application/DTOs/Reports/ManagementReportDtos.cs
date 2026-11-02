@@ -20,6 +20,7 @@ public sealed record ReportGroupTrendDto(int Bucket, string Label, decimal? Whol
 public sealed record ExpenseCategoryDto(string Code, string Name, decimal Amount);
 public sealed class ManagementPeriodDto
 {
+    public ProfitCostDiagnosticsDto CostDiagnostics { get; set; } = new();
     public ProfitSummaryDto Summary { get; set; } = new();
     public decimal OperatingExpenses { get; set; }
     public decimal? OperatingProfit { get; set; }

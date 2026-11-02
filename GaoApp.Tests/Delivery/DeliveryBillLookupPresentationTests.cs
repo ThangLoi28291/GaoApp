@@ -104,7 +104,7 @@ public sealed class DeliveryBillLookupPresentationTests(DeliveryD02Fixture fixtu
         }
         var first = await c.Client.Http.GetStringAsync(c.BillUrl);
         var second = await c.Client.Http.GetStringAsync(c.BillUrl);
-        Assert.Equal(first, second);
+        GaoApp.Tests.Security.CspHtmlAssert.Equivalent(first, second);
         Assert.Contains("CHƯA THU TIỀN", WebUtility.HtmlDecode(first));
     }
 

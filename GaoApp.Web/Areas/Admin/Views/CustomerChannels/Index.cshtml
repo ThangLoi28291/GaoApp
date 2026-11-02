@@ -1,0 +1,39 @@
+@model GaoApp.Web.Areas.Admin.Controllers.CustomerChannelsPage
+@{Layout="_ContentNavbarLayout";ViewData["Title"]="Kênh chăm sóc khách hàng";}
+<link rel="stylesheet" href="~/Admin/css/customer-channels.css" asp-append-version="true"/>
+<link rel="stylesheet" href="~/Admin/css/customer-service-admin.mobile.css" asp-append-version="true" />
+<main id="customerChannels" data-base="@Url.Content("~/admin/customer-service/channels")" data-manage="@Model.CanManage.ToString().ToLowerInvariant()">
+    @Html.AntiForgeryToken()
+    <header class="cc-heading"><div><p>@Model.StoreName · CSKH</p><h2>Kênh liên hệ</h2><p>Tin khách tập trung tại hộp thư. Kiểm tra kết quả trước khi gửi lại.</p></div><a class="btn btn-outline-primary" href="@Url.Content("~/admin/customer-service")">Mở hộp thư</a></header>
+    @if(!Model.Enabled){<section class="cc-card"><h3>Facebook/Zalo đang tắt</h3><p>Chức năng kết nối kênh chưa được bật trên máy chủ. Hệ thống không nhận tin, gửi tin hoặc đồng bộ Facebook/Zalo.</p></section>}
+    else if(!Model.WorkerEnabled){<p class="cc-error">Bộ xử lý nền đang tắt trên máy chủ. Tin nhận được giữ trong hàng chờ; chưa gửi ra kênh.</p>}
+    <p id="ccNotice" role="status" aria-live="polite"></p>
+    @if(Model.Enabled&&Model.Connections.Length==0){<section class="cc-card"><h3>Chưa cấu hình kênh</h3><p>Khai báo Facebook Page hoặc kết nối ZaloMarketing trên máy chủ rồi tải lại trang. Kênh mới mặc định tắt; không cần nhập khóa vào hộp thư.</p></section>}
+    @foreach(var channel in Model.Connections){<section class="cc-card" data-connection="@channel.Id"><header><div><h3>@channel.Label</h3><p>@channel.Id · Tài khoản @channel.AccountHint</p></div><span class="cc-badge">@(!channel.Enabled?"Chưa bật trên máy chủ":channel.State?.Paused==true?"Tạm dừng":"Đang hoạt động")</span></header>
+        <p>@(channel.AutoReply?"Cho phép trợ lý tự động trả lời câu hỏi đủ nguồn.":"Nhân viên tiếp nhận và trả lời; trợ lý tự động đang tắt tại kênh này.")</p>
+        @if(channel.Error is not null){<p class="cc-error">Cấu hình tài khoản đã thay đổi. Cần khai báo mã kết nối mới trước khi dùng.</p>}
+        @if(channel.State is {} state){<p class="cc-meta">@(channel.Label=="Zalo"?"Hoàn tất lượt kiểm tra đồng bộ gần nhất":"Nhận tin gần nhất"): @(state.LastSuccess?.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm")??"Chưa có")</p>
+        @if(channel.Label=="Zalo"){
+            <p class="cc-meta">Nhận tin vào hộp thư gần nhất: @(state.LastReceived?.ToOffset(TimeSpan.FromHours(7)).ToString("dd/MM/yyyy HH:mm")??"Chưa có"). Phạm vi lấy bù tối đa 7 ngày; tin cũ trước khi mở kênh trực tiếp không tự nhập.</p>
+            @if(state.SyncIncomplete){
+                var explanation=state.Error switch {
+                    "zalo_sync_anchor_missing"=>"Nguồn không trả về mốc tin đã xác nhận. Cần kiểm tra lịch sử tại ZaloMarketing; khôi phục nguồn để hệ thống thử lại.",
+                    "zalo_sync_cursor_not_advancing"=>"Nguồn trả về trang tin bị lặp hoặc không tiến được. Cần kiểm tra API lịch sử ZaloMarketing.",
+                    "zalo_sync_buffer_capacity" or "zalo_sync_peer_capacity" or "zalo_inbox_page_limit"=>"Lượt đồng bộ chạm giới hạn bảo vệ lưu trữ/phân trang. Cần quản trị viên kiểm tra dung lượng và nguồn.",
+                    "zalo_contract_or_profile_mismatch"=>"Chưa xác minh được cấu trúc dữ liệu hoặc tài khoản nguồn. Cần kiểm tra kết nối ZaloMarketing.",
+                    "zalo_source_history_incomplete"=>channel.LivePilotPhone is not null?"Đang thử AI chỉ với số "+channel.LivePilotPhone+" cho tin văn bản mới. Lịch sử Zalo chưa đầy đủ; tin cũ và các hội thoại khác không được AI tự trả lời.":"Đang nhận tin Zalo để nhân viên xử lý. Nguồn chưa bảo đảm đủ lịch sử; AI tự trả lời đang bị chặn. Nhân viên có thể tiếp nhận và gửi tin thủ công.",
+                    "zalo_source_not_ready"=>"Nguồn ZaloMarketing đang tạm dừng hoặc chưa sẵn sàng. Cần kiểm tra đăng nhập và bật đồng bộ tại nguồn.",
+                    "zalo_sync_history_expired"=>"Lượt lấy bù đã gián đoạn quá 7 ngày. Các tin ngoài thời hạn cần đối chiếu tại kênh gốc.",
+                    "zalo_sync_unavailable"=>"Kết nối đồng bộ bị gián đoạn. Kiểm tra ZaloMarketing và đường truyền; hệ thống sẽ tiếp tục từ tiến độ đã lưu.",
+                    _=>"Hệ thống tiếp tục lấy các trang còn thiếu khi kênh hoạt động. Trả lời AI tự động chờ đồng bộ hoàn tất."
+                };
+                <p class="cc-error" role="status"><strong>Đồng bộ chưa đầy đủ.</strong> @explanation @if(state.SyncPeer is not null){<span>Hội thoại: @state.SyncPeer · Đã giữ @state.BufferedPages trang.</span>}</p>
+                @if(Model.CanManage&&state.Error is not null and not "zalo_sync_incomplete"){<button type="button" data-sync-retry data-version="@state.Version">Kiểm tra lại lịch sử 7 ngày</button>}
+            }else{<p class="cc-meta">Đã hoàn tất lượt kiểm tra các hội thoại nguồn trong phạm vi đồng bộ. Lịch sử không có tại nguồn cần kiểm tra ở kênh gốc.</p>}
+        }else if(state.Error is not null){<p class="cc-error">@state.Error</p>}
+        <div class="cc-actions">@if(Model.CanManage){<button type="button" data-pause="@(!state.Paused?"true":"false")" data-version="@state.Version">@(state.Paused?"Tiếp tục kênh":"Tạm dừng kênh")</button>}<button type="button" data-load>Kiểm tra tin gửi</button></div>}
+        <div class="cc-deliveries" aria-live="polite"></div>
+    </section>}
+    <p class="cc-footnote">Tạm dừng sẽ giữ các tin đang chờ gửi. Facebook chỉ trả lời trong cửa sổ tương tác; Zalo gửi qua Worker của ZaloMarketing. “Đã gửi” chưa có nghĩa khách đã đọc. Tin ảnh/tệp và yêu cầu dữ liệu riêng cần nhân viên hỗ trợ tại kênh gốc.</p>
+</main>
+@section PageScripts{<script src="~/Admin/js/customer-channels.js" asp-append-version="true"></script>}

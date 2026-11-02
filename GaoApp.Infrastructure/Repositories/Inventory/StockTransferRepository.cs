@@ -13,6 +13,7 @@ public class StockTransferRepository : IStockTransferRepository
 {
     private readonly AppDbContext _context;
     private IDbContextTransaction? _currentTransaction;
+    private int? _lockedDocumentId;
 
     public StockTransferRepository(AppDbContext context)
     {
@@ -127,11 +128,61 @@ public class StockTransferRepository : IStockTransferRepository
         return Task.CompletedTask;
     }
 
+    public Task<int?> GetDocumentIdForLineAsync(int lineId, CancellationToken ct = default)
+        => _context.StockTransferLines.AsNoTracking()
+            .Where(x => x.Id == lineId)
+            .Select(x => (int?)x.StockTransferDocumentId)
+            .SingleOrDefaultAsync(ct);
+
+    public async Task LockDocumentForUpdateAsync(int documentId, CancellationToken ct = default)
+    {
+        var storeId = _context.CurrentStoreId ?? throw new TenantDataScopeException();
+        if (_currentTransaction == null || _lockedDocumentId.HasValue)
+            throw new InvalidOperationException("Chuyển kho cần một giao dịch riêng cho từng phiếu.");
+
+        // Lock the tenant-scoped header first. Every mutation uses this same lock,
+        // including inserts/deletes which would otherwise never check its RowVersion.
+        var fresh = await _context.StockTransferDocuments
+            .FromSqlInterpolated($"SELECT * FROM [StockTransferDocument] WITH (UPDLOCK, HOLDLOCK, ROWLOCK) WHERE [StoreId]={storeId} AND [Id]={documentId} AND [IsDeleted]=0")
+            .AsNoTracking().SingleOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("Phiếu chuyển kho không tồn tại.");
+
+        var headers = _context.ChangeTracker.Entries<StockTransferDocument>()
+            .Where(x => x.Entity.Id == documentId).ToList();
+        var lines = _context.ChangeTracker.Entries<StockTransferLine>()
+            .Where(x => x.Entity.StockTransferDocumentId == documentId).ToList();
+        foreach (var header in headers)
+        {
+            if (header.State != EntityState.Unchanged ||
+                !header.Property(x => x.RowVersion).OriginalValue.SequenceEqual(fresh.RowVersion))
+                throw new DbUpdateConcurrencyException("Phiếu chuyển kho đã thay đổi. Vui lòng tải lại.");
+        }
+        if (lines.Count > 0)
+        {
+            var versions = await _context.StockTransferLines.AsNoTracking()
+                .Where(x => x.StockTransferDocumentId == documentId)
+                .Select(x => new { x.Id, x.RowVersion }).ToDictionaryAsync(x => x.Id, ct);
+            foreach (var line in lines)
+            {
+                if (line.State != EntityState.Unchanged ||
+                    !versions.TryGetValue(line.Entity.Id, out var current) ||
+                    !line.Property(x => x.RowVersion).OriginalValue.SequenceEqual(current.RowVersion))
+                    throw new DbUpdateConcurrencyException("Dòng chuyển kho đã thay đổi. Vui lòng tải lại.");
+            }
+        }
+        // A context can have read the graph earlier. Reload it only after the lock,
+        // without silently discarding pending writes or an optimistic conflict.
+        foreach (var line in lines) line.State = EntityState.Detached;
+        foreach (var header in headers) header.State = EntityState.Detached;
+        _lockedDocumentId = documentId;
+    }
+
     public async Task<int> GetNextLineNoAsync(int documentId, CancellationToken ct = default)
     {
+        var storeId = _context.CurrentStoreId ?? throw new TenantDataScopeException();
         var maxLineNo = await _context.StockTransferLines
             .IgnoreQueryFilters()
-            .Where(x => x.StockTransferDocumentId == documentId)
+            .Where(x => x.StoreId == storeId && x.StockTransferDocumentId == documentId)
             .Select(x => (int?)x.LineNo)
             .MaxAsync(ct) ?? 0;
 
@@ -140,13 +191,24 @@ public class StockTransferRepository : IStockTransferRepository
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
     {
+        if (_lockedDocumentId is int documentId &&
+            _context.ChangeTracker.Entries<StockTransferLine>().Any(x =>
+                x.Entity.StockTransferDocumentId == documentId &&
+                x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
+        {
+            var header = _context.ChangeTracker.Entries<StockTransferDocument>()
+                .Single(x => x.Entity.Id == documentId);
+            // Advance the aggregate version even when only a child is written.
+            header.Property(x => x.UpdatedAtUtc).CurrentValue = DateTime.UtcNow;
+            header.Property(x => x.UpdatedAtUtc).IsModified = true;
+        }
         await _context.SaveChangesAsync(ct);
     }
 
     public async Task BeginTransactionAsync(CancellationToken ct = default)
     {
-        if (_currentTransaction != null)
-            return;
+        if (_currentTransaction != null || _context.Database.CurrentTransaction != null)
+            throw new InvalidOperationException("Chuyển kho cần một giao dịch riêng cho từng phiếu.");
 
         _currentTransaction = await _context.Database.BeginTransactionAsync(ct);
     }
@@ -159,6 +221,7 @@ public class StockTransferRepository : IStockTransferRepository
         await _currentTransaction.CommitAsync(ct);
         await _currentTransaction.DisposeAsync();
         _currentTransaction = null;
+        _lockedDocumentId = null;
     }
 
     public async Task RollbackTransactionAsync(CancellationToken ct = default)
@@ -166,9 +229,13 @@ public class StockTransferRepository : IStockTransferRepository
         if (_currentTransaction == null)
             return;
 
-        await _currentTransaction.RollbackAsync(ct);
-        await _currentTransaction.DisposeAsync();
-        _currentTransaction = null;
+        try { await _currentTransaction.RollbackAsync(ct); }
+        finally
+        {
+            await _currentTransaction.DisposeAsync();
+            _currentTransaction = null;
+            _lockedDocumentId = null;
+        }
     }
 
     public async Task<bool> WarehouseExistsAsync(int warehouseId, CancellationToken ct = default)

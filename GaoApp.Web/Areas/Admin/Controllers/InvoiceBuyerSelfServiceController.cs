@@ -8,6 +8,7 @@ namespace GaoApp.Web.Controllers;
 
 [AllowAnonymous]
 [Route("invoice-info")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class InvoiceBuyerSelfServiceController
     : Controller
 {
@@ -47,7 +48,7 @@ public sealed class InvoiceBuyerSelfServiceController
                 success;
         }
 
-        return View(result.Value);
+        return RenderPage(result.Value);
     }
 
     [HttpPost("{token}")]
@@ -99,6 +100,9 @@ public sealed class InvoiceBuyerSelfServiceController
                 "Không tìm thấy yêu cầu thông tin hóa đơn.");
         }
 
+        if (!current.Value.CanView)
+            return RenderPage(current.Value);
+
         ViewData["ErrorMessage"] =
             result.Error?.Message ??
             "Không thể lưu thông tin hóa đơn.";
@@ -111,5 +115,16 @@ public sealed class InvoiceBuyerSelfServiceController
         return View(
             "Index",
             current.Value);
+    }
+
+    private IActionResult RenderPage(InvoiceBuyerSelfServiceViewDto page)
+    {
+        if (page.CanView && page.CanEdit)
+            return View("Index", page);
+        ModelState.Clear();
+        ViewData.Clear();
+        Response.StatusCode = page.IsExpired ? StatusCodes.Status410Gone : StatusCodes.Status409Conflict;
+        return View("Unavailable", page.PublicMessage ??
+            "Liên kết nhập thông tin hóa đơn không còn khả dụng. Vui lòng liên hệ cửa hàng.");
     }
 }

@@ -1,12 +1,14 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
+const ui11 = require('./receipt-mobile-review.cjs'); // UI-11 review hook
 (async () => {
     const info = JSON.parse(await new Promise(resolve => { let s = ''; process.stdin.on('data', x => s += x); process.stdin.on('end', () => resolve(s)); }));
     fs.mkdirSync('TestResults/receipt-entry', { recursive: true });
     const browser = await chromium.launch({ channel: 'chrome', headless: true });
     try {
         const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
+        await ui11.protect(page.context(), info.baseUrl); // UI-11 review hook
         const errors = []; page.on('pageerror', e => errors.push(e.message));
         await page.goto(info.baseUrl + '/admin/account/login');
         await page.locator('[name=UserName]').fill(info.user);
@@ -16,6 +18,8 @@ const { chromium } = require('playwright');
         await page.goto(info.baseUrl + '/admin/stock-documents');
         const row = page.locator(`tr.sd-index-row[data-id="${info.receiptId}"]`);
         await row.waitFor();
+        await ui11.review(page, 'receipt-list', ui11.output('entry')); // UI-11 review hook
+        if (ui11.enabled()) { await page.locator('#btnCreateReceipt').click(); await ui11.dialog(page, '#createReceiptModal', 'create-receipt', ui11.output('entry')); await page.locator('#createReceiptModal [data-bs-dismiss=modal]').first().click(); await page.locator('#createReceiptModal').waitFor({state:'hidden'}); } // UI-11 review hook
         assert.match(await row.locator('.sd-index-entry').textContent(), /E2E test user/);
         assert.ok((await row.locator('.sd-index-entry').textContent()).includes(info.terminalName));
         assert.equal(await row.locator('td').count(), 7);
@@ -43,6 +47,7 @@ const { chromium } = require('playwright');
         for (let i = 0; i < names.length; i++) await row.locator('.sd-index-entry-line > span').nth(i).evaluate((el, name) => el.textContent = name, names[i]);
         await row.locator('.js-stock-document-quick-view').click();
         await page.locator('#stockDocumentInfoModal.show').waitFor();
+        await ui11.dialog(page, '#stockDocumentInfoModal', 'receipt-quick-view', ui11.output('entry')); // UI-11 review hook
         assert.equal(await page.locator('#sdInfoCreatedBy').textContent(), 'E2E test user');
         assert.ok((await page.locator('#sdInfoEntryTerminal').textContent()).includes(info.terminalName));
         await page.locator('#stockDocumentInfoModal [data-bs-dismiss=modal]').first().click();

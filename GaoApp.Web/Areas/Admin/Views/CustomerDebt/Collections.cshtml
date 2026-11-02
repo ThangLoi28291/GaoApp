@@ -43,7 +43,7 @@
         <div class="debt-section-heading"><div><h2>Chi tiết thu công nợ</h2><p>Chọn mã phiếu để xem phân bổ vào từng đơn và in phiếu thu.</p></div></div>
         <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Phiếu / thời gian</th><th>Khách hàng</th><th class="text-end">Thực thu (đ)</th><th>Phương thức / tài khoản</th><th>Người thu / ca</th><th>Tham chiếu / ghi chú</th></tr></thead><tbody>
         @foreach(var r in Model.Rows) {
-            <tr><td><a class="debt-name" href="/admin/customer-debt/receipts/@r.Id">PTCN-@r.Id.ToString("D6")</a><small class="debt-secondary">@r.At.AddHours(7).ToString("dd/MM/yyyy HH:mm")</small></td>
+            <tr><td><a class="debt-name" href="/admin/customer-debt/receipts/@r.Id">PTCN-@r.Id.ToString("D6")</a><small class="debt-secondary">@r.At.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</small></td>
             <td><a href="/admin/customer-debt?customerId=@r.CustomerId">@r.CustomerName</a><small class="debt-secondary">@r.Phone</small></td>
             <td class="text-end debt-positive debt-strong">@r.Amount.ToString("N0")</td><td>@(r.Method == PaymentMethod.Cash ? "Tiền mặt" : "Chuyển khoản")<small class="debt-secondary">@r.Bank</small></td>
             <td>@(r.UserName ?? $"NV #{r.UserId}")<small class="debt-secondary">Ca #@r.ShiftId</small></td><td class="debt-note">@(r.Reference ?? "—")<small class="debt-secondary">@r.Note</small></td></tr>
@@ -54,5 +54,7 @@
         <p class="debt-table-note">Báo cáo chỉ tính tiền thực thu nợ; trả hàng giảm nợ và chi hoàn tiền được xem trong sổ từng khách. Thu nợ không ghi nhận thêm doanh thu bán hàng.</p>
     </section>
 </div></div>
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" /> }
-@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/customer-finance.mobile.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/customer-finance.mobile.js" asp-append-version="true"></script> }

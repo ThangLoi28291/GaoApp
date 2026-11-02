@@ -30,7 +30,7 @@ public class AdminMenuPermissionTenantIsolationTests
             await foreign.SaveChangesAsync();
         }
         var service = new GaoApp.Application.Services.AdminMenus.AdminMenuService(
-            new AdminMenuRepository(context), null!, null!, new ProfitPermissions(permission));
+            new AdminMenuRepository(context), null!, new ProfitPermissions(permission));
         var menu = await service.GetForRenderAsync(1, 99);
         if (expected == "") Assert.Empty(menu);
         else Assert.Equal(expected, Assert.Single(Assert.Single(menu).Children).Controller);
@@ -45,94 +45,22 @@ public class AdminMenuPermissionTenantIsolationTests
     }
 
     [Fact]
-    public async Task Assigned_role_lookup_should_return_only_roles_from_requested_store()
+    public async Task Menu_permission_catalog_is_read_only_and_leaves_all_store_grants_unchanged()
     {
         var fixture = await CreateFixtureAsync();
-
         await using var context = fixture.CreateStoreContext(1);
         var repository = new AdminMenuPermissionRepository(context);
-
-        var roleIds = await repository.GetRoleIdsByPermissionCodeAsync(
-            1,
-            fixture.PermissionCode);
-
-        roleIds.Should().Equal(fixture.StoreOneRoleId);
+        var permissions = await repository.GetPermissionsAsync();
+        var permission = await repository.GetPermissionByCodeAsync(fixture.PermissionCode);
+        permissions.Should().ContainSingle().Which.Id.Should().Be(fixture.PermissionId);
+        permission!.Id.Should().Be(fixture.PermissionId);
+        (await repository.GetPermissionByCodeAsync("missing.permission")).Should().BeNull();
+        context.ChangeTracker.Entries().Should().BeEmpty();
+        await using var check = fixture.CreateHostContext();
+        var roleIds = await check.RolePermissions.Where(x => x.PermissionId == fixture.PermissionId)
+            .OrderBy(x => x.RoleId).Select(x => x.RoleId).ToListAsync();
+        roleIds.Should().Equal(fixture.StoreOneRoleId, fixture.StoreTwoRoleId);
     }
-
-    [Fact]
-    public async Task Sync_should_remove_only_current_store_role_permissions()
-    {
-        var fixture = await CreateFixtureAsync();
-
-        await using (var context = fixture.CreateStoreContext(1))
-        {
-            var repository = new AdminMenuPermissionRepository(context);
-
-            await repository.SyncPermissionRolesAsync(
-                1,
-                fixture.Permission,
-                new List<int>());
-
-            await context.SaveChangesAsync();
-        }
-
-        await using var verificationContext = fixture.CreateHostContext();
-        var remainingRoleIds = await verificationContext.RolePermissions
-            .Where(x => x.PermissionId == fixture.PermissionId)
-            .Select(x => x.RoleId)
-            .ToListAsync();
-
-        remainingRoleIds.Should().Equal(fixture.StoreTwoRoleId);
-    }
-
-    [Fact]
-    public async Task Sync_should_reject_role_from_another_store()
-    {
-        var fixture = await CreateFixtureAsync();
-
-        await using var context = fixture.CreateStoreContext(1);
-        var repository = new AdminMenuPermissionRepository(context);
-
-        var action = () => repository.SyncPermissionRolesAsync(
-            1,
-            fixture.Permission,
-            new List<int> { fixture.StoreTwoRoleId });
-
-        await action.Should()
-            .ThrowAsync<InvalidOperationException>()
-            .WithMessage("*không thuộc cửa hàng hiện tại*");
-    }
-
-    [Fact]
-    public async Task New_permission_and_role_assignment_should_save_atomically()
-    {
-        var fixture = await CreateFixtureAsync();
-
-        await using var context = fixture.CreateStoreContext(1);
-        var repository = new AdminMenuPermissionRepository(context);
-        var permission = new Permission
-        {
-            Code = "PHASE3.NEW.PERMISSION",
-            Name = "New permission",
-            GroupName = "Tests"
-        };
-
-        await repository.AddPermissionAsync(permission);
-        await repository.SyncPermissionRolesAsync(
-            1,
-            permission,
-            new List<int> { fixture.StoreOneRoleId });
-        await context.SaveChangesAsync();
-
-        permission.Id.Should().BeGreaterThan(0);
-        var assignmentExists = await context.RolePermissions
-            .AnyAsync(x =>
-                x.PermissionId == permission.Id &&
-                x.RoleId == fixture.StoreOneRoleId);
-
-        assignmentExists.Should().BeTrue();
-    }
-
     private static async Task<Fixture> CreateFixtureAsync()
     {
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
@@ -197,7 +125,7 @@ public class AdminMenuPermissionTenantIsolationTests
         public int StoreTwoRoleId { get; set; }
 
         public AppDbContext CreateHostContext()
-            => CreateContext(tenant => tenant.SetHostAdmin());
+            => CreateContext(tenant => tenant.SetHostAdminForTest());
 
         public AppDbContext CreateStoreContext(int storeId)
             => CreateContext(tenant => tenant.SetStore(storeId, $"store-{storeId}"));

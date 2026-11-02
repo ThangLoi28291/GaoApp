@@ -13,6 +13,9 @@ public static class PermissionAliasMap
     /// </summary>
     public static IReadOnlyList<string> GetAcceptedCodes(string canonicalCode)
     {
+        // Opening the live 3D monitor is explicitly opt-in; a legacy manage grant must not open it.
+        if (canonicalCode.Equals(PermissionCodes.Admin.StoreMonitorView, StringComparison.OrdinalIgnoreCase))
+            return [PermissionCodes.Admin.StoreMonitorView];
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             canonicalCode

@@ -1,5 +1,13 @@
 # Thư mục XML/PDF hóa đơn đầu vào
 
+## Giá XML và VAT khi đối chiếu phiếu nhập
+
+`DGia` và `ThTien` của từng `HHDVu` là giá/thành tiền trước VAT; `TSuat` là thuế suất của chính dòng đó. Nếu XML có tiền thuế riêng (`TThue` hoặc thông tin phụ `VATAmount`), ưu tiên số tiền này. Khi không có tiền thuế riêng, tính VAT trên `ThTien` (đã phản ánh chiết khấu của dòng), làm tròn tiền đến 2 chữ số; không lấy một thuế suất chung áp cho mọi sản phẩm.
+
+Tab Giá và khuyến mãi hiển thị cả giá trước thuế, thuế suất, tiền thuế và giá sau thuế. Đối chiếu giá quy đổi theo đơn vị gốc dùng giá **sau VAT**. Phiếu không tách VAT riêng chỉ so tổng sau thuế; không báo lệch giả giữa tổng giá đã gồm VAT và cột tiền trước thuế của XML. Phiếu có tách VAT vẫn kiểm tra riêng thuế suất/tiền thuế.
+
+Khi thêm dòng XML vào bill: phiếu không bật Có VAT nhận thành tiền sau thuế; phiếu bật Có VAT để tính thuế riêng nhận thành tiền trước thuế, tránh cộng hai lần. XML đã lưu với tiền thuế dòng bằng 0 được bổ sung phép tính từ thuế suất khi đọc, không sửa chứng từ đã duyệt. Thuế suất chưa xác định cần kiểm tra trước khi nhập giá sau thuế. Bill đã nhập hoặc đã khôi phục không tự sửa giá.
+
 Thư viện của nút **Chọn hóa đơn** dùng thư mục `XML` bên trong `Storage:UploadRoot`, cùng gốc lưu ảnh. Ví dụ cấu hình ảnh hiện tại là `C:\GaoAppData\Uploads` thì thư viện là:
 
 ```text
@@ -33,7 +41,7 @@ XML và PDF cùng hóa đơn dùng chung tên file. Giữ nguyên cây năm/MST/
 
 `RootPath: "XML"` (hoặc để trống) lấy gốc thư mục từ cấu hình ảnh. Web tạo thư mục khi thư viện được bật và `Storage:CreateIfMissing` là `true`. Tài khoản IIS cần quyền đọc thư viện và quyền tạo thư mục nếu chưa có.
 
-Bản Web hiện bật thư viện trong `appsettings.json`. Khi cập nhật server đang giữ cấu hình cũ, kiểm tra `appsettings.Production.json` và biến môi trường `InputInvoiceLibrary__Enabled`: nếu đang là `false` thì đổi thành `true` rồi khởi động lại Web. Thông báo “Thư viện hóa đơn chưa được bật cho môi trường này” là do công tắc này, không phải do chọn sai nhà cung cấp. Không cần migration database cho thay đổi này.
+Bản Web hiện bật thư viện trong cấu hình chạy local và mẫu publish `eng/deployment/web.appsettings.json`. Publish chỉ xuất mẫu này thành `appsettings.json`, không xuất `appsettings.Production.json`. Khi cập nhật server đang giữ cấu hình cũ, kiểm tra `appsettings.json` trên host và biến môi trường `InputInvoiceLibrary__Enabled`: nếu đang là `false` thì đổi thành `true` rồi khởi động lại Web. Thông báo “Thư viện hóa đơn chưa được bật cho môi trường này” là do công tắc này, không phải do chọn sai nhà cung cấp. Không cần migration database cho thay đổi công tắc này.
 
 Trong phiếu nhập, chọn nhà cung cấp ở **Thanh toán & thuế** và đợi báo **Đã lưu nhà cung cấp**, sau đó mở **Đối chiếu XML → Chọn hóa đơn**. Danh sách đọc theo MST của nhà cung cấp đã lưu; thiếu MST cần cập nhật hồ sơ nhà cung cấp. Khi đổi nhà cung cấp, danh sách/bản xem trước cũ bị xóa và các yêu cầu tải cũ bị hủy. API vẫn kiểm tra nhà cung cấp và chủ thể người mua trước khi cho liên kết.
 

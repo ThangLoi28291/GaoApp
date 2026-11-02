@@ -1,5 +1,7 @@
 ﻿using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
@@ -38,24 +40,24 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
         int take = 20,
         CancellationToken ct = default)
     {
-        if (take <= 0)
-            take = 20;
+        take = LogReadLimits.NormalizePageSize(take);
 
-        return await _db.InvoiceIntegrationLogs
+        var logs = await _db.InvoiceIntegrationLogs
             .AsNoTracking()
             .Where(x => !x.IsDeleted && x.InvoiceHeadId == invoiceHeadId)
             .OrderByDescending(x => x.StartedAtUtc)
             .ThenByDescending(x => x.Id)
             .Take(take)
             .ToListAsync(ct);
+        return SanitizeReads(logs);
     }
 
     public async Task<(List<InvoiceIntegrationLog> Items, int Total)> QueryAsync(
         InvoiceIntegrationLogQueryDto query,
         CancellationToken ct = default)
     {
-        var page = query.Page <= 0 ? 1 : query.Page;
-        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        var offset = query.NormalizeAndValidate();
+        var pageSize = query.PageSize;
 
         var q = _db.InvoiceIntegrationLogs
             .Include(x => x.InvoiceHead)
@@ -65,13 +67,13 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
 
         if (query.FromDate.HasValue)
         {
-            var fromUtc = query.FromDate.Value.Date;
+            var fromUtc = VietnamTime.ToUtc(query.FromDate.Value.Date);
             q = q.Where(x => x.StartedAtUtc >= fromUtc);
         }
 
         if (query.ToDate.HasValue)
         {
-            var toExclusiveUtc = query.ToDate.Value.Date.AddDays(1);
+            var toExclusiveUtc = VietnamTime.ToUtc(query.ToDate.Value.Date.AddDays(1));
             q = q.Where(x => x.StartedAtUtc < toExclusiveUtc);
         }
 
@@ -101,10 +103,13 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
 
         if (!string.IsNullOrWhiteSpace(keyword))
         {
+            // Searching raw URL/error text would be an oracle for credentials
+            // hidden by the display sanitizer. Search only visible identifiers
+            // and exact codes admitted by the same read policy.
+            var safeCode = InvoiceLogReadSanitizer.Code(keyword);
+            if (safeCode == InvoiceLogReadSanitizer.Redacted) safeCode = null;
             q = q.Where(x =>
-                (x.RequestUrl != null && x.RequestUrl.Contains(keyword)) ||
-                (x.ErrorCode != null && x.ErrorCode.Contains(keyword)) ||
-                (x.ErrorMessage != null && x.ErrorMessage.Contains(keyword)) ||
+                (safeCode != null && x.ErrorCode == safeCode) ||
                 (x.InvoiceHead != null &&
                     (
                         (x.InvoiceHead.InvoiceNumber != null && x.InvoiceHead.InvoiceNumber.Contains(keyword)) ||
@@ -115,25 +120,28 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
         }
 
         var total = await q.CountAsync(ct);
+        if (offset >= total)
+            return ([], total);
 
         var items = await q
             .OrderByDescending(x => x.StartedAtUtc)
             .ThenByDescending(x => x.Id)
-            .Skip((page - 1) * pageSize)
+            .Skip(offset)
             .Take(pageSize)
             .ToListAsync(ct);
 
-        return (items, total);
+        return (SanitizeReads(items), total);
     }
 
-    public Task<InvoiceIntegrationLog?> GetByIdAsync(
+    public async Task<InvoiceIntegrationLog?> GetByIdAsync(
         int id,
         CancellationToken ct = default)
     {
-        return _db.InvoiceIntegrationLogs
+        var log = await _db.InvoiceIntegrationLogs
             .Include(x => x.InvoiceHead)
             .AsNoTracking()
             .FirstOrDefaultAsync(x => !x.IsDeleted && x.Id == id, ct);
+        return log is null ? null : SanitizeRead(log);
     }
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
@@ -159,10 +167,10 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
     DateTime toDate,
     CancellationToken ct = default)
     {
-        var from = fromDate.Date;
-        var toExclusive = toDate.Date.AddDays(1);
+        var from = VietnamTime.ToUtc(fromDate.Date);
+        var toExclusive = VietnamTime.ToUtc(toDate.Date.AddDays(1));
 
-        return await _db.InvoiceIntegrationLogs
+        var logs = await _db.InvoiceIntegrationLogs
             .AsNoTracking()
             .Where(x =>
                 !x.IsDeleted &&
@@ -171,6 +179,25 @@ public class InvoiceIntegrationLogRepository : IInvoiceIntegrationLogRepository
             .OrderByDescending(x => x.StartedAtUtc)
             .Take(500)
             .ToListAsync(ct);
+        return SanitizeReads(logs);
+    }
+
+    // Every caller (including payload/dashboard readers) receives safe copies
+    // materialized with AsNoTracking. Never rewrite historical evidence in SQL.
+    private static List<InvoiceIntegrationLog> SanitizeReads(List<InvoiceIntegrationLog> logs)
+    {
+        foreach (var log in logs) SanitizeRead(log);
+        return logs;
+    }
+
+    private static InvoiceIntegrationLog SanitizeRead(InvoiceIntegrationLog log)
+    {
+        log.RequestBody = InvoiceLogReadSanitizer.Body(log.RequestBody);
+        log.ResponseBody = InvoiceLogReadSanitizer.Body(log.ResponseBody);
+        log.RequestUrl = InvoiceLogReadSanitizer.Url(log.RequestUrl);
+        log.ErrorCode = InvoiceLogReadSanitizer.Code(log.ErrorCode);
+        log.ErrorMessage = InvoiceLogReadSanitizer.Error(log.ErrorMessage);
+        return log;
     }
     public async Task<InvoiceIntegrationLogCleanupResultDto> CleanupAsync(
     InvoiceIntegrationLogCleanupRequestDto request,

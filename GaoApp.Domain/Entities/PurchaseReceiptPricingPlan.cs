@@ -10,6 +10,7 @@ public sealed class PurchaseReceiptPricingPlan : BaseStoreEntity
     public PurchaseReceiptPricingPlanState State { get; set; } = PurchaseReceiptPricingPlanState.Draft;
     public decimal ActualBillTotal { get; set; }
     public decimal GlobalDiscountPercent { get; set; }
+    public decimal GlobalDiscountAmount { get; set; }
     public decimal SystemTotal { get; set; }
     public int BillLayoutVersion { get; set; }
     public ICollection<PurchaseReceiptBillLine> BillLines { get; set; } = new List<PurchaseReceiptBillLine>();

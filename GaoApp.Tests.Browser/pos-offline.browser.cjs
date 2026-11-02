@@ -121,19 +121,22 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
         await page.unroute('**/admin/pos/**/items?**');
         await request('/admin/pos/cart/current/scan', 'POST', { barcode: afterLostReply.lines[0].barcode, qty: 1 }).catch(async () =>
             request(`/admin/pos/${firstId}/items?variantId=${info.variantId}&qty=1`, 'POST', {}));
-        const cash = await request('/admin/pos/cart/current/payment-and-finalize', 'POST', { orderId: firstId, clientRequestId: require('node:crypto').randomUUID(), method: 0, amount: 60 });
-        assert.equal(cash.finalized, true); assert.equal(cash.draft.grandTotal, 60);
-        // Exercise the actual cashier click: first block popups, then allow only
-        // the synchronously preopened window (a second asynchronous open is blocked).
-        await page.locator('#invoiceIntentModal.show').waitFor();
+        // The current checkout chooses the approved automatic route itself.
+        // Block the initial recovery print, then exercise the visible retry.
         await page.evaluate(() => {
             window.__originalPrintOpen = window.open;
+            const shell = document.getElementById('posShell');
+            window.__retryPrintContext = { storeId: Number(shell.dataset.storeId), terminalId: Number(shell.dataset.terminalId) };
+            window.__retryPrintPreferences = PosPrinting.preferences(window.__retryPrintContext);
+            PosPrinting.savePreferences(window.__retryPrintContext, { ...window.__retryPrintPreferences, mode: 'browser', copies: 1 });
             window.open = () => null;
         });
-        await page.locator('#btnInvoiceIntentManual').click();
+        const cash = await request('/admin/pos/cart/current/payment-and-finalize', 'POST', { orderId: firstId, clientRequestId: require('node:crypto').randomUUID(), method: 0, amount: 60 });
+        assert.equal(cash.finalized, true); assert.equal(cash.draft.grandTotal, 60);
+        await page.locator('#invoiceIntentModal.show').waitFor();
         await page.locator('#invoiceIntentErrorBox').filter({ hasText: 'Cho phép mở cửa sổ' }).waitFor();
         assert.equal(await page.locator('#invoiceIntentModal').isVisible(), true);
-        assert.equal(await page.evaluate(id => PosOffline.invoiceIntentStatus(id).route, firstId), 2);
+        assert.equal(await page.evaluate(id => PosOffline.invoiceIntentStatus(id).route, firstId), 1);
         const pendingAfterChoice = await page.evaluate(() => PosOffline.status().pending);
         await page.evaluate(() => {
             window.__printOpenCalls = 0; window.__offlinePrintCalls = 0;
@@ -145,7 +148,7 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
             };
         });
         const popupEvent = page.waitForEvent('popup');
-        await page.locator('#btnInvoiceIntentManual').click();
+        await page.locator('#btnInvoiceIntentAutomatic').click();
         const offlinePaper = await popupEvent;
         await offlinePaper.locator('.receipt').waitFor();
         await page.waitForFunction(() => window.__offlinePrintCalls === 1);
@@ -155,7 +158,10 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
         assert.match(await offlinePaper.locator('.receipt').innerText(), /60/);
         await offlinePaper.screenshot({ path: path.join(output, 'offline-cashier-print.png'), fullPage: true });
         await offlinePaper.close();
-        await page.evaluate(() => { window.open = window.__originalPrintOpen; });
+        await page.evaluate(() => {
+            window.open = window.__originalPrintOpen;
+            PosPrinting.savePreferences(window.__retryPrintContext, window.__retryPrintPreferences);
+        });
         console.log('PASS: offline cashier print reuses the click-opened window; blocked popups stay retryable without another sale or invoice intent');
         if (receiptProbe) await receiptProbe.offlinePrint(page, firstId, output);
         screen = await request('/admin/pos/screen');
@@ -191,14 +197,17 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
         await page.locator('[data-pay-method-value="1"]').click();
         await page.locator('#btnReopenLatestPaymentQr').click();
         await page.locator('#paymentQrModal.show').waitFor();
-        assert.equal((await page.locator('#btnConfirmPaymentQrPaid').textContent()).trim(), 'Đã nhận thủ công');
+        assert.equal((await page.locator('#btnConfirmPaymentQrPaid').textContent()).trim(), 'Đã nhận chuyển khoản');
+        // Manual takeover in the current UI requires a server connection. Keep
+        // that guard, and exercise the existing offline journal contract directly.
+        assert.equal(await page.locator('#btnConfirmPaymentQrPaid').isVisible(), false);
         await page.screenshot({ path: path.join(output, 'offline-qr-restored.png'), fullPage: true });
-        await page.locator('#btnConfirmPaymentQrPaid').click();
+        await request(`/admin/pos/payment-qr/${qr.id}/manual-confirm`, 'POST', {});
         await page.waitForFunction(async id => { const r = await fetch(`/admin/pos/${id}`); return r.ok && (await r.json()).status === 2; }, secondId);
         const transfer = await request(`/admin/pos/${secondId}`);
         assert.equal(transfer.paidTotal, 40); assert.equal(transfer.grandTotal, 40);
-        await request(`/admin/pos/${secondId}/invoice-route`, 'POST', { route: 2 });
-        console.log('PASS: cashier reopens QR and confirms manual receipt through the existing offline UI');
+        await request(`/admin/pos/${secondId}/invoice-route`, 'POST', { route: 1 });
+        console.log('PASS: QR preview survives restart, UI takeover stays guarded, and the existing manual-transfer journal records once');
         // Keep the first replay in flight to exercise LAN recovery before the queue is drained.
         let releaseReplay, heldReplay = false;
         const replayGate = new Promise(resolve => { releaseReplay = resolve; });
@@ -245,7 +254,15 @@ const receiptProbe = process.argv.includes('--receipt-templates') ? require('./r
         await networkBanner.waitFor({ state: 'visible' });
         assert.match(await networkBanner.textContent(), /Mất kết nối/);
         const beforeQuota = await request('/admin/pos/screen');
-        await page.evaluate(() => { IDBObjectStore.prototype.put = function () { throw new DOMException('Simulated quota', 'QuotaExceededError'); }; });
+        // Exercise a real asynchronous IndexedDB write error. Throwing from a
+        // mocked put inside onsuccess instead creates an unrelated uncaught JS
+        // exception, unlike the request-error signal used for disk/quota failures.
+        await page.evaluate(() => {
+            const put = IDBObjectStore.prototype.put;
+            IDBObjectStore.prototype.put = function (value, key) {
+                return this.name === 'sessions' ? this.add(value, key) : put.apply(this, arguments);
+            };
+        });
         await assert.rejects(request(`/admin/pos/${beforeQuota.currentDraft.orderId}/items?variantId=${info.variantId}&qty=1`, 'POST', {}), /Không ghi được dữ liệu/);
         assert.equal(await page.evaluate(() => PosOffline.canWork()), false);
         console.log('PASS: disk failure rejects the sale before claiming it was saved');

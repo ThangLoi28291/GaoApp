@@ -1,0 +1,30 @@
+@{ ViewData["Title"] = "Tra cứu đơn"; }
+<div class="page-shell narrow-page" data-guest-page><header class="page-heading"><p class="eyebrow">Theo dõi thật rõ</p><h1>Tra cứu đơn hàng</h1><p>Dùng liên kết riêng được cấp khi đặt hàng; không tra cứu bằng số điện thoại hoặc mã đơn.</p></header>
+    <form id="guest-link-form" class="guest-link-form"><label for="guest-link-input">Liên kết riêng của đơn</label><input id="guest-link-input" type="text" autocomplete="off" spellcheck="false" placeholder="Dán liên kết riêng vào đây" /><button class="button" type="submit">Mở đơn hàng</button></form>
+    <div id="guest-loading" role="status" hidden>Đang kiểm tra liên kết riêng…</div><div id="guest-error" class="error-state checkout-notice" role="alert" hidden></div>
+    <section id="pending-order" class="checkout-notice" hidden><h2>Kiểm tra yêu cầu đặt hàng trước đó</h2><p>Lần gửi trước có thể đã được cửa hàng tiếp nhận. Kiểm tra lại cùng mã yêu cầu để tránh đặt trùng.</p><button id="pending-order-retry" class="button" type="button">Kiểm tra lại yêu cầu</button></section>
+    <section id="guest-qr" class="qr-panel" hidden aria-labelledby="qr-heading"><h2 id="qr-heading">Thanh toán QR</h2><p id="qr-state" class="qr-state" role="status"></p><p id="qr-message"></p><div id="qr-payment-details"><strong id="qr-amount" class="qr-amount"></strong><p id="qr-beneficiary"></p><p id="qr-account"></p><p>Nội dung chuyển khoản: <strong id="qr-content"></strong></p><p id="qr-expiry"></p><p>Kiểm tra đúng số tiền và tên người thụ hưởng trong ứng dụng ngân hàng trước khi xác nhận. Đừng chuyển thêm nếu đã chuyển hoặc đơn cần đối soát.</p></div><img id="qr-image" alt="Mã QR thanh toán đúng đơn này" width="280" height="280" hidden /><div class="qr-actions"><a id="qr-download" class="button" hidden>Tải ảnh QR</a><button id="qr-copy-account" class="button secondary-button" type="button">Sao chép tài khoản</button><button id="qr-copy-content" class="button secondary-button" type="button">Sao chép nội dung</button><button id="qr-copy-amount" class="button secondary-button" type="button">Sao chép số tiền</button><button id="qr-reopen" class="button secondary-button" type="button">Mở lại / kiểm tra QR</button></div><p id="qr-copy-message" role="status"></p><label for="qr-copy-fallback" id="qr-copy-label" hidden>Nội dung để sao chép thủ công</label><input id="qr-copy-fallback" type="text" readonly hidden /></section>
+    <article id="guest-order" hidden><header class="guest-order-heading"><h2 id="guest-code"></h2><p id="guest-created"></p><strong id="guest-phase"></strong></header><div class="guest-state-grid"><section><h3>Thanh toán</h3><p id="guest-payment"></p></section><section><h3>Giao hàng</h3><p id="guest-delivery"></p></section><section><h3>Hoàn tiền</h3><p id="guest-refund"></p></section></div><section class="guest-recipient"><h3>Người nhận</h3><p id="guest-recipient"></p><p id="guest-address"></p></section><section class="guest-shipments"><h3>Hành trình giao hàng</h3><div id="guest-shipments"></div><p id="guest-incident" role="status" hidden></p><button id="guest-refresh" class="button secondary-button" type="button">Cập nhật trạng thái</button></section><div id="guest-lines"></div><div class="cart-summary"><div class="summary-amount"><span>Tiền hàng</span><strong id="guest-goods"></strong></div><div class="summary-amount"><span>Phí giao</span><strong id="guest-shipping"></strong></div><div class="summary-amount quote-grand"><span>Tổng đơn</span><strong id="guest-total"></strong></div><p id="guest-payment-method-note">Trạng thái tiền và giao hàng được theo dõi riêng.</p><button id="copy-order-link" class="button secondary-button" type="button">Sao chép liên kết riêng</button></div></article>
+    <section id="guest-cancellation" class="sf-guest-control" hidden aria-labelledby="guest-cancellation-heading" aria-busy="false">
+        <header><p class="eyebrow">Chủ động với đơn của bạn</p><h2 id="guest-cancellation-heading">Hủy đơn &amp; hoàn tiền</h2></header>
+        <p id="guest-cancellation-message"></p>
+        <div id="guest-cancellation-status" class="sf-control-notice" role="status" aria-live="polite" hidden></div>
+        <button id="guest-cancellation-refresh" class="button secondary-button" type="button">Cập nhật hủy / hoàn tiền</button>
+        <aside id="guest-cancellation-pending" class="sf-control-notice sf-control-warning" hidden><h3>Kiểm tra lần gửi trước</h3><p>Lần gửi trước chưa rõ kết quả. Kiểm tra lại đúng yêu cầu cũ trước khi gửi yêu cầu khác.</p><button id="guest-cancellation-retry" class="button" type="button">Kiểm tra lại yêu cầu hủy</button></aside>
+        <form id="guest-cancellation-form" hidden>
+            <label for="guest-cancellation-reason">Lý do hủy đơn<textarea id="guest-cancellation-reason" name="reason" rows="3" maxlength="1000" required></textarea></label>
+            <p id="guest-cancellation-explanation"></p>
+            <label class="sf-control-confirm"><input id="guest-cancellation-confirm" type="checkbox" required /> Tôi xác nhận muốn hủy đơn hoặc gửi yêu cầu hủy theo trạng thái hiện tại.</label>
+            <button id="guest-cancellation-submit" class="button" type="submit">Gửi yêu cầu hủy</button>
+        </form>
+        <section aria-labelledby="guest-cancellation-history-heading"><h3 id="guest-cancellation-history-heading">Tiến độ xử lý</h3><ol id="guest-cancellation-history" class="sf-control-history"></ol></section>
+        <section aria-labelledby="guest-refund-detail-heading"><h3 id="guest-refund-detail-heading">Khoản cần hoàn &amp; đã thực hoàn</h3><div id="guest-refund-detail"></div></section>
+        <p class="sf-control-footnote">Hủy đơn không tự chuyển tiền. Cửa hàng chỉ xác nhận đã hoàn sau khi kiểm tra chứng cứ thực trả.</p>
+    </section>
+</div>
+@section Scripts {
+    <link rel="stylesheet" href="~/assets/cancellation.css" asp-append-version="true" />
+    <script src="~/assets/orders.js" asp-append-version="true" defer></script>
+    <script src="~/assets/qr.js" asp-append-version="true" defer></script>
+    <script src="~/assets/cancellation.js" asp-append-version="true" defer></script>
+}

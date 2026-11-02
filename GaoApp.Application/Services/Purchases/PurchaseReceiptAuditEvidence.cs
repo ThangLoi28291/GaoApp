@@ -53,6 +53,7 @@ public static class PurchaseReceiptAuditEvidence
 
     public static readonly IReadOnlyList<string> LineFields =
     [
+        nameof(StockDocumentLine.IsDeleted),
         nameof(StockDocumentLine.ProductVariantId),
         nameof(StockDocumentLine.PurchaseOrderLineId),
         nameof(StockDocumentLine.ProductUnitConversionId),

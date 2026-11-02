@@ -15,7 +15,7 @@
     const names = { Pending: 'Chờ duyệt', Approved: 'Đã duyệt', Rejected: 'Từ chối', Withdrawn: 'Đã rút' };
     const money = n => n == null ? 'Chưa ghi nhận' : Number(n).toLocaleString('vi-VN', { maximumFractionDigits: 2 }) + ' đ';
     const signed = n => (n > 0 ? '+' : '') + money(n);
-    const date = value => value ? new Date(/Z$|[+-]\d\d:\d\d$/.test(value) ? value : value + 'Z').toLocaleString('vi-VN') : '—';
+    const date = value => value ? new Date(/Z$|[+-]\d\d:\d\d$/.test(value) ? value : value + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const type = v => v === 'CashIn' ? 'Thu' : 'Chi';
     const badge = r => `<span class="badge bg-label-${r.status === 'Approved' ? 'success' : r.status === 'Pending' ? 'warning' : 'secondary'}">${names[r.status] || '—'}</span>${r.appliedToClosedShift && !r.reconciledAtUtc ? '<small class="text-warning">Cần đối soát lại</small>' : ''}`;

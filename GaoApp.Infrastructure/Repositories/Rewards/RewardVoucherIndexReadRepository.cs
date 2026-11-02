@@ -37,7 +37,8 @@ public sealed class RewardVoucherIndexReadRepository : IRewardVoucherIndexReadRe
                 UnavailableVouchers = group.Count(item =>
                     item.Status == CustomerRewardVoucherStatus.Cancelled
                     || item.Status == CustomerRewardVoucherStatus.Expired
-                    || item.Status == CustomerRewardVoucherStatus.Locked)
+                    || item.Status == CustomerRewardVoucherStatus.Locked
+                    || item.Status == CustomerRewardVoucherStatus.ReservedForDelivery)
             })
             .FirstOrDefaultAsync(ct)
             ?? new RewardVoucherIndexSummaryDto();
@@ -147,13 +148,13 @@ public sealed class RewardVoucherIndexReadRepository : IRewardVoucherIndexReadRe
     {
         if (fromDate.HasValue)
         {
-            var fromInclusive = fromDate.Value.Date;
+            var fromInclusive = VietnamTime.ToUtc(fromDate.Value.Date);
             query = query.Where(item => item.IssuedAtUtc >= fromInclusive);
         }
 
         if (toDate.HasValue)
         {
-            var toExclusive = toDate.Value.Date.AddDays(1);
+            var toExclusive = VietnamTime.ToUtc(toDate.Value.Date.AddDays(1));
             query = query.Where(item => item.IssuedAtUtc < toExclusive);
         }
 
@@ -170,6 +171,7 @@ public sealed class RewardVoucherIndexReadRepository : IRewardVoucherIndexReadRe
             RewardVoucherIndexStatuses.Cancelled => query.Where(item => item.Status == CustomerRewardVoucherStatus.Cancelled),
             RewardVoucherIndexStatuses.Expired => query.Where(item => item.Status == CustomerRewardVoucherStatus.Expired),
             RewardVoucherIndexStatuses.Locked => query.Where(item => item.Status == CustomerRewardVoucherStatus.Locked),
+            RewardVoucherIndexStatuses.ReservedForDelivery => query.Where(item => item.Status == CustomerRewardVoucherStatus.ReservedForDelivery),
             _ => query
         };
 }

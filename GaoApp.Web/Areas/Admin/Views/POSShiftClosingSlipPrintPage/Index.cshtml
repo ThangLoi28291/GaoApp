@@ -136,10 +136,15 @@
             .btn-print { display: none; }
         }
     </style>
+
+<link rel="stylesheet" href="~/Admin/css/print-page.mobile.css" asp-append-version="true" />
+<script src="~/Admin/js/print-page.mobile.js" asp-append-version="true" defer></script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 </head>
 <body>
+<span hidden data-ui22-print-page="POSShiftClosingSlipPrintPage/Index"></span>
     @Html.AntiForgeryToken()
-    <button class="btn-print" onclick="window.print()">In lại</button>
+    <button class="btn-print" data-csp-action="print">In lại</button>
 
     <div class="receipt">
         <div class="center">
@@ -234,7 +239,7 @@
 
         function dt(v) {
             if (!v) return '-';
-            return new Date(v).toLocaleString('vi-VN');
+            return new Date(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(v) ? v + 'Z' : v).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
         }
 
         async function loadSlip() {

@@ -75,6 +75,7 @@ public class AuditLogService : IAuditLogService
 
     public Task<PagedResult<AuditLogListItemDto>> SearchAsync(AuditLogQueryDto query, CancellationToken ct = default)
     {
+        query.NormalizeAndValidate();
         var ctx = _auditExecutionContextAccessor.GetCurrent();
         return _auditLogRepository.SearchAsync(ctx.StoreId, query, ct);
     }

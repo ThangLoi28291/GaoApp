@@ -435,13 +435,13 @@ public static class SecuritySeedData
         var cashierRole = roles.FirstOrDefault(x => x.Code == "CASHIER");
         var warehouseRole = roles.FirstOrDefault(x => x.Code == "WAREHOUSE");
 
-        // ADMIN: có toàn bộ permission chuẩn hiện có.
+        // Monitor viewing is opt-in: do not regrant it after the owner removes it.
         if (adminRole != null)
         {
             await EnsureRolePermissionsAsync(
                 context,
                 adminRole.Id,
-                permissions.Select(x => x.Code).ToList(),
+                permissions.Where(x => x.Code != PermissionCodes.Admin.StoreMonitorView).Select(x => x.Code).ToList(),
                 permissions,
                 existingRolePermissions,
                 ct);

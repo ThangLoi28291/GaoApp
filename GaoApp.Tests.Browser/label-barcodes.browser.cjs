@@ -63,7 +63,8 @@ const { chromium } = require('playwright');
         await page.getByRole('dialog', { name: 'Chuẩn bị mã vạch phù hợp để in tem' }).waitFor();
         assert.equal(await page.locator('.label-barcode-issues li').count(), 1);
         await page.locator('.label-confirm-popup button[type=submit]').click();
-        await page.locator('.label-confirm-printer').waitFor();
+        try { await page.locator('.label-confirm-printer').waitFor(); }
+        catch (error) { throw new Error('Printer confirmation after preparing receipt barcodes: ' + await page.locator('#labelMessage').textContent(), { cause: error }); }
         const prepared = await request('tasks/' + added.id);
         assert.equal(prepared.sourceChanged, false); assert.deepEqual(prepared.progress, original.progress);
         assert.equal(await page.locator('#taskLines [data-selected]:checked').count(), 2);

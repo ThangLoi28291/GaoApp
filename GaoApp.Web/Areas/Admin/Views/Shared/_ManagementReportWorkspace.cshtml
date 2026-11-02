@@ -1,6 +1,7 @@
 @using GaoApp.Application.Common.Security
 @using Microsoft.AspNetCore.Authorization
 @inject IAuthorizationService ReportAuthorization
+@inject Microsoft.Extensions.Options.IOptions<GaoApp.Application.Common.Options.ProfitReportLimits> ReportLimits
 @{
     var section = ViewData["ReportView"]?.ToString() ?? "overview";
     var canManage = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Expenses.Manage)).Succeeded;
@@ -8,8 +9,12 @@
     var canTreasury = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Treasury.Manage)).Succeeded;
     var canSales = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Sales.View)).Succeeded;
     var canExport = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Report.Profit.Export)).Succeeded;
+    var canViewOrders = (await ReportAuthorization.AuthorizeAsync(User, PermissionCodes.Pos.Order.View)).Succeeded;
+    var requestTimeoutMs = ReportLimits.Value.ExecutionTimeoutSeconds * 1000 + ReportLimits.Value.QueueTimeoutMilliseconds + 10000;
 }
 <div class="mr-workspace" data-management-report data-section="@(section)" data-url="/admin/reports/management/data"
+     data-request-timeout-ms="@requestTimeoutMs"
+     data-can-view-orders="@canViewOrders.ToString().ToLowerInvariant()"
      data-can-manage="@canManage.ToString().ToLowerInvariant()" data-can-confirm="@canConfirm.ToString().ToLowerInvariant()"
      data-can-export="@canExport.ToString().ToLowerInvariant()" data-can-treasury="@canTreasury.ToString().ToLowerInvariant()" aria-busy="true">
     @Html.AntiForgeryToken()
@@ -48,6 +53,7 @@
     <div class="mr-error" data-report-error role="alert" hidden><span></span><button type="button" class="mr-button" data-report-retry>Thử lại</button></div>
     <div data-report-results data-profit-results hidden>
         <div class="mr-quality" data-report-quality></div>
+        <div data-report-cost-diagnostics hidden></div>
         <section class="mr-kpis" data-report-kpis aria-label="Các chỉ số kinh doanh"></section>
         <div data-report-panels></div>
     </div>

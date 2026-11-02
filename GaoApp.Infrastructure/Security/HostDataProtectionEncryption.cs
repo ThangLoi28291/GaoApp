@@ -29,7 +29,7 @@ public sealed class HostProtectionCertificate : IDisposable
             throw new InvalidOperationException("DataProtection:CertificatePath must be an absolute path.");
         if (!environment.IsDevelopment())
             _ = DataProtectionKeysPath.Resolve(path, environment.ContentRootPath, AppContext.BaseDirectory, isProduction: true);
-        var certificate = new X509Certificate2(path, config["DataProtection:CertificatePassword"], X509KeyStorageFlags.EphemeralKeySet);
+        var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, config["DataProtection:CertificatePassword"], X509KeyStorageFlags.EphemeralKeySet);
         using var rsa = certificate.GetRSAPrivateKey();
         if (!certificate.HasPrivateKey || rsa is null || rsa.KeySize < 2048 ||
             certificate.NotBefore.ToUniversalTime() > DateTime.UtcNow || certificate.NotAfter.ToUniversalTime() <= DateTime.UtcNow)

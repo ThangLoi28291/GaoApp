@@ -149,7 +149,7 @@ public sealed class SqlServerConfigurationTests
             .Options;
 
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
 
         return new AppDbContext(
             options,

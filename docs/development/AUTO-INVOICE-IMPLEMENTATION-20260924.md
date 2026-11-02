@@ -25,6 +25,8 @@ The migration file is source-only deployment input for the normal GaoApp Migrato
 
 ## DataProtection credential repair
 
+When Web **Test kết nối** succeeds but the Worker reports **Keyset does not exist**, first compare the Worker host, key ring and certificate access. This is not proof that the Viettel password is wrong or that a key file was deleted. Use the Worker check commands and the protection synchronization procedure in [the Keyset repair guide](AUTO-INVOICE-CREDENTIAL-KEYSET-20261010.md).
+
 `C:\GaoAppData\DataProtectionKeys` is the single key-ring path for Web and Worker. If a database ciphertext references a key file that no longer exists, the password cannot be recovered from the ciphertext. The Admin must enter the Viettel password again in **Sửa cấu hình** and press **Lưu**; **Test kết nối** alone does not rewrite the stored secret. The save now verifies that the credential can be decrypted immediately.
 
 After the active credential is valid, the worker clears only `InvoiceProvider.CredentialKeyUnavailable` draft errors in the selected scope and resumes the queue. Unit, stock, provider, and UUID errors remain for Admin review.

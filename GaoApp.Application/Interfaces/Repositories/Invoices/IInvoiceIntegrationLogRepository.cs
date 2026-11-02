@@ -5,6 +5,8 @@ namespace GaoApp.Application.Interfaces.Repositories.Invoices;
 
 public interface IInvoiceIntegrationLogRepository
 {
+    // Read methods return untracked logs with legacy bodies, URLs and errors
+    // sanitized for display. Raw evidence remains stored; never expose it via DTOs.
     Task AddAsync(
         InvoiceIntegrationLog log,
         CancellationToken ct = default);

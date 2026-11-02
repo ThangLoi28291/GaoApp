@@ -1,0 +1,6 @@
+Inter v4.1, official upstream commit e3a3d4c57d5ecc01453a575621882a384c1995a3.
+Font: https://raw.githubusercontent.com/rsms/inter/e3a3d4c57d5ecc01453a575621882a384c1995a3/docs/font-files/InterVariable.woff2
+License: https://raw.githubusercontent.com/rsms/inter/e3a3d4c57d5ecc01453a575621882a384c1995a3/LICENSE.txt
+Unmodified InterVariable.woff2 SHA256: 693B77D4F32EE9B8BFC995589B5FAD5E99ADF2832738661F5402F9978429A8E3.
+OFL.txt is copied from the same official v4.1 tag. Original tag->commit response and download hashes retained in WEB08/code/dependency-prep-v1.
+Self-hosted; no remote runtime font/CDN. Vietnamese/Latin text uses Inter followed by Segoe UI/Arial fallback, font-display:swap.

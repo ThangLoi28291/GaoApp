@@ -174,12 +174,12 @@
 
                     <div class="meta-row">
                         <span class="meta-label">StartedAtUtc</span>
-                        <span class="meta-value">@Model.StartedAtUtc.ToString("dd/MM/yyyy HH:mm:ss")</span>
+                        <span class="meta-value">@Model.StartedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</span>
                     </div>
 
                     <div class="meta-row">
                         <span class="meta-label">FinishedAtUtc</span>
-                        <span class="meta-value">@(Model.FinishedAtUtc?.ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</span>
+                        <span class="meta-value">@(Model.FinishedAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "-")</span>
                     </div>
 
                     <div class="meta-row">
@@ -214,7 +214,7 @@
 
                     <button type="button"
                             class="btn btn-sm btn-outline-primary"
-                            onclick="copyText('requestBody')">
+                            data-csp-action="invoice-copy-request">
                         Copy
                     </button>
                 </div>
@@ -244,7 +244,7 @@
 
             <button type="button"
                     class="btn btn-sm btn-outline-primary"
-                    onclick="copyText('responseBody')">
+                    data-csp-action="invoice-copy-response">
                 Copy
             </button>
         </div>
@@ -280,4 +280,11 @@
                 .catch(() => alert('Không copy được. Hãy bôi đen và copy thủ công.'));
         }
     </script>
+}
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-operations.mobile.css" asp-append-version="true" />
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-operations.mobile.js" asp-append-version="true"></script>
 }

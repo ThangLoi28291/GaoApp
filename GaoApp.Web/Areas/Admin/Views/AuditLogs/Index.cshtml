@@ -10,11 +10,11 @@
         <div class="card-body">
             <div class="row g-2 mb-3">
                 <div class="col-md-2">
-                    <label class="form-label">Từ ngày (UTC)</label>
+                    <label class="form-label">Từ ngày (giờ Việt Nam)</label>
                     <input type="datetime-local" class="form-control" id="fromUtc" />
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">Đến ngày (UTC)</label>
+                    <label class="form-label">Đến ngày (giờ Việt Nam)</label>
                     <input type="datetime-local" class="form-control" id="toUtc" />
                 </div>
                 <div class="col-md-2">
@@ -43,7 +43,7 @@
                 <table class="table table-bordered table-hover align-middle" id="auditLogTable">
                     <thead class="table-light">
                         <tr>
-                            <th style="width: 160px;">Thời gian UTC</th>
+                            <th style="width: 160px;">Thời gian</th>
                             <th style="width: 160px;">User</th>
                             <th style="width: 120px;">Module</th>
                             <th style="width: 120px;">Action</th>
@@ -121,5 +121,13 @@
 </div>
 
 @section Scripts {
-    <script src="~/admin/js/audit-log-index.js"></script>
+    <script src="~/admin/js/audit-log-index.js" asp-append-version="true"></script>
 }
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
+}
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="AuditLogs/Index"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

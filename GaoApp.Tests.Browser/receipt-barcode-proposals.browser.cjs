@@ -82,10 +82,13 @@ const { chromium } = require('playwright');
         assert.equal(await page.locator('#popupFactor').innerText(), '4');
         assert.equal(await page.locator('#rbpModal.show').count(), 0);
         await page.locator('#popupQuickQty').fill('2');
-        await Promise.all([page.waitForResponse(r => r.url().endsWith(`/stock-documents/${info.receiptId}/lines`) && r.request().method() === 'POST' && r.ok()),
+        await Promise.all([page.waitForResponse(r => r.url().endsWith(`/stock-documents/${info.receiptId}/intake/known`) && r.request().method() === 'POST' && r.ok()),
             page.locator('#btnPopupQuickAddLine').click()]);
         await page.waitForFunction(() => document.querySelector('#quickAddProductModal').style.display === 'none');
         await page.setViewportSize({ width: 390, height: 844 });
+        await page.locator('[data-wra-tab="info"]').click();
+        const pendingDetails = page.locator('#receiptIntakePending');
+        if (!await pendingDetails.evaluate(element => element.open)) await pendingDetails.locator(':scope > summary').click();
         await page.locator('#receiptBarcodeProposals').screenshot({ path: path.join(output, 'employee-mobile.png') });
         let detail = await request(page, `/admin/api/stock-documents/${info.receiptId}`);
         const receivedPack = detail.lines.filter(x => x.unitNameSnapshot === 'Lốc' || x.unitName === 'Lốc');
@@ -107,8 +110,10 @@ const { chromium } = require('playwright');
         const baseLine = detail.lines.find(x => x.isBaseUnit);
         assert.ok(baseLine);
         await page.locator(`.btn-delete-receiving-line[data-line-id="${baseLine.id}"]`).waitFor();
-        page.once('dialog', dialog => dialog.accept());
         await page.locator(`.btn-delete-receiving-line[data-line-id="${baseLine.id}"]`).click();
+        await page.locator('#deleteReceivingLineModal').waitFor({state:'visible'});
+        await page.locator('#btnConfirmDeleteReceivingLine').click();
+        await page.locator('#deleteReceivingLineModal').waitFor({state:'hidden'});
         await page.locator(`.js-receiving-qty[data-line-id="${baseLine.id}"]`).waitFor({ state: 'detached' });
         detail = await request(page, `/admin/api/stock-documents/${info.receiptId}`);
         assert.equal(detail.lines.some(x => x.id === baseLine.id), false);
@@ -153,7 +158,10 @@ const { chromium } = require('playwright');
 
         // A second client's unseen edit must still be rejected by the existing server concurrency check.
         const visibleVersion = await page.evaluate(() => window.warehouseReceivingDetail.rowVersion);
+        const beforeConcurrentEdit = await request(manager, `/admin/api/stock-documents/${info.receiptId}`);
         await request(manager, `/admin/api/stock-documents/${info.receiptId}/lines/${packLine.id}`, 'PUT', {
+            rowVersion: beforeConcurrentEdit.rowVersion,
+            lineRowVersion: beforeConcurrentEdit.lines.find(x => x.id === packLine.id).rowVersion,
             unitId: packLine.unitId, quantity: 7, unitCost: 12345, note: 'Concurrent manager edit' });
         const concurrentDetail = await request(manager, `/admin/api/stock-documents/${info.receiptId}`);
         assert.notEqual(concurrentDetail.rowVersion, visibleVersion);
@@ -166,7 +174,15 @@ const { chromium } = require('playwright');
         await page.locator('#submitReceivingModal [data-bs-dismiss=modal]').first().click();
         await page.locator('#submitReceivingModal.show').waitFor({ state: 'hidden' });
 
-        // A subsequent saved edit refreshes the visible snapshot; submit through the real modal, without reloading.
+        // A stale physical edit must not acquire a fresh token and overwrite the manager's change.
+        page.once('dialog', dialog => { assert.match(dialog.message(), /đã thay đổi ở nơi khác/); return dialog.accept(); });
+        await qtyInput.fill('8');
+        const [staleLineWrite] = await Promise.all([page.waitForResponse(r => r.url().endsWith(`/lines/${packLine.id}`) && r.request().method() === 'PUT'), qtyInput.blur()]);
+        assert.equal(staleLineWrite.status(), 409);
+        assert.equal(await qtyInput.inputValue(), '8', 'The employee can retain and copy the rejected quantity.');
+        detail = await request(manager, `/admin/api/stock-documents/${info.receiptId}`);
+        assert.equal(detail.lines.find(x => x.id === packLine.id).quantity, 7);
+        await page.reload(); await page.waitForFunction(() => !!window.ReceiptIntake);
         await qtyInput.fill('8');
         await page.locator('#btnSubmitReceiving').click();
         await page.waitForFunction(() => !document.querySelector('#btnConfirmSubmitReceiving').disabled);
@@ -192,7 +208,7 @@ const { chromium } = require('playwright');
         assert.equal(lookup.results[0].productUnitConversionId, info.packId);
         assert.equal(lookup.results[0].factor, 4);
         assert.deepEqual(errors, []);
-        console.log('PASS: exact Base64 in both Razor views; add/edit/delete refresh version; submit waits for autosave; failed save blocks; unseen manager edit conflicts; real submit button succeeds without reload.');
+        console.log('PASS: exact Base64 in both Razor views; add/edit/delete preserve versions; submit waits for autosave; failed save blocks; unseen manager edit rejects both submission and stale quantity without writing; explicit reload permits a valid edit and submit.');
         console.log('PASS: employee unknown scan → select existing pack → proposal; repeated scan → quantity; manager approval → global alias.');
     } catch (error) {
         await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});

@@ -35,7 +35,7 @@ Trên máy phát triển:
 Dự án cũng có script đóng gói Web và Migrator vào một release mới, kiểm tra gói và tạo manifest. Tên script có chữ staging nhưng cấu hình build/runtime của gói là Release/Production; cấu hình host thật được cấp riêng:
 
 ```powershell
-Set-Location 'D:\GaoApp\GAOAPP-SA-20260819-01'
+# Chạy từ thư mục source đang chứa GaoApp.sln, không phụ thuộc ổ đĩa.
 .\scripts\publish-staging-release.ps1
 ```
 

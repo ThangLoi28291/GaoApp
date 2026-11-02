@@ -109,7 +109,7 @@ async function openEditModal(id) {
     document.getElementById('startAt').value = toDateTimeLocal(x.startAt);
     document.getElementById('endAt').value = toDateTimeLocal(x.endAt);
             document.getElementById('priority').value = x.priority || 0;
-document.getElementById('countdownToUtc').value = toDateTimeLocal(x.countdownToUtc);
+document.getElementById('countdownToUtc').value = toDateTimeLocal(x.countdownToUtc, true);
 document.getElementById('isFlashSale').checked = !!x.isFlashSale;
 document.getElementById('isFullscreen').checked = !!x.isFullscreen;
 
@@ -125,6 +125,8 @@ async function savePromotion(e) {
     const id = Number(document.getElementById('promotionId').value || 0);
     const form = document.getElementById('promotionForm');
     const formData = new FormData(form);
+    const countdown = document.getElementById('countdownToUtc').value;
+    if (countdown) formData.set('CountdownToUtc', new Date(countdown + '+07:00').toISOString());
 
     formData.set('IsActive', document.getElementById('isActive').checked ? 'true' : 'false');
             formData.set('IsFlashSale', document.getElementById('isFlashSale').checked ? 'true' : 'false');
@@ -284,15 +286,14 @@ async function toggleActive(id, isActive) {
     text.classList.remove('d-none');
 }
 
-function toDateTimeLocal(value) {
+function toDateTimeLocal(value, utc = false) {
     if (!value) return '';
-
-    const d = new Date(value);
+    // StartAt/EndAt are Vietnam wall times; CountdownToUtc is a stored instant.
+    const hasZone = /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+    if (!utc && !hasZone) return String(value).slice(0, 16);
+    const d = new Date(hasZone ? value : value + 'Z');
     if (Number.isNaN(d.getTime())) return '';
-
-    const pad = n => String(n).padStart(2, '0');
-
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return new Date(d.getTime() + 7 * 3600000).toISOString().slice(0, 16);
 }
 
 function escapeHtml(value) {

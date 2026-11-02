@@ -6,8 +6,9 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.resolve(__dirname, '../../GaoApp.Web/wwwroot/Admin/js/pos/pos.qr-history.js'), 'utf8');
 function element() {
     const listeners = new Map();
+    const classes = new Set();
     return { children: [], dataset: {}, hidden: false, disabled: false, textContent: '',
-        classList: { toggle() {} }, appendChild(node) { this.children.push(node); },
+        classList: { contains: name => classes.has(name), toggle(name, active) { if (active) classes.add(name); else classes.delete(name); } }, appendChild(node) { this.children.push(node); },
         replaceChildren(...nodes) { this.children = nodes; },
         addEventListener(name, action) { listeners.set(name, action); },
         click() { return listeners.get('click')?.(); } };
@@ -70,6 +71,88 @@ test('automatic reopening uses the pending id and carries its warning into the Q
     assert.equal(h.opened[0].id, 4);
     assert.equal(h.opened[0].pendingWarningMessage, 'Xác nhận hoặc hủy QR trước.');
     assert.deepEqual(calls, [['/admin/acb/payments/orders/15/qrs', 'GET'], ['/admin/acb/payments/orders/15/qrs/4', 'GET']]);
+});
+
+test('a failed history list does not prevent reading the exact unresolved QR supplied by the server', async () => {
+    const calls = [];
+    const h = harness(async (url, options) => {
+        calls.push([url, options.method]);
+        return url.endsWith('/qrs')
+            ? { ok: false, json: async () => ({ message: 'History list temporarily unavailable' }) }
+            : response(saved(4));
+    });
+    assert.equal(await h.history.refresh(), undefined);
+    assert.equal(await h.history.open(4, 'QR chưa thanh toán; mở lại QR cũ.'), true);
+    assert.equal(h.opened[0].id, 4);
+    assert.equal(h.opened[0].amount, 4000);
+    assert.equal(h.opened[0].qrDataUrl, 'stored-image-4');
+    assert.equal(h.opened[0].pendingWarningMessage, 'QR chưa thanh toán; mở lại QR cũ.');
+    assert.deepEqual(calls, [['/admin/acb/payments/orders/15/qrs', 'GET'], ['/admin/acb/payments/orders/15/qrs/4', 'GET']]);
+});
+
+test('repeated automatic recovery shares the exact pending read and preserves its original warning', async () => {
+    let resolve, reads = 0;
+    const delayed = new Promise(done => { resolve = done; });
+    const h = harness(async url => {
+        if (url.endsWith('/qrs')) return response({ orderId: 15, latestQrId: 6, items: [item(6), item(4)] });
+        assert.equal(url, '/admin/acb/payments/orders/15/qrs/4'); reads++;
+        return delayed;
+    });
+    await h.history.refresh();
+    const opening = h.history.open(4, 'Mở QR cũ chưa thanh toán.');
+    assert.equal(await h.history.open(4, 'Do not replace the original recovery.'), false);
+    resolve(response(saved(4)));
+    assert.equal(await opening, true);
+    assert.equal(reads, 1);
+    assert.equal(h.opened.length, 1);
+    assert.equal(h.opened[0].id, 4);
+    assert.equal(h.opened[0].pendingWarningMessage, 'Mở QR cũ chưa thanh toán.');
+});
+
+test('missing pending QR data keeps the warning recoverable without creating or fabricating a QR', async () => {
+    const calls = [];
+    const h = harness(async (url, options) => {
+        calls.push([url, options.method]);
+        return url.endsWith('/qrs')
+            ? response({ orderId: 15, latestQrId: 4, items: [item(4)] })
+            : { ok: false, json: async () => ({ message: 'Chưa tải được ảnh QR đã lưu.' }) };
+    });
+    await h.history.refresh();
+    assert.equal(await h.history.open(4, 'QR trước chưa thanh toán.'), false);
+    assert.equal(h.opened.length, 0);
+    assert.match(h.elements.get('paymentQrHistoryStatus').textContent, /Chưa tải được ảnh QR đã lưu/);
+    assert.ok(calls.every(([url, method]) => method === 'GET' && !url.endsWith('/payment-qr')));
+    assert.equal(h.elements.get('btnReopenLatestPaymentQr').disabled, false);
+});
+
+for (const image of ['', '   ', null, undefined]) {
+    test(`pending saved QR with ${JSON.stringify(image)} image cannot open a blank or fabricated payment popup`, async () => {
+        const h = harness(async url => response(url.endsWith('/qrs')
+            ? { orderId: 15, latestQrId: 4, items: [item(4)] }
+            : { ...saved(4), qr: { ...saved(4).qr, qrDataUrl: image } }));
+        await h.history.refresh();
+        assert.equal(await h.history.open(4, 'QR trước chưa thanh toán.'), false);
+        assert.equal(h.opened.length, 0);
+        assert.match(h.elements.get('paymentQrHistoryStatus').textContent, /chưa có ảnh mã/);
+        assert.equal(h.elements.get('btnReopenLatestPaymentQr').disabled, false);
+    });
+}
+
+test('cached history keeps the saved QR rows while clearly showing its feature warning', async () => {
+    let cached = true;
+    const h = harness(async () => response({ orderId: 15, latestQrId: 4, items: [item(4)], cached,
+        message: cached ? 'Tạm thời chưa tải được lịch sử QR; đang dùng bản đã lưu.' : undefined }));
+    await h.history.refresh();
+    const status = h.elements.get('paymentQrHistoryStatus');
+    assert.equal(h.rows().length, 1);
+    assert.equal(h.elements.get('btnReopenLatestPaymentQr').hidden, false);
+    assert.match(status.textContent, /Tạm thời chưa tải được lịch sử QR/);
+    assert.match(status.textContent, /QR-4/);
+    assert.equal(status.classList.contains('is-error'), true);
+    cached = false; await h.history.refresh();
+    assert.equal(h.rows().length, 1);
+    assert.equal(status.classList.contains('is-error'), false);
+    assert.doesNotMatch(status.textContent, /Tạm thời chưa tải/);
 });
 
 test('reload restores the history without creating a QR or requiring an amount entry', async () => {

@@ -3,6 +3,7 @@ using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
+using GaoApp.Application.Interfaces.Repositories.Invoices;
 using GaoApp.Application.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Repositories.Invoices;
@@ -17,6 +18,87 @@ namespace GaoApp.Tests.Invoices;
 
 public sealed class LegalEntityInvoiceGenerationTests
 {
+    [Fact]
+    public async Task Completed_credit_sale_generates_the_same_invoice_even_with_outstanding_balance()
+    {
+        await using var context = CreateContext();
+        var data = await SeedOrderAsync(context, splitAcrossTwoEntities: false);
+        data.Order.IsCreditSale = true;
+        data.Order.Status = GaoApp.Domain.Enums.OrderStatus.Completed;
+        data.Order.CompletedAtUtc = DateTime.UtcNow;
+        data.Order.PaymentStatus = GaoApp.Domain.Enums.PaymentStatus.Unpaid;
+        data.Order.PaidTotal = 0;
+        data.Order.BalanceDue = data.Order.GrandTotal;
+        data.Order.InvoiceIssuanceRoute = GaoApp.Domain.Enums.InvoiceIssuanceRoute.Automatic;
+        data.Order.Payments.Clear();
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+        var first = await service.GenerateInvoicesFromOrderAsync(data.Order.Id);
+        var repeat = await service.GenerateInvoicesFromOrderAsync(data.Order.Id);
+        first.IsSuccess.Should().BeTrue();
+        repeat.IsSuccess.Should().BeTrue();
+        first.Value.Should().ContainSingle();
+        first.Value.Single().Details.Should().ContainSingle();
+        repeat.Value.Single().Id.Should().Be(first.Value.Single().Id);
+    }
+
+    [Fact]
+    public async Task Seller_tax_may_differ_from_explicitly_linked_Viettel_api_tax()
+    {
+        await using var context = CreateContext();
+        var data = await SeedOrderAsync(context, splitAcrossTwoEntities: false);
+        data.FirstLegalEntity.TaxCode = "070091008655";
+        data.FirstSetting.SupplierTaxCode = "8341099579-001";
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).GenerateInvoicesFromOrderAsync(data.Order.Id);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Single().SupplierTaxCode.Should().Be("8341099579-001");
+        data.FirstLegalEntity.TaxCode.Should().Be("070091008655");
+    }
+
+    [Fact]
+    public async Task Existing_head_keeps_its_explicit_setting_when_HKD_selects_another_setting()
+    {
+        await using var context = CreateContext();
+        var data = await SeedOrderAsync(context, splitAcrossTwoEntities: false);
+        var service = CreateService(context);
+        var first = await service.GenerateInvoicesFromOrderAsync(data.Order.Id);
+        first.IsSuccess.Should().BeTrue();
+        data.FirstLegalEntity.InvoiceProviderSettingId = data.SecondSetting.Id;
+        data.FirstLegalEntity.TaxCode = "070091008655";
+        await context.SaveChangesAsync();
+
+        var result = await service.GenerateInvoicesFromOrderAsync(data.Order.Id);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Single().Id.Should().Be(first.Value.Single().Id);
+        result.Value.Single().InvoiceProviderSettingId.Should().Be(data.FirstSetting.Id);
+    }
+
+    [Fact]
+    public async Task Cross_store_setting_is_rejected_even_when_tax_codes_match()
+    {
+        await using var context = CreateContext();
+        var data = await SeedOrderAsync(context, splitAcrossTwoEntities: false);
+        var foreignSetting = NewSetting(data.FirstLegalEntity.TaxCode!, "C26FOREIGN");
+        foreignSetting.Id = data.FirstSetting.Id;
+        foreignSetting.StoreId = 2;
+        var service = new InvoiceCommandService(
+            new InvoiceRepository(context), new ProductVariantRepository(context),
+            InvoiceCallProxy.For<IInvoiceProviderSettingRepository>((method, _) =>
+                method.Name == nameof(IInvoiceProviderSettingRepository.GetForInvoiceAsync)
+                    ? Task.FromResult<InvoiceProviderSetting?>(foreignSetting) : throw new InvalidOperationException(method.Name)),
+            new OrderLegalEntityAllocationRepository(context), new LegalEntityRepository(context), new InvoiceInputStockRepository(context));
+
+        var result = await service.GenerateInvoicesFromOrderAsync(data.Order.Id);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Code.Should().Be("Invoice.LegalEntityProviderSettingMismatch");
+        (await context.InvoiceHeads.CountAsync()).Should().Be(0);
+    }
+
     [Fact]
     public async Task One_legal_entity_should_create_one_head_with_its_setting_and_allocation()
     {
@@ -149,7 +231,7 @@ public sealed class LegalEntityInvoiceGenerationTests
             new ProductVariantRepository(context),
             new InvoiceProviderSettingRepository(context, new TestCredentialProtector()),
             new OrderLegalEntityAllocationRepository(context),
-            new LegalEntityRepository(context));
+            new LegalEntityRepository(context), new InvoiceInputStockRepository(context));
 
     private static async Task<SeededData> SeedOrderAsync(
         InMemoryAppDbContext context,

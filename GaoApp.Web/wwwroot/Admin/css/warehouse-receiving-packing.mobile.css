@@ -1,0 +1,64 @@
+@media (max-width: 767.98px) {
+    [data-receiving-packing] .wrc-workload { padding: 12px 14px; border: 1px solid #dfe6f1; border-radius: 16px; background: #fff; margin: 0 0 18px; color: #203554; }
+    .wrc-workload strong, .wrc-workload small { display: block; }
+    .wrc-workload strong { font-size: 14px; }
+    .wrc-workload small { color: #687f9e; font-size: 11px; margin-top: 4px; line-height: 1.5; }
+    .wrc-task-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .wrc-task-actions:has(button:not([hidden])) { margin-top: 10px; }
+    .wrc-task-actions button { min-height: 44px; border: 1px solid #d6e3fd; border-radius: 11px; background: #edf3ff; color: #275bd8; font-size: 12px; font-weight: 650; padding: 8px 12px; }
+    [data-receiving-packing] tr:has(.wrc-quantity-unit) > td:nth-child(3) { display: none !important; }
+    [data-receiving-packing] tr:has(.wrc-quantity-unit) > td:nth-child(4) { grid-column: 1 / -1; justify-self: stretch; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .wrc-quantity-unit { min-width: 0; overflow-wrap: anywhere; color: #48658b; font-size: 12px; line-height: 1.5; }
+    [data-receiving-packing] .wra-row-stepper { flex-shrink: 0; }
+    [data-receiving-packing] .wra-row-stepper [data-wra-edit] { min-width: 52px; max-width: 90px; }
+    [data-receiving-packing] :is(#receiptIntakePending,#riPhotoEvidence) { scroll-margin-top: calc(var(--gao-mobile-header-height,100px) + 12px); }
+    [data-receiving-packing] #receiptIntakePending { border-color: #dfe6f1; border-radius: 17px; background: #fff; }
+    [data-receiving-packing] #receiptIntakePending > summary, [data-receiving-packing] #riPhotoEvidence > summary { min-height: 48px; color: #355781; font-size: 13px; padding: 12px; }
+    [data-receiving-packing] .ri-pending-item { padding: 14px; gap: 10px; align-items: stretch; flex-direction: column; }
+    [data-receiving-packing] .ri-pending-item strong { color: #203554; font-size: 14px; overflow-wrap: anywhere; }
+    [data-receiving-packing] .ri-pending-item small { color: #687f9e; font-size: 12px; }
+    [data-receiving-packing] .ri-pending-buttons { display: flex; flex-wrap: wrap; }
+    [data-receiving-packing] .ri-pending-buttons .btn { min-height: 44px; white-space: normal; border-radius: 11px; }
+    [data-receiving-packing] #riPhotoEvidence { border: 1px solid #dfe6f1; border-radius: 17px; padding: 0; background: #fff; }
+    [data-receiving-packing] #riPhotoItems { display: grid; gap: 10px; padding: 12px; }
+    [data-receiving-packing] #riPhotoItems > a { min-width: 0; min-height: 64px; border: 1px solid #e5ecf7; border-radius: 13px; padding: 8px; color: #355781; text-decoration: none; }
+    [data-receiving-packing] #riPhotoItems span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+    [data-receiving-packing] #riPhotoItems small { font-size: 12px; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .modal-content { color: #203554; border-radius: 22px 22px 0 0; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .modal-header { background: #fff; border-color: #e5ecf7; padding: 16px; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .modal-title { color: #203554; font-size: 18px; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .btn-close { width: 44px; height: 44px; min-width: 44px; padding: 12px; box-sizing: border-box; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) :is(input,textarea,select,.select2-search__field) { font-size: 16px !important; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .select2-selection { min-height: 46px; border-radius: 12px; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .form-label { color: #3e587d; font-size: 13px; }
+    body:has([data-receiving-packing]) #receiptIntakeModal .ri-tabs { background: #f0f4fb; border-radius: 13px; }
+    body:has([data-receiving-packing]) #receiptIntakeModal .ri-tabs button { min-height: 48px; font-size: 12px; color: #617996; border-radius: 10px; }
+    body:has([data-receiving-packing]) #receiptIntakeModal .ri-tabs [aria-selected=true] { color: #275bd8; background: #fff; }
+    body:has([data-receiving-packing]) :is(.ri-unit-cards,#popupUnitChooserList,#rbpUnits) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+    body:has([data-receiving-packing]) :is(.ri-unit-card,#popupUnitChooserList button,#rbpUnits button) { min-width: 0; min-height: 64px; white-space: normal; overflow-wrap: anywhere; border-radius: 13px; padding: 10px; border-color: #dce5f3; color: #355781; background: #fff; }
+    body:has([data-receiving-packing]) :is(.ri-unit-card[aria-pressed=true],#popupUnitChooserList button.is-selected,#rbpUnits button[aria-pressed=true]) { border-color: #275bd8; background: #edf3ff; box-shadow: 0 0 0 1px #275bd8; color: #275bd8; }
+    body:has([data-receiving-packing]) #receiptIntakeModal .ri-quantity { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; padding: 14px; border: 1px solid #dce5f3; border-radius: 16px; background: #f8faff; }
+    body:has([data-receiving-packing]) #riQuantity { min-height: 54px; font-size: 26px !important; font-weight: 700; color: #203554; border-radius: 12px; }
+    body:has([data-receiving-packing]) .ri-equivalent { border-color: #275bd8; color: #4c6b93; overflow-wrap: anywhere; }
+    body:has([data-receiving-packing]) .ri-equivalent strong { color: #275bd8; }
+    body:has([data-receiving-packing]) .ri-packing { background: #f1f5fc; border-radius: 15px; }
+    body:has([data-receiving-packing]) .ri-packing .input-group { flex-wrap: wrap; gap: 4px; }
+    body:has([data-receiving-packing]) .ri-packing .input-group-text { white-space: normal; font-size: 12px; border-radius: 9px !important; }
+    body:has([data-receiving-packing]) #riFactor { min-width: 70px; border-radius: 9px !important; }
+    .wrc-evidence { margin: 14px 0; border: 1px solid #dfe6f1; border-radius: 15px; }
+    .wrc-evidence > summary { min-height: 48px; padding: 13px; color: #355781; cursor: pointer; font-size: 13px; font-weight: 650; }
+    .wrc-evidence-body { padding: 0 13px 13px; }
+    body:has([data-receiving-packing]) .ri-photo-tools { padding: 12px; margin-top: 12px; border: 1px dashed #bed0ec; border-radius: 13px; background: #f8faff; }
+    body:has([data-receiving-packing]) #riPhoto { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    .wrc-photo-choose { display: flex; align-items: center; justify-content: center; min-height: 48px; border: 1px solid #d6e3fd; border-radius: 11px; background: #edf3ff; color: #275bd8; padding: 10px; margin: 8px 0; cursor: pointer; font-size: 13px; font-weight: 650; }
+    body:has([data-receiving-packing]) .ri-photo-tools:focus-within .wrc-photo-choose { outline: 3px solid #91b6ff; outline-offset: 2px; }
+    body:has([data-receiving-packing]) #riPhotoPreview { width: 100%; max-height: 200px; object-fit: contain; border-radius: 12px; background: #fff; }
+    body:has([data-receiving-packing]) :is(#receiptIntakeModal,#receiptIntakeReviewModal,#rbpModal) .modal-footer .btn { min-height: 44px; border-radius: 12px; white-space: normal; }
+    body:has([data-receiving-packing]) :is(#riSave,#riApprove,#riApproveNext,#rbpSave) { background: #275bd8; border-color: #275bd8; color: #fff; }
+    body:has([data-receiving-packing]) .ri-review-section { border-color: #dfe6f1; border-radius: 16px; padding: 14px; }
+    body:has([data-receiving-packing]) .ri-review-original { border-color: #dfe6f1; background: #f3f6fc; color: #355781; }
+    body:has([data-receiving-packing]) .ri-review-eyebrow { color: #486da4; }
+    body:has([data-receiving-packing]) .ri-review-section h6 { color: #203554; font-size: 14px; }
+    .wrc-task-actions button:focus-visible, .wrc-evidence > summary:focus-visible { outline: 3px solid #91b6ff; outline-offset: 2px; }
+    @media (forced-colors: active) { .wrc-task-actions button, .wrc-evidence { border-color: CanvasText; } }
+}

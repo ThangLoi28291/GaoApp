@@ -4,6 +4,7 @@ using System.Text;
 using GaoApp.Application.Common.Security;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Tenant;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Web.Hubs;
@@ -20,10 +21,13 @@ public sealed class PosRealtimeSessionValidator(IServiceScopeFactory scopeFactor
         foreach (var batch in sessions.Chunk(100))
         {
             await using var scope = scopeFactory.CreateAsyncScope();
+            using var access = scope.ServiceProvider.GetRequiredService<TenantContext>()
+                .BeginSystemAccess(SystemDataAccessPurpose.RealtimeSessionValidation);
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var stores = batch.Select(x => x.StoreId).Distinct().ToArray();
             var users = batch.Select(x => x.UserId).Distinct().ToArray();
             var terminals = batch.Select(x => x.TerminalId).Distinct().ToArray();
+            var deviceIds = batch.Select(x => PosDeviceSession.DeviceId(x.Principal)).OfType<int>().Distinct().ToArray();
             // Every IgnoreQueryFilters query is explicitly bounded by the identities of this batch.
             var memberships = await db.UserInStores.IgnoreQueryFilters().AsNoTracking()
                 .Include(x => x.User).Include(x => x.Role)
@@ -35,11 +39,11 @@ public sealed class PosRealtimeSessionValidator(IServiceScopeFactory scopeFactor
             var grants = await db.RolePermissions.IgnoreQueryFilters().AsNoTracking()
                 .Where(x => roleIds.Contains(x.RoleId))
                 .Select(x => new { x.Id, x.RoleId, x.Permission.Code }).ToListAsync(ct);
-            var activeTerminals = await db.POSTerminals.IgnoreQueryFilters().AsNoTracking()
-                .Where(x => stores.Contains(x.StoreId) && terminals.Contains(x.Id) && x.IsActive && !x.IsDeleted &&
-                    x.Status == POSTerminalStatus.Active)
-                .Select(x => new { x.Id, x.StoreId }).ToListAsync(ct);
-            var terminalKeys = activeTerminals.Select(x => (x.StoreId, x.Id)).ToHashSet();
+            var devices = await db.POSTerminalDevices.IgnoreQueryFilters().AsNoTracking()
+                .Where(x => stores.Contains(x.StoreId) && terminals.Contains(x.TerminalId) && deviceIds.Contains(x.Id) &&
+                    x.IsActive && !x.IsDeleted && x.Terminal.StoreId == x.StoreId && x.Terminal.IsActive &&
+                    !x.Terminal.IsDeleted && x.Terminal.Status == POSTerminalStatus.Active).ToListAsync(ct);
+            var deviceMap = devices.ToDictionary(x => (x.StoreId, x.Id));
             var membershipMap = memberships.ToDictionary(x => (x.StoreId, x.UserId));
             var accepted = PermissionAliasMap.GetAcceptedCodes(PermissionCodes.Pos.Order.View);
             var paymentCodes = PermissionAliasMap.GetAcceptedCodes(PermissionCodes.Pos.Payment.Create);
@@ -50,7 +54,9 @@ public sealed class PosRealtimeSessionValidator(IServiceScopeFactory scopeFactor
                     .Select(p => p.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + p.Code.Trim().ToUpperInvariant()))))));
             foreach (var session in batch)
             {
-                if (!terminalKeys.Contains((session.StoreId, session.TerminalId)) ||
+                if (PosDeviceSession.DeviceId(session.Principal) is not { } deviceId ||
+                    !deviceMap.TryGetValue((session.StoreId, deviceId), out var device) || device.TerminalId != session.TerminalId ||
+                    !PosDeviceSession.Matches(session.Principal, device) ||
                     !membershipMap.TryGetValue((session.StoreId, session.UserId), out var membership) ||
                     !rolePermissions.TryGetValue(membership.RoleId, out var permissions) ||
                     !permissions.Any(p => accepted.Contains(p, StringComparer.OrdinalIgnoreCase)) ||

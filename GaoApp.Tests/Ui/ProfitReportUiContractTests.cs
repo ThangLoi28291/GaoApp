@@ -39,9 +39,11 @@ public sealed class ProfitReportUiContractTests
         Assert.Contains("Lợi nhuận gộp", link, StringComparison.Ordinal);
         foreach (var field in new[] { "fromDate", "toDate", "compare", "terminalId", "customerState" })
             Assert.Contains($"Context.Request.Query[\"{field}\"]", link, StringComparison.Ordinal);
-        Assert.Contains("['fromDate','toDate','compare','terminalId','customerState']", link, StringComparison.Ordinal);
-        Assert.Contains("new URL(location.href).searchParams.get(k)", link, StringComparison.Ordinal);
-        Assert.Contains("u.searchParams.delete(k)", link, StringComparison.Ordinal);
+        Assert.Contains("data-csp-action=\"report-profit\"", link, StringComparison.Ordinal);
+        var actions = Read("GaoApp.Web/wwwroot/Admin/js/csp-actions.js");
+        Assert.Contains("['fromDate', 'toDate', 'compare', 'terminalId', 'customerState']", actions, StringComparison.Ordinal);
+        Assert.Contains("new URL(location.href).searchParams.get(key)", actions, StringComparison.Ordinal);
+        Assert.Contains("url.searchParams.delete(key)", actions, StringComparison.Ordinal);
     }
 
     [Theory]

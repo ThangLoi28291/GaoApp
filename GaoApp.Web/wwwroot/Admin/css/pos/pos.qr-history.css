@@ -26,13 +26,6 @@
 #paymentQrBox .pos-payment-workspace-qr__content { flex-wrap: wrap; }
 #paymentQrBox .pos-payment-workspace-qr__content > div { flex: 1 0 100%; }
 #paymentQrBox .btn { flex: 1; white-space: nowrap; }
-.pos-acb-countdown { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 12px 14px; border: 1px solid #d6e4fc; border-radius: 12px; background: #f1f6ff; color: #2456a6; }
-.pos-acb-countdown[hidden] { display: none; }
-.pos-acb-countdown__copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.pos-acb-countdown__copy span { font-size: 12px; font-weight: 650; }
-.pos-acb-countdown__copy small { font-size: 11px; line-height: 1.4; color: #63758b; }
-.pos-acb-countdown strong { flex-shrink: 0; min-width: 5ch; text-align: right; font-size: 26px; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.pos-acb-countdown[data-phase="retry"] { border-color: #f0d59d; background: #fff8e9; color: #875407; }
 #paymentQrModal .pos-payment-qr-workspace { max-height: calc(100dvh - 48px); }
 #paymentQrModal .modal-body { min-height: 0; overflow-y: auto; }
 @media (max-width: 380px) { .pos-qr-history__row { flex-wrap: wrap; } .pos-qr-history__actions { align-items: flex-start; flex-direction: row; align-items: center; flex-wrap: wrap; } }

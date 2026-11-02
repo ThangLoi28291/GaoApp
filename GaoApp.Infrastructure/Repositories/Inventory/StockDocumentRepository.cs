@@ -428,14 +428,67 @@ public class StockDocumentRepository : IStockDocumentRepository
 
 
 
+    public async Task<List<StockDocumentListItemDto>> GetReceivingReceiptListAsync(CancellationToken ct = default)
+    {
+        // The receiving work queue needs neither completed history nor invoice/audit evidence.
+        // Keep both reads scoped to the same tenant and active receipt statuses in SQL.
+        var receipts = _context.StockDocuments.AsNoTracking()
+            .Where(x => x.Type == StockDocumentType.Receipt && !x.IsDeleted &&
+                (x.Status == StockDocumentStatus.Draft ||
+                 x.Status == StockDocumentStatus.PendingApproval ||
+                 x.Status == StockDocumentStatus.Rejected));
+        var items = await receipts
+            .OrderBy(x => x.Status == StockDocumentStatus.Rejected ? 0 :
+                          x.Status == StockDocumentStatus.Draft ? 1 : 2)
+            .ThenByDescending(x => x.UpdatedAtUtc ?? x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id)
+            .Select(x => new StockDocumentListItemDto
+            {
+                Id = x.Id,
+                DocumentNo = x.DocumentNo,
+                DocumentTitle = x.DocumentTitle,
+                PurchaseOrderId = x.PurchaseOrderId,
+                DocumentDate = x.DocumentDate,
+                LegalEntityId = x.Warehouse != null ? x.Warehouse.LegalEntityId : 0,
+                LegalEntityName = x.Warehouse != null && x.Warehouse.LegalEntity != null ? x.Warehouse.LegalEntity.Name : string.Empty,
+                WarehouseName = x.Warehouse != null ? x.Warehouse.Name : string.Empty,
+                SupplierName = x.Supplier != null ? x.Supplier.Name : null,
+                Status = x.Status,
+                CreatedAtUtc = x.CreatedAtUtc,
+                UpdatedAtUtc = x.UpdatedAtUtc,
+                SubmittedAtUtc = x.SubmittedAtUtc
+            }).ToListAsync(ct);
+        if (items.Count == 0) return items;
+
+        var summaries = await (
+            from line in _context.StockDocumentLines.AsNoTracking()
+            join receipt in receipts on line.StockDocumentId equals receipt.Id
+            where !line.IsDeleted
+            group line by line.StockDocumentId into lines
+            select new
+            {
+                Id = lines.Key,
+                TotalLines = lines.Count(),
+                TotalProductTypes = lines.Select(x => x.ProductVariantId).Distinct().Count()
+            }).ToDictionaryAsync(x => x.Id, ct);
+        foreach (var item in items)
+        {
+            if (!summaries.TryGetValue(item.Id, out var lines)) continue;
+            item.TotalLines = lines.TotalLines;
+            item.TotalProductTypes = lines.TotalProductTypes;
+        }
+        return items;
+    }
+
     public async Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
     {
-        return await _context.StockDocuments
+        var receipts = _context.StockDocuments
             .AsNoTracking()
-            .Where(x => x.Type == StockDocumentType.Receipt && !x.IsDeleted)
+            .Where(x => x.Type == StockDocumentType.Receipt && !x.IsDeleted);
+        var items = await receipts
             .OrderByDescending(x => x.DocumentDate)
             .ThenByDescending(x => x.Id)
-            // Return one summary per receipt without loading all historical lines.
+            // Keep the header read independent of per-receipt line/audit subqueries.
             .Select(x => new StockDocumentListItemDto
             {
                 Id = x.Id,
@@ -453,26 +506,11 @@ public class StockDocumentRepository : IStockDocumentRepository
                 EntryTerminalCode = x.EntryTerminalCode,
                 SupplierName = x.Supplier != null ? x.Supplier.Name : null,
                 PurchaseOrderId = x.PurchaseOrderId,
+                ReceiptSource = x.ReceiptSource,
                 PurchaseOrderNumber = x.PurchaseOrder != null ? x.PurchaseOrder.OrderNumber : null,
                 PurchaseOrderTitle = x.PurchaseOrder != null ? x.PurchaseOrder.Title : null,
                 Status = x.Status,
                 WaitForInputInvoice = x.WaitForInputInvoice,
-                HasLinkedInputInvoice = x.InputInvoiceMaps.Any(m => !m.IsDeleted && m.StoreId == x.StoreId),
-                InvoiceMapId = x.InputInvoiceMaps.Where(m => !m.IsDeleted && m.StoreId == x.StoreId).Select(m => (int?)m.Id).FirstOrDefault(),
-                InvoiceEvidenceFingerprint = _context.Set<StockDocumentInputInvoiceReconciliation>()
-                    .Where(r => r.StoreId == x.StoreId && r.StockDocumentId == x.Id && !r.IsDeleted && !r.StockDocumentInputInvoiceMap.IsDeleted)
-                    .Select(r => r.EvidenceFingerprint).FirstOrDefault(),
-                InvoiceReviewEvidenceJson = _context.PurchaseReceiptAuditEvents
-                    .Where(a => a.StoreId == x.StoreId && a.StockDocumentId == x.Id && a.IsSuccess &&
-                        (a.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed ||
-                         a.EventType == PurchaseReceiptAuditEventType.InputInvoiceLinked ||
-                         a.EventType == PurchaseReceiptAuditEventType.InputInvoiceUnlinked ||
-                         a.EventType == PurchaseReceiptAuditEventType.InputInvoiceRelinked))
-                    .OrderByDescending(a => a.Id).Select(a => a.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed ? a.NewValuesJson : null).FirstOrDefault(),
-                InvoiceReconciliationState = _context.Set<StockDocumentInputInvoiceReconciliation>()
-                    .Where(r => r.StoreId == x.StoreId && r.StockDocumentId == x.Id && !r.IsDeleted &&
-                        !r.StockDocumentInputInvoiceMap.IsDeleted)
-                    .Select(r => (InputInvoiceReconciliationState?)r.OverallState).FirstOrDefault(),
                 TotalAmount = x.TotalAmount,
                 SubmittedAtUtc = x.SubmittedAtUtc,
                 ApprovedAtUtc = x.ApprovedAtUtc,
@@ -480,12 +518,85 @@ public class StockDocumentRepository : IStockDocumentRepository
                 UpdatedAtUtc = x.UpdatedAtUtc,
                 HasRevisionRequest = x.HasRevisionRequest,
                 RevisionRequestNote = x.RevisionRequestNote,
-                RevisionRequestedAtUtc = x.RevisionRequestedAtUtc,
-                TotalLines = x.Lines.Count(l => !l.IsDeleted),
-                TotalProductTypes = x.Lines.Where(l => !l.IsDeleted)
-                    .Select(l => l.ProductVariantId).Distinct().Count()
+                RevisionRequestedAtUtc = x.RevisionRequestedAtUtc
             })
             .ToListAsync(ct);
+
+        if (items.Count == 0) return items;
+
+        // Aggregate each source once, rather than repeating scans/sorts for every receipt.
+        // Joining scoped receipts also keeps line rows (which have no StoreId) tenant-safe.
+        var lineSummaries = await (
+            from line in _context.StockDocumentLines.AsNoTracking()
+            join receipt in receipts on line.StockDocumentId equals receipt.Id
+            where !line.IsDeleted
+            group line by line.StockDocumentId into lines
+            select new
+            {
+                Id = lines.Key,
+                TotalLines = lines.Count(),
+                TotalProductTypes = lines.Select(x => x.ProductVariantId).Distinct().Count()
+            }).ToDictionaryAsync(x => x.Id, ct);
+
+        var invoiceSummaries = await (
+            from map in _context.StockDocumentInputInvoiceMaps.AsNoTracking()
+            join receipt in receipts
+                on new { Id = map.StockDocumentId, map.StoreId }
+                equals new { receipt.Id, receipt.StoreId }
+            join reconciliation in _context.StockDocumentInputInvoiceReconciliations.AsNoTracking()
+                on new { MapId = map.Id, Id = map.StockDocumentId, map.StoreId }
+                equals new { MapId = reconciliation.StockDocumentInputInvoiceMapId, Id = reconciliation.StockDocumentId, reconciliation.StoreId }
+                into reconciliations
+            from reconciliation in reconciliations.DefaultIfEmpty()
+            where !map.IsDeleted
+            orderby map.Id
+            select new
+            {
+                Id = map.StockDocumentId,
+                MapId = map.Id,
+                Fingerprint = reconciliation == null ? null : reconciliation.EvidenceFingerprint,
+                State = reconciliation == null ? null : (InputInvoiceReconciliationState?)reconciliation.OverallState
+            }).ToListAsync(ct);
+
+        // A later successful link/unlink/relink invalidates an earlier review. Select
+        // the latest relevant event ID first, then read JSON only for current reviews.
+        var latestInvoiceEvents =
+            from audit in _context.PurchaseReceiptAuditEvents.AsNoTracking()
+            join receipt in receipts
+                on new { Id = audit.StockDocumentId, audit.StoreId }
+                equals new { receipt.Id, receipt.StoreId }
+            where audit.IsSuccess &&
+                (audit.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed ||
+                 audit.EventType == PurchaseReceiptAuditEventType.InputInvoiceLinked ||
+                 audit.EventType == PurchaseReceiptAuditEventType.InputInvoiceUnlinked ||
+                 audit.EventType == PurchaseReceiptAuditEventType.InputInvoiceRelinked)
+            group audit by new { audit.StoreId, audit.StockDocumentId } into events
+            select events.Max(x => x.Id);
+        var reviews = await _context.PurchaseReceiptAuditEvents.AsNoTracking()
+            .Where(x => latestInvoiceEvents.Contains(x.Id) &&
+                x.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed)
+            .Select(x => new { Id = x.StockDocumentId, x.NewValuesJson })
+            .ToDictionaryAsync(x => x.Id, ct);
+        var invoices = invoiceSummaries.GroupBy(x => x.Id).ToDictionary(x => x.Key, x => x.First());
+
+        foreach (var item in items)
+        {
+            if (lineSummaries.TryGetValue(item.Id, out var lines))
+            {
+                item.TotalLines = lines.TotalLines;
+                item.TotalProductTypes = lines.TotalProductTypes;
+            }
+            if (invoices.TryGetValue(item.Id, out var invoice))
+            {
+                item.HasLinkedInputInvoice = true;
+                item.InvoiceMapId = invoice.MapId;
+                item.InvoiceEvidenceFingerprint = invoice.Fingerprint;
+                item.InvoiceReconciliationState = invoice.State;
+            }
+            if (reviews.TryGetValue(item.Id, out var review))
+                item.InvoiceReviewEvidenceJson = review.NewValuesJson;
+        }
+        return items;
     }
 
     public Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default)
@@ -546,6 +657,20 @@ public class StockDocumentRepository : IStockDocumentRepository
     public async Task SaveChangesAsync(CancellationToken ct = default)
     {
         _context.ChangeTracker.DetectChanges();
+        // Even a zero-price physical edit must participate in the receipt's
+        // concurrency check. Otherwise an unchanged total leaves the header
+        // untouched and a concurrent submission/approval can be missed by SQL.
+        foreach (var lineEntry in _context.ChangeTracker.Entries<StockDocumentLine>()
+                     .Where(x => x.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+                     .ToArray())
+        {
+            var parent = lineEntry.Entity.StockDocument;
+            if (parent is null || parent.Type != StockDocumentType.Receipt)
+                continue;
+            var parentEntry = _context.Entry(parent);
+            if (parentEntry.State is EntityState.Unchanged or EntityState.Modified)
+                parentEntry.Property(x => x.UpdatedAtUtc).IsModified = true;
+        }
         var trackedDocuments = _context.ChangeTracker
             .Entries<StockDocument>()
             .Select(x => x.Entity)
@@ -639,8 +764,13 @@ public class StockDocumentRepository : IStockDocumentRepository
 
         foreach (var entry in lineEntries)
         {
+            var deletionChanged = entry.State == EntityState.Modified &&
+                entry.Property(x => x.IsDeleted).IsModified &&
+                entry.Property(x => x.IsDeleted).OriginalValue != entry.Entity.IsDeleted;
+            var isDeleted = entry.State == EntityState.Deleted ||
+                (deletionChanged && entry.Entity.IsDeleted);
             IReadOnlyList<string> changedFields =
-                entry.State is EntityState.Added or EntityState.Deleted
+                entry.State is EntityState.Added or EntityState.Deleted || deletionChanged
                     ? PurchaseReceiptAuditEvidence.LineFields
                     : GetChangedFields(
                         entry,
@@ -650,7 +780,9 @@ public class StockDocumentRepository : IStockDocumentRepository
                 continue;
             }
 
-            var eventType = entry.State switch
+            var eventType = isDeleted
+                ? PurchaseReceiptAuditEventType.PhysicalLineDeleted
+                : entry.State switch
             {
                 EntityState.Added =>
                     PurchaseReceiptAuditEventType.PhysicalLineAdded,
@@ -668,7 +800,7 @@ public class StockDocumentRepository : IStockDocumentRepository
                 entry.State == EntityState.Added
                     ? Array.Empty<KeyValuePair<string, object?>>()
                     : ReadValues(entry, changedFields, original: true),
-                entry.State == EntityState.Deleted
+                isDeleted
                     ? Array.Empty<KeyValuePair<string, object?>>()
                     : ReadValues(entry, changedFields, original: false),
                 traceId));

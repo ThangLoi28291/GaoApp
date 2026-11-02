@@ -27,6 +27,8 @@ public sealed class CustomerReceivableSqlServerTests
             var order = await db.Orders.SingleAsync(x => x.Id == orderId);
             firstShift = order.POSShiftId;
             Assert.Equal(OrderStatus.Completed, order.Status);
+            Assert.Equal(InvoiceIssuanceRoute.Automatic, order.InvoiceIssuanceRoute);
+            Assert.NotNull(order.InvoiceIssuanceRouteSelectedAtUtc);
             Assert.Equal(PaymentStatus.PartiallyPaid, order.PaymentStatus);
             Assert.Equal(40m, order.BalanceDue);
             Assert.Null(order.CreditDueDate);
@@ -81,6 +83,7 @@ public sealed class CustomerReceivableSqlServerTests
         await using var verify = app.Database.CreateTenantContext(store.StoreId);
         Assert.Equal(60m, await verify.Set<CustomerReceivableEntry>().SumAsync(x => x.Amount));
         Assert.Empty(await verify.OrderPayments.ToListAsync());
+        Assert.Equal(InvoiceIssuanceRoute.Automatic, (await verify.Orders.SingleAsync(x => x.Id == orderId)).InvoiceIssuanceRoute);
         Assert.Equal(0m, (await verify.POSShifts.SingleAsync()).CashSalesTotal);
         await client.JsonAsync(HttpMethod.Post, $"/admin/pos/orders/{orderId}/void", new { reason = "Hủy đơn nợ chưa thu tiền" });
         verify.ChangeTracker.Clear();

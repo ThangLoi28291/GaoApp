@@ -90,19 +90,19 @@
             <section data-debt-panel="journal" aria-label="Sổ phát sinh">
             <h3 class="debt-print-title">Sổ phát sinh</h3><p class="debt-table-note">Tăng nợ: màu cam · Giảm nợ: màu xanh · Tối đa 500 phát sinh gần nhất</p>
             <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Thời gian / người ghi</th><th>Nghiệp vụ / chứng từ</th><th class="text-end">Tăng nợ</th><th class="text-end">Giảm nợ</th><th class="text-end">Số dư sau</th><th>Ghi chú</th></tr></thead><tbody>
-            @foreach(var e in Model.Journal) { <tr><td>@e.At.AddHours(7).ToString("dd/MM/yyyy")<small class="debt-secondary">@e.At.AddHours(7).ToString("HH:mm") · NV #@e.UserId</small></td><td><span class="debt-badge @(e.Amount > 0 ? "debt-badge--amber" : "debt-badge--green")">@Kind(e.Kind)</span><small class="debt-secondary">@e.OrderNumber</small>@if(e.ReceiptId.HasValue) { <small class="debt-secondary">PTCN-@e.ReceiptId.Value.ToString("D6")</small> }</td><td class="text-end debt-negative">@(e.Amount > 0 ? "+" + e.Amount.ToString("N0") : "—")</td><td class="text-end debt-positive">@(e.Amount < 0 ? "−" + (-e.Amount).ToString("N0") : "—")</td><td class="text-end debt-balance">@runningBalance.ToString("N0")</td><td class="debt-note">@(e.Note ?? "—")</td></tr> runningBalance -= e.Amount; }
+            @foreach(var e in Model.Journal) { <tr><td>@e.At.ToVietnamTime().ToString("dd/MM/yyyy")<small class="debt-secondary">@e.At.ToVietnamTime().ToString("HH:mm") · NV #@e.UserId</small></td><td><span class="debt-badge @(e.Amount > 0 ? "debt-badge--amber" : "debt-badge--green")">@Kind(e.Kind)</span><small class="debt-secondary">@e.OrderNumber</small>@if(e.ReceiptId.HasValue) { <small class="debt-secondary">PTCN-@e.ReceiptId.Value.ToString("D6")</small> }</td><td class="text-end debt-negative">@(e.Amount > 0 ? "+" + e.Amount.ToString("N0") : "—")</td><td class="text-end debt-positive">@(e.Amount < 0 ? "−" + (-e.Amount).ToString("N0") : "—")</td><td class="text-end debt-balance">@runningBalance.ToString("N0")</td><td class="debt-note">@(e.Note ?? "—")</td></tr> runningBalance -= e.Amount; }
             @if(Model.Journal.Count == 0) { <tr><td colspan="6" class="debt-empty">Chưa có phát sinh công nợ.</td></tr> }
             </tbody></table></div></section>
             <section data-debt-panel="receipts" aria-label="Phiếu thu">
             <h3 class="debt-print-title">Phiếu thu</h3><p class="debt-table-note">Các khoản tiền thực nhận · Tối đa 200 phiếu gần nhất</p>
             <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Phiếu / thời gian</th><th class="text-end">Thực thu</th><th>Phương thức / tài khoản</th><th>Ca / người thu</th><th>Tham chiếu / ghi chú</th></tr></thead><tbody>
-            @foreach(var r in Model.Receipts) { <tr><td><a class="debt-name" href="/admin/customer-debt/receipts/@r.Id">PTCN-@r.Id.ToString("D6")</a><small class="debt-secondary">@r.At.AddHours(7).ToString("dd/MM/yyyy HH:mm")</small></td><td class="text-end debt-positive debt-strong">@r.Amount.ToString("N0")</td><td>@r.Method<small class="debt-secondary">@r.Bank</small></td><td>Ca #@r.ShiftId<small class="debt-secondary">NV #@r.UserId</small></td><td class="debt-note">@(r.Reference ?? "—")<small class="debt-secondary">@r.Note</small></td></tr> }
+            @foreach(var r in Model.Receipts) { <tr><td><a class="debt-name" href="/admin/customer-debt/receipts/@r.Id">PTCN-@r.Id.ToString("D6")</a><small class="debt-secondary">@r.At.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</small></td><td class="text-end debt-positive debt-strong">@r.Amount.ToString("N0")</td><td>@r.Method<small class="debt-secondary">@r.Bank</small></td><td>Ca #@r.ShiftId<small class="debt-secondary">NV #@r.UserId</small></td><td class="debt-note">@(r.Reference ?? "—")<small class="debt-secondary">@r.Note</small></td></tr> }
             @if(Model.Receipts.Count == 0) { <tr><td colspan="5" class="debt-empty"><strong>Chưa có phiếu thu</strong><span>Phiếu sẽ xuất hiện sau khi ghi nhận khách trả nợ.</span></td></tr> }
             </tbody></table></div></section>
             <section data-debt-panel="refunds" aria-label="Chi hoàn tiền">
             <h3 class="debt-print-title">Chi hoàn tiền</h3><p class="debt-table-note">Tiền thực chi hoàn cho khách · Tối đa 200 khoản gần nhất</p>
             <div class="table-responsive"><table class="table debt-table gds-table"><thead><tr><th>Phiếu / thời gian</th><th class="text-end">Thực chi</th><th>Phương thức</th><th>Ca</th><th>Tham chiếu</th></tr></thead><tbody>
-            @foreach(var r in Model.Refunds) { <tr><td><strong class="debt-name">@r.Number</strong><small class="debt-secondary">@r.At.AddHours(7).ToString("dd/MM/yyyy HH:mm")</small></td><td class="text-end debt-negative debt-strong">@r.Amount.ToString("N0")</td><td>@r.Method</td><td>#@r.ShiftId</td><td class="debt-note">@(r.Reference ?? "—")</td></tr> }
+            @foreach(var r in Model.Refunds) { <tr><td><strong class="debt-name">@r.Number</strong><small class="debt-secondary">@r.At.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</small></td><td class="text-end debt-negative debt-strong">@r.Amount.ToString("N0")</td><td>@r.Method</td><td>#@r.ShiftId</td><td class="debt-note">@(r.Reference ?? "—")</td></tr> }
             @if(Model.Refunds.Count == 0) { <tr><td colspan="5" class="debt-empty"><strong>Chưa phát sinh chi hoàn tiền</strong><span>Các khoản hoàn từ đơn công nợ sẽ được liệt kê tại đây.</span></td></tr> }
             </tbody></table></div></section>
         </main>
@@ -122,5 +122,7 @@
     }
 </div>
 </div>
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" /> }
-@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-debt.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/customer-finance.mobile.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/customer-debt.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/customer-finance.mobile.js" asp-append-version="true"></script> }

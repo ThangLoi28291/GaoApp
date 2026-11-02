@@ -1,0 +1,71 @@
+/* A thermal receipt feeds out of the slot; long bills remain readable by scrolling. */
+.cd-receipt-overlay[hidden] { display: none; }
+.cd-receipt-overlay {
+    position: absolute; inset: 0; z-index: 30; border-radius: 24px;
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 48%);
+    gap: clamp(20px, 4vw, 64px); padding: clamp(24px, 4vw, 64px);
+    background: #e7ede6; overflow: hidden;
+    background-image: linear-gradient(#173c3206 1px, transparent 1px), linear-gradient(90deg, #173c3206 1px, transparent 1px);
+    background-size: 32px 32px;
+}
+.cd-receipt-confirmation { align-self: center; min-width: 0; }
+.cd-receipt-check { display: grid; place-items: center; width: 64px; height: 64px; margin-bottom: 24px; border-radius: 50%; background: var(--forest); color: var(--lime); }
+.cd-receipt-check svg { width: 32px; height: 32px; }
+.cd-receipt-confirmation h1 { font-size: clamp(30px, 3.5vw, 64px); line-height: 1.08; margin: 16px 0; letter-spacing: -1.5px; }
+.cd-receipt-confirmation p { font-size: clamp(16px, 1.6vw, 24px); line-height: 1.6; color: var(--muted); }
+.cd-receipt-paid { display: grid; gap: 8px; margin-top: 32px; }
+.cd-receipt-paid>span { font-size: 14px; color: var(--muted); }
+.cd-receipt-paid>strong { font-size: clamp(30px, 3vw, 52px); overflow-wrap: anywhere; }
+.cd-receipt-change { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 16px; font-size: clamp(15px, 1.3vw, 22px); }
+.cd-receipt-change[hidden] { display: none; }
+.cd-receipt-machine { display: flex; flex-direction: column; position: relative; min-width: 0; min-height: 0; align-items: center; }
+.cd-receipt-printer { position: relative; z-index: 2; flex: none; width: min(100%, 440px); height: 62px; border-radius: 16px 16px 12px 12px; background: linear-gradient(#fff 5%, #f9faf8 47%, #d4d8d3 51%, #eef0eb 100%); box-shadow: 0 5px 9px #173c3226, inset 0 1px 0 #fff; }
+.cd-receipt-printer>span { position: absolute; bottom: 19px; left: 6%; right: 6%; height: 9px; border-radius: 5px; background: #222f27; box-shadow: inset 0 3px 4px #000; }
+.cd-receipt-printer>i { position: absolute; right: 18px; top: 15px; width: 5px; height: 5px; border-radius: 50%; background: #638944; box-shadow: 0 0 4px #638944; }
+.cd-receipt-viewport { position: relative; margin-top: -21px; padding: 0 12px 22px; width: min(100%, 412px); min-height: 0; overflow: auto; scrollbar-width: thin; overscroll-behavior: contain; }
+.cd-receipt-paper { position: relative; background: #fffefa; color: #232721; padding: 36px 24px 28px; font: 13px/1.5 Consolas, "Courier New", monospace; box-shadow: 0 8px 18px #173c3220; overflow-wrap: anywhere; transform-origin: top center; }
+.cd-receipt-paper::after { content: ""; position: absolute; bottom: -7px; left: 0; right: 0; height: 8px; background: linear-gradient(135deg, #fffefa 5px, transparent 0) 0 0/10px 10px, linear-gradient(225deg, #fffefa 5px, transparent 0) 0 0/10px 10px; }
+.cd-receipt-paper.is-feeding { animation: cd-receipt-feed 2.6s cubic-bezier(.18,.65,.28,1) both; }
+@keyframes cd-receipt-feed {
+    from { clip-path: inset(0 0 100% 0); transform: translateY(-28px); }
+    to { clip-path: inset(0 0 0 0); transform: translateY(0); }
+}
+.cd-bill-brand { text-align: center; padding-bottom: 18px; border-bottom: 1px dashed #93998b; }
+.cd-bill-brand strong { display: block; font-size: 23px; line-height: 1.25; margin-bottom: 8px; }
+.cd-bill-heading { text-align: center; font-weight: bold; margin: 18px 0; letter-spacing: 1px; }
+.cd-bill-meta { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 5px 12px; margin-bottom: 18px; }
+.cd-bill-meta>strong { text-align: right; }
+.cd-bill-items { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.cd-bill-items th { text-align: left; border-block: 1px dashed #93998b; padding: 8px 0; font-size: 11px; }
+.cd-bill-items th:last-child { text-align: right; width: 32%; }
+.cd-bill-items td { padding: 10px 0; vertical-align: top; border-bottom: 1px dotted #d3d7cc; }
+.cd-bill-items td:last-child { text-align: right; font-weight: bold; padding-left: 8px; }
+.cd-bill-items small { display: block; margin-top: 3px; font-size: 11px; }
+.cd-bill-totals { border-top: 1px dashed #93998b; padding-top: 12px; margin-top: 12px; }
+.cd-bill-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 6px 0; }
+.cd-bill-row strong { text-align: right; }
+.cd-bill-grand { font-size: 19px; border-block: 1px dashed #93998b; margin: 12px 0; padding: 10px 0; font-weight: bold; }
+.cd-bill-footer { text-align: center; border-top: 1px dashed #93998b; padding-top: 16px; margin-top: 16px; }
+@media(max-width: 899px) {
+    .cd-receipt-overlay { padding: 20px; gap: 20px; grid-template-columns: minmax(0,1fr) minmax(280px,50%); }
+    .cd-receipt-confirmation h1 { font-size: 32px; }
+    .cd-receipt-check { width: 44px; height: 44px; margin-bottom: 16px; }
+    .cd-receipt-paid { margin-top: 20px; }
+}
+@media(max-width: 599px) {
+    .cd-receipt-overlay { grid-template-columns: minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); padding: 16px; gap: 16px; }
+    .cd-receipt-confirmation { display: grid; grid-template-columns: 32px minmax(0,1fr); gap: 6px 12px; align-items: center; }
+    .cd-receipt-check { width: 32px; height: 32px; grid-row: 1 / 3; margin: 0; }
+    .cd-receipt-check svg { width: 21px; height: 21px; }
+    .cd-receipt-confirmation .cd-eyebrow { font-size: 9px; }
+    .cd-receipt-confirmation h1 { font-size: 23px; margin: 0; letter-spacing: -.5px; }
+    .cd-receipt-confirmation p { display: none; }
+    .cd-receipt-paid { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 8px 0 0; }
+    .cd-receipt-paid>strong { font-size: 26px; }
+    .cd-receipt-change { grid-column: 1 / -1; margin-top: 0; font-size: 14px; justify-content: space-between; }
+    .cd-receipt-printer { height: 48px; }
+    .cd-receipt-printer>span { bottom: 15px; }
+    .cd-receipt-viewport { margin-top: -17px; padding-inline: 10px; }
+    .cd-receipt-paper { padding: 28px 16px 24px; font-size: 12px; }
+}
+@media(prefers-reduced-motion: reduce) { .cd-receipt-paper.is-feeding { animation: none; } }

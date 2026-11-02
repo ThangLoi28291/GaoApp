@@ -47,7 +47,7 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             !await permissions.HasPermissionAsync(Store, Actor, permission, ct))
             throw Error(403, "DELIVERY_FORBIDDEN", "Không có quyền thao tác đơn giao trong cửa hàng.");
     }
-    private async Task<DeliveryOrder> Load(int id, bool active, bool tracked, CancellationToken ct)
+    private async Task<DeliveryOrder> Load(int id, bool active, bool tracked, CancellationToken ct, bool storefront = false)
     {
         var query = db.DeliveryOrders.Include(x => x.Lines).Where(x => x.StoreId == Store && x.Id == id);
         var order = await (tracked ? query : query.AsNoTracking()).SingleOrDefaultAsync(ct)
@@ -55,7 +55,7 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
         if (!await db.Warehouses.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceWarehouseId &&
             x.LegalEntityId == order.SourceLegalEntityId && (!active || x.IsActive), ct) ||
             !await db.LegalEntities.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceLegalEntityId && (!active || x.IsActive), ct) ||
-            !await db.Orders.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceCartId && x.POSShiftId == order.CreatedShiftId, ct))
+            (storefront ? order.SourceKind != DeliverySourceKind.Storefront || !await db.Set<GaoApp.Domain.Storefront.StorefrontFulfillmentSource>().AnyAsync(x => x.StoreId == Store && x.StorefrontOrderId == order.StorefrontOrderId && x.Id == order.StorefrontFulfillmentSourceId && x.DeliveryOrderId == order.Id, ct) : order.SourceKind != DeliverySourceKind.Pos || !await db.Orders.AsNoTracking().AnyAsync(x => x.StoreId == Store && x.Id == order.SourceCartId && x.POSShiftId == order.CreatedShiftId, ct)))
             throw Error(403, "SOURCE_SCOPE_INVALID", "Kho/chủ thể/giỏ nguồn không khớp hồ sơ giao.");
         return order;
     }
@@ -130,8 +130,8 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             {
                 var quantity = desired[line.DeliveryOrderLineId]; var balance = locked[line.Quote.VariantId];
                 if (old.Any(x => x.Status == InventoryReservationStatus.Active && x.DeliveryOrderLineId == line.DeliveryOrderLineId)) continue;
-                if (balance.OnHandQty - balance.ReservedQty < quantity)
-                    throw Error(409, "INSUFFICIENT_STOCK", "Không đủ tồn thực để giữ số hàng đã soạn.");
+                // Reported picked goods are a physical staff fact, not an ERP availability test.
+                // Keep their holds even when recorded stock is negative, as normal POS allows.
                 if (!await db.ProductVariants.AnyAsync(x => x.StoreId == Store && x.Id == line.Quote.VariantId && x.IsActive, ct))
                     throw Error(403, "SOURCE_SCOPE_INVALID", "Sản phẩm nguồn không còn hoạt động trong cửa hàng.");
                 balance.QuantityPrecisionVersion = 1; balance.ReservedQty = InventoryPostingPrecisionPolicy.Quantity(balance.ReservedQty + quantity);
@@ -154,8 +154,19 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
         var journals = await db.DeliveryJournalEntries.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id &&
             (x.Kind == DeliveryJournalKind.Dispatch || x.Kind == DeliveryJournalKind.Return)).ToListAsync(ct);
         var canCosts = await permissions.HasPermissionAsync(Store, Actor, PermissionCodes.Inventory.Valuation.View, ct);
+        if (canCosts) await LockCostSources(order, ct);
         var fragments = canCosts ? await db.DeliveryDispatchCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).OrderBy(x => x.Id).ToListAsync(ct) : [];
         var returns = canCosts ? await db.DeliveryReturnedCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).ToListAsync(ct) : [];
+        var qualities = new Dictionary<int, string>();
+        var sourceEvidence = new InventorySourceCostEvidenceRepository(db);
+        foreach (var fragment in fragments)
+        {
+            if (!fragment.IsProvisional) { qualities[fragment.Id] = "Final"; continue; }
+            var resolutions = await sourceEvidence.GetProvisionalResolutionDebitsAsync(fragment, ct);
+            var reversed = await sourceEvidence.GetAcceptedProvisionalReturnQuantityAsync(fragment.InventoryCostLayerAllocationId, ct);
+            qualities[fragment.Id] = resolutions.Sum(x => x.ResolutionEndQuantity - x.ResolutionStartQuantity) + reversed == fragment.BaseQuantity
+                ? "Resolved" : fragment.UnitCost == 0 ? "Unknown" : "Provisional";
+        }
         var custody = await DeliveryCustodyProjection.ReadAsync(db, Store, order, ct);
         var rows = order.Lines.OrderBy(x => x.Id).Select(line =>
         {
@@ -176,8 +187,15 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             canCosts, Qty(holds.Sum(x => x.ReservedQty)), Qty(dispatchTotal), Qty(receivedTotal), Qty(dispatchTotal - receivedTotal), null, rows,
             fragments.Select(x => new DeliveryInventoryCostFragmentDto(x.Id, x.DeliveryOrderLineId, x.DeliveryJournalEntryId, x.InventoryTransactionId,
                 x.InventoryValuationEntryId, x.InventoryCostLayerId, x.InventoryCostLayerAllocationId, x.InventoryCostBudgetDebitId, Qty(x.BaseQuantity), Cost(x.UnitCost), Qty(x.CostAmount),
-                Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.BaseQuantity)), Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.CostAmount)), "Final")).ToArray(), custody?.Context);
+                Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.BaseQuantity)), Qty(returns.Where(r => r.DispatchCostFragmentId == x.Id).Sum(r => r.CostAmount)), qualities[x.Id])).ToArray(), custody?.Context);
         if (tx is not null) await tx.CommitAsync(ct); return result;
+    }
+    private async Task LockCostSources(DeliveryOrder order, CancellationToken ct)
+    {
+        // Inbound resolution does not mutate the order. Lock its balance scope in the same
+        // global variant order so a projection cannot mix pre/post-resolution cost facts.
+        foreach (var variant in order.Lines.Select(x => x.VariantId).Distinct().Order())
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT Id FROM InventoryBalances WITH (UPDLOCK,HOLDLOCK) WHERE StoreId={Store} AND WarehouseId={order.SourceWarehouseId} AND ProductVariantId={variant};", ct);
     }
     private void DetachAggregate(int id)
     {
@@ -238,6 +256,7 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             var locked = await LockBalances(order, holds.Select(x => x.ProductVariantId), ct);
             foreach (var hold in holds) Release(hold, locked[hold.ProductVariantId], reason);
             order.State = DeliveryState.Cancelled; order.Revision++; await db.SaveChangesAsync(ct);
+            await DeliveryVoucherReservationService.ReleaseAsync(db, order, ct);
             var result = new DeliveryInventoryCommandAck(request.ClientRequestId, id, "cancel", order.Revision, Convert.ToBase64String(order.RowVersion), Utc(DateTime.UtcNow), false);
             await Record(order, request.ClientRequestId, "cancel", hash, result, ct, reason); await tx.CommitAsync(ct); return result;
         }
@@ -248,24 +267,26 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
         catch { await tx.RollbackAsync(CancellationToken.None); db.ChangeTracker.Clear(); throw; }
     }
     private async Task<(DeliveryOrder Order, string Hash, DeliveryInventoryPostingAck? Replay)> PreparePosting<T>(int id, Guid key, string version,
-        string operation, string permission, T request, bool active, CancellationToken ct)
+        string operation, string permission, T request, bool active, CancellationToken ct, bool storefront = false)
     {
-        Ambient(); await Authorize(PermissionCodes.Delivery.View, ct); await Authorize(permission, ct); Key(key); Version(version);
+        Ambient(); await Authorize(storefront ? GaoApp.Application.Storefront.StorefrontPermissions.ViewOrders : PermissionCodes.Delivery.View, ct); await Authorize(permission, ct); Key(key); Version(version);
         await DeliverySqlLock.AcquireAsync(db, "command:" + Store + ":" + key, ct); await Lock(id, ct);
-        await Authorize(PermissionCodes.Delivery.View, ct); await Authorize(permission, ct);
-        var current = await Load(id, false, false, ct);
+        await Authorize(storefront ? GaoApp.Application.Storefront.StorefrontPermissions.ViewOrders : PermissionCodes.Delivery.View, ct); await Authorize(permission, ct);
+        var current = await Load(id, false, false, ct, storefront);
         var hash = Hash(JsonSerializer.Serialize(new { schema = "delivery-inventory-v1", store = Store, actor = Actor, id, operation, request }, Json));
         var replay = await Replay<DeliveryInventoryPostingAck>(id, key, operation, hash, ct);
         if (replay is not null) return (current, hash, replay with { Replayed = true });
         if (Convert.ToBase64String(current.RowVersion) != version) throw Error(409, "VERSION_CONFLICT", "Đơn đã thay đổi; tải lại trước khi thao tác.");
         DetachAggregate(id);
-        return (await Load(id, active, true, ct), hash, null);
+        return (await Load(id, active, true, ct, storefront), hash, null);
     }
-    public async Task<DeliveryInventoryPostingAck> DispatchInTransactionAsync(int id, DeliveryInventoryDispatchRequest request, CancellationToken ct = default)
+    public Task<DeliveryInventoryPostingAck> DispatchInTransactionAsync(int id, DeliveryInventoryDispatchRequest request, CancellationToken ct = default) => DispatchCore(id, request, false, ct);
+    internal Task<DeliveryInventoryPostingAck> DispatchStorefrontInTransactionAsync(int id, DeliveryInventoryDispatchRequest request, CancellationToken ct) => DispatchCore(id, request, true, ct);
+    private async Task<DeliveryInventoryPostingAck> DispatchCore(int id, DeliveryInventoryDispatchRequest request, bool storefront, CancellationToken ct)
     {
         try
         {
-            var (order, hash, replay) = await PreparePosting(id, request.ClientRequestId, request.ExpectedVersion, "dispatch", PermissionCodes.Delivery.Handover, request, true, ct);
+            var (order, hash, replay) = await PreparePosting(id, request.ClientRequestId, request.ExpectedVersion, "dispatch", storefront ? GaoApp.Application.Storefront.StorefrontPermissions.Dispatch : PermissionCodes.Delivery.Handover, request, true, ct, storefront);
             if (replay is not null) return replay;
             if (order.State != DeliveryState.ReadyForHandover || await db.DeliveryJournalEntries.AnyAsync(x => x.StoreId == Store && x.DeliveryOrderId == id && x.Kind == DeliveryJournalKind.Dispatch, ct))
                 throw Error(409, "DISPATCH_NOT_ALLOWED", "Đơn chưa sẵn sàng hoặc hàng đã bàn giao.");
@@ -276,7 +297,7 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             var holds = await Holds(id, ct); var locked = await LockBalances(order, holds.Select(x => x.ProductVariantId).Concat(lines.Select(x => x.Quote.VariantId)), ct);
             foreach (var line in lines)
             {
-                var approved = DeliveryPickingPolicy.ToBase(line.ApprovedQuantity ?? 0, line.Quote.BaseMultiplier);
+                var approved = storefront ? line.ApprovedQuantity ?? 0 : DeliveryPickingPolicy.ToBase(line.ApprovedQuantity ?? 0, line.Quote.BaseMultiplier);
                 var own = holds.SingleOrDefault(x => x.DeliveryOrderLineId == line.DeliveryOrderLineId);
                 if (approved == 0) { if (own is not null) Release(own, locked[own.ProductVariantId], "Không bàn giao dòng đã loại."); continue; }
                 if (own is null || own.ProductVariantId != line.Quote.VariantId || own.WarehouseId != order.SourceWarehouseId || own.SourceLegalEntityId != order.SourceLegalEntityId ||
@@ -294,7 +315,14 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             {
                 var posted = await movement.CreateDeliveryDispatchAsync(new(id, line.DeliveryOrderLineId, request.ApprovedRevision, request.ClientRequestId), ct);
                 var debits = await db.InventoryCostBudgetDebits.AsNoTracking().Where(x => x.StoreId == Store && x.InventoryTransactionId == posted.InventoryTransactionId && !x.IsProvisionalResolution).OrderBy(x => x.Id).ToListAsync(ct);
-                if (debits.Sum(x => x.EndQuantity - x.StartQuantity) != -posted.QuantityChange || debits.Sum(x => x.Amount) != -posted.ValueChange)
+                var provisional = await db.InventoryCostLayerAllocations.AsNoTracking().Include(x => x.InventoryValuationEntry)
+                    .Where(x => x.StoreId == Store && x.InventoryValuationEntry.InventoryTransactionId == posted.InventoryTransactionId &&
+                        x.InventoryValuationEntry.EntryType == InventoryValuationEntryType.Outbound && x.IsProvisional).OrderBy(x => x.Id).ToListAsync(ct);
+                if (provisional.Any(x => x.InventoryCostLayerId.HasValue || !x.InventoryValuationEntry.IsProvisional ||
+                    x.Quantity != -x.InventoryValuationEntry.Quantity || x.Amount != -x.InventoryValuationEntry.Amount ||
+                    x.UnitCost != x.InventoryValuationEntry.UnitCost) ||
+                    debits.Sum(x => x.EndQuantity - x.StartQuantity) + provisional.Sum(x => x.Quantity) != -posted.QuantityChange ||
+                    debits.Sum(x => x.Amount) + provisional.Sum(x => x.Amount) != -posted.ValueChange)
                     throw Error(409, "COST_NOT_READY", "Chứng cứ giá vốn xuất không đầy đủ.");
                 var journal = new DeliveryJournalEntry { StoreId = Store, DeliveryOrderId = id, DeliveryOrderLineId = line.DeliveryOrderLineId,
                     SourceWarehouseId = order.SourceWarehouseId, SourceLegalEntityId = order.SourceLegalEntityId, VariantId = line.Quote.VariantId,
@@ -307,6 +335,12 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
                     InventoryValuationEntryId = debit.InventoryValuationEntryId, InventoryCostLayerId = debit.InventoryCostLayerId,
                     InventoryCostLayerAllocationId = debit.InventoryCostLayerAllocationId, InventoryCostBudgetDebitId = debit.Id,
                     BaseQuantity = debit.EndQuantity - debit.StartQuantity, UnitCost = debit.UnitCost, CostAmount = debit.Amount });
+                foreach (var allocation in provisional) db.DeliveryDispatchCostFragments.Add(new() { StoreId = Store, DeliveryOrderId = id,
+                    DeliveryOrderLineId = line.DeliveryOrderLineId, SourceWarehouseId = order.SourceWarehouseId, SourceLegalEntityId = order.SourceLegalEntityId,
+                    VariantId = line.Quote.VariantId, DeliveryJournalEntryId = journal.Id,
+                    InventoryTransactionId = posted.InventoryTransactionId ?? throw Error(409, "COST_NOT_READY", "Thiếu bút toán xuất."),
+                    InventoryValuationEntryId = allocation.InventoryValuationEntryId, InventoryCostLayerAllocationId = allocation.Id,
+                    IsProvisional = true, BaseQuantity = allocation.Quantity, UnitCost = allocation.UnitCost, CostAmount = allocation.Amount });
                 var hold = (await Holds(id, ct)).Single(x => x.DeliveryOrderLineId == line.DeliveryOrderLineId);
                 Release(hold, locked[hold.ProductVariantId], "Đã xuất bàn giao.", consumed: true);
             }
@@ -318,7 +352,9 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
         catch (ConcurrencyException ex) { throw Error(409, "INVENTORY_CONFLICT", ex.Message); }
         catch (SqlException ex) when (ex.Number is 1205 or 1222) { throw Error(409, "INVENTORY_CONFLICT", "Kho đang được cập nhật; tải lại và thử thao tác."); }
     }
-    public async Task<DeliveryInventoryPostingAck> ReceiveReturnsInTransactionAsync(int id, DeliveryInventoryReceiveRequest request, CancellationToken ct = default)
+    public Task<DeliveryInventoryPostingAck> ReceiveReturnsInTransactionAsync(int id, DeliveryInventoryReceiveRequest request, CancellationToken ct = default) => ReceiveCore(id, request, false, ct);
+    internal Task<DeliveryInventoryPostingAck> ReceiveStorefrontReturnsInTransactionAsync(int id, DeliveryInventoryReceiveRequest request, CancellationToken ct) => ReceiveCore(id, request, true, ct);
+    private async Task<DeliveryInventoryPostingAck> ReceiveCore(int id, DeliveryInventoryReceiveRequest request, bool storefront, CancellationToken ct)
     {
         try
         {
@@ -327,7 +363,7 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
                 throw Error(400, "LINE_INVALID", "Cần các dòng nhận trả không trùng.");
             var requested = request.Lines.ToDictionary(x => x.LineId, x => DeliveryPickingPolicy.ParseQuantity(x.BaseQuantityText));
             if (requested.Any(x => x.Key <= 0 || x.Value <= 0)) throw Error(400, "LINE_INVALID", "Lượng nhận trả phải lớn hơn 0.");
-            var (order, hash, replay) = await PreparePosting(id, request.ClientRequestId, request.ExpectedVersion, "receive", PermissionCodes.Delivery.ReceiveReturns, request, false, ct);
+            var (order, hash, replay) = await PreparePosting(id, request.ClientRequestId, request.ExpectedVersion, "receive", storefront ? GaoApp.Application.Storefront.StorefrontPermissions.ReceiveReturns : PermissionCodes.Delivery.ReceiveReturns, request, false, ct, storefront);
             if (replay is not null) return replay;
             var fragments = await db.DeliveryDispatchCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).OrderByDescending(x => x.Id).ToListAsync(ct);
             if (requested.Keys.Any(line => !fragments.Any(x => x.DeliveryOrderLineId == line))) throw Error(400, "LINE_INVALID", "Dòng chưa có xuất nguồn.");
@@ -341,22 +377,33 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
                     var already = await db.DeliveryReturnedCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DispatchCostFragmentId == fragment.Id).SumAsync(x => x.BaseQuantity, ct);
                     var quantity = Math.Min(remaining, fragment.BaseQuantity - already); if (quantity <= 0) continue;
                     var start = fragment.BaseQuantity - already - quantity;
-                    var posted = await movement.CreateDeliveryReturnAsync(new(id, fragment.Id, start, quantity, request.ClientRequestId), ct);
-                    var entries = await db.InventoryValuationEntries.AsNoTracking().Where(x => x.StoreId == Store && x.InventoryTransactionId == posted.InventoryTransactionId && x.EntryType == InventoryValuationEntryType.Inbound).ToListAsync(ct);
-                    if (entries.Count != 1 || entries[0].Quantity != quantity || entries[0].Amount != posted.ValueChange || entries[0].SourceValuationEntryId != fragment.InventoryValuationEntryId)
-                        throw Error(409, "COST_NOT_READY", "Chứng cứ nhập trả không khớp xuất nguồn.");
-                    var journal = new DeliveryJournalEntry { StoreId = Store, DeliveryOrderId = id, DeliveryOrderLineId = item.Key,
-                        SourceWarehouseId = order.SourceWarehouseId, SourceLegalEntityId = order.SourceLegalEntityId, VariantId = fragment.VariantId,
-                        InventoryTransactionId = posted.InventoryTransactionId, Kind = DeliveryJournalKind.Return,
-                        PostingKey = "return:" + request.ClientRequestId.ToString("N") + ":" + fragment.Id,
-                        BaseQuantity = quantity, UnitCost = fragment.UnitCost, CostAmount = posted.ValueChange };
-                    db.DeliveryJournalEntries.Add(journal); await db.SaveChangesAsync(ct); journalIds.Add(journal.Id);
-                    db.DeliveryReturnedCostFragments.Add(new() { StoreId = Store, DeliveryOrderId = id, DeliveryOrderLineId = item.Key,
-                        SourceWarehouseId = order.SourceWarehouseId, SourceLegalEntityId = order.SourceLegalEntityId, VariantId = fragment.VariantId,
-                        DeliveryJournalEntryId = journal.Id, DispatchCostFragmentId = fragment.Id, InventoryTransactionId = posted.InventoryTransactionId ?? throw Error(409, "COST_NOT_READY", "Thiếu bút toán nhập trả."),
-                        InventoryValuationEntryId = entries[0].Id, StartQuantity = start, EndQuantity = start + quantity,
-                        BaseQuantity = quantity, UnitCost = fragment.UnitCost, CostAmount = posted.ValueChange });
-                    await db.SaveChangesAsync(ct); remaining -= quantity; if (remaining == 0) break;
+                    var proof = await new InventorySourceCostEvidenceRepository(db).GetDeliveryReturnProofAsync(new(id, fragment.Id, start, quantity, request.ClientRequestId), ct);
+                    // Extend the physical tail backwards. Each resolution boundary has its own
+                    // authoritative inbound transaction/journal, avoiding blended or guessed cost.
+                    foreach (var part in proof.Parts.OrderByDescending(x => x.SourceStartQuantity ?? start))
+                    {
+                        var pieceStart = part.SourceStartQuantity ?? start;
+                        var posted = await movement.CreateDeliveryReturnAsync(new(id, fragment.Id, pieceStart, part.Quantity, request.ClientRequestId), ct);
+                        var entries = await db.InventoryValuationEntries.AsNoTracking().Where(x => x.StoreId == Store && x.InventoryTransactionId == posted.InventoryTransactionId && x.EntryType == InventoryValuationEntryType.Inbound).ToListAsync(ct);
+                        if (entries.Count != 1 || entries[0].Quantity != part.Quantity || entries[0].Amount != posted.ValueChange ||
+                            entries[0].UnitCost != part.UnitCost || entries[0].IsProvisional != part.IsProvisional ||
+                            entries[0].SourceValuationEntryId != fragment.InventoryValuationEntryId)
+                            throw Error(409, "COST_NOT_READY", "Chứng cứ nhập trả không khớp xuất nguồn.");
+                        var journal = new DeliveryJournalEntry { StoreId = Store, DeliveryOrderId = id, DeliveryOrderLineId = item.Key,
+                            SourceWarehouseId = order.SourceWarehouseId, SourceLegalEntityId = order.SourceLegalEntityId, VariantId = fragment.VariantId,
+                            InventoryTransactionId = posted.InventoryTransactionId, Kind = DeliveryJournalKind.Return,
+                            PostingKey = "return:" + request.ClientRequestId.ToString("N") + ":" + fragment.Id +
+                                (part.SourceStartQuantity.HasValue ? ":S" + pieceStart.ToString(CultureInfo.InvariantCulture) : ""),
+                            BaseQuantity = part.Quantity, UnitCost = part.UnitCost, CostAmount = posted.ValueChange };
+                        db.DeliveryJournalEntries.Add(journal); await db.SaveChangesAsync(ct); journalIds.Add(journal.Id);
+                        db.DeliveryReturnedCostFragments.Add(new() { StoreId = Store, DeliveryOrderId = id, DeliveryOrderLineId = item.Key,
+                            SourceWarehouseId = order.SourceWarehouseId, SourceLegalEntityId = order.SourceLegalEntityId, VariantId = fragment.VariantId,
+                            DeliveryJournalEntryId = journal.Id, DispatchCostFragmentId = fragment.Id, InventoryTransactionId = posted.InventoryTransactionId ?? throw Error(409, "COST_NOT_READY", "Thiếu bút toán nhập trả."),
+                            InventoryValuationEntryId = entries[0].Id, StartQuantity = pieceStart, EndQuantity = pieceStart + part.Quantity,
+                            BaseQuantity = part.Quantity, UnitCost = part.UnitCost, CostAmount = posted.ValueChange, IsProvisional = part.IsProvisional });
+                        await db.SaveChangesAsync(ct);
+                    }
+                    remaining -= quantity; if (remaining == 0) break;
                 }
                 if (remaining != 0) throw Error(409, "RETURN_BUDGET_EXCEEDED", "Nhận trả vượt lượng chưa nhận về của đơn.");
             }
@@ -372,9 +419,10 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
     public async Task<IReadOnlyList<DeliveryInventoryResidualCostDto>> GetResidualCostsInTransactionAsync(int id,
         IReadOnlyList<DeliveryInventoryCostSelection> selections, CancellationToken ct = default)
     {
-        await Lock(id, ct); await Authorize(PermissionCodes.Delivery.Finalize, ct); _ = await Load(id, false, false, ct);
+        await Lock(id, ct); await Authorize(PermissionCodes.Delivery.Finalize, ct); var order = await Load(id, false, false, ct);
         if (selections is null || selections.Count == 0 || selections.Select(x => x.LineId).Distinct().Count() != selections.Count)
             throw Error(400, "LINE_INVALID", "Cần lựa chọn dòng không trùng.");
+        await LockCostSources(order, ct);
         var fragments = await db.DeliveryDispatchCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).OrderBy(x => x.Id).ToListAsync(ct);
         var returned = await db.DeliveryReturnedCostFragments.AsNoTracking().Where(x => x.StoreId == Store && x.DeliveryOrderId == id).ToListAsync(ct);
         var debitIds = fragments.Select(x => x.InventoryCostBudgetDebitId).ToArray();
@@ -389,18 +437,41 @@ public sealed class DeliveryInventoryService(AppDbContext db, ICurrentUser user,
             var receivedCost = returned.Where(x => x.DeliveryOrderLineId == selection.LineId).Sum(x => x.CostAmount);
             var dispatched = line.Sum(x => x.BaseQuantity);
             if (delivered + received > dispatched) throw Error(409, "QUANTITY_BUDGET_EXCEEDED", "Lượng giao/nhận trả vượt xuất nguồn.");
-            decimal cost = 0, remaining = delivered;
+            decimal cost = 0, outsideCost = 0, remaining = delivered;
             foreach (var fragment in line)
             {
-                var quantity = Math.Min(remaining, fragment.BaseQuantity);
-                if (!debits.TryGetValue(fragment.InventoryCostBudgetDebitId, out var debit) || debit.IsProvisionalResolution ||
-                    debit.InventoryValuationEntryId != fragment.InventoryValuationEntryId || debit.InventoryCostLayerId != fragment.InventoryCostLayerId ||
-                    debit.Amount != fragment.CostAmount || debit.EndQuantity - debit.StartQuantity != fragment.BaseQuantity)
-                    throw Error(409, "COST_NOT_READY", "Chứng cứ giá vốn xuất nguồn không đầy đủ.");
-                cost += InventoryCostBudgetPolicy.Slice(debit.AnchorQuantity, debit.AnchorAmount, debit.StartQuantity, quantity); remaining -= quantity;
+                var available = fragment.BaseQuantity - returned.Where(x => x.DispatchCostFragmentId == fragment.Id).Sum(x => x.BaseQuantity);
+                var quantity = Math.Min(remaining, available);
+                IReadOnlyList<InventoryCostBudgetDebit> resolutions = fragment.IsProvisional
+                    ? await new InventorySourceCostEvidenceRepository(db).GetProvisionalResolutionDebitsAsync(fragment, ct) : [];
+                decimal Prefix(decimal count)
+                {
+                    if (count == 0) return 0;
+                    if (!fragment.IsProvisional)
+                    {
+                        if (fragment.InventoryCostBudgetDebitId is not int debitId || !debits.TryGetValue(debitId, out var debit) || debit.IsProvisionalResolution ||
+                            debit.InventoryValuationEntryId != fragment.InventoryValuationEntryId || debit.InventoryCostLayerId != fragment.InventoryCostLayerId ||
+                            debit.Amount != fragment.CostAmount || debit.EndQuantity - debit.StartQuantity != fragment.BaseQuantity)
+                            throw Error(409, "COST_NOT_READY", "Chứng cứ giá vốn xuất nguồn không đầy đủ.");
+                        return InventoryCostBudgetPolicy.Slice(debit.AnchorQuantity, debit.AnchorAmount, debit.StartQuantity, count);
+                    }
+                    decimal result = 0, cursor = 0;
+                    foreach (var resolved in resolutions)
+                    {
+                        var resolutionStart = resolved.ResolutionStartQuantity ?? throw Error(409, "COST_NOT_READY", "Thiếu đầu khoảng xác định giá vốn.");
+                        var resolutionEnd = resolved.ResolutionEndQuantity ?? throw Error(409, "COST_NOT_READY", "Thiếu cuối khoảng xác định giá vốn.");
+                        var take = Math.Min(count - cursor, resolutionEnd - resolutionStart);
+                        if (take <= 0) break;
+                        result += InventoryCostBudgetPolicy.Slice(resolved.AnchorQuantity, resolved.AnchorAmount, resolved.StartQuantity, take);
+                        cursor += take;
+                    }
+                    if (cursor != count) throw Error(409, "COST_NOT_READY", "Giá vốn phần còn ngoài kho chưa có đủ nguồn nhập xác định; chưa thể chốt tài chính.");
+                    return result;
+                }
+                cost += Prefix(quantity); outsideCost += Prefix(available); remaining -= quantity;
             }
             result.Add(new(selection.LineId, Qty(dispatched), Qty(delivered), Qty(cost), Qty(received), Qty(receivedCost),
-                Qty(dispatched - delivered - received), Qty(line.Sum(x => x.CostAmount) - cost - receivedCost)));
+                Qty(dispatched - delivered - received), Qty(outsideCost - cost)));
         }
         return result;
     }

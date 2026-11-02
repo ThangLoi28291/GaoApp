@@ -22,6 +22,15 @@ public sealed class InvoiceInputStockController(InvoiceInputStockReadService ser
             return BadRequest(new { message = "Từ ngày không được lớn hơn đến ngày." });
         if (query.ToDate?.Year >= 9999 || query.FromDate?.Year <= 1 || query.ToDate?.Year <= 1)
             return BadRequest(new { message = "Ngày lọc không hợp lệ." });
-        return Ok(await service.GetPageAsync(query, ct));
+        try
+        {
+            return Ok(await service.GetPageAsync(query, ct));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Navigating away, changing filters or the browser timeout cancels
+            // this read. Do not log a disconnected client as an application 500.
+            return StatusCode(499);
+        }
     }
 }

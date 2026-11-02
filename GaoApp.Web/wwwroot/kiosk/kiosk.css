@@ -96,9 +96,8 @@ html,body{margin:0;min-height:100%;background:#f5f6fa;color-scheme:light;font-fa
 #gao-kiosk .g-cancel-payment{color:#9a4b54;background:#fff9fa;border-color:#eedbdf}
 #gao-kiosk .g-payment-cancel-hint{font-size:12px;color:#8c8495;line-height:1.5;margin-top:10px}
 #gao-kiosk .g-bank-check{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;padding:10px 16px;background:#fff;border:1px solid #e2e5f0;border-radius:12px}
-#gao-kiosk .g-bank-check span{display:block;font-size:12px;color:#788198}
-#gao-kiosk .g-bank-check strong{display:block;font-size:26px;font-variant-numeric:tabular-nums;color:#5745ca;line-height:1.2;margin-top:5px}
-#gao-kiosk .g-bank-check .g-btn{font-size:13px}
+#gao-kiosk .g-bank-check span{font-size:13px;color:#788198;line-height:1.5}
+#gao-kiosk .g-bank-check .g-btn{font-size:13px;flex-shrink:0}
 @media(max-width:1100px){
     #gao-kiosk main[data-screen="shop"],#gao-kiosk main[data-screen="payment"],#gao-kiosk main[data-screen="review"]{padding:22px 24px}
     #gao-kiosk .g-shop{gap:18px;grid-template-columns:minmax(0,1fr) 310px}

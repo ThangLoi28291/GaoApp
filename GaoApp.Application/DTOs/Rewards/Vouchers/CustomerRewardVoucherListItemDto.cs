@@ -13,6 +13,7 @@ public class CustomerRewardVoucherListItemDto
     public decimal RequiredAmount { get; set; }
 
     public string Status { get; set; } = string.Empty;
+    public string StatusText => Status == "ReservedForDelivery" ? "Đang giữ cho đơn giao" : Status;
     public DateTime IssuedAtUtc { get; set; }
     public DateTime? UsedAtUtc { get; set; }
 

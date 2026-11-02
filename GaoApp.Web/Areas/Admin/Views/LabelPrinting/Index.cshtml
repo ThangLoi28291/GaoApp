@@ -1,3 +1,4 @@
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
 @{
     var isSettings = (bool)ViewBag.IsSettings;
     var canPrint = (bool)ViewBag.CanPrint;
@@ -9,6 +10,10 @@
     @Html.AntiForgeryToken()
     <header class="label-heading"><div><div class="label-eyebrow">GAOAPP · @(isSettings ? "CẤU HÌNH" : "IN ẤN")</div><h1>@ViewData["Title"]</h1><p>@(isSettings ? "Thiết lập mẫu tem và máy in cho cửa hàng." : "In nhanh theo sản phẩm hoặc theo phiếu nhập. Theo dõi kết quả in tại server.")</p></div>
         <div class="label-inline">
+            @if (canManage && (await Authorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.Catalog.Promotion.Manage)).Succeeded)
+            {
+                <a href="@Url.Content("~/admin/promotion-labels")" class="btn btn-outline-primary">In tem khuyến mãi</a>
+            }
             @if (isSettings && canPrint) { <a href="/admin/label-printing" class="btn btn-outline-secondary">Mở khu in tem</a> }
             @if (!isSettings)
             {
@@ -69,7 +74,7 @@
                     <input type="hidden" name="layout" value="standard" />
                     <input type="hidden" name="barcodeFormat" value="AUTO" />
                     <div id="layoutGallery" class="label-layout-gallery" role="group" aria-label="Kiểu trình bày tem">
-                        @foreach (var layout in GaoApp.Infrastructure.Printing.ProductLabelLayouts.All)
+                        @foreach (var layout in GaoApp.Infrastructure.Printing.ProductLabelLayouts.All.Where(x => x.Key != "promotion-shelf"))
                         {
                             <button type="button" class="label-layout-card" data-layout="@layout.Key" data-layout-name="@layout.Name" aria-pressed="false">
                                 <span class="label-layout-image"><img src="@Url.Action("LayoutPreview", "LabelPrinting", new { area = "Admin", key = layout.Key })" alt="" loading="lazy" /></span>
@@ -131,3 +136,10 @@
     <script src="~/Admin/js/printing/label-quick-print.js" asp-append-version="true"></script>
     <script src="~/Admin/js/printing/label-printing.js" asp-append-version="true"></script>
 }
+
+@section PageStyles { 
+<link rel="stylesheet" href="~/Admin/css/print-workspace.mobile.css" asp-append-version="true" />
+}
+
+<span hidden data-ui22-workspace="LabelPrinting/Index"></span>
+<script src="~/Admin/js/print-workspace.mobile.js" asp-append-version="true" defer></script>

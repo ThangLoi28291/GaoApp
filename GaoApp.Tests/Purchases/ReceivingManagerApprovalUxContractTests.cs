@@ -25,8 +25,10 @@ public sealed class ReceivingManagerApprovalUxContractTests
         Assert.Contains("Model.PurchaseOrderNumber", edit);
         Assert.Contains("Model.SupplierName", edit);
         Assert.Contains("Phiếu nhận @Model.DocumentNo", edit);
-        Assert.Contains("sd-manager-summary", edit);
-        Assert.Contains("Cần xử lý trước khi duyệt", workbench);
+        Assert.Contains("sd-review-header", edit);
+        Assert.Contains("sd-review-identity", edit);
+        Assert.Contains("data-commercial-filter=\"blocking\"", workbench);
+        Assert.Contains("Cần hoàn tất", workbench);
         Assert.Contains("Chấp nhận ngoài PO", workbench);
         Assert.Contains("Loại khỏi phiếu", workbench);
         Assert.Contains("ReceiptAllocationKind.OutsidePo", workbench);
@@ -84,12 +86,12 @@ public sealed class ReceivingManagerApprovalUxContractTests
         Assert.Contains("sd-optional-xml", edit);
         Assert.Contains("<details", workbench);
         Assert.Contains("sd-commercial-freight", workbench);
-        Assert.Contains("Phí vận chuyển: Không có", workbench);
+        Assert.Contains("Không có phí vận chuyển", workbench);
         Assert.Contains("sd-manager-blocker-summary", workbench);
         Assert.Contains("Trả về chỉnh sửa", workbench);
         Assert.Contains("Duyệt và ghi sổ", workbench);
         Assert.Contains("Xác nhận duyệt và ghi sổ", edit);
-        Assert.Contains("Tồn kho, FIFO/cost và công nợ sẽ được ghi một lần.", edit);
+        Assert.Contains("Ghi nhận số lượng vào kho, giá vốn và công nợ của phiếu.", edit);
         Assert.Contains("@media (max-width: 767.98px)", css);
         Assert.Contains("sd-manager-goods", workbench);
         Assert.Contains(".sd-commercial-sticky-actions", css);

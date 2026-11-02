@@ -60,7 +60,7 @@ Máy tính tiền cần quyền xem thanh toán (`pos.payment.view`) và chốt 
 
 Webhook xác thực, lưu vào hàng chờ bền vững rồi phản hồi ACB. Worker tự truy vấn chứng cứ và gửi hub; polling và callback dùng chung mã giao dịch retrieve để tránh ghi tiền hai lần. Nếu chưa lưu được biên nhận, HTTP trả lỗi để ngân hàng có thể gửi lại. Nếu đã lưu và trả thành công, worker chịu trách nhiệm thử lại đến khi xử lý được hoặc đánh dấu dữ liệu cần kiểm tra.
 
-POS nhận thông báo `acb_payment_changed` qua nhóm cửa hàng/máy. Màn hình chờ kiểm tra dự phòng sau 30 giây, tiếp theo mỗi 8 giây. Sau khi tải lại trang, POS tìm lại các QR của máy/ca gốc. Thao tác chốt luôn dùng OrderId đã lưu, không dùng giỏ hiện tại của trình duyệt.
+POS nhận thông báo `acb_payment_changed` qua nhóm cửa hàng/máy. Popup QR không hiển thị đồng hồ đếm ngược; vẫn có nút **Kiểm tra ngay** và phím **F9** để tra cứu ACB khi cần. Lịch kiểm tra dự phòng chạy nền sau 30 giây, tiếp theo mỗi 8 giây. Sau khi tải lại trang, POS tìm lại các QR của máy/ca gốc. Thao tác chốt luôn dùng OrderId đã lưu, không dùng giỏ hiện tại của trình duyệt.
 
 Khóa `sp_getapplock` theo cửa hàng/đơn tuần tự hóa tạo, hủy, đối soát và chốt qua ACB giữa các instance. Bản ghi thanh toán và liên kết ACB được lưu trong cùng transaction. Nếu phần chốt đơn lỗi, lần thử sau dùng lại khoản đã nhận. Kiểm tra ACB được chạy lại bên trong transaction chốt đơn sau khi tính khuyến mại để ngăn chốt một giỏ đã thay đổi.
 

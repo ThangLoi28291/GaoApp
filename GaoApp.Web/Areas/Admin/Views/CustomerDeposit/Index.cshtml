@@ -12,9 +12,10 @@
     var canReceive = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Receive)).Succeeded;
     var canRefund = (await Authorization.AuthorizeAsync(User, PermissionCodes.CustomerDeposit.Refund)).Succeeded;
     var canCorrect = (await Authorization.AuthorizeAsync(User, PermissionCodes.Pos.Shift.Reconcile)).Succeeded && (await Authorization.AuthorizeAsync(User, PermissionCodes.Pos.Shift.View)).Succeeded;
-    var totalBalance = Model.Deposits.Sum(x => x.Balance);
-    var receiveTotal = Model.Journal.Where(x => x.Kind == "Receive").Sum(x => x.Amount);
-    var usedTotal = Math.Abs(Model.Journal.Where(x => x.Kind is "Apply" or "Refund").Sum(x => x.Amount));
+    var totalBalance = Model.List.Balance;
+    var receiveTotal = Model.List.Received;
+    var usedTotal = Model.List.UsedAndRefunded;
+    var listActive = ViewBag.DepositTab == "list";
 }
 
 @section header {
@@ -24,6 +25,7 @@
                 <h3 class="gds-page-header__title">Quản lý tiền đặt cọc</h3>
                 <p class="gds-page-header__subtitle mb-0">Nhận cọc, sử dụng cọc và đối chiếu giao dịch của khách hàng.</p>
             </div>
+            <div class="gds-page-header__actions"><a href="/admin/customer-deposit" class="btn btn-outline-primary"><i class="bx bx-list-ul"></i> Danh sách tất cả phiếu</a></div>
         </div>
     </div>
 }
@@ -35,7 +37,7 @@
         <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-4 g-3">
             <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--primary h-100">
                 <div class="gds-kpi-card__icon is-primary"><i class="bx bx-user-check"></i></div>
-                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Khách đang chọn</div><div class="gds-kpi-card__value fw-bold text-primary">@(Model.CustomerId.HasValue ? 1 : 0)</div></div>
+                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Tổng số phiếu cọc</div><div class="gds-kpi-card__value fw-bold text-primary">@Model.List.TotalCount</div></div>
             </article></div>
             <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--success h-100">
                 <div class="gds-kpi-card__icon is-success"><i class="bx bx-wallet"></i></div>
@@ -43,7 +45,7 @@
             </article></div>
             <div class="col"><article class="card shadow-sm border-0 gds-kpi-card h-100">
                 <div class="gds-kpi-card__icon bg-label-warning text-warning"><i class="bx bx-receipt"></i></div>
-                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Phiếu còn số dư</div><div class="gds-kpi-card__value fw-bold text-warning">@Model.Deposits.Count</div></div>
+                <div class="gds-kpi-card__body"><div class="gds-kpi-card__label fw-semibold text-dark">Phiếu còn số dư</div><div class="gds-kpi-card__value fw-bold text-warning">@Model.List.ActiveCount</div></div>
             </article></div>
             <div class="col"><article class="card shadow-sm border-0 gds-kpi-card gds-kpi-card--neutral h-100">
                 <div class="gds-kpi-card__icon is-neutral"><i class="bx bx-transfer-alt"></i></div>
@@ -76,25 +78,25 @@
                     <div class="deposit-selected-customer">
                         <span class="deposit-avatar">@((Model.CustomerName ?? "K").Trim().Substring(0, 1).ToUpperInvariant())</span>
                         <span class="deposit-customer__copy"><small>KHÁCH HÀNG ĐANG CHỌN</small><strong>@Model.CustomerName</strong></span>
-                        <a href="/admin/customer-deposit" class="btn btn-sm btn-label-secondary">Đổi khách</a>
+                        <a href="/admin/customer-deposit" class="btn btn-sm btn-label-secondary">Tất cả khách</a>
                     </div>
                 }
                 else
                 {
-                    <div class="deposit-customer-guide"><i class="bx bx-user-plus"></i><span><strong>Chưa chọn khách hàng</strong><small>Nhập ít nhất 2 ký tự để xem gợi ý.</small></span></div>
+                    <div class="deposit-customer-guide"><i class="bx bx-list-ul"></i><span><strong>Đang xem phiếu của tất cả khách</strong><small>Chọn khách để nhận cọc, hoàn cọc hoặc xem sổ giao dịch.</small></span></div>
                 }
               </div>
             </div>
         </section>
 
         <main class="deposit-workspace card shadow-sm border-0">
+            @if (ViewBag.ReceivedDepositId is int receivedId)
+            {
+                <div class="deposit-received-notice" role="status"><span><i class="bx bx-check-circle"></i> Đã lập phiếu cọc PCOC-@receivedId.ToString("D6").</span><a href="/admin/customer-deposit/@receivedId/print" target="_blank" rel="noopener" class="btn btn-sm btn-success"><i class="bx bx-printer"></i> In phiếu cọc</a></div>
+            }
             @if (!Model.CustomerId.HasValue)
             {
-                <section class="deposit-empty deposit-empty--workspace">
-                    <span class="deposit-empty__icon"><i class="bx bx-user-check"></i></span>
-                    <h2>Chọn khách hàng để bắt đầu</h2>
-                    <p>Tìm theo tên hoặc số điện thoại, sau đó nhận cọc và xem lịch sử đối chiếu.</p>
-                </section>
+                <section class="deposit-panel" data-deposit-panel="list"><partial name="_DepositList" model="Model" /></section>
             }
             else
             {
@@ -103,21 +105,22 @@
                         <span class="deposit-avatar deposit-avatar--large">@((Model.CustomerName ?? "K").Trim().Substring(0, 1).ToUpperInvariant())</span>
                         <div><span>KHÁCH HÀNG ĐANG CHỌN</span><h2>@Model.CustomerName</h2></div>
                     </div>
-                    <div class="deposit-balance-card"><span>SỐ DƯ CỌC KHẢ DỤNG</span><strong>@totalBalance.ToString("N0") <small>đ</small></strong><em><i class="bx bx-check-shield"></i> Có thể sử dụng tại POS</em></div>
-                    <div class="deposit-summary-metric"><span>Đã nhận</span><strong>@receiveTotal.ToString("N0") đ</strong></div>
-                    <div class="deposit-summary-metric"><span>Đã dùng / hoàn</span><strong>@usedTotal.ToString("N0") đ</strong></div>
+                    <div class="deposit-balance-card"><span>SỐ DƯ CỌC KHẢ DỤNG</span><strong>@Model.Deposits.Sum(d => d.Balance).ToString("N0") <small>đ</small></strong><em><i class="bx bx-check-shield"></i> Có thể sử dụng tại POS</em></div>
+                    <div class="deposit-summary-metric"><span>Đã nhận @(Model.List.Search != null || Model.List.Status != null ? "(bộ lọc)" : "")</span><strong>@receiveTotal.ToString("N0") đ</strong></div>
+                    <div class="deposit-summary-metric"><span>Đã dùng / hoàn @(Model.List.Search != null || Model.List.Status != null ? "(bộ lọc)" : "")</span><strong>@usedTotal.ToString("N0") đ</strong></div>
                 </section>
 
                 <div class="deposit-tabs" role="tablist" aria-label="Nghiệp vụ đặt cọc">
-                    @if (canReceive) { <button type="button" class="is-active" data-deposit-tab="receive" role="tab" aria-selected="true"><i class="bx bx-plus-circle"></i> Nhận cọc mới</button> }
-                    <button type="button" class="@(!canReceive ? "is-active" : "")" data-deposit-tab="balances" role="tab" aria-selected="@(!canReceive ? "true" : "false")"><i class="bx bx-receipt"></i> Phiếu còn dư <b>@Model.Deposits.Count</b></button>
+                    @if (canReceive) { <button type="button" class="@(!listActive ? "is-active" : "")" data-deposit-tab="receive" role="tab" aria-selected="@(!listActive ? "true" : "false")"><i class="bx bx-plus-circle"></i> Nhận cọc mới</button> }
+                    <button type="button" class="@(listActive ? "is-active" : "")" data-deposit-tab="list" role="tab" aria-selected="@(listActive ? "true" : "false")"><i class="bx bx-list-ul"></i> Tất cả phiếu <b>@Model.List.TotalCount</b></button>
+                    <button type="button" class="@(!canReceive && !listActive ? "is-active" : "")" data-deposit-tab="balances" role="tab" aria-selected="@(!canReceive && !listActive ? "true" : "false")"><i class="bx bx-receipt"></i> Phiếu còn dư <b>@Model.Deposits.Count</b></button>
                     <button type="button" data-deposit-tab="journal" role="tab" aria-selected="false"><i class="bx bx-history"></i> Lịch sử giao dịch</button>
                     @if (canRefund && Model.Deposits.Count > 0) { <button type="button" data-deposit-tab="refund" role="tab" aria-selected="false"><i class="bx bx-undo"></i> Hoàn cọc</button> }
                 </div>
 
                 @if (canReceive)
                 {
-                    <section class="deposit-panel" data-deposit-panel="receive">
+                    <section class="deposit-panel" data-deposit-panel="receive" hidden="@listActive">
                         <div class="deposit-panel__heading">
                             <div><span class="deposit-step">01</span><div><h3>Lập phiếu nhận cọc</h3><p>Nhập thông tin hàng đặt và chọn cách khách thanh toán.</p></div></div>
                             <span class="deposit-security"><i class="bx bx-lock-alt"></i> Ghi nhận theo ca</span>
@@ -154,8 +157,9 @@
                     </section>
                 }
 
-                <section class="deposit-panel" data-deposit-panel="balances" @if(canReceive){<text>hidden</text>}>
-                    <div class="deposit-panel__heading"><div><span class="deposit-step">02</span><div><h3>Phiếu cọc còn số dư</h3><p>POS sẽ tự ưu tiên phiếu cũ nhất và trừ tối đa khi tính tiền.</p></div></div></div>
+                <section class="deposit-panel" data-deposit-panel="list" hidden="@(!listActive)"><partial name="_DepositList" model="Model" /></section>
+                <section class="deposit-panel" data-deposit-panel="balances" hidden="@(canReceive || listActive)">
+                    <div class="deposit-panel__heading"><div><span class="deposit-step">02</span><div><h3>Phiếu cọc còn số dư</h3><p>Chọn phiếu và số tiền sử dụng khi thanh toán tại POS.</p></div></div></div>
                     <div class="deposit-card-grid">
                         @foreach (var deposit in Model.Deposits)
                         {
@@ -164,6 +168,7 @@
                                 <h4>@deposit.Purpose</h4>
                                 <div class="deposit-ticket__balance"><span>Còn lại</span><strong>@deposit.Balance.ToString("N0") đ</strong></div>
                                 <div class="deposit-ticket__date"><i class="bx bx-calendar"></i> @(deposit.ExpectedDeliveryDate?.ToString("dd/MM/yyyy") ?? "Chưa hẹn ngày giao")</div>
+                                <a href="/admin/customer-deposit/@deposit.Id/print" target="_blank" rel="noopener" class="deposit-ticket__print"><i class="bx bx-printer"></i> In phiếu cọc</a>
                             </article>
                         }
                         @if (Model.Deposits.Count == 0) { <div class="deposit-empty deposit-empty--small"><i class="bx bx-receipt"></i><span>Khách chưa có phiếu cọc còn số dư.</span></div> }
@@ -180,8 +185,8 @@
                             var positive = entry.Amount >= 0;
                             var kindLabel = entry.Kind switch { "Receive" => "Nhận cọc", "Apply" => "Dùng cọc", "Refund" => "Hoàn cọc", "Void" => "Khôi phục do hủy đơn", "Return" => "Trả hàng hoàn vào cọc", _ => entry.Kind };
                             <tr>
-                                <td><strong>PCOC-@entry.Id</strong><small>Phiếu DC-@entry.DepositId</small></td>
-                                <td><strong>@entry.At.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong><small>NV #@entry.Employee · Ca #@entry.ShiftId</small></td>
+                                <td><strong>@(entry.Kind == "Receive" ? $"PCOC-{entry.DepositId:D6}" : $"PGD-{entry.Id:D6}")</strong><small>Phiếu DC-@entry.DepositId</small>@if(entry.Kind == "Receive"){<a href="/admin/customer-deposit/@entry.DepositId/print" target="_blank" rel="noopener"><i class="bx bx-printer"></i> In phiếu cọc</a>}</td>
+                                <td><strong>@entry.At.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</strong><small>NV #@entry.Employee · Ca #@entry.ShiftId</small></td>
                                 <td><span class="deposit-kind deposit-kind--@entry.Kind.ToLowerInvariant()">@kindLabel</span></td>
                                 <td class="is-number @(positive ? "is-positive" : "is-negative")">@entry.Amount.ToString("+#,##0;-#,##0;0") đ</td>
                                 <td><span>@(entry.Method == PaymentMethod.Cash ? "Tiền mặt" : entry.Method == PaymentMethod.BankTransfer ? "Chuyển khoản" : "Điều chỉnh hệ thống")</span><small>@entry.Bank @entry.Reference @entry.Note</small>@if(entry.OrderId.HasValue){<a href="/admin/pos/order-detail/@entry.OrderId">Xem đơn #@entry.OrderId <i class="bx bx-link-external"></i></a>}@if(canCorrect && entry.Kind == "Receive" && entry.Employee == CurrentUser.UserId){<a href="/admin/pos-shift/requests?tab=payment&amp;entryId=@entry.Id&amp;shiftId=@entry.ShiftId">Đổi phương thức nhận cọc</a>}</td>
@@ -213,5 +218,7 @@
 </div>
 </div>
 
-@section PageScripts { <script src="~/Admin/js/customer-deposit.js" asp-append-version="true"></script> }
-@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-deposit.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/customer-deposit.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/customer-finance.mobile.js" asp-append-version="true"></script> }
+@section PageStyles { <link rel="stylesheet" href="~/Admin/css/customer-deposit.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/customer-finance.mobile.css" asp-append-version="true" /> }

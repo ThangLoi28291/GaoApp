@@ -632,3 +632,4 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+.pr-index-line-note{white-space:pre-wrap;overflow-wrap:anywhere}

@@ -15,6 +15,7 @@ public class StockDocumentListItemDto
     public string? EntryTerminalCode { get; set; }
     public string? SupplierName { get; set; }
     public int? PurchaseOrderId { get; set; }
+    public PurchaseReceiptSource ReceiptSource { get; set; }
     public string? PurchaseOrderNumber { get; set; }
     public string? PurchaseOrderTitle { get; set; }
     public StockDocumentStatus Status { get; set; }
@@ -27,8 +28,9 @@ public class StockDocumentListItemDto
     public string InvoiceFollowUp => ReceiptInvoiceFollowUp.Resolve(WaitForInputInvoice, HasLinkedInputInvoice, InvoiceReconciliationState,
         Status == StockDocumentStatus.Confirmed && ReceiptInvoiceFollowUp.IsReviewCurrent(InvoiceReviewEvidenceJson, InvoiceMapId, InvoiceEvidenceFingerprint));
     public int InvoiceWaitingDays => InvoiceFollowUp == "Waiting" && ApprovedAtUtc.HasValue
-        ? Math.Max(0, (DateTime.UtcNow.Date - ApprovedAtUtc.Value.Date).Days) : 0;
+        ? Math.Max(0, (VietnamTime.Today - ApprovedAtUtc.Value.ToVietnamTime().Date).Days) : 0;
     public decimal TotalAmount { get; set; }
+    public bool CanViewCost { get; set; }
 
     public DateTime? SubmittedAtUtc { get; set; }
     public DateTime? ApprovedAtUtc { get; set; }

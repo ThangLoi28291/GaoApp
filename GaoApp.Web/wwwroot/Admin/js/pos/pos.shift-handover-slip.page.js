@@ -17,6 +17,8 @@
     const ddlSlipStatus = document.getElementById('ddlSlipStatus');
     const txtSlipFromDate = document.getElementById('txtSlipFromDate');
     const txtSlipToDate = document.getElementById('txtSlipToDate');
+    const phoneTerminalFilter = document.getElementById('phoneSlipTerminalFilter');
+    const phonePresentation = window.matchMedia('(max-width: 767.98px)');
 
     const handoverSlipBody = document.getElementById('handoverSlipBody');
     const handoverSlipPagerInfo = document.getElementById('handoverSlipPagerInfo');
@@ -69,18 +71,18 @@
 
     function formatDateTime(value) {
         if (!value) return '-';
-        return new Date(value).toLocaleString('vi-VN');
+        return new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function toUtcStart(dateValue) {
         if (!dateValue) return null;
-        return new Date(`${dateValue}T00:00:00`).toISOString();
+        return new Date(`${dateValue}T00:00:00+07:00`).toISOString();
     }
 
     function toUtcEndExclusive(dateValue) {
         if (!dateValue) return null;
-        const d = new Date(`${dateValue}T00:00:00`);
-        d.setDate(d.getDate() + 1);
+        const d = new Date(`${dateValue}T00:00:00+07:00`);
+        d.setUTCDate(d.getUTCDate() + 1);
         return d.toISOString();
     }
 
@@ -240,6 +242,12 @@
             select.value = current;
             if (!select.value && items.length === 1) select.value = items[0].id;
         }
+        if (phoneTerminalFilter) {
+            const current = phoneTerminalFilter.value;
+            phoneTerminalFilter.replaceChildren(new Option('Tất cả quầy', ''));
+            (data.terminals || []).forEach(x => phoneTerminalFilter.add(new Option(x.name, x.id)));
+            phoneTerminalFilter.value = current;
+        }
     }
 
     async function loadWarehouses() {
@@ -266,6 +274,7 @@
 
         if (ddlSlipStatus && ddlSlipStatus.value) params.set('status', ddlSlipStatus.value);
         if (txtSlipKeyword && txtSlipKeyword.value.trim()) params.set('keyword', txtSlipKeyword.value.trim());
+        if (phonePresentation.matches && phoneTerminalFilter?.value) params.set('terminalId', phoneTerminalFilter.value);
 
         const from = txtSlipFromDate ? toUtcStart(txtSlipFromDate.value) : null;
         const to = txtSlipToDate ? toUtcEndExclusive(txtSlipToDate.value) : null;
@@ -699,7 +708,21 @@
         buildDenomGrid();
         bindEvents();
         await loadWarehouses();
+        if (phonePresentation.matches) {
+            try { await loadAssignments(); }
+            catch (err) { showError(err.message); }
+        }
         await loadSlips();
         calcSlipTotal();
+    });
+    phonePresentation.addEventListener('change', async function () {
+        if (phonePresentation.matches) {
+            try { await loadAssignments(); }
+            catch (err) { showError(err.message); }
+        } else if (phoneTerminalFilter?.value) {
+            phoneTerminalFilter.value = '';
+            currentPage = 1;
+            await loadSlips();
+        }
     });
 })();

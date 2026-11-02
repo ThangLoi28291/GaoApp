@@ -88,13 +88,33 @@ public sealed class SalesReportReadRepository : ISalesReportReadRepository
             saleLineQuery,
             ct);
 
+        var fees = await (from fee in _db.Set<GaoApp.Domain.Storefront.StorefrontServiceRevenue>().AsNoTracking()
+            join binding in _db.Set<GaoApp.Domain.Storefront.StorefrontSaleBinding>().AsNoTracking() on new { fee.StoreId, fee.StorefrontOrderId } equals new { binding.StoreId, binding.StorefrontOrderId }
+            join goods in salesQuery on binding.SaleOrderId equals goods.Id
+            where fee.StoreId == storeId && fee.RecognizedAtUtc >= query.Period.FromUtc && fee.RecognizedAtUtc < query.Period.ToUtcExclusive
+            select fee).Take(32001).ToListAsync(ct);
+        if (fees.Count > 32000) throw new InvalidOperationException("Khoảng báo cáo có quá nhiều nguồn phí dịch vụ; chọn khoảng ngắn hơn.");
+        foreach (var fee in fees)
+        {
+            var bucket = GetBucketIndex(query.Period, fee.RecognizedAtUtc);
+            var point = trend.SingleOrDefault(x => x.BucketIndex == bucket);
+            if (point is null) { point = new() { BucketIndex = bucket }; trend.Add(point); }
+            point.GrossSales += fee.GrossAmount; point.SalesAfterDiscount += fee.GrossAmount;
+            var hour = GetHourOfBusinessDay(query.Period, fee.RecognizedAtUtc);
+            var hourly = salesByHour.SingleOrDefault(x => x.Hour == hour);
+            if (hourly is null) { hourly = new() { Hour = hour }; salesByHour.Add(hourly); }
+            hourly.SalesAfterDiscount += fee.GrossAmount;
+        }
+        trend = trend.OrderBy(x => x.BucketIndex).ToList(); salesByHour = salesByHour.OrderBy(x => x.Hour).ToList();
+
         return new SalesExecutivePeriodDataDto
         {
             Summary = new SalesMetricSummaryDto
             {
-                GrossSales = salesAggregate?.GrossSales ?? 0m,
+                StorefrontServiceGross = fees.Sum(x => x.GrossAmount), StorefrontServiceNet = fees.Sum(x => x.NetAmount), StorefrontServiceTax = fees.Sum(x => x.TaxAmount),
+                GrossSales = (salesAggregate?.GrossSales ?? 0m) + fees.Sum(x => x.GrossAmount),
                 Discounts = salesAggregate?.Discounts ?? 0m,
-                SalesAfterDiscount = salesAggregate?.SalesAfterDiscount ?? 0m,
+                SalesAfterDiscount = (salesAggregate?.SalesAfterDiscount ?? 0m) + fees.Sum(x => x.GrossAmount),
                 Returns = returnAggregate?.Returns ?? 0m,
                 RefundAmount = returnAggregate?.RefundAmount ?? 0m,
                 SalesOrders = salesAggregate?.SalesOrders ?? 0,

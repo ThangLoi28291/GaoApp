@@ -15,8 +15,4 @@ public interface IAdminMenuService
     int storeId,
     int? excludeMenuId = null,
     CancellationToken ct = default);
-    Task<List<int>> GetAssignedRoleIdsAsync(
-        int storeId,
-        string? permissionCode,
-        CancellationToken ct = default);
 }

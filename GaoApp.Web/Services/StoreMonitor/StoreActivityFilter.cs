@@ -38,6 +38,11 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
             StoreActivityEnricher.NeedsSavedOperation(saveAction.ControllerName, saveAction.ActionName) &&
             int.TryParse(context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var savedActor) && savedActor > 0
                 ? new StoreActivityEnricher.SavedOperation(db, tenant.StoreId.Value, includeBefore:true, actor:savedActor) : null;
+        using var scanCapture = !tenant.IsHostAdmin && tenant.StoreId is > 0 &&
+            context.HttpContext.User.Identity?.IsAuthenticated == true && context.ModelState.IsValid &&
+            context.ActionDescriptor is ControllerActionDescriptor scanAction &&
+            StoreCheckoutScanCapture.Applies(scanAction.ControllerName, scanAction.ActionName)
+                ? new StoreCheckoutScanCapture(db, tenant.StoreId.Value) : null;
         var executed = await next();
         if (tenant.IsHostAdmin || tenant.StoreId is not > 0 || context.HttpContext.User.Identity?.IsAuthenticated != true ||
             !int.TryParse(context.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) || userId <= 0 ||
@@ -60,13 +65,13 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
                 if (executed.Result is ViewResult view && view.ViewData is not null)
                 {
                     var work = await StoreActivityWorkContext.Page(db, tenant.StoreId.Value, action.ControllerName, pageId, context.HttpContext.RequestAborted);
-                    view.ViewData["StoreActivityTicket"] = tickets.Issue(tenant.StoreId.Value, userId, pageModule, work?.Key, work?.Document);
+                    view.ViewData["StoreActivityTicket"] = tickets.Issue(tenant.StoreId.Value, userId, pageModule, work?.Key, work?.Document, work?.DocumentTitle);
                 }
                 else if (action.ControllerName == "LabelPrinting" && action.ActionName == "Detail" && status is >= 200 and < 300)
                 {
                     var work = await StoreActivityWorkContext.Page(db, tenant.StoreId.Value, action.ControllerName, pageId, context.HttpContext.RequestAborted);
                     if (work is not null) context.HttpContext.Response.Headers["X-Gao-Activity-Ticket"] =
-                        tickets.Issue(tenant.StoreId.Value, userId, pageModule, work.Key, work.Document);
+                        tickets.Issue(tenant.StoreId.Value, userId, pageModule, work.Key, work.Document, work.DocumentTitle);
                 }
             }
             if (HttpMethods.IsGet(context.HttpContext.Request.Method) ||
@@ -107,7 +112,8 @@ public sealed class StoreActivityFilter(ITenantContext tenant, StoreActivityRegi
                 workKey = (await StoreActivityWorkContext.LabelJob(db, tenant.StoreId.Value, labelJobId, context.HttpContext.RequestAborted))?.Key ?? workKey;
             registry.Record(tenant.StoreId.Value, userId, StoreActivityTicket.Person(context.HttpContext.User),
                 mutation.Module, text, description.Text is not null ? description.Document : lineWork?.Document ?? description.Document, StoreActivityTicket.Terminal(context.HttpContext.User),
-                action.ControllerName + "." + action.ActionName, description.Detail, workKey);
+                action.ControllerName + "." + action.ActionName, description.Detail, workKey, description.DocumentTitle,
+                scanCapture?.Read(context.ActionArguments, value));
         }
         catch (Exception ex)
         {

@@ -32,7 +32,8 @@ public static class HealthCheckRegistration
             .AddCheck<DatabaseHealthCheck>("database", tags: new[] { "ready" })
 
             // Readiness: storage
-            .AddCheck<StorageHealthCheck>("storage", tags: new[] { "ready" });
+            .AddCheck<StorageHealthCheck>("storage", tags: new[] { "ready" })
+            .AddCheck<AssistantStorageHealthCheck>("assistant-storage", tags: new[] { "ready" });
 
         return services;
     }

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Repositories.Invoices;
 
-public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
+public sealed partial class InvoiceInputStockRepository : IInvoiceInputStockRepository, IInvoiceProductPickerRepository
 {
     private readonly AppDbContext _db;
 
@@ -43,58 +43,8 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
         int invoiceHeadId,
         CancellationToken ct = default)
     {
-        var header = await _db.InvoiceHeads
-            .AsNoTracking()
-            .Where(x => x.Id == invoiceHeadId && !x.IsDeleted)
-            .Select(x => new InvoiceHeaderSnapshot
-            {
-                Id = x.Id,
-                StoreId = x.StoreId,
-                LegalEntityId = x.LegalEntityId,
-                OriginalInvoiceHeadId = x.OriginalInvoiceHeadId,
-                DefaultWarehouseId = x.LegalEntity != null
-                    ? x.LegalEntity.DefaultWarehouseId
-                    : null,
-                OrderWarehouseId = x.Order != null ? x.Order.POSShift.WarehouseId : null,
-                // Legacy/old POS drafts can have no OrderLegalEntityAllocation and
-                // no navigable Order. Keep the stock preflight aligned with the
-                // XML-stock screen by using the store's explicit default warehouse
-                // as a compatibility fallback. Never guess from product stock.
-                StoreDefaultWarehouseId = _db.Warehouses
-                    .Where(w => w.StoreId == x.StoreId && !w.IsDeleted && w.IsActive && w.IsDefault
-                        && (!x.LegalEntityId.HasValue || w.LegalEntityId == x.LegalEntityId.Value))
-                    .OrderBy(w => w.Id)
-                    .Select(w => (int?)w.Id)
-                    .FirstOrDefault()
-            })
-            .SingleOrDefaultAsync(ct);
-
-        if (header == null)
-        {
-            return new InvoiceInputStockAvailabilityDto
-            {
-                InvoiceHeadId = invoiceHeadId
-            };
-        }
-
-        // Some older stores have exactly one active warehouse but never marked
-        // it as IsDefault. That is still an unambiguous warehouse identity, so
-        // use it as a compatibility fallback. If there is more than one, do
-        // not guess: the draft remains blocked until its source warehouse is
-        // configured explicitly.
-        if (!header.StoreDefaultWarehouseId.HasValue)
-        {
-            var activeWarehouseIds = await _db.Warehouses
-                .AsNoTracking()
-                .Where(w => w.StoreId == header.StoreId && !w.IsDeleted && w.IsActive
-                    && (!header.LegalEntityId.HasValue || w.LegalEntityId == header.LegalEntityId.Value))
-                .OrderBy(w => w.Id)
-                .Select(w => w.Id)
-                .Take(2)
-                .ToListAsync(ct);
-            if (activeWarehouseIds.Count == 1)
-                header.StoreDefaultWarehouseId = activeWarehouseIds[0];
-        }
+        var header = await LoadHeaderAsync(invoiceHeadId, ct);
+        if (header == null) return new InvoiceInputStockAvailabilityDto { InvoiceHeadId = invoiceHeadId };
 
         // Hóa đơn điều chỉnh/thay thế không tiêu tồn đầu vào lần hai.
         if (header.OriginalInvoiceHeadId.HasValue)
@@ -161,8 +111,105 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
         return new InvoiceInputStockAvailabilityDto
         {
             InvoiceHeadId = invoiceHeadId,
-            Lines = lines
+            Lines = lines,
+            DetailLines = BuildDetailLines(currentDetails, header, lines, movements)
         };
+    }
+
+    private static IReadOnlyList<InvoiceDetailStockLineDto> BuildDetailLines(
+        IReadOnlyList<DetailSnapshot> details,
+        InvoiceHeaderSnapshot header,
+        IReadOnlyList<InvoiceInputStockAvailabilityLineDto> stockLines,
+        IReadOnlyList<InvoiceInputStockMovement> movements)
+    {
+        var stockByKey = stockLines.ToDictionary(x => (x.WarehouseId, x.ProductVariantId));
+        var resolvedDetails = details
+            .Select(detail => new { Detail = detail, Resolved = ResolveDetail(detail, header) })
+            .Where(x => x.Resolved.BaseQuantity > 0m)
+            .ToList();
+        var detailCounts = resolvedDetails
+            .GroupBy(x => (x.Resolved.WarehouseId, x.Resolved.ProductVariantId))
+            .ToDictionary(x => x.Key, x => x.Count());
+        var warehouseNames = movements.GroupBy(x => x.WarehouseId)
+            .ToDictionary(x => x.Key, x => x.Select(y => y.WarehouseName)
+                .FirstOrDefault(y => !string.IsNullOrWhiteSpace(y)) ?? $"Kho #{x.Key}");
+
+        return resolvedDetails.Select(item =>
+        {
+            var key = (item.Resolved.WarehouseId, item.Resolved.ProductVariantId);
+            var stock = stockByKey[key];
+            var quantity = Math.Abs(item.Detail.Quantity);
+            // Cùng quy đổi allocation / legacy / OrderLine với preflight.
+            // Không so sánh lượng thùng/lốc trực tiếp với tồn đơn vị gốc.
+            var factor = quantity > 0m ? item.Resolved.BaseQuantity / quantity : 1m;
+            return new InvoiceDetailStockLineDto
+            {
+                InvoiceDetailId = item.Detail.Id,
+                ProductVariantId = item.Detail.ProductVariantId,
+                WarehouseId = stock.WarehouseId,
+                WarehouseName = warehouseNames.GetValueOrDefault(stock.WarehouseId, $"Kho #{stock.WarehouseId}"),
+                UnitName = string.IsNullOrWhiteSpace(item.Detail.UnitName) ? item.Detail.BaseUnitName : item.Detail.UnitName,
+                BaseUnitName = item.Detail.BaseUnitName,
+                UnitFactor = factor,
+                AvailableQuantity = stock.AvailableBaseQuantity / factor,
+                RequiredQuantity = stock.RequiredBaseQuantity / factor,
+                ShortageQuantity = stock.ShortageBaseQuantity / factor,
+                SharedLineCount = detailCounts[key]
+            };
+        }).ToList();
+    }
+
+    private async Task<InvoiceHeaderSnapshot?> LoadHeaderAsync(int invoiceHeadId, CancellationToken ct)
+    {
+        var header = await _db.InvoiceHeads
+            .AsNoTracking()
+            .Where(x => x.Id == invoiceHeadId && !x.IsDeleted)
+            .Select(x => new InvoiceHeaderSnapshot
+            {
+                Id = x.Id,
+                StoreId = x.StoreId,
+                LegalEntityId = x.LegalEntityId,
+                OriginalInvoiceHeadId = x.OriginalInvoiceHeadId,
+                CorrectionType = x.CorrectionType,
+                LegacySourceId = x.LegacySourceId,
+                DefaultWarehouseId = x.LegalEntity != null
+                    ? x.LegalEntity.DefaultWarehouseId
+                    : null,
+                OrderWarehouseId = x.Order != null ? x.Order.POSShift.WarehouseId : null,
+                // Legacy/old POS drafts can have no OrderLegalEntityAllocation and
+                // no navigable Order. Keep the stock preflight aligned with the
+                // XML-stock screen by using the store's explicit default warehouse
+                // as a compatibility fallback. Never guess from product stock.
+                StoreDefaultWarehouseId = _db.Warehouses
+                    .Where(w => w.StoreId == x.StoreId && !w.IsDeleted && w.IsActive && w.IsDefault
+                        && (!x.LegalEntityId.HasValue || w.LegalEntityId == x.LegalEntityId.Value))
+                    .OrderBy(w => w.Id)
+                    .Select(w => (int?)w.Id)
+                    .FirstOrDefault()
+            })
+            .SingleOrDefaultAsync(ct);
+        if (header == null) return null;
+
+        // Some older stores have exactly one active warehouse but never marked
+        // it as IsDefault. That is still an unambiguous warehouse identity, so
+        // use it as a compatibility fallback. If there is more than one, do
+        // not guess: the draft remains blocked until its source warehouse is
+        // configured explicitly.
+        if (!header.StoreDefaultWarehouseId.HasValue)
+        {
+            var activeWarehouseIds = await _db.Warehouses
+                .AsNoTracking()
+                .Where(w => w.StoreId == header.StoreId && !w.IsDeleted && w.IsActive
+                    && (!header.LegalEntityId.HasValue || w.LegalEntityId == header.LegalEntityId.Value))
+                .OrderBy(w => w.Id)
+                .Select(w => w.Id)
+                .Take(2)
+                .ToListAsync(ct);
+            if (activeWarehouseIds.Count == 1)
+                header.StoreDefaultWarehouseId = activeWarehouseIds[0];
+        }
+
+        return header;
     }
 
     private IQueryable<DetailSnapshot> QueryCheckableDetails(int invoiceHeadId)
@@ -174,9 +221,14 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
                 && x.ProductVariantId.HasValue)
             .Select(x => new DetailSnapshot
             {
+                Id = x.Id,
                 InvoiceHeadId = x.InvoiceHeadId,
                 ProductVariantId = x.ProductVariantId!.Value,
                 ItemName = x.ItemName,
+                UnitName = x.UnitName,
+                BaseUnitName = x.ProductVariant != null && x.ProductVariant.Product.BaseUnit != null
+                    ? x.ProductVariant.Product.BaseUnit.Name
+                    : string.Empty,
                 Quantity = x.Quantity,
                 LegacyUnitFactor = x.LegacyUnitFactor,
                 AllocationWarehouseId = x.OrderLegalEntityAllocation != null
@@ -187,6 +239,9 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
                     : null,
                 AllocationBaseQuantity = x.OrderLegalEntityAllocation != null
                     ? x.OrderLegalEntityAllocation.BaseQuantity
+                    : null,
+                AllocationQuantity = x.OrderLegalEntityAllocation != null
+                    ? x.OrderLegalEntityAllocation.Quantity
                     : null,
                 OrderLineBaseQuantity = x.OrderLine != null
                     ? x.OrderLine.BaseQuantity
@@ -222,8 +277,13 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
 
         warehouseId ??= header.StoreDefaultWarehouseId;
 
-        var baseQuantity = detail.AllocationBaseQuantity
-                           ?? ResolveLegacyBaseQuantity(detail);
+        // Allocation keeps the original sale's conversion. An invoice line may
+        // now have a different quantity, so apply that conversion to its current quantity.
+        var baseQuantity = detail.AllocationBaseQuantity.HasValue
+                           && detail.AllocationQuantity.HasValue
+                           && detail.AllocationQuantity.Value != 0m
+            ? detail.Quantity * detail.AllocationBaseQuantity.Value / detail.AllocationQuantity.Value
+            : ResolveLegacyBaseQuantity(detail);
 
         return new ResolvedDetailSnapshot
         {
@@ -264,6 +324,8 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
         public int StoreId { get; init; }
         public int? LegalEntityId { get; init; }
         public int? OriginalInvoiceHeadId { get; init; }
+        public InvoiceCorrectionType? CorrectionType { get; init; }
+        public long? LegacySourceId { get; init; }
         public int? DefaultWarehouseId { get; init; }
         public int? OrderWarehouseId { get; init; }
         public int? StoreDefaultWarehouseId { get; set; }
@@ -272,14 +334,18 @@ public sealed class InvoiceInputStockRepository : IInvoiceInputStockRepository
 
     private sealed class DetailSnapshot
     {
+        public int Id { get; init; }
         public int InvoiceHeadId { get; init; }
         public int ProductVariantId { get; init; }
         public string ItemName { get; init; } = string.Empty;
+        public string? UnitName { get; init; }
+        public string BaseUnitName { get; init; } = string.Empty;
         public decimal Quantity { get; init; }
         public decimal? LegacyUnitFactor { get; init; }
         public int? AllocationWarehouseId { get; init; }
         public int? OrderLineWarehouseId { get; init; }
         public decimal? AllocationBaseQuantity { get; init; }
+        public decimal? AllocationQuantity { get; init; }
         public decimal? OrderLineBaseQuantity { get; init; }
         public decimal? OrderLineQuantity { get; init; }
     }

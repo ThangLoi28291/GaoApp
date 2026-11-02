@@ -49,10 +49,13 @@
             <tbody>
             @foreach (var change in Model.History)
             {
-                <tr><td>@change.ChangedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</td><td>@change.Host</td><td>@(change.PreviousStoreId?.ToString() ?? "Chưa chọn")</td><td>@(change.TargetStoreId?.ToString() ?? "Tạm ngưng")</td><td>UserId: @change.ActorUserId</td></tr>
+                <tr><td>@change.ChangedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</td><td>@change.Host</td><td>@(change.PreviousStoreId?.ToString() ?? "Chưa chọn")</td><td>@(change.TargetStoreId?.ToString() ?? "Tạm ngưng")</td><td>UserId: @change.ActorUserId</td></tr>
             }
             @if (Model.History.Count == 0) { <tr><td colspan="5" class="text-muted">Chưa có thay đổi được lưu.</td></tr> }
             </tbody>
         </table>
     </div>
 </div>
+
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/bank-settings.mobile.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/bank-settings.mobile.js" asp-append-version="true"></script> }

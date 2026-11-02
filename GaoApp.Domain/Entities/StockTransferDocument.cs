@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -10,7 +10,7 @@ namespace GaoApp.Domain.Entities;
 /// Chỉ khi Confirmed mới sinh InventoryTransaction.
 /// </summary>
 [Table("StockTransferDocument")]
-public class StockTransferDocument : BaseStoreEntity
+public class StockTransferDocument : BaseStoreEntity, IAuditTrackedEntity
 {
     /// <summary>
     /// Số phiếu chuyển kho.

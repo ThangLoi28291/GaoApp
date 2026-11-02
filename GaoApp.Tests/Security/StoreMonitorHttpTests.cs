@@ -189,10 +189,22 @@ public sealed class StoreMonitorHttpTests
             else { var row=await db.StockTransferLines.SingleAsync(x => x.Id == lineId); row.Quantity=row.BaseQuantity=quantity; }
             await db.SaveChangesAsync();
         }
-        Task Delete(AppDbContext db) => controller switch {
-            "StockDocuments" => ReceiptService(db,tenant,101).DeleteLineAsync(lineId),
-            "StockCounts" => new StockCountService(new StockCountRepository(db),null!,null!,null!).DeleteLineAsync(lineId),
-            _ => new StockTransferService(new StockTransferRepository(db),null!,null!,null!).DeleteLineAsync(lineId) };
+        async Task Delete(AppDbContext db)
+        {
+            if (controller == "StockDocuments")
+            {
+                var documentVersion = await db.StockDocuments.AsNoTracking()
+                    .Where(x => x.Id == parentId).Select(x => x.RowVersion).SingleAsync();
+                var lineVersion = await db.StockDocumentLines.AsNoTracking()
+                    .Where(x => x.Id == lineId).Select(x => x.RowVersion).SingleAsync();
+                await ReceiptService(db,tenant,101).DeleteLineAsync(parentId, lineId, new()
+                    { RowVersion = Convert.ToBase64String(documentVersion), LineRowVersion = Convert.ToBase64String(lineVersion) });
+            }
+            else if (controller == "StockCounts")
+                await new StockCountService(new StockCountRepository(db),null!,null!,null!).DeleteLineAsync(lineId);
+            else
+                await new StockTransferService(new StockTransferRepository(db),null!,null!,null!).DeleteLineAsync(lineId);
+        }
         var args=new Dictionary<string,object?> { ["documentId"]=parentId, ["lineId"]=lineId };
         await using (var deleteDb=ActorDb(database,tenant,101))
         {
@@ -205,7 +217,9 @@ public sealed class StoreMonitorHttpTests
             await using (var writer=ActorDb(database,tenant,202)) await SetQuantity(writer,2);
             await MonitorMutation(staleDb,tenant,registry,303,controller,"DeleteLine",args,async () =>
             {
-                await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Delete(staleDb));
+                if (controller == "StockDocuments")
+                    await Assert.ThrowsAsync<GaoApp.Application.Common.ConcurrencyException>(() => Delete(staleDb));
+                else await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Delete(staleDb));
                 return new ConflictObjectResult(new { success=false });
             });
             Assert.Empty(registry.Snapshot(seed.StoreId).Events);
@@ -334,9 +348,11 @@ public sealed class StoreMonitorHttpTests
             else
             {
                 var line=await bDb.StockDocumentLines.AsNoTracking().SingleAsync(x => x.StockDocumentId == documentId); Assert.Equal(2m,line.Quantity);
-                var bRequest=new UpdateStockDocumentLineRequest { UnitId=unitId,Quantity=3 };
+                var documentVersion = await bDb.StockDocuments.AsNoTracking().Where(x => x.Id == documentId).Select(x => x.RowVersion).SingleAsync();
+                var bRequest=new UpdateStockDocumentLineRequest { UnitId=unitId,Quantity=3,
+                    RowVersion=Convert.ToBase64String(documentVersion), LineRowVersion=Convert.ToBase64String(line.RowVersion) };
                 await MonitorMutation(bDb,tenant,registry,202,"StockDocuments","UpdateLine",new() { ["documentId"]=documentId,["lineId"]=line.Id,["request"]=bRequest },async () =>
-                { await ReceiptService(bDb,tenant,202).UpdateLineAsync(line.Id,bRequest); return new OkObjectResult(new { success=true }); });
+                { await ReceiptService(bDb,tenant,202).UpdateLineAsync(documentId,line.Id,bRequest); return new OkObjectResult(new { success=true }); });
             }
             response.RecentReceipts=await serviceA.GetRecentAsync(documentId,default);
             Assert.Equal(3m,Assert.Single(response.RecentReceipts,x => x.CommandId == request.CommandId).CurrentQuantity);
@@ -427,7 +443,13 @@ public sealed class StoreMonitorHttpTests
             await filter.OnActionExecutionAsync(context, async () =>
             {
                 if (beforeService is not null) await beforeService();
-                await service.UpdateLineAsync(lineId, request);
+                // This observability race simulates a fresh editor after the
+                // preceding actor saved, rather than a stale browser request.
+                var documentVersion = await db.StockDocuments.AsNoTracking().Where(x => x.Id == documentId).Select(x => x.RowVersion).SingleAsync();
+                var lineVersion = await db.StockDocumentLines.AsNoTracking().Where(x => x.Id == lineId).Select(x => x.RowVersion).SingleAsync();
+                request.RowVersion = Convert.ToBase64String(documentVersion);
+                request.LineRowVersion = Convert.ToBase64String(lineVersion);
+                await service.UpdateLineAsync(documentId, lineId, request);
                 return new ActionExecutedContext(context, [], context.Controller) { Result=new OkObjectResult(new { success=true }) };
             });
         }
@@ -659,7 +681,13 @@ public sealed class StoreMonitorHttpTests
         var line = (await actor.JsonAsync(HttpMethod.Post, $"/admin/api/stock-documents/{receipt}/lines", new { productVariantId=store.VariantId, quantity=5, note="PRIVATE NOTE", unitCost=999 })).GetProperty("lineId").GetInt32();
         var added = await Last(); Assert.Contains("Gạo ST25", added.GetProperty("text").GetString()); Assert.Contains("5 kg", added.GetProperty("detail").GetString());
         Assert.DoesNotContain("PRIVATE", added.ToString()); Assert.DoesNotContain("999", added.GetProperty("detail").GetString());
-        await actor.JsonAsync(HttpMethod.Put, $"/admin/api/stock-documents/{receipt}/lines/{line}", new { quantity=8 });
+        await using (var versions = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var documentVersion = await versions.StockDocuments.Where(x => x.Id == receipt).Select(x => x.RowVersion).SingleAsync();
+            var lineVersion = await versions.StockDocumentLines.Where(x => x.Id == line).Select(x => x.RowVersion).SingleAsync();
+            await actor.JsonAsync(HttpMethod.Put, $"/admin/api/stock-documents/{receipt}/lines/{line}", new { quantity=8,
+                rowVersion=Convert.ToBase64String(documentVersion), lineRowVersion=Convert.ToBase64String(lineVersion) });
+        }
         Assert.Contains("5 kg → 8 kg", (await Last()).GetProperty("detail").GetString());
         await using (var db = app.Database.CreateTenantContext(store.StoreId))
         {
@@ -672,7 +700,13 @@ public sealed class StoreMonitorHttpTests
         using (var denied = await foreign.Http.DeleteAsync($"/admin/api/stock-documents/{receipt}/lines/{line}")) Assert.False(denied.IsSuccessStatusCode);
         using (var missing = await actor.Http.DeleteAsync($"/admin/api/stock-documents/{receipt+100000}/lines/{line}")) Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.Equal(beforeDenied, (await Last()).GetProperty("id").GetInt64());
-        await actor.JsonAsync(HttpMethod.Delete, $"/admin/api/stock-documents/{receipt}/lines/{line}");
+        await using (var versions = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var documentVersion = await versions.StockDocuments.Where(x => x.Id == receipt).Select(x => x.RowVersion).SingleAsync();
+            var lineVersion = await versions.StockDocumentLines.Where(x => x.Id == line).Select(x => x.RowVersion).SingleAsync();
+            await actor.JsonAsync(HttpMethod.Delete, $"/admin/api/stock-documents/{receipt}/lines/{line}", new {
+                rowVersion=Convert.ToBase64String(documentVersion), lineRowVersion=Convert.ToBase64String(lineVersion) });
+        }
         var deleted = await Last(); Assert.Contains("Gạo ST25", deleted.GetProperty("text").GetString()); Assert.Contains("Đã bỏ 8 kg", deleted.GetProperty("detail").GetString()); Assert.Equal($"receipt:{receipt}", deleted.GetProperty("workKey").GetString());
 
         var count = (await actor.JsonAsync(HttpMethod.Post, "/admin/api/stock-counts", new { warehouseId=store.WarehouseId })).GetProperty("id").GetInt32();
@@ -729,15 +763,16 @@ public sealed class StoreMonitorHttpTests
             legalEntityId = await db.Warehouses.Where(x => x.Id == store.WarehouseId).Select(x => x.LegalEntityId).SingleAsync();
             unitId = await db.ProductVariants.Where(x => x.Id == store.VariantId).Select(x => x.Product.BaseUnitId).SingleAsync();
         }
-        async Task<int> Receipt(FullApplicationFixture.Client actor) => (await actor.JsonAsync(HttpMethod.Post, "/admin/warehouse-receiving/receipts",
-            new { legalEntityId, warehouseId=store.WarehouseId, directReceiptReason="Khác" })).GetProperty("id").GetInt32();
-        var receipts = new[] { await Receipt(first), await Receipt(first), await Receipt(second) };
+        var titles = new string?[] { "Nhập gạo tháng 10", new string('ấ', 255), null };
+        async Task<int> Receipt(FullApplicationFixture.Client actor, string? title) => (await actor.JsonAsync(HttpMethod.Post, "/admin/warehouse-receiving/receipts",
+            new { legalEntityId, warehouseId=store.WarehouseId, directReceiptReason="Khác", documentTitle=title })).GetProperty("id").GetInt32();
+        var receipts = new[] { await Receipt(first, titles[0]), await Receipt(first, titles[1]), await Receipt(second, titles[2]) };
         async Task<string> Ticket(FullApplicationFixture.Client actor, string url) => WebUtility.HtmlDecode(
             Regex.Match(await actor.Http.GetStringAsync(url), "data-store-activity-ticket=\"([^\"]+)\"").Groups[1].Value);
         async Task Presence(FullApplicationFixture.Client actor, string ticket, Guid tab, string state="editing")
         {
             using var response = await actor.Http.PostAsync("/admin/api/store-activity/presence", new FormUrlEncodedContent(new Dictionary<string,string>
-            { ["ticket"]=ticket, ["tabId"]=tab.ToString(), ["state"]=state, ["workKey"]="receipt:999999", ["document"]="FORGED DOCUMENT" }));
+            { ["ticket"]=ticket, ["tabId"]=tab.ToString(), ["state"]=state, ["workKey"]="receipt:999999", ["document"]="FORGED DOCUMENT", ["documentTitle"]="FORGED TITLE" }));
             Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         }
         var firstTab = Guid.NewGuid(); var secondTab = Guid.NewGuid();
@@ -752,6 +787,14 @@ public sealed class StoreMonitorHttpTests
         Assert.All(people, x => Assert.DoesNotContain("FORGED", x.GetProperty("document").GetString()));
         var events = snapshot.GetProperty("events").EnumerateArray().ToArray();
         Assert.Equal(3, events.Length); Assert.Equal(3, events.Select(x => x.GetProperty("workKey").GetString()).Distinct().Count());
+        for (var i = 0; i < receipts.Length; i++)
+        {
+            var workKey = $"receipt:{receipts[i]}";
+            Assert.Equal(titles[i], Assert.Single(people, x => x.GetProperty("workKey").GetString() == workKey).GetProperty("documentTitle").GetString());
+            Assert.Equal(titles[i], Assert.Single(events, x => x.GetProperty("workKey").GetString() == workKey).GetProperty("documentTitle").GetString());
+        }
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+            Assert.Null(await StoreActivityWorkContext.Page(db, app.Stores[1].StoreId, "WarehouseReceiving", receipts[0], default));
         await Presence(first, firstTicket, firstTab, "leave");
         Assert.Contains((await monitor.JsonAsync(HttpMethod.Get, "/admin/api/store-activity/snapshot")).GetProperty("people").EnumerateArray(),
             x => x.GetProperty("workKey").GetString() == $"receipt:{receipts[1]}");
@@ -770,6 +813,7 @@ public sealed class StoreMonitorHttpTests
         var outside = Assert.Single((await foreign.JsonAsync(HttpMethod.Get, "/admin/api/store-activity/snapshot")).GetProperty("people").EnumerateArray());
         Assert.Equal(JsonValueKind.Null, outside.GetProperty("workKey").ValueKind);
         Assert.Equal(JsonValueKind.Null, outside.GetProperty("document").ValueKind);
+        Assert.Equal(JsonValueKind.Null, outside.GetProperty("documentTitle").ValueKind);
 
         int[] labelIds;
         await using (var db = app.Database.CreateTenantContext(store.StoreId))

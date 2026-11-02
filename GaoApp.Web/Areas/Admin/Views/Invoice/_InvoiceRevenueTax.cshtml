@@ -1,0 +1,60 @@
+@using System.Globalization
+@using GaoApp.Domain.Enums
+@using GaoApp.Application.Services.Invoices
+@model GaoApp.Application.DTOs.Invoices.InvoiceHeadDto
+@{
+    var editable = Model.CanEditDetails && !Model.IsAutoInvoiceGroup
+        && (Model.InvoiceIssuanceRoute != InvoiceIssuanceRoute.Automatic || Model.IsReplacementInvoice)
+        && (Model.InvoiceType is "2" or "02GTTT" || Model.LegacySourceId.HasValue)
+        && !Model.IsAdjustmentAmountInvoice && !Model.IsAdjustmentInfoInvoice;
+    var enabled = Model.RevenueTaxPercentage.HasValue;
+    var gross = InvoiceRevenueTaxPolicy.Gross(Model.Details.Select(x => x.TotalAmount));
+    var rate = Model.RevenueTaxPercentage ?? 1;
+    var onPayload = string.Equals(ViewContext.RouteData.Values["action"]?.ToString(), "ViettelPayload", StringComparison.OrdinalIgnoreCase);
+}
+@if (editable || enabled)
+{
+    <section class="invoice-tax-relief card shadow-sm border-0 mb-3" data-invoice-tax-relief data-base-amount="@gross.ToString("0", CultureInfo.InvariantCulture)" data-saved-rate="@(Model.RevenueTaxPercentage ?? 0)" aria-labelledby="invoiceTaxTitle">
+        <div class="card-body">
+            <h2 class="fs-6 fw-semibold mb-2" id="invoiceTaxTitle">Giảm thuế theo doanh thu</h2>
+            <p class="small text-muted mb-3">Giảm 20% mức tỷ lệ tính thuế theo Nghị định 174/2025/NĐ-CP, Nghị quyết 204/2025/QH15. Áp dụng khi toàn bộ hàng hóa, dịch vụ trên hóa đơn bán hàng thuộc diện được giảm thuế.</p>
+            @if (editable)
+            {
+                <form asp-area="Admin" asp-controller="Invoice" asp-action="UpdateRevenueTax" method="post" data-tax-form>
+                    <input type="hidden" name="InvoiceHeadId" value="@Model.Id" />
+                    <input type="hidden" name="ExpectedVersion" value="@Model.Version" />
+                    <input type="hidden" name="returnToPayload" value="@onPayload.ToString().ToLowerInvariant()" />
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="invoiceTaxEnabled" name="Enabled" value="true" checked="@enabled" data-tax-enabled aria-controls="invoiceTaxControls" />
+                        <label class="form-check-label fw-semibold" for="invoiceTaxEnabled">Giảm 20% mức tỷ lệ thuế theo doanh thu</label>
+                        <input type="hidden" name="Enabled" value="false" />
+                    </div>
+                    <div id="invoiceTaxControls" hidden="@(!enabled)" data-tax-controls>
+                        <label class="form-label" for="invoiceTaxPercentage">Tỷ lệ % theo doanh thu trước giảm</label>
+                        <select class="form-select" id="invoiceTaxPercentage" name="Percentage" disabled="@(!enabled)" required="@enabled" data-tax-percentage>
+                            @foreach (var percentage in new[] { 1, 2, 3, 5 })
+                            {
+                                <option value="@percentage" selected="@(rate == percentage)">@percentage%</option>
+                            }
+                        </select>
+                        <p class="small text-muted mt-2" data-tax-explanation>Ví dụ tỷ lệ 1%: số tiền giảm bằng 0,2% tiền hàng.</p>
+                    </div>
+                    <dl class="invoice-tax-relief__totals">
+                        <div><dt>Tiền hàng trước giảm</dt><dd>@gross.ToString("N0") đ</dd></div>
+                        <div><dt>Tiền thuế được giảm</dt><dd><output data-tax-reduction>@Model.RevenueTaxReductionAmount.ToString("N0")</output> đ</dd></div>
+                        <div><dt>Thanh toán sau giảm</dt><dd><output data-tax-total>@Model.GrandTotal.ToString("N0")</output> đ</dd></div>
+                    </dl>
+                    <div class="invoice-tax-relief__actions">
+                        <small class="text-muted">Lưu lựa chọn trước khi xem trước hoặc phát hành hóa đơn.</small>
+                        <button type="submit" class="btn btn-primary">Lưu giảm thuế</button>
+                    </div>
+                    <p class="small text-warning mt-2 mb-0" data-tax-unsaved hidden role="status">Chưa lưu thay đổi giảm thuế. Lưu lại trước khi xem PDF nháp hoặc phát hành.</p>
+                </form>
+            }
+            else
+            {
+                <p class="mb-0">Tỷ lệ trước giảm: <strong>@rate%</strong> · Đã giảm: <strong>@Model.RevenueTaxReductionAmount.ToString("N0") đ</strong></p>
+            }
+        </div>
+    </section>
+}

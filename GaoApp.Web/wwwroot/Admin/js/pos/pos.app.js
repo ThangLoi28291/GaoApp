@@ -103,9 +103,6 @@ const invoiceIntentOrderText =
 const invoiceIntentErrorBox =
     document.getElementById('invoiceIntentErrorBox');
 
-const btnInvoiceIntentManual =
-    document.getElementById('btnInvoiceIntentManual');
-
 const btnInvoiceIntentAutomatic =
     document.getElementById('btnInvoiceIntentAutomatic');
 
@@ -124,6 +121,11 @@ let pendingPostPaymentPrintOrderId = null;
 let pendingAskBeforePrintingReceipt = false;
 let pendingReceiptPrint = null;
 let invoiceIntentBusy = false;
+const receiptPrintQueue = [];
+const postPaymentPrintOrders = new Set();
+const preparedReceiptPrintWindows = new Map();
+let receiptPrintActive = false;
+let receiptPrintClosing = false;
 const checkoutFeedback = window.PosCheckoutFeedback?.create({
     modal: invoiceIntentModalEl, submit: submitInvoiceIntent,
     choosePrint: chooseReceiptPrint,
@@ -479,21 +481,9 @@ function setInvoiceIntentBusy(busy) {
     });
     if (!invoiceIntentBusy && pendingReceiptPrint) document.getElementById('btnReceiptDoNotPrint')?.focus();
 
-    if (btnInvoiceIntentManual) {
-        btnInvoiceIntentManual.disabled =
-            invoiceIntentBusy;
-    }
-
     if (btnInvoiceIntentAutomatic) {
         btnInvoiceIntentAutomatic.disabled =
             invoiceIntentBusy;
-    }
-
-    if (btnInvoiceIntentManual) {
-        btnInvoiceIntentManual.classList.toggle(
-            'disabled',
-            invoiceIntentBusy
-        );
     }
 
     if (btnInvoiceIntentAutomatic) {
@@ -504,11 +494,77 @@ function setInvoiceIntentBusy(busy) {
     }
 }
 
-function printReceiptAfterInvoiceIntent(
+function prepareReceiptPrint(orderId, askBeforePrintingReceipt = false) {
+    const id = Number(orderId);
+    if (!Number.isInteger(id) || id <= 0 || askBeforePrintingReceipt || preparedReceiptPrintWindows.has(id)) return;
+    try {
+        const context = document.getElementById('posShell')?.dataset;
+        if (!context || window.PosPrinting.preferences(context).mode !== 'browser') return;
+        const popup = window.open('about:blank', '_blank');
+        preparedReceiptPrintWindows.set(id, popup);
+        if (!popup) return; // Background confirmations retain the embedded fallback.
+        // Native Chrome printing needs a real tab opened during the cashier's
+        // gesture. Helper printing uses an invisible paper frame like POS Shift.
+        popup.document.title = 'Đang hoàn tất đơn';
+        popup.document.body.textContent = 'Đang hoàn tất đơn và chuẩn bị in bill…';
+    } catch (_) { /* Printer setup cannot prevent collecting or saving a sale. */ }
+}
+
+function discardReceiptPrint(orderId) {
+    const id = Number(orderId), popup = preparedReceiptPrintWindows.get(id);
+    preparedReceiptPrintWindows.delete(id);
+    if (popup && !popup.closed) window.GaoPrintLifecycle?.close(popup);
+}
+
+async function printReceiptAfterInvoiceIntent(
     orderId,
     preopenedWindow,
     postPayment = false
 ) {
+    preopenedWindow = preopenedWindow || preparedReceiptPrintWindows.get(Number(orderId));
+    preparedReceiptPrintWindows.delete(Number(orderId));
+    if (postPayment === true) {
+        try {
+            if (window.PosOffline?.print(orderId, true, preopenedWindow)) return;
+            const deviceContext = document.getElementById('posShell')?.dataset;
+            if (deviceContext && window.PosPrinting.preferences(deviceContext).mode === 'helper') {
+                const setup = await getJson('/admin/pos/receipt/' + encodeURIComponent(orderId) + '?data=true');
+                if (Number(setup?.receipt?.orderId) !== Number(orderId) || Number(setup.storeId) !== Number(deviceContext.storeId))
+                    throw new Error('Không tải được bill đúng đơn và cửa hàng đã thanh toán.');
+                const printContext = { ...setup, storeId: deviceContext.storeId, terminalId: deviceContext.terminalId };
+                window.PosPrinting.openLocal(setup.receipt, printContext, setup.templates, false, true, preopenedWindow);
+                return;
+            }
+            // Native Chrome printing retains the dedicated receipt tab opened
+            // during the cashier gesture, and closes it only after printing.
+            const receiptUrl = '/admin/pos/receipt/' + encodeURIComponent(orderId);
+            let printFrame = null;
+            if (typeof window.BroadcastChannel === 'function' && (!preopenedWindow || preopenedWindow.closed)) {
+                printFrame = document.createElement('iframe');
+                printFrame.dataset.posPaymentOrder = String(orderId);
+                printFrame.title = 'In bill sau thanh toán'; printFrame.setAttribute('aria-hidden', 'true');
+                printFrame.style.cssText = 'position:fixed;left:-10000px;top:0;width:850px;height:850px;border:0';
+                document.body.appendChild(printFrame);
+            }
+            const printWindow = printFrame?.contentWindow || preopenedWindow;
+            const paymentUrl = window.PosPrinting.postPaymentUrl?.(receiptUrl, Number(orderId), printWindow) || receiptUrl;
+            if (paymentUrl !== receiptUrl) {
+                if (preopenedWindow && !preopenedWindow.closed) preopenedWindow.location.replace(paymentUrl);
+                else printFrame.src = paymentUrl;
+                return;
+            }
+            printFrame?.remove();
+            // Older browsers without the one-use handoff keep the existing local
+            // transport fallback. Linux Helper checkout uses the direct branch above.
+            const setup = await getJson('/admin/pos/receipt/' + encodeURIComponent(orderId) + '?data=true');
+            if (Number(setup?.receipt?.orderId) !== Number(orderId)) throw new Error('Không tải được bill đúng đơn đã thanh toán.');
+            window.PosPrinting.openLocal(setup.receipt, setup, setup.templates, false, true, preopenedWindow);
+        } catch (error) {
+            if (preopenedWindow && !preopenedWindow.closed) window.GaoPrintLifecycle?.close(preopenedWindow);
+            showError?.(`In bill đơn #${orderId}: ${error.message || 'Chưa gửi được lệnh in.'}`);
+        }
+        return;
+    }
     if (window.PosOffline?.print(orderId, postPayment, preopenedWindow)) {
         return;
     }
@@ -516,8 +572,7 @@ function printReceiptAfterInvoiceIntent(
     const receiptUrl =
         '/admin/pos/receipt/' +
         encodeURIComponent(orderId);
-    const printUrl = postPayment === true
-        ? window.PosPrinting.postPaymentUrl(receiptUrl, orderId) : receiptUrl;
+    const printUrl = receiptUrl;
 
     if (
         preopenedWindow &&
@@ -555,20 +610,7 @@ async function submitInvoiceIntent(route) {
 
     clearInvoiceIntentError();
 
-    // Mở tab trắng ngay trong user gesture.
-    // Sau await fetch browser vẫn cho ta điều hướng tab này.
-    const printWindow = pendingAskBeforePrintingReceipt ? null :
-        window.open(
-            'about:blank',
-            '_blank'
-        );
-
-    if (printWindow) {
-        try {
-            printWindow.opener = null;
-        } catch (_) {
-        }
-    }
+    const printWindow = null;
 
     setInvoiceIntentBusy(true);
 
@@ -585,18 +627,21 @@ async function submitInvoiceIntent(route) {
         const askPrint = (postPayment || pendingAskBeforePrintingReceipt) && (typeof data?.askBeforePrintingReceipt === 'boolean'
             ? data.askBeforePrintingReceipt : pendingAskBeforePrintingReceipt);
         if (askPrint) {
+            discardReceiptPrint(orderId);
             try { printWindow?.close(); } catch (_) { }
             pendingReceiptPrint = { orderId: Number(data?.orderId) || orderId, postPayment };
             checkoutFeedback.askPrint();
+            invoiceIntentModal?.show();
         } else {
             pendingAskBeforePrintingReceipt = false;
-            printReceiptAfterInvoiceIntent(Number(data?.orderId) || orderId, printWindow, postPayment);
+            await printReceiptAfterInvoiceIntent(Number(data?.orderId) || orderId, printWindow, postPayment);
         }
         // Keep the saved choice and visible error/retry controls if opening print fails.
         pendingPostPaymentPrintOrderId = null;
         pendingInvoiceIntentOrderId = null;
-        if (!askPrint) invoiceIntentModal?.hide();
+        if (!askPrint) finishReceiptPrint();
     } catch (error) {
+        discardReceiptPrint(orderId);
         try {
             printWindow?.close();
         } catch (_) {
@@ -606,13 +651,16 @@ async function submitInvoiceIntent(route) {
             error?.message ||
             'Không thể lưu phương thức phát hành hóa đơn. Vui lòng thử lại.'
         );
+        checkoutFeedback?.showRetry();
+        invoiceIntentModal?.show();
     } finally {
         setInvoiceIntentBusy(false);
+        if (!pendingInvoiceIntentOrderId && !pendingReceiptPrint && !receiptPrintClosing) releaseReceiptPrint();
         restorePendingInvoiceIntent();
     }
 }
 
-function chooseReceiptPrint(shouldPrint) {
+async function chooseReceiptPrint(shouldPrint) {
     if (invoiceIntentBusy || !pendingReceiptPrint) return;
     clearInvoiceIntentError();
     setInvoiceIntentBusy(true);
@@ -621,26 +669,57 @@ function chooseReceiptPrint(shouldPrint) {
         if (shouldPrint) {
             printWindow = window.open('about:blank', '_blank');
             if (!printWindow) throw new Error('Trình duyệt đang chặn cửa sổ in. Cho phép cửa sổ bật lên rồi bấm In bill để thử lại.');
-            printReceiptAfterInvoiceIntent(pendingReceiptPrint.orderId, printWindow, pendingReceiptPrint.postPayment);
+            await printReceiptAfterInvoiceIntent(pendingReceiptPrint.orderId, printWindow, pendingReceiptPrint.postPayment);
         }
+        else discardReceiptPrint(pendingReceiptPrint.orderId);
         pendingReceiptPrint = null;
-        invoiceIntentModal?.hide();
+        finishReceiptPrint();
     } catch (error) {
         try { printWindow?.close(); } catch (_) { }
         showInvoiceIntentError(error?.message || 'Không mở được bill. Vui lòng thử lại.');
     } finally {
         setInvoiceIntentBusy(false);
+        if (!pendingInvoiceIntentOrderId && !pendingReceiptPrint && !receiptPrintClosing) releaseReceiptPrint();
     }
 }
 
 function restorePendingInvoiceIntent() {
     const orderId = window.PosOffline?.pendingInvoiceIntentOrderId();
-    if (orderId && !invoiceIntentBusy && Number(pendingInvoiceIntentOrderId) !== Number(orderId))
+    // The journal notifies before returning a successful finalize response.
+    // Its checkout owner must select the default invoice and print once, with
+    // the drawer intent; recovery must not start a separate history print.
+    if (!orderId || posState?.network?.busyScopes?.has?.('checkout') ||
+        postPaymentPrintOrders.has(Number(orderId))) return;
+    if (orderId && !receiptPrintActive && !invoiceIntentBusy && Number(pendingInvoiceIntentOrderId) !== Number(orderId))
         openReceiptPrint(orderId, '80', true, false, null, window.PosOffline?.receiptPrintPreference?.(orderId));
 }
 
 function openReceiptPrint(orderId, size, autoPrint, postPayment = false, cashSummary = null, askBeforePrintingReceipt = false) {
-    if (pendingReceiptPrint) return;
+    if (!Number.isInteger(Number(orderId)) || Number(orderId) <= 0) return;
+    if (postPayment && postPaymentPrintOrders.has(Number(orderId))) return;
+    if (postPayment) postPaymentPrintOrders.add(Number(orderId));
+    receiptPrintQueue.push([orderId, size, autoPrint, postPayment, cashSummary, askBeforePrintingReceipt]);
+    runReceiptPrintQueue();
+}
+
+function runReceiptPrintQueue() {
+    if (receiptPrintActive || !receiptPrintQueue.length) return;
+    receiptPrintActive = true;
+    try { startReceiptPrint(...receiptPrintQueue.shift()); }
+    catch (error) { showError?.(error.message || 'Chưa mở được bill.'); releaseReceiptPrint(); }
+}
+
+function releaseReceiptPrint() {
+    receiptPrintActive = false;
+    if (receiptPrintQueue.length) setTimeout(runReceiptPrintQueue, 0);
+}
+
+function finishReceiptPrint() {
+    if (invoiceIntentModalEl?.classList.contains('show')) { receiptPrintClosing = true; invoiceIntentModal.hide(); }
+    else { checkoutFeedback?.complete(); if (!invoiceIntentBusy) releaseReceiptPrint(); }
+}
+
+function startReceiptPrint(orderId, size, autoPrint, postPayment = false, cashSummary = null, askBeforePrintingReceipt = false) {
     const targetOrderId =
         Number(orderId);
 
@@ -652,8 +731,14 @@ function openReceiptPrint(orderId, size, autoPrint, postPayment = false, cashSum
     }
 
     pendingAskBeforePrintingReceipt = askBeforePrintingReceipt === true || (postPayment === true && window.PosOffline?.receiptPrintPreference?.(targetOrderId) === true);
-    if (window.PosOffline?.invoiceIntentStatus(targetOrderId) && !pendingAskBeforePrintingReceipt) {
-        printReceiptAfterInvoiceIntent(targetOrderId, null, postPayment === true);
+    const knownIntent = window.PosOffline?.invoiceIntentStatus(targetOrderId);
+    const pendingOfflineIntent = Number(window.PosOffline?.pendingInvoiceIntentOrderId()) === targetOrderId;
+    const alreadySelected = knownIntent || !postPayment && !pendingOfflineIntent;
+    // A reprint preserves an already selected invoice route, including manual invoices.
+    if (alreadySelected && !pendingAskBeforePrintingReceipt) {
+        void printReceiptAfterInvoiceIntent(targetOrderId, null, postPayment === true)
+            .catch(error => showError?.(error.message || 'Chưa mở được bill.'))
+            .finally(releaseReceiptPrint);
         return;
     }
 
@@ -661,10 +746,10 @@ function openReceiptPrint(orderId, size, autoPrint, postPayment = false, cashSum
     // nếu modal không tồn tại thì không được in bỏ qua intent.
     if (!invoiceIntentModal) {
         showError?.(
-            'Không tải được bước chọn hóa đơn. ' +
+            'Không tải được bước hoàn tất đơn. ' +
             'Vui lòng tải lại màn hình POS.'
         );
-
+        releaseReceiptPrint();
         return;
     }
 
@@ -679,21 +764,17 @@ function openReceiptPrint(orderId, size, autoPrint, postPayment = false, cashSum
 
     clearInvoiceIntentError();
     setInvoiceIntentBusy(false);
-    checkoutFeedback?.begin(postPayment === true ? cashSummary : null);
-    if (window.PosOffline?.invoiceIntentStatus(targetOrderId) && pendingAskBeforePrintingReceipt) {
+    checkoutFeedback?.begin(postPayment === true ? cashSummary : null, targetOrderId);
+    if (alreadySelected && pendingAskBeforePrintingReceipt) {
         pendingReceiptPrint = { orderId: targetOrderId, postPayment: postPayment === true };
         pendingInvoiceIntentOrderId = null;
         pendingPostPaymentPrintOrderId = null;
         checkoutFeedback.askPrint();
+        invoiceIntentModal.show();
+    } else {
+        // The approved default is automatic consumer invoicing; no question dialog.
+        void submitInvoiceIntent(1);
     }
-
-    posState.ui.modals =
-        posState.ui.modals || {};
-
-    posState.ui.modals.invoiceIntent =
-        true;
-
-    invoiceIntentModal.show();
 }
 
         function nowIso() {
@@ -886,8 +967,10 @@ function hasAnyModalOpen() {
             posState.business.currentOrderId = screen?.currentCart?.currentOrderId || null;
             posState.business.heldOrders = Array.isArray(screen?.heldOrders) ? screen.heldOrders : [];
 
-            posState.offline.isOnline = true;
-            posState.offline.lastSyncAt = nowIso();
+            if (options?.preserveNetworkState !== true) {
+                posState.offline.isOnline = true;
+                posState.offline.lastSyncAt = nowIso();
+            }
 
             renderScreen(screen, posState);
             renderNetworkBanner(posState);
@@ -1375,6 +1458,8 @@ function hasAnyModalOpen() {
                 showError,
                 formatMoney,
                 openReceiptPrint,
+                prepareReceiptPrint,
+                discardReceiptPrint,
                 openPaymentModal: function () {
                     return posPayment?.openPaymentModal?.();
                 },
@@ -1417,6 +1502,8 @@ function hasAnyModalOpen() {
                     return posOrder?.openConfirmModal?.(options);
                 },
                 openReceiptPrint,
+                prepareReceiptPrint,
+                discardReceiptPrint,
                 requestScreenRefresh,
                 loadScreen,
                 applyDraftActionSuccess,
@@ -1690,13 +1777,6 @@ function hasAnyModalOpen() {
             });
         }
         function bindInvoiceIntentEvents() {
-    btnInvoiceIntentManual
-        ?.addEventListener(
-            'click',
-            async function () {
-                await submitInvoiceIntent(2);
-            });
-
     btnInvoiceIntentAutomatic
         ?.addEventListener(
             'click',
@@ -1726,10 +1806,25 @@ function hasAnyModalOpen() {
                     false;
 
                 clearInvoiceIntentError();
+                receiptPrintClosing = false;
+                if (!pendingInvoiceIntentOrderId && !pendingReceiptPrint) releaseReceiptPrint();
                 focusBarcodeInput();
             });
 }
 function bindModuleEvents() {
+    window.addEventListener('pos:print-closed', () => { if (!hasAnyModalOpen()) focusBarcodeInput(); });
+    window.addEventListener('pos:print-error', event => {
+        const detail = event.detail || {};
+        const frame = document.querySelector(`iframe[data-pos-payment-order="${Number(detail.orderId)}"]`);
+        if (frame) {
+            // A failed automatic print must not cover the cashier's next sale.
+            // Keep the warning; a deliberate reprint can still open its own page.
+            window.GaoPrintLifecycle?.close(frame.contentWindow);
+            if (frame.isConnected) frame.remove();
+        }
+        const message = String(detail.message || 'Chưa xác nhận được kết quả in.').replace(/\r?\n/g, ' ');
+        showError?.(`In bill đơn #${detail.orderId || '?'}: ${message}`);
+    });
     posCustomer.bindEvents();
     posPayment.bindEvents();
     posBarcode.bindEvents();
@@ -1885,7 +1980,9 @@ function bindModuleEvents() {
             bindRuntimeEvents();
             bindMetaPanelToggle();
             keyboard.bind();
-            posState.offline.isOnline = true;
+            const initialConnection = window.PosOffline?.status?.();
+            posState.offline.isOnline = typeof initialConnection?.connected === 'boolean'
+                ? initialConnection.connected : true;
             renderNetworkBanner(posState);
             clearAllRetryUi();
 
@@ -1900,13 +1997,23 @@ function bindModuleEvents() {
                 return;
             }
 
-            await requestScreenRefresh({
-                reason: 'init',
-                silent: false,
-                force: true,
-                focusBarcode: true,
-                scope: 'full'
-            });
+            // Offline initialization has already checked the account, journal and
+            // writer ownership and obtained this screen. Avoid repeating the same
+            // full read before the first cart render; pending local work is supplied
+            // by the journal accessor instead of an older server snapshot.
+            const initialScreen = window.PosOffline?.initialScreen?.();
+            if (initialScreen) {
+                applyScreenData(initialScreen, { focusBarcode: true, preserveNetworkState: true });
+                markScreenRefreshCompleted('init-bootstrap', 'full');
+            } else {
+                await requestScreenRefresh({
+                    reason: 'init',
+                    silent: false,
+                    force: true,
+                    focusBarcode: true,
+                    scope: 'full'
+                });
+            }
             restorePendingInvoiceIntent();
 
             initSignalR();

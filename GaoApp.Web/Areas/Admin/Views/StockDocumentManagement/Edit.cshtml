@@ -53,13 +53,14 @@
     var hasViewCostPermission = (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: PermissionCodes.Purchase.Order.ViewCost)).Succeeded;
     var canViewCost = hasApprovePermission || hasViewCostPermission;
-    var canViewAudit = (await AuthorizationService
+    var canViewAudit = canViewCost && (await AuthorizationService
         .AuthorizeAsync(
             User,
             resource: null,
             policyName: PermissionCodes.System.AuditLog.View)).Succeeded;
     var showCommercialReview = hasApprovePermission &&
         Model.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Confirmed;
+    var documentNote = StockDocumentNotePresentation.FromNote(Model.Note);
     var receiptHeading = !string.IsNullOrWhiteSpace(Model.DocumentTitle) ? Model.DocumentTitle
         : isPurchaseOrderReceipt && !string.IsNullOrWhiteSpace(Model.PurchaseOrderTitle)
         ? $"Nhận hàng — {Model.PurchaseOrderTitle}"
@@ -76,7 +77,7 @@
     var provisionalEnabled = Configuration.GetValue<bool>("ReceivingWorkbench:ProvisionalItemsEnabled");
     var unresolvedProvisionalCount = Model.UnresolvedProvisionalCount;
     var catalogReviewCount = managerLines.Count(x => x.RequiresCatalogReview);
-    var canApproveWithoutOutsideBlocker = canApprove && pendingOutsideCount == 0 &&
+    var canApproveWithoutOutsideBlocker = canApprove && !Model.HasRevisionRequest && pendingOutsideCount == 0 &&
         unresolvedProvisionalCount == 0 && catalogReviewCount == 0;
     ViewData["CanEditReceiptPhysical"] = canEditLines;
     ViewData["CanManageInputInvoiceMapping"] = canManageInputInvoiceMapping;
@@ -85,6 +86,9 @@
     var canEditSellingPrices = showCommercialReview && (await AuthorizationService
         .AuthorizeAsync(User, resource: null, policyName: PermissionCodes.Catalog.Product.Update)).Succeeded;
     ViewData["CanEditSellingPrices"] = canEditSellingPrices;
+    ViewData["CanRecordReceiptPayment"] = (await AuthorizationService
+        .AuthorizeAsync(User, null, PermissionCodes.Report.Profit.View)).Succeeded &&
+        (await AuthorizationService.AuthorizeAsync(User, null, PermissionCodes.Report.Treasury.Manage)).Succeeded;
 
     string statusText = Model.Status switch
     {
@@ -108,24 +112,32 @@
 }
 
 @section VendorStyles {
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <link href="~/lib/select2/select2.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/lib/select2/select2-bootstrap-5-theme.min.css" rel="stylesheet"  asp-append-version="true" />
 
-    <link href="~/admin/css/stock-document-management.css" rel="stylesheet" />
+    <link href="~/admin/css/stock-document-management.css" rel="stylesheet"  asp-append-version="true" />
     <link href="~/admin/css/purchase-receipt-approval.css" rel="stylesheet" asp-append-version="true" />
     <link href="~/admin/css/receipt-selling-prices.css" rel="stylesheet" asp-append-version="true" />
     <link href="~/admin/css/purchase-receipt-history.css" rel="stylesheet" asp-append-version="true" />
     @if (provisionalEnabled) { <link href="~/admin/css/provisional-receiving.css" rel="stylesheet" asp-append-version="true" /> }
+    <link href="~/admin/css/receipt-approval-workspace.css" rel="stylesheet" asp-append-version="true" />
+}
+
+@section PageStyles {
+    <link href="~/Admin/css/receipt-management.mobile.css" rel="stylesheet" asp-append-version="true" />
 }
 
 <div class="container-fluid flex-grow-1 container-p-y sd-receipt-page">
 
     <input type="hidden" id="StockDocumentId" value="@Model.Id" />
     @{ ViewData["ReceiptDocumentActionsId"] = Model.Id; }
-    @await Html.PartialAsync("_ReceiptDocumentActions")
-    @if (canPrintLabels && Model.Status != StockDocumentStatus.Cancelled)
+    @if (!showCommercialReview)
     {
-        @await Html.PartialAsync("_ProductLabelReceiptLink", Model.Id)
+        @await Html.PartialAsync("_ReceiptDocumentActions")
+        @if (canPrintLabels && Model.Status != StockDocumentStatus.Cancelled)
+        {
+            @await Html.PartialAsync("_ProductLabelReceiptLink", Model.Id)
+        }
     }
     @await Html.PartialAsync("_ReceiptIntake", Model.Id)
     <input type="hidden" id="CurrentLegalEntityId" value="@Model.LegalEntityId" />
@@ -141,22 +153,6 @@
     <input type="hidden" id="CanApproveCommercial" value="@canApprove.ToString().ToLower()" />
     <input type="hidden" id="CanViewCost" value="@canViewCost.ToString().ToLower()" />
     <input type="hidden" id="IsConfirmedReceipt" value="@(Model.Status == StockDocumentStatus.Confirmed ? "true" : "false")" />
-    @if (hasApprovePermission && Model.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Confirmed)
-    {
-        <div id="receiptInvoiceFollowUp" class="card p-3 mb-3">
-            <div class="d-flex align-items-center flex-wrap gap-3">
-                <strong>Theo dõi hóa đơn đầu vào</strong>
-                <span id="receiptInvoiceFollowUpBadge" class="badge bg-label-secondary">Đang tải…</span>
-                <button type="button" id="btnEndInvoiceWaiting" class="btn btn-sm btn-outline-secondary" hidden>Kết thúc chờ hóa đơn</button>
-                <button type="button" id="btnReviewInvoice" class="btn btn-sm btn-primary" hidden>Xác nhận đã kiểm tra</button>
-            </div>
-            <div id="receiptInvoiceReviewDetails" class="small mt-2" hidden></div>
-            @if (Model.Status == StockDocumentStatus.Confirmed)
-            {
-                <p class="small text-muted mb-0 mt-2">Đã ghi nhận kho và giá nhập. Khi quản lý xác nhận đã kiểm tra, các dòng nhập sẽ được ghi tăng tồn hóa đơn theo đúng đơn vị gốc và giá vốn của thẻ kho; XML chỉ hỗ trợ đối chiếu.</p>
-            }
-        </div>
-    }
     @if (canApprove)
     {
         <form id="managerOutsidePoAntiforgery" class="d-none">@Html.AntiForgeryToken()</form>
@@ -167,8 +163,53 @@
         <form id="provisionalReceivingAntiforgery" class="d-none">@Html.AntiForgeryToken()</form>
     }
 
-    <div class="card sd-card mb-3">
+    <div class="card sd-card mb-3 @(showCommercialReview ? "sd-review-header" : "")">
         <div class="card-body">
+            @if (showCommercialReview)
+            {
+                <div class="sd-review-topline">
+                    <div class="sd-review-identity">
+                        <div class="sd-review-badges">
+                            <span class="badge @(Model.Status == StockDocumentStatus.Confirmed ? "bg-label-success" : "bg-label-warning")">@statusText</span>
+                            <span class="small text-muted">@Model.DocumentNo</span>
+                            <span class="small text-muted">@(isPurchaseOrderReceipt ? "Theo đơn đặt hàng" : "Nhập trực tiếp")</span>
+                        </div>
+                        <h4 class="mb-0" data-receipt-document-title>@receiptHeading</h4>
+                    </div>
+                    <div class="sd-review-header-actions">
+                        <a href="@Url.Action("Index", "StockDocumentManagement", new { area = "Admin" })" class="btn btn-outline-secondary btn-sm">
+                            <i class="bx bx-arrow-back me-1" aria-hidden="true"></i>Danh sách phiếu
+                        </a>
+                        <details class="sd-review-more">
+                            <summary class="sd-review-more-summary"><i class="bx bx-dots-horizontal-rounded" aria-hidden="true"></i>Thao tác khác</summary>
+                            <div id="receiptReviewOtherActions">
+                                @if (canSplitReceipt)
+                                {
+                                    <a class="btn btn-outline-primary" href="@Url.Action("Split", "StockDocumentManagement", new { area = "Admin", id = Model.Id })">Tách phiếu nhập</a>
+                                }
+                            </div>
+                        </details>
+                    </div>
+                </div>
+                <dl class="sd-review-meta">
+                    <div><dt>Nhà cung cấp</dt><dd id="receiptReviewSupplier">@(Model.SupplierName ?? "Chưa chọn nhà cung cấp")</dd></div>
+                    <div><dt>Kho nhận</dt><dd id="receiptReviewWarehouse">@Model.WarehouseName</dd></div>
+                    <div><dt>Pháp nhân</dt><dd id="receiptReviewLegalEntity">@Model.LegalEntityName</dd></div>
+                    <div><dt>Gửi duyệt lúc</dt><dd>@(Model.SubmittedAtUtc.HasValue ? Model.SubmittedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") : "Chưa gửi duyệt")</dd></div>
+                    @if (isPurchaseOrderReceipt)
+                    {
+                        <div><dt>Đơn đặt hàng</dt><dd>@(Model.PurchaseOrderNumber ?? "Chưa có số đơn")</dd></div>
+                    }
+                </dl>
+                @await Html.PartialAsync("_DocumentNote", documentNote)
+                @if (canApprove)
+                {
+                    <button type="button" id="btnOpenRejectModal" hidden>Trả về chỉnh sửa</button>
+                    <button type="button" id="btnOpenApproveModal" disabled="@(!canApproveWithoutOutsideBlocker)" hidden>Duyệt và ghi sổ</button>
+                }
+            }
+            else
+            {
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
                 <div>
                     <h4 class="mb-1" data-receipt-document-title>@receiptHeading</h4>
@@ -222,9 +263,10 @@
                     }
                 </div>
             </div>
+            }
             @if (Model.Status == StockDocumentStatus.PendingApproval && Model.HasRevisionRequest)
             {
-                <div class="alert alert-danger border-0 rounded-4 mb-3">
+                <div class="alert alert-warning border-0 rounded-3 mt-3 mb-0 sd-review-revision-request" id="receiptRevisionRequest" tabindex="-1">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
                         <div>
                             <div class="fw-bold mb-1">
@@ -242,7 +284,7 @@
                             {
                                 <div class="small mt-1">
                                     Gửi lúc:
-                                    @Model.RevisionRequestedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                    @Model.RevisionRequestedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")
                                 </div>
                             }
                         </div>
@@ -259,7 +301,7 @@
                                 <button type="button"
                                         class="btn btn-outline-secondary"
                                         id="btnIgnoreRevisionRequest">
-                                    Bỏ qua yêu cầu
+                                    Từ chối yêu cầu có lý do
                                 </button>
                             </div>
                         }
@@ -268,47 +310,7 @@
             }
             @if (showCommercialReview)
             {
-                <div class="sd-manager-summary" aria-label="Tóm tắt phiếu nhận">
-                    <div class="sd-manager-summary-item">
-                        <span>Số dòng</span>
-                        <strong>@managerLines.Count</strong>
-                    </div>
-                    @if (canViewCost)
-                    {
-                        <div class="sd-manager-summary-item">
-                            <span>Tổng tiền</span>
-                            <strong id="txtTotalAmount">@Model.TotalAmount.ToString("N0") đ</strong>
-                        </div>
-                    }
-                    @if (overdeliveryCount > 0)
-                    {
-                        <div class="sd-manager-summary-item is-warning">
-                            <span>Vượt PO</span>
-                            <strong>@overdeliveryCount dòng</strong>
-                        </div>
-                    }
-                    @if (pendingOutsideCount > 0)
-                    {
-                        <div class="sd-manager-summary-item is-warning">
-                            <span>Ngoài PO</span>
-                            <strong>@pendingOutsideCount chờ xử lý</strong>
-                        </div>
-                    }
-                    @if (unresolvedProvisionalCount > 0)
-                    {
-                        <div class="sd-manager-summary-item is-warning">
-                            <span>Chưa có danh mục</span>
-                            <strong>@unresolvedProvisionalCount chờ xử lý</strong>
-                        </div>
-                    }
-                    @if (catalogReviewCount > 0)
-                    {
-                        <div class="sd-manager-summary-item is-warning">
-                            <span>Sản phẩm tạm</span>
-                            <strong>@catalogReviewCount cần hoàn thiện</strong>
-                        </div>
-                    }
-                </div>
+                <input type="hidden" id="txtTotalAmount" value="@Model.TotalAmount.ToString("N0")" />
             }
             else
             {
@@ -349,7 +351,7 @@
                     <label class="form-label">Ngày phiếu</label>
                     <input type="text"
                            class="form-control sd-readonly"
-                           value="@Model.DocumentDate.ToString("dd/MM/yyyy HH:mm")"
+                           value="@Model.DocumentDate.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")"
                            readonly />
                 </div>
 
@@ -357,7 +359,7 @@
                     <label class="form-label">Gửi duyệt lúc</label>
                     <input type="text"
                            class="form-control sd-readonly"
-                           value="@(Model.SubmittedAtUtc.HasValue ? Model.SubmittedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : string.Empty)"
+                           value="@(Model.SubmittedAtUtc.HasValue ? Model.SubmittedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") : string.Empty)"
                            readonly />
                 </div>
 
@@ -365,7 +367,7 @@
                     <label class="form-label">Duyệt lúc</label>
                     <input type="text"
                            class="form-control sd-readonly"
-                           value="@(Model.ApprovedAtUtc.HasValue ? Model.ApprovedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm") : string.Empty)"
+                           value="@(Model.ApprovedAtUtc.HasValue ? Model.ApprovedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") : string.Empty)"
                            readonly />
                 </div>
 
@@ -382,10 +384,17 @@
                 }
 
                 <div class="col-12">
-                    <label class="form-label">Ghi chú phiếu</label>
-                    <textarea id="DocumentNote"
-                              class="form-control"
-                              rows="2">@Model.Note</textarea>
+                    @if (canEditHeader)
+                    {
+                        <label class="form-label" for="DocumentNote">Ghi chú phiếu</label>
+                        <textarea id="DocumentNote"
+                                  class="form-control"
+                                  rows="2">@Model.Note</textarea>
+                    }
+                    else
+                    {
+                        @await Html.PartialAsync("_DocumentNote", documentNote)
+                    }
                 </div>
 
                 <div class="col-12">
@@ -428,6 +437,29 @@
             </div>
         </section>
     }
+    @if (showCommercialReview)
+    {
+        @await Html.PartialAsync("_CommercialApprovalWorkbench", Model, ViewData)
+    }
+
+    @if (showCommercialReview)
+    {
+        <details id="receiptPriceReviewSummary" class="card sd-card mb-3 sd-optional-xml">
+            <summary class="sd-optional-xml-summary">
+                <span><strong>Đánh giá giá bán — tùy chọn</strong><small>Giữ giá hoặc điều chỉnh giá bán khi cần. Giá dưới vốn là cảnh báo tham khảo.</small></span>
+                <i class="bx bx-chevron-down" aria-hidden="true"></i>
+            </summary>
+            <div class="px-4 pb-4">
+                <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                    <div id="priceReviewCounts" class="d-flex gap-2 flex-wrap" aria-live="polite">Đang tải đánh giá…</div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="refreshPriceReviews">Tải lại đánh giá</button>
+                </div>
+                <p class="small text-muted mt-2 mb-0">Giá bán chỉ thay đổi sau khi bấm áp dụng và có hiệu lực bán hàng ngay. Trả phiếu không tự hoàn tác giá bán đã áp dụng.</p>
+            </div>
+        </details>
+    }
+    else
+    {
     <section id="receiptPriceReviewSummary" class="card sd-card mb-3" aria-label="Đánh giá giá bán">
         <div class="card-body py-3">
             <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
@@ -438,13 +470,27 @@
             <div class="small text-muted mt-2">Viền vàng: cần xem lại · Đỏ: có giá bán dưới vốn · Xanh: đã đánh giá. Nhãn “Đã cập nhật giá” ghi nhận thay đổi trên phiếu này.</div>
         </div>
     </section>
-    @if (showCommercialReview)
-    {
-        @await Html.PartialAsync("_CommercialApprovalWorkbench", Model, ViewData)
     }
-
     @if ((Model.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Confirmed) && hasApprovePermission)
     {
+        <details class="card sd-card mb-3 sd-optional-xml" open="@(Model.Status == StockDocumentStatus.Confirmed)">
+            <summary class="sd-optional-xml-summary">
+                <span><strong>Theo dõi hóa đơn đầu vào</strong><small>@(Model.Status == StockDocumentStatus.Confirmed ? "Kết quả kiểm tra và tình trạng nhận hóa đơn của phiếu." : "Chọn cách theo dõi hóa đơn tại bước xác nhận duyệt.")</small></span>
+                <i class="bx bx-chevron-down" aria-hidden="true"></i>
+            </summary>
+            <div id="receiptInvoiceFollowUp" class="px-4 pb-4">
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                    <span id="receiptInvoiceFollowUpBadge" class="badge bg-label-secondary">Đang tải…</span>
+                    <button type="button" id="btnEndInvoiceWaiting" class="btn btn-sm btn-outline-secondary" hidden>Kết thúc chờ hóa đơn</button>
+                    <button type="button" id="btnReviewInvoice" class="btn btn-sm btn-primary" hidden>Xác nhận đã kiểm tra</button>
+                </div>
+                <div id="receiptInvoiceReviewDetails" class="small mt-2" hidden></div>
+                @if (Model.Status == StockDocumentStatus.Confirmed)
+                {
+                    <p class="small text-muted mb-0 mt-2">Đã ghi nhận kho và giá nhập. Khi quản lý xác nhận đã kiểm tra, các dòng nhập được ghi tăng tồn hóa đơn theo số lượng và giá vốn đã ghi nhận; XML hỗ trợ đối chiếu.</p>
+                }
+            </div>
+        </details>
         <details class="card sd-card mb-3 sd-optional-xml">
             <summary class="sd-optional-xml-summary">
                 <span>
@@ -460,7 +506,7 @@
                     <div class="small text-muted">
                         Nhà cung cấp: <strong id="inputInvoiceSupplierName">@(Model.SupplierName ?? "Chưa chọn")</strong>
                         <span class="mx-1">·</span>
-                        MST: <strong id="inputInvoiceSupplierTaxCode">@(hasSupplierTaxCode ? Model.SupplierTaxCode : "Chưa có")</strong>
+                        MST: <strong id="inputInvoiceSupplierTaxCode">@(hasSupplierTaxCode ? TaxCodePresentation.Format(Model.SupplierTaxCode) : "Chưa có")</strong>
                     </div>
                     <div class="small mt-1">
                         Chủ thể phiếu: <strong>@(Model.Status == StockDocumentStatus.Confirmed
@@ -640,6 +686,18 @@
     }
 </div>
 
+@if (showCommercialReview)
+{
+    @* Keep Bootstrap dialogs outside the collapsed action panel. Only the toolbars are moved into the header. *@
+    <div data-receipt-review-actions-source>
+        @await Html.PartialAsync("_ReceiptDocumentActions")
+        @if (canPrintLabels && Model.Status != StockDocumentStatus.Cancelled)
+        {
+            @await Html.PartialAsync("_ProductLabelReceiptLink", Model.Id)
+        }
+    </div>
+}
+
 <div class="modal fade" id="submitApprovalModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 rounded-4 sd-approval-modal">
@@ -730,18 +788,17 @@
     </div>
 }
 
-<div class="modal fade" id="approveModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="approveModal" tabindex="-1" aria-labelledby="approveModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
         <div class="modal-content border-0 rounded-4 sd-approve-modal">
-            <div class="modal-body p-4">
-                <div class="d-flex align-items-start justify-content-between mb-3">
+                <div class="modal-header align-items-start border-0 px-4 pt-4 pb-2">
                     <div class="d-flex align-items-center gap-3">
                         <div class="sd-approve-icon">
                             <i class="bx bx-check-shield"></i>
                         </div>
 
                         <div>
-                            <h5 class="fw-bold mb-1">Xác nhận duyệt và ghi sổ</h5>
+                            <h5 class="fw-bold mb-1" id="approveModalTitle">Xác nhận duyệt và ghi sổ</h5>
                             <div class="text-muted small">
                                 @Model.DocumentNo · @(Model.PurchaseOrderTitle ?? receiptHeading)
                             </div>
@@ -750,11 +807,22 @@
 
                     <button type="button"
                             class="btn-close"
-                            data-bs-dismiss="modal"></button>
+                            data-bs-dismiss="modal" aria-label="Đóng"></button>
+                </div>
+            <div class="modal-body px-4 pt-2 pb-4">
+                <div class="alert alert-success border-0 rounded-3 small mb-3">
+                    Ghi nhận số lượng vào kho, giá vốn và công nợ của phiếu.
                 </div>
 
-                <div class="alert alert-success border-0 rounded-3 small mb-3">
-                    Tồn kho, FIFO/cost và công nợ sẽ được ghi một lần.
+                <div class="sd-approval-final-summary mb-3" aria-label="Kết quả sau khi duyệt">
+                    <div><span>Kho nhận · @managerLines.Count dòng</span><strong id="approvalModalWarehouse">@Model.WarehouseName</strong></div>
+                    @if (canViewCost)
+                    {
+                        <div><span>Tiền hàng gồm VAT</span><strong id="commercialApprovalModalMerchandiseTotal">@Model.TotalAmount.ToString("N0") đ</strong></div>
+                        <div><span>Giá trị nhập kho</span><strong id="approvalModalLanded">@((Model.SubtotalBeforeVat + (Model.HasVat && Model.IncludeVatInInventoryCost ? Model.VatAmount : 0m) + (Model.HasFreight && Model.CapitalizeFreightInInventoryCost ? Model.FreightTotal : 0m)).ToString("N0")) đ</strong></div>
+                        <div><span>Còn phải trả tiền hàng</span><strong id="approvalModalOutstandingMerchandise">@((Model.IsMerchandisePaid ? 0m : Model.TotalAmount).ToString("N0")) đ</strong></div>
+                        <div><span>Còn phải trả vận chuyển</span><strong id="approvalModalOutstandingFreight">@((Model.HasFreight && !Model.IsFreightPaid ? Model.FreightTotal : 0m).ToString("N0")) đ</strong></div>
+                    }
                 </div>
 
                 <div class="alert alert-warning border-0 rounded-3 mb-3 d-none"
@@ -775,15 +843,6 @@
                     <div class="form-text">Không bắt buộc nhập lý do chỉ vì giá thay đổi.</div>
                 </div>
 
-                <div class="sd-approval-final-summary mb-3">
-                    <div><span>Số dòng</span><strong>@managerLines.Count</strong></div>
-                    @if (canViewCost)
-                    {
-                        <div><span>Tổng</span><strong id="commercialApprovalModalMerchandiseTotal">@Model.TotalAmount.ToString("N0") đ</strong></div>
-                    }
-                    <div><span>Ngoài PO</span><strong>@(pendingOutsideCount == 0 ? "Đã xử lý" : $"Còn {pendingOutsideCount}")</strong></div>
-                </div>
-
                 <fieldset id="approvalInvoiceChoices" class="border rounded-3 p-3 mb-3">
                     <legend class="float-none w-auto fs-6 px-2 fw-semibold">Theo dõi hóa đơn sau khi duyệt</legend>
                     <label class="d-flex gap-2 border rounded-3 p-3 mb-2">
@@ -795,7 +854,13 @@
                         <span><strong>Hoàn tất, không chờ hóa đơn</strong><small class="d-block text-muted">Phiếu hoàn tất sau khi ghi sổ.</small></span>
                     </label>
                 </fieldset>
-                <div id="approvalInvoiceLinked" class="alert alert-info" hidden></div>
+                <div id="approvalInvoiceLinked" class="alert alert-info" hidden>
+                    <div id="approvalInvoiceLinkedSummary" class="mb-2"></div>
+                    <label class="d-flex gap-2 mb-0">
+                        <input class="form-check-input flex-shrink-0" type="checkbox" id="approvalReviewInputInvoice" />
+                        <span><strong>Tôi đã kiểm tra hóa đơn XML của phiếu này</strong><small class="d-block">Hoàn tất kiểm tra ngay khi duyệt; tồn hóa đơn ghi theo số lượng và giá nhập của phiếu. Nếu chưa kiểm tra, có thể duyệt kho trước và kiểm tra sau.</small></span>
+                    </label>
+                </div>
                 @if (canPrintLabels)
                 {
                     <label class="d-flex gap-2 border rounded-3 p-3 mb-3">
@@ -803,7 +868,7 @@
                         <span><strong>Đưa phiếu vào danh sách chờ in tem</strong><small class="d-block text-muted">Chọn mẫu và số lượng tại màn in tem. Chưa gửi lệnh in lúc duyệt.</small></span>
                     </label>
                 }
-                <label class="form-label fw-semibold">Ghi chú duyệt</label>
+                <label class="form-label fw-semibold" for="approveNote">Ghi chú duyệt <span class="fw-normal text-muted">— tùy chọn</span></label>
                 <textarea class="form-control"
                           id="approveNote"
                           rows="2"
@@ -832,17 +897,18 @@
     </div>
 </div>
 
-<div class="modal fade" id="rejectModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="rejectModal" tabindex="-1" aria-labelledby="rejectModalTitle" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-0 rounded-4">
             <div class="modal-header">
-                <h5 class="modal-title">Trả phiếu về chỉnh sửa</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="rejectModalTitle">Trả phiếu về chỉnh sửa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
             </div>
 
             <div class="modal-body">
-                <label class="form-label">Lý do trả về chỉnh sửa</label>
-                <textarea class="form-control" id="rejectNote" rows="3"></textarea>
+                <p class="small text-muted">Nhân viên sẽ chỉnh sửa và gửi duyệt lại. Các giá bán đã áp dụng vẫn có hiệu lực; trả phiếu không tự hoàn tác giá bán.</p>
+                <label class="form-label" for="rejectNote">Lý do trả về chỉnh sửa <span class="text-danger">*</span></label>
+                <textarea class="form-control" id="rejectNote" rows="3" maxlength="1000" aria-describedby="rejectMessage" placeholder="Nêu hàng cần sửa, số lượng thiếu hoặc thông tin cần kiểm tra lại…"></textarea>
                 <div class="form-text text-danger mt-2" id="rejectMessage"></div>
             </div>
 
@@ -858,20 +924,22 @@
         </div>
     </div>
 </div>
-<div class="modal fade" id="returnToEditModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="returnToEditModal" tabindex="-1" aria-labelledby="returnToEditModalTitle" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content border-0 rounded-4">
             <div class="modal-header">
-                <h5 class="modal-title">Trả phiếu về cho nhân viên sửa</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <h5 class="modal-title" id="returnToEditModalTitle">Trả phiếu về cho nhân viên sửa</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
             </div>
 
             <div class="modal-body">
-                <label class="form-label">Ghi chú cho nhân viên</label>
+                <p class="small text-muted" id="returnToEditHint">Các giá bán đã áp dụng vẫn có hiệu lực; trả phiếu không tự hoàn tác giá bán.</p>
+                <label class="form-label" for="returnToEditNote" id="returnToEditNoteLabel">Ghi chú cho nhân viên</label>
 
                 <textarea class="form-control"
                           id="returnToEditNote"
                           rows="4"
+                          maxlength="1000"
                           placeholder="Ví dụ: Đồng ý trả phiếu về để sửa theo yêu cầu."></textarea>
 
                 <div class="text-danger small mt-2" id="returnToEditMessage"></div>
@@ -1314,7 +1382,7 @@
     </div>
 </div>
 @section VendorScripts {
-    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <script src="~/lib/select2/select2.min.js" asp-append-version="true"></script>
 }
 
 @section PageScripts {
@@ -1354,10 +1422,12 @@
     <script src="~/admin/js/receipt-quick-price.js" asp-append-version="true"></script>
     <script src="~/admin/js/purchase-receipt-approval.js" asp-append-version="true"></script>
     <script src="~/admin/js/receipt-price-reviews.js" asp-append-version="true"></script>
+    <script src="~/admin/js/receipt-approval-workspace.js" asp-append-version="true"></script>
     @if (canEditSellingPrices)
     {
         <partial name="_ReceiptSellingPrices" />
         <script src="~/admin/js/receipt-selling-prices.js" asp-append-version="true"></script>
     }
     @if (provisionalEnabled) { <script src="~/admin/js/provisional-receiving.js" asp-append-version="true"></script> }
+    <script src="~/Admin/js/receipt-management.mobile.js" asp-append-version="true"></script>
 }

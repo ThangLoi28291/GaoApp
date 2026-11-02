@@ -68,7 +68,7 @@
 .pos-orders-page .po-lookup-panel [role=option]:hover, .pos-orders-page .po-lookup-panel [aria-selected=true] { background: var(--po-accent-soft); color: var(--po-accent-dark); }
 .pos-orders-page .po-lookup-panel [role=option] span { font-size: 11px; color: var(--po-muted); }
 .pos-orders-page .po-lookup-status { font-size: 11px; color: var(--po-muted); padding: 9px 12px; margin: 0; }
-.pos-orders-page .po-filter-details { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.pos-orders-page .po-filter-details { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
 .pos-orders-page .po-field label { display: block; font-size: 12px; color: var(--po-body); font-weight: 650; margin: 0 0 7px; }
 .pos-orders-page :is(input, select) { min-width: 0; width: 100%; color: var(--po-ink); background: var(--po-surface); border: 1px solid var(--po-line); border-radius: 8px; height: 42px; padding: 9px 10px; outline-offset: 1px; transition: border-color .15s, box-shadow .15s; }
 .pos-orders-page input::placeholder { color: var(--po-muted); opacity: 1; }
@@ -201,6 +201,7 @@
 @keyframes po-spin { to { transform: rotate(360deg); } }
 @keyframes po-drawer-in { from { opacity: .5; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
 @container orders (max-width: 1100px) {
+    .pos-orders-page .po-filter-details { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .pos-orders-page .po-header { align-items: flex-start; }
     .pos-orders-page .po-heading-icon { display: none; }
     .pos-orders-page .po-filter-grid { grid-template-columns: minmax(155px, 1.5fr) 140px 140px 180px auto; gap: 8px; }
@@ -306,4 +307,7 @@
 @media (prefers-reduced-motion: reduce) {
     .pos-orders-page *, .pos-orders-page *::before, .pos-orders-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+.pos-orders-page .po-delivery-documents { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 18px; }
+.pos-orders-page .po-delivery-documents a { padding:8px 10px; border:1px solid #d9e3f2; border-radius:8px; background:#f5f8fd; color:#315c98; font-size:12px; overflow-wrap:anywhere; }
+.pos-orders-page .po-delivery-documents a:hover { background:#eaf1fb; border-color:#9eb8df; }
 .pos-orders-page .po-delivery-filter{display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap;cursor:pointer}.pos-orders-page .po-delivery-filter input{width:17px;height:17px;accent-color:#3c73a2}.pos-orders-page .po-source-caption{display:block;color:#68798e;font-size:11px;line-height:1.5}.pos-orders-page .po-line-discount{color:#39785a}.pos-orders-page .po-preview-lines .po-amount small{display:block;font-weight:400;color:#69798d;font-size:11px}.pos-orders-page .po-delivery-link{display:inline-block;margin:0 0 14px;color:#276892;font-weight:600}

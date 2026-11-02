@@ -35,6 +35,7 @@ public sealed partial class DeliveryTripService
         Proof(work?.ApprovedRevision == member.AssignedApprovedRevision && work?.ApprovedTotal is not null &&
             picked.Count == quantities.Count && picked.Sum(x => x.ApprovedNet ?? -1) == work.ApprovedTotal);
         var result = new List<DeliverySaleLinePlan>();
+        var changes = await DeliverySalePrices.ReadAsync(db, order, ct);
         foreach (var quantity in quantities)
         {
             var quote = order.Lines.SingleOrDefault(x => x.Id == quantity.LineId);
@@ -42,8 +43,9 @@ public sealed partial class DeliveryTripService
             Proof(quote is not null && picking?.ApprovedQuantity is > 0 && picking.ApprovedNet is >= 0 &&
                 quote.OrderedQuantity > 0 && quote.BaseMultiplier > 0 &&
                 picking.ApprovedQuantity * quote.BaseMultiplier == quantity.Dispatched);
-            var approvedGross = DeliveryValues.RoundMoney(quote!.Gross * picking!.ApprovedQuantity!.Value / quote.OrderedQuantity);
-            var charge = DeliveryHandoverPolicy.Charge(quantity.Dispatched, quantity.Delivered, approvedGross, picking.ApprovedNet!.Value);
+            var effective = DeliverySalePrices.Calculate(quote!, picking!.ApprovedQuantity!.Value, picking.ApprovedNet!.Value, changes?.Prices ?? []);
+            var approvedGross = effective.Gross;
+            var charge = DeliveryHandoverPolicy.Charge(quantity.Dispatched, quantity.Delivered, approvedGross, effective.Net);
             var variant = await db.Set<ProductVariant>().AsNoTracking().SingleOrDefaultAsync(x => x.StoreId == Store && x.Id == quote.VariantId, ct);
             Proof(variant is not null);
             result.Add(new(quantity.LineId, quote.SourceOrderLineId ?? 0, quote.VariantId, quantity.Delivered,
@@ -53,7 +55,7 @@ public sealed partial class DeliveryTripService
                 BaseUnitName = quote.BaseUnitName, SourceMultiplier = quote.BaseMultiplier,
                 SourceUnitPrice = quote.UnitPrice, SourceOrderedQuantity = quote.OrderedQuantity,
                 SourceLineDiscount = quote.LineDiscount, ProductId = variant!.ProductId,
-                ApprovedGross = approvedGross, ApprovedNet = picking.ApprovedNet.Value });
+                ApprovedGross = approvedGross, ApprovedNet = effective.Net });
         }
         return result;
     }
@@ -123,7 +125,7 @@ public sealed partial class DeliveryTripService
             rows.Add(new(order.Id, order.CustomerId, customerEligible, counter is { IsOpen: true } && capabilities.CanFinalize &&
                 trip.State == DeliveryTripState.Departed && Reportable(order.State), preview, saved?.Settlement,
                 canCost && saved is not null ? saved.SaleLines.Any(x => x.CostQuality == "Unknown") ? "Unknown" :
-                    saved.SaleLines.Any(x => x.CostQuality == "Provisional") ? "Provisional" : "Confirmed" : null));
+                    saved.SaleLines.Any(x => x.CostQuality == "Provisional") ? "Provisional" : "Confirmed" : null) { SettledLines = saved?.Lines });
         }
         await tx.CommitAsync(ct); return new(detail, counter, capabilities, banks, rows);
     }
@@ -236,7 +238,7 @@ public sealed partial class DeliveryTripService
                 await PrepareHandoverVouchers(order, createsSale, ct);
                 int? saleId = null;
                 if (createsSale)
-                    saleId = (await saleFinalizer!.FinalizeDeliverySaleAsync(new(Store, Actor, order.SourceCartId, order.Id,
+                    saleId = (await saleFinalizer!.FinalizeDeliverySaleAsync(new(Store, Actor, order.SourceCartId ?? throw Error(403, "POS_ORIGIN_REQUIRED", "Dùng quy trình giao website."), order.Id,
                         order.SourceWarehouseId, order.SourceLegalEntityId, counter.TerminalId, counter.ShiftId, request.ClientRequestId,
                         request.PaymentKind, amount, actualCash, transfer, credit, request.BankAccountId, bankReference, request.CreditDueDate,
                         request.CreditNote, Utc(now), pricedCost) { SourceCustomerId = order.CustomerId }, ct)).SaleOrderId;
@@ -245,7 +247,7 @@ public sealed partial class DeliveryTripService
                 var result = new DeliveryHandoverResultDto(order.Id, saleId, order.State.ToString(), request.PaymentKind, Dong(amount), Dong(actualCash),
                     Dong(transfer), Dong(credit), counter.TerminalId, counter.ShiftId, order.SourceWarehouseId, order.SourceLegalEntityId, Utc(now));
                 var snapshot = new DeliveryHandoverSnapshot("delivery-handover-v1", Store, trip.Id, order.Id, member.Id, member.CurrentCustodyEventId!.Value,
-                    order.SourceCartId, order.SourceWarehouseId, order.SourceLegalEntityId, order.Revision, Version(order.RowVersion), request.ClientRequestId,
+                    order.SourceCartId ?? throw Error(403, "POS_ORIGIN_REQUIRED", "Dùng quy trình giao website."), order.SourceWarehouseId, order.SourceLegalEntityId, order.Revision, Version(order.RowVersion), request.ClientRequestId,
                     Actor, trip.CourierUserId, "AtStore", request.Outcome, reason, request.CustomerReceivedAtUtc, result, request.Lines.OrderBy(x => x.LineId).ToArray(), pricedCost)
                 { TripRevision = trip.Revision + 1 };
                 var json = JsonSerializer.Serialize(snapshot, Json);

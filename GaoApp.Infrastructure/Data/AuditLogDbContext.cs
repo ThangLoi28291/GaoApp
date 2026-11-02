@@ -1,5 +1,6 @@
 ﻿using GaoApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using GaoApp.Infrastructure.Data.Configurations;
 
 namespace GaoApp.Infrastructure.Data;
 
@@ -19,12 +20,13 @@ public class AuditLogDbContext : DbContext
     }
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<AuditOutboxMessage> AuditOutbox => Set<AuditOutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Map tối thiểu tới đúng bảng
-        modelBuilder.Entity<AuditLog>().ToTable("AuditLogs");
+        modelBuilder.ApplyConfiguration(new AuditLogConfiguration());
+        modelBuilder.ApplyConfiguration(new AuditOutboxMessageConfiguration());
     }
 }

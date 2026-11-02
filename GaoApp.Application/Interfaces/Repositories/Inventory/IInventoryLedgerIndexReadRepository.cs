@@ -4,6 +4,8 @@ namespace GaoApp.Application.Interfaces.Repositories.Inventory;
 
 public interface IInventoryLedgerIndexReadRepository
 {
+    Task<InventoryLedgerPeriodDto?> GetPeriodAsync(int storeId, int warehouseId, int productVariantId,
+        DateTime? fromDate, DateTime? toDate, CancellationToken ct = default);
     Task<InventoryLedgerIndexPageDto> QueryAsync(
         int storeId,
         InventoryLedgerIndexQueryRequest request,

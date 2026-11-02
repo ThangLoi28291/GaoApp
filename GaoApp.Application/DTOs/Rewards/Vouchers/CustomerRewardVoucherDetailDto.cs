@@ -3,4 +3,5 @@
 public sealed class CustomerRewardVoucherDetailDto : CustomerRewardVoucherListItemDto
 {
     public string? ReferenceCode { get; set; }
+    public bool IsReservedForDelivery => Status == "ReservedForDelivery";
 }

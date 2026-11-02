@@ -9,13 +9,16 @@ namespace GaoApp.Web.Services.StoreMonitor;
 public sealed class StoreActivityTicket(IDataProtectionProvider protection, TimeProvider time)
 {
     public sealed record Ticket(int StoreId, int UserId, string Module, DateTimeOffset IssuedAtUtc,
-        string? WorkKey = null, string? Document = null);
+        string? WorkKey = null, string? Document = null, string? DocumentTitle = null);
+    // A 255-character receipt title can expand to six JSON bytes per character before protection.
+    public const int MaxLength = 4096;
     private readonly IDataProtector protector = protection.CreateProtector("GaoApp.StoreActivity.Page.v1");
-    public string Issue(int storeId, int userId, string module, string? workKey = null, string? document = null) =>
-        protector.Protect(JsonSerializer.Serialize(new Ticket(storeId, userId, module, time.GetUtcNow(), workKey, document)));
+    public string Issue(int storeId, int userId, string module, string? workKey = null, string? document = null, string? documentTitle = null) =>
+        protector.Protect(JsonSerializer.Serialize(new Ticket(storeId, userId, module, time.GetUtcNow(), workKey, document,
+            documentTitle is { Length: > 255 } ? documentTitle[..255] : documentTitle)));
     public Ticket? Read(string value, int storeId, ClaimsPrincipal user)
     {
-        if (value.Length > 2048 || user.Identity?.IsAuthenticated != true ||
+        if (value.Length > MaxLength || user.Identity?.IsAuthenticated != true ||
             !int.TryParse(user.FindFirstValue(ClaimTypes.NameIdentifier), out var userId)) return null;
         try
         {

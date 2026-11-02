@@ -11,9 +11,15 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#173c32" />
+    <meta name="theme-color" content="#302840" />
     <title>@storeName · Màn hình khách hàng</title>
     <link rel="stylesheet" href="~/Admin/css/pos/pos-customer-display.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-customer-display-receipt.css" asp-append-version="true" />
+    <link rel="preload" href="~/Admin/fonts/baloo2/Baloo2-Variable.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-customer-display-halloween.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-customer-display-customer.css" asp-append-version="true" />
+
+<link rel="stylesheet" href="~/Admin/css/special-displays.mobile.css" asp-append-version="true" />
 </head>
 <body>
     <svg class="cd-symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -48,22 +54,27 @@
         <div class="cd-workspace">
             <section id="cdIdleScreen" class="cd-idle-screen" aria-label="Chào mừng quý khách">
                 <div class="cd-welcome">
-                    <h1>Kính chào<br />quý khách.</h1>
+                    <span class="cd-eyebrow cd-welcome-eyebrow">CHÀO MỪNG QUÝ KHÁCH</span>
+                    <h1>Ghé tiệm,<br />đón Halloween.</h1>
+                    <p class="cd-welcome-subtitle">Một giỏ hàng, thật nhiều niềm vui.</p>
+                    <span class="cd-welcome-note"><svg aria-hidden="true"><use href="#cd-icon-bag" /></svg>Chúc bạn một mùa Halloween ngọt ngào!</span>
                 </div>
                 <div id="cdIdleMediaStage" class="cd-idle-media-stage"></div>
+                <div id="cdIdleCustomerSection" hidden>@await Html.PartialAsync("~/Areas/Admin/Views/POS/_CustomerDisplayCustomer.cshtml", "cdIdleCustomer")</div>
             </section>
             <main class="cd-modern-layout" aria-label="Thông tin đơn hàng">
                 <section class="cd-feature-panel">
                     <div class="cd-feature-top"><span class="cd-eyebrow">SẢN PHẨM VỪA CHỌN</span></div>
                     <section id="cdHeroProduct" class="cd-hero-product" aria-label="Sản phẩm vừa cập nhật">
-                        <div class="cd-hero-picture"><svg class="cd-product-placeholder"><use href="#cd-icon-bag" /></svg><img id="cdHeroImage" hidden alt="" /></div>
+                        <div class="cd-hero-picture"><svg class="cd-product-placeholder"><use href="#cd-icon-bag" /></svg><img id="cdHeroImage" hidden alt="" /><span class="cd-hw-scan" aria-hidden="true"></span></div>
                         <h2 id="cdHeroName" class="cd-hero-name">Sản phẩm của bạn</h2>
                         <div class="cd-hero-meta"><div id="cdHeroQty"></div><div id="cdHeroPrice"></div><div id="cdHeroTotal"></div></div>
                     </section>
+                    <div class="cd-hw-mini" aria-hidden="true"><span class="cd-hw-prop cd-hw-pumpkin"></span><span>Halloween ngọt ngào<br />tại @storeName</span><span class="cd-hw-prop cd-hw-candy"></span></div>
                 </section>
                 <section class="cd-order-panel">
                     <div class="cd-order-heading"><h1>Đơn hàng</h1><span class="cd-order-count"><b id="cdQtyCount">0</b> sản phẩm</span></div>
-                    <div class="cd-customer"><svg><use href="#cd-icon-bag" /></svg><span id="cdCustomerName">Quý khách</span><span id="cdCustomerPhone"></span><span class="cd-item-count"><b id="cdItemCount">0</b> mặt hàng</span></div>
+                    <div class="cd-customer">@await Html.PartialAsync("~/Areas/Admin/Views/POS/_CustomerDisplayCustomer.cshtml", "cdCustomer")</div>
                     <div class="cd-list-labels"><span>SẢN PHẨM / SỐ LƯỢNG</span><span>THÀNH TIỀN</span></div>
                     <div id="cdCartLines" class="cd-modern-lines" tabindex="0" aria-label="Danh sách sản phẩm"></div>
                     <div class="cd-order-summary">
@@ -74,7 +85,7 @@
                 </section>
             </main>
             <section id="cdPaymentOverlay" class="cd-payment-overlay d-none" aria-label="Thông tin thanh toán" aria-live="polite">
-                <div class="cd-payment-copy"><h1 id="cdPaymentTitle">Thanh toán</h1><div id="cdPaymentMessage" class="cd-payment-message"></div></div>
+                <div class="cd-payment-copy">@await Html.PartialAsync("~/Areas/Admin/Views/POS/_CustomerDisplayCustomer.cshtml", "cdPaymentCustomer")<span class="cd-eyebrow">THANH TOÁN TẠI QUẦY</span><h1 id="cdPaymentTitle">Thanh toán</h1><div id="cdPaymentMessage" class="cd-payment-message"></div><div class="cd-hw-payment-friend" aria-hidden="true"><div class="cd-hw-mascot cd-hw-pointing"></div><span class="cd-hw-prop cd-hw-candy"></span><span class="cd-hw-payment-bubble">Thu ngân luôn sẵn sàng giúp bạn!</span></div></div>
                 <div class="cd-payment-visual">
                     <div id="cdQrBox" class="cd-qr-box d-none"><div class="cd-qr-label">MỞ ỨNG DỤNG NGÂN HÀNG ĐỂ QUÉT</div><div class="cd-qr-frame"><img id="cdQrImage" alt="Mã QR chuyển khoản của đơn hàng" /></div><div class="cd-qr-amount"><span id="cdQrAmount">0</span><small>₫</small></div><div class="cd-transfer-content"><span>Nội dung chuyển khoản</span><strong id="cdQrContent"></strong></div><p>Giữ nguyên số tiền và nội dung chuyển khoản.</p></div>
                     <div id="cdCashVisual" class="cd-cash-visual"><h2>Chờ thu ngân xác nhận</h2></div>
@@ -82,6 +93,25 @@
             </section>
             <section id="cdSuccessOverlay" class="cd-success-overlay is-success d-none" aria-live="polite">
                 <div class="cd-success-box"><div id="cdSuccessIcon" class="cd-success-icon">✓</div><h1 id="cdSuccessTitle">Thanh toán thành công</h1><p id="cdSuccessMessage">Cảm ơn bạn. Hẹn gặp lại!</p><div id="cdSuccessAmount" class="cd-success-amount"></div></div>
+            </section>
+            <section id="cdReceiptOverlay" class="cd-receipt-overlay" hidden aria-label="Hóa đơn vừa mua">
+                <div class="cd-receipt-confirmation" role="status">
+                    <span class="cd-receipt-check"><svg><use href="#cd-icon-check" /></svg></span>
+                    <span class="cd-eyebrow">GIAO DỊCH HOÀN TẤT</span>
+                    <h1 id="cdReceiptTitle">Thanh toán thành công.</h1>
+                    <p>Cảm ơn bạn đã ghé tiệm.<br />Hẹn gặp lại bạn!</p>
+                    @await Html.PartialAsync("~/Areas/Admin/Views/POS/_CustomerDisplayCustomer.cshtml", "cdReceiptCustomer")
+                    <div class="cd-receipt-paid"><span>Tổng hóa đơn</span><strong id="cdReceiptTotal"></strong></div>
+                    <div id="cdReceiptChangeRow" class="cd-receipt-change" hidden><span>Tiền thừa trả bạn</span><strong id="cdReceiptChange"></strong></div>
+                    <div id="cdReceiptBalanceRow" class="cd-receipt-change" hidden><span>Còn công nợ</span><strong id="cdReceiptBalance"></strong></div>
+                    <div class="cd-hw-receipt-friend" aria-hidden="true"><div class="cd-hw-confetti"></div><div class="cd-hw-mascot cd-hw-waving"></div><span class="cd-hw-prop cd-hw-candy"></span></div>
+                </div>
+                <div class="cd-receipt-machine">
+                    <div class="cd-receipt-printer" aria-hidden="true"><span></span><i></i></div>
+                    <div id="cdReceiptViewport" class="cd-receipt-viewport" tabindex="0" aria-label="Nội dung hóa đơn, có thể cuộn để xem">
+                        <article id="cdReceiptPaper" class="cd-receipt-paper"></article>
+                    </div>
+                </div>
             </section>
         </div>
         <footer class="cd-footer">
@@ -93,8 +123,22 @@
             </div>
         </footer>
     </div>
-    <template id="cdIdleFallbackTemplate"><div class="cd-idle-media-fallback"><img src="/Admin/img/customer-display/grocery-bag.svg" alt="Túi hàng với rau củ, sữa và bánh mì" /></div></template>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <template id="cdIdleFallbackTemplate">
+        <div class="cd-idle-media-fallback cd-hw-scene" role="img" aria-label="Đêm hội bí ngô: bí ngô thân thiện chào khách, dơi vỗ cánh, đèn lồng đung đưa và kẹo chuyển động">
+            <div class="cd-hw-moon" aria-hidden="true"></div><div class="cd-hw-halo cd-hw-halo-left" aria-hidden="true"></div><div class="cd-hw-halo cd-hw-halo-right" aria-hidden="true"></div>
+            <div class="cd-hw-lights" aria-hidden="true"><div class="cd-hw-cord"></div><span class="cd-hw-prop cd-hw-lantern" style="--n:0"></span><span class="cd-hw-prop cd-hw-lantern" style="--n:1"></span><span class="cd-hw-prop cd-hw-lantern" style="--n:2"></span><span class="cd-hw-prop cd-hw-lantern" style="--n:3"></span><span class="cd-hw-prop cd-hw-lantern" style="--n:4"></span><span class="cd-hw-prop cd-hw-lantern" style="--n:5"></span></div>
+            <div class="cd-hw-flight" aria-hidden="true"><div class="cd-hw-prop cd-hw-bat"></div></div><div class="cd-hw-flight cd-hw-flight-high" aria-hidden="true"><div class="cd-hw-prop cd-hw-bat"></div></div>
+            <div class="cd-hw-ground" aria-hidden="true"></div>
+            <div class="cd-hw-grocery" aria-hidden="true"></div><div class="cd-hw-friend" aria-hidden="true"><div class="cd-hw-mascot cd-hw-waving"></div></div>
+            <span class="cd-hw-prop cd-hw-pumpkin cd-hw-scene-pumpkin" aria-hidden="true"></span><span class="cd-hw-prop cd-hw-lollipop" aria-hidden="true"></span><span class="cd-hw-prop cd-hw-candy cd-hw-candy-one" aria-hidden="true"></span><span class="cd-hw-prop cd-hw-candy cd-hw-candy-two" aria-hidden="true"></span>
+            <span class="cd-hw-star cd-hw-star-one" aria-hidden="true">✦</span><span class="cd-hw-star cd-hw-star-two" aria-hidden="true">✦</span><span class="cd-hw-star cd-hw-star-three" aria-hidden="true">✦</span>
+        </div>
+    </template>
+    <script src="~/lib/signalr/signalr.min.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.customer-display-customer.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.customer-display-receipt.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.customer-display-payment.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.customer-display.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.customer-display-halloween.js" asp-append-version="true"></script>
 </body>
 </html>

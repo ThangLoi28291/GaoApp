@@ -34,6 +34,7 @@ public sealed class MediaCleanupWorkerTests
         await using (var scope = provider.CreateAsyncScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            using var setup = scope.ServiceProvider.GetRequiredService<TenantContext>().BeginSystemAccess(SystemDataAccessPurpose.Provisioning);
             var first = new Store { Name = "First", SubDomain = "first", SubDomainNormalized = "FIRST", IsActive = true };
             var second = new Store { Name = "Second", SubDomain = "second", SubDomainNormalized = "SECOND", IsActive = false };
             db.AddRange(first, second); await db.SaveChangesAsync(); store1 = first.Id; store2 = second.Id;
@@ -43,6 +44,7 @@ public sealed class MediaCleanupWorkerTests
                 IsTemp = true, ExpireAtUtc = clock.Utc.AddHours(-1)
             }));
             await db.SaveChangesAsync();
+            setup.Dispose();
             await Assert.ThrowsAsync<InvalidOperationException>(() => scope.ServiceProvider.GetRequiredService<MediaLibraryService>().SweepAsync(0, default));
         }
         var status = new MediaCleanupStatus();

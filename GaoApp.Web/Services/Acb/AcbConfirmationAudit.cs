@@ -4,7 +4,7 @@ using GaoApp.Domain.Enums;
 namespace GaoApp.Web.Services.Acb;
 
 public sealed record AcbConfirmationInfo(string Code, string Label, DateTime? ConfirmedAtUtc,
-    int? UserId, string? UserName, int? CallbackReceiptId, bool Recorded);
+    int? UserId, string? UserName, int? CallbackReceiptId, bool Recorded, int? NotificationReceiptId = null);
 
 public static class AcbConfirmationAudit
 {
@@ -33,9 +33,11 @@ public static class AcbConfirmationAudit
     {
         var confirmed = payment != null || qr?.ManualConfirmedAtUtc != null || qr?.Status == PosPaymentQrStatus.ManualConfirmed;
         var userId = qr?.ManualConfirmedByUserId ?? payment?.CreatedBy;
-        return new(confirmed ? qr == null ? "ManualEntry" : "ManualQr" : "Pending",
-            confirmed ? qr == null ? "Thu ngân ghi nhận chuyển khoản" : "Thu ngân xác nhận QR thủ công" : "Chưa xác nhận nhận tiền",
-            qr?.ManualConfirmedAtUtc ?? payment?.PaidAtUtc, userId, UserName(userId, users), null, payment != null);
+        var notice = confirmed && qr?.NotificationReceiptId != null;
+        return new(notice ? qr!.NotificationConfirmationSource ?? "NotificationCashier" : confirmed ? qr == null ? "ManualEntry" : "ManualQr" : "Pending",
+            notice ? qr!.NotificationConfirmationSource == "NotificationAuto" ? "Thông báo ACB · Tự xác nhận theo POS" : "Thông báo ACB · Thu ngân chọn Đúng"
+                : confirmed ? qr == null ? "Thu ngân ghi nhận chuyển khoản" : "Thu ngân xác nhận QR thủ công" : "Chưa xác nhận nhận tiền",
+            qr?.ManualConfirmedAtUtc ?? payment?.PaidAtUtc, userId, UserName(userId, users), null, payment != null, qr?.NotificationReceiptId);
     }
 
     private static string? UserName(int? id, IReadOnlyDictionary<int, string> users) =>

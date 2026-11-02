@@ -16,4 +16,12 @@ public interface IInvoiceInputStockReadRepository
         IReadOnlyCollection<int>? productVariantIds,
         IReadOnlyCollection<int>? warehouseIds,
         CancellationToken ct = default);
+
+    /// <summary>Management pages omit large notes until the selected page is known.</summary>
+    Task<IReadOnlyList<InvoiceInputStockMovement>> GetPageMovementsAsync(int storeId,
+        IReadOnlyCollection<int>? productVariantIds, IReadOnlyCollection<int>? warehouseIds, CancellationToken ct = default)
+        => GetMovementsAsync(storeId, productVariantIds, warehouseIds, ct);
+
+    Task HydratePageAsync(int storeId, InvoiceInputStockPage page, CancellationToken ct = default)
+        => Task.CompletedTask;
 }

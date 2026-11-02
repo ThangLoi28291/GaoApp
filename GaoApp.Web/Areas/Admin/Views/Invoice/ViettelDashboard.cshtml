@@ -1,4 +1,4 @@
-﻿@model GaoApp.Application.DTOs.Invoices.ViettelInvoiceDashboardDto
+@model GaoApp.Application.DTOs.Invoices.ViettelInvoiceDashboardDto
 @using GaoApp.Application.DTOs.Invoices
 @using GaoApp.Domain.Enums
 
@@ -27,6 +27,10 @@
         (ViettelInvoiceDashboardFilter.IssueFailed, "Phát hành lỗi"),
         (ViettelInvoiceDashboardFilter.IssuedComplete, "Đủ PDF/ZIP/email")
     };
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-integration.mobile.css" asp-append-version="true" />
 }
 
 <style>
@@ -380,8 +384,8 @@
                                     @if (item.IssuedAtUtc.HasValue)
                                     {
                                         <div class="invoice-cell-sub mt-1">
-                                            Phát hành UTC:
-                                            @item.IssuedAtUtc.Value.ToString("dd/MM HH:mm")
+                                            Phát hành:
+                                            @item.IssuedAtUtc.Value.ToVietnamTime().ToString("dd/MM HH:mm")
                                         </div>
                                     }
                                 </td>
@@ -494,7 +498,7 @@
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit"
                                                         class="btn btn-sm btn-outline-warning"
-                                                        onclick="return confirm('Tra cứu UUID hóa đơn này?');">
+                                                        data-csp-confirm="Tra cứu UUID hóa đơn này?">
                                                     UUID
                                                 </button>
                                             </form>
@@ -513,7 +517,7 @@
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit"
                                                         class="btn btn-sm btn-outline-success"
-                                                        onclick="return confirm('Tải lại PDF chính thức?');">
+                                                        data-csp-confirm="Tải lại PDF chính thức?">
                                                     PDF
                                                 </button>
                                             </form>
@@ -529,7 +533,7 @@
                                                 @Html.AntiForgeryToken()
                                                 <button type="submit"
                                                         class="btn btn-sm btn-outline-success"
-                                                        onclick="return confirm('Tải lại ZIP/XML chính thức?');">
+                                                        data-csp-confirm="Tải lại ZIP/XML chính thức?">
                                                     ZIP
                                                 </button>
                                             </form>
@@ -555,7 +559,7 @@
 
                                                 <button type="submit"
                                                         class="btn btn-sm btn-outline-info"
-                                                        onclick="return confirm('Gửi email hóa đơn cho người mua?');">
+                                                        data-csp-confirm="Gửi email hóa đơn cho người mua?">
                                                     Email
                                                 </button>
                                             </form>
@@ -600,3 +604,7 @@
         </div>
     </div>
 </div>
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-integration.mobile.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,53 @@
+/* New controls stay absent from the existing desktop/tablet presentation. */
+.gao-mobile-app-header, .gao-mobile-shell-menu, .gao-mobile-transaction-account-slot { display: none; }
+
+@media (max-width: 767.98px) {
+    [data-mobile-app-shell="admin"] {
+        min-height: 100vh;
+        min-height: 100dvh;
+        background: var(--commerce-canvas);
+        color: var(--commerce-ink);
+        font-family: var(--commerce-font);
+    }
+    [data-mobile-app-shell="admin"] > .layout-container { min-height: 100dvh; }
+    [data-mobile-app-shell="admin"] > .layout-container > .layout-page { min-width: 0; padding-top: 0 !important; }
+    [data-mobile-app-shell="admin"] [data-mobile-shell-content] {
+        width: 100%; max-width: 100%; min-width: 0;
+    }
+    [data-mobile-app-shell="admin"] [data-mobile-shell-content]:not(.d-flex) { padding: 16px 12px 24px !important; }
+    [data-mobile-app-shell="admin"] .gao-admin-page-heading-row { flex-direction: column; align-items: stretch; gap: 12px; }
+    [data-mobile-app-shell="admin"] .gao-admin-page-heading-content { flex-wrap: wrap; gap: 12px; width: 100%; }
+    .gao-mobile-app-header {
+        position: sticky; top: 0; z-index: 1030;
+        display: flex; align-items: center; flex: 0 0 auto; gap: 10px;
+        min-height: 72px; padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left));
+        border-bottom: 1px solid var(--commerce-line); background: var(--commerce-surface);
+        box-shadow: 0 3px 16px #192c4a05;
+    }
+    .gao-mobile-shell-menu {
+        display: inline-flex; align-items: center; justify-content: center; flex: 0 0 44px;
+        width: 44px; height: 44px; padding: 0; border: 1px solid var(--commerce-line);
+        border-radius: 14px; background: #edf1ff; color: var(--commerce-navy); cursor: pointer;
+    }
+    .gao-mobile-shell-menu > i { width: 22px; height: 22px; background-color: currentColor; }
+    .gao-mobile-shell-menu:focus-visible { outline: 3px solid var(--commerce-focus); outline-offset: 2px; }
+    .gao-mobile-shell-menu:active { background: #e2e9ff; }
+    .gao-mobile-app-identity { flex: 1 1 auto; min-width: 0; }
+    .gao-mobile-app-store { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; font-weight: 650; letter-spacing: .04em; color: var(--commerce-muted); }
+    .gao-mobile-app-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 3px; color: var(--commerce-navy); font-size: 19px; line-height: 1.3; font-weight: 750; overflow-wrap: anywhere; }
+    .gao-mobile-app-actions, .gao-mobile-app-actions > div { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    .gao-mobile-app-actions > div:empty { display: none; }
+    .gao-mobile-app-actions > [data-mobile-utilities-slot]:not(:has([data-admin-utility-slot]:not(:empty))) { display: none; }
+    .gao-mobile-app-header .gao-account-avatar { background: #edf1ff; color: var(--commerce-primary); }
+    .gao-mobile-transaction-account-slot:not(:empty) { display: flex; align-items: center; flex: 0 0 44px; }
+    .layout-content-navbar[data-mobile-app-shell] > .gds-responsive-nav-trigger { display: none; }
+
+    /* Hide only the vacated toolbar; preserve utilities that have not been moved. */
+    [data-mobile-header-ready] .gao-admin-toolbar-fallback:not(:has([data-admin-utility-slot]:not(:empty))),
+    [data-mobile-header-ready] .gao-admin-page-heading-row > .gao-admin-toolbar:not(:has([data-admin-utility-slot]:not(:empty))) { display: none; }
+
+    /* Transaction headers/docks remain owned by their modules. No generic bar over checkout. */
+    .layout-content-navbar[data-mobile-dock-owner="pos"] > .layout-container > .gao-mobile-pins,
+    .layout-content-navbar[data-mobile-dock-owner="receiving"] > .layout-container > .gao-mobile-pins { display: none !important; }
+    .layout-content-navbar:is([data-mobile-dock-owner="pos"],[data-mobile-dock-owner="receiving"]) > .layout-container > .layout-page > .content-wrapper { padding-bottom: 0 !important; }
+}

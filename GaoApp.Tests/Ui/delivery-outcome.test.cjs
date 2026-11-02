@@ -85,42 +85,57 @@ async function fixture(options = {}) {
     }
     document.getElementById = id => document.body.querySelector('#' + id);
     document.querySelector = selector => selector === 'meta[name=request-verification-token]' ? { content: 'csrf' } : document.body.querySelector(selector);
-    const disk = options.storage || storage(), intervals = [], state = { model: options.model || detail(), posts: [], reads: [], networkFail: false, freshFail: false };
-    if (options.readonly) { state.model.outcomeCapabilities = { canReportOwn: false, canReportOnBehalf: false, canRecordReturn: false }; for (const row of state.model.orders) row.canReportOutcome = false; }
+    const model = options.model || { trip: detail(), counter: { storeId: 6, terminalId: 7, shiftId: 12, warehouseId: 3, ownerUserId: 9, isOpen: true },
+        capabilities: { canFinalize: true, canReceiveReturns: true, canReconcileCash: true, canConfirmBankTransfer: true, canCredit: true },
+        bankAccounts: [{ bankAccountId: 1, name: 'Synthetic bank' }],
+        orders: [21, 22].map(deliveryOrderId => ({ deliveryOrderId, sourceCustomerId: null, customerCreditEligible: false, canConfirm: true, savedPreview: null, settlement: null })) };
+    const disk = options.storage || storage(), intervals = [], state = { model, posts: [], previews: [], reads: [], networkFail: false, freshFail: false };
+    if (options.readonly) { model.capabilities.canFinalize = false; for (const row of model.orders) row.canConfirm = false; }
     const location = { origin: 'https://synthetic.test' }, window = { document, location, localStorage: disk, addEventListener() {} };
     const response = (status, body) => ({ ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(clone(body)) });
+    const preview = (orderId, body) => {
+        const order = model.trip.orders.find(x => x.deliveryOrderId === orderId);
+        const lines = body.lines.map(line => { const source = order.lines.find(x => x.lineId === line.lineId), gross = String(Math.round(Number(line.deliveredBaseQuantityText) * 10000));
+            return { ...line, newReturnBaseQuantityText: String(Number(line.actualReturnedBaseQuantityText) - Number(source.acceptedReturnedBaseQuantityText)), grossText: gross, discountText: '0', netText: gross }; });
+        return { tripId: 11, deliveryOrderId: orderId, tripVersion: model.trip.version, orderVersion: order.version,
+            sourceWarehouseId: order.sourceWarehouseId, sourceLegalEntityId: order.sourceLegalEntityId, sourceHash: 'server-price-proof',
+            payableText: String(lines.reduce((n, x) => n + Number(x.netText), 0)), lines };
+    };
     const fetch = async (url, request = {}) => {
-        if (request.method !== 'POST') { state.reads.push(url); assert.equal(url, '/admin/api/delivery-trips/11'); return state.freshFail && state.posts.length ? response(503, { message: 'Bản mới chưa tải được' }) : response(200, state.model); }
-        const body = JSON.parse(request.body), operation = url.endsWith('/outcome') ? 'outcome' : 'return-to-store', orderId = operation === 'outcome' ? Number(url.split('/').at(-2)) : null;
+        if (request.method !== 'POST') { state.reads.push(url); assert.equal(url, '/admin/api/delivery-trips/11/handover');
+            return state.freshFail && state.posts.length ? response(503, { message: 'Bản mới chưa tải được' }) : response(200, model); }
+        const body = JSON.parse(request.body), orderId = Number(url.split('/')[6]);
+        if (url.endsWith('/preview')) { state.previews.push({ url, body }); return response(200, preview(orderId, body)); }
+        assert.equal(url, '/admin/api/delivery-trips/11/handover/' + orderId);
         state.posts.push({ url, body, raw: request.body, headers: request.headers });
         if (state.networkFail) throw new Error('Synthetic response lost');
-        const result = ack(state.model, body, operation, orderId);
-        state.model.revision = result.appliedRevision; state.model.version = result.appliedVersion;
-        if (operation === 'outcome') {
-            const row = state.model.orders.find(x => x.deliveryOrderId === orderId), changed = result.orders.find(x => x.deliveryOrderId === orderId);
-            Object.assign(row, { revision: changed.revision, version: changed.version, state: changed.state });
-            row.outcome = { orderRevision: row.revision, orderVersion: row.version, tripId: 11, deliveryOrderId: orderId,
-                custodyEventId: row.custody.custodyEventId, actorUserId: 9, actorName: 'Nhân viên Bình', courierUserId: 8, courierName: state.model.courierName,
-                reportSource: body.reportSource, outcome: body.outcome, reason: body.reason, reportedCashText: body.reportedCashText,
-                reportedTransferText: body.reportedTransferText, recordedAtUtc: result.recordedAtUtc, customerReceivedAtUtc: body.customerReceivedAtUtc,
-                isCurrentValid: true, lines: body.lines.map(line => ({ ...line, acceptedReturnedAtReportBaseQuantityText: '0', pendingReturnBaseQuantityText: line.reportedReturnBaseQuantityText })) };
-        } else { state.model.returnToStore = { tripRevision: result.appliedRevision, actorUserId: 9, actorName: 'Nhân viên Bình', courierUserId: 8,
-            courierName: state.model.courierName, recordedAtUtc: result.recordedAtUtc, confirmationNote: body.confirmationNote }; state.model.outcomeCapabilities.canRecordReturn = false; }
-        state.model.allOutcomesComplete = state.model.orders.every(row => row.outcome?.isCurrentValid);
-        state.model.readyForReconciliation = Boolean(state.model.returnToStore) && state.model.allOutcomesComplete;
-        return response(200, result);
+        const amount = preview(orderId, body).payableText, order = model.trip.orders.find(x => x.deliveryOrderId === orderId), info = model.orders.find(x => x.deliveryOrderId === orderId);
+        const changedVersion = Buffer.alloc(8); changedVersion.writeBigUInt64BE(BigInt(100 + ++model.trip.revision));
+        model.trip.version = order.version = changedVersion.toString('base64'); order.revision++; order.state = 'Settled';
+        for (const line of order.lines) {
+            line.acceptedReturnedBaseQuantityText = body.lines.find(x => x.lineId === line.lineId).actualReturnedBaseQuantityText;
+            line.inCustodyBaseQuantityText = '0';
+        }
+        info.settlement = { deliveryOrderId: orderId, state: 'Settled', paymentKind: body.paymentKind, terminalId: body.expectedTerminalId, shiftId: body.expectedShiftId,
+            sourceWarehouseId: order.sourceWarehouseId, sourceLegalEntityId: order.sourceLegalEntityId, payableText: amount,
+            receivedCashText: body.actualReceivedCashText, confirmedTransferText: body.confirmedTransferText, customerDebtText: body.paymentKind === 'CustomerCredit' ? amount : '0',
+            saleOrderId: amount === '0' ? null : orderId + 1000, recordedAtUtc: model.trip.serverTimeUtc };
+        return response(200, { clientRequestId: body.clientRequestId, tripId: 11, deliveryOrderId: orderId, operation: 'handover',
+            appliedTripRevision: model.trip.revision, appliedOrderRevision: order.revision, appliedTripVersion: model.trip.version,
+            appliedOrderVersion: order.version, state: 'Settled', replayed: false, recordedAtUtc: model.trip.serverTimeUtc, settlement: info.settlement });
     };
     let sequence = 0;
-    const context = { window, document, location, localStorage: disk, fetch, setInterval: callback => { intervals.push(callback); },
+    const context = { window, document, location, localStorage: disk, fetch, setInterval: callback => { intervals.push(callback); }, setTimeout, clearTimeout,
         crypto: { randomUUID: () => '12345678-1234-1234-1234-' + (++sequence).toString(16).padStart(12, '0') },
         Option: function (text, value) { const option = document.createElement('option'); option.textContent = text; option.value = value; return option; },
         URL, URLSearchParams, Date, Intl, BigInt, console };
     vm.runInNewContext(fs.readFileSync(tripPath, 'utf8'), context, { filename: tripPath });
     vm.runInNewContext(fs.readFileSync(scriptPath, 'utf8'), context, { filename: scriptPath });
-    const settle = async () => { for (let i = 0; i < 7; i++) await tick(); }; await settle();
+    const settle = async () => { await new Promise(resolve => setTimeout(resolve, 220)); for (let i = 0; i < 5; i++) await tick(); }; await settle();
     const get = id => { const element = document.getElementById(id); assert.ok(element, 'Missing #' + id + ': ' + document.getElementById('outcomeMessage').textContent); return element; };
     return { state, document, workspace, get, disk, settle, api: window.DeliveryOutcomeUi,
         click: async id => { await get(id).click(); await settle(); },
+        check: async id => { const element = get(id); element.checked = true; await element.emit('change'); await settle(); },
         input: async (id, value) => { const element = get(id); element.value = value; await element.emit('input'); await settle(); },
         qty: async (id, value) => { const element = workspace.querySelector('[data-delivered-line="' + id + '"]'); assert.ok(element); element.value = value; await element.emit('input'); await settle(); },
         poll: async () => { for (const callback of intervals) await callback(); await settle(); } };
@@ -185,86 +200,79 @@ test('Uncertain intent stays byte-exact across reload and tab scope; older GET e
     assert.equal(api.canApply(model, model, 1, 2), false); assert.equal(api.canApply(model, model, 2, 2, 4), false);
 });
 
-test('Actual shortcuts are local, require a failure reason and do not count drafts as saved reports', async () => {
+test('Current handover shortcuts only preview; failed delivery requires a reason and physical confirmation', async () => {
     const f = await fixture(); assert.match(f.get('outcomeProgress').textContent, /0\/2/);
     assert.match(f.get('outcomeDetail').textContent, /Gạo <đặc biệt>/);
-    await f.click('outcomeNone'); await f.click('outcomeSave'); assert.equal(f.state.posts.length, 0);
-    assert.match(f.get('outcomeMessage').textContent, /lý do/); assert.match(f.get('outcomeProgress').textContent, /0\/2/);
-    await f.input('outcomeReason', 'Khách từ chối'); await f.input('outcomeCash', '15000');
-    await f.click('outcomeSave'); assert.equal(f.state.posts.length, 1);
-    assert.equal(f.state.posts[0].body.outcome, 'NotDelivered'); assert.equal(f.state.posts[0].body.reportedCashText, '15000');
-    assert.deepEqual(f.state.posts[0].body.lines, [{ lineId: 31, deliveredBaseQuantityText: '0', reportedReturnBaseQuantityText: '4' }]);
-    assert.match(f.get('outcomeProgress').textContent, /1\/2/); assert.equal(f.state.model.orders[1].outcome, null);
-});
-
-test('Actual partial form sends selected order only, exact source version and CSRF, then renders genuine saved facts', async () => {
-    const f = await fixture(); await f.qty(31, '2,5'); await f.input('outcomeKind', 'Partial');
-    await f.input('outcomeReason', 'Khách nhận một phần'); await f.input('outcomeSource', 'Phone');
-    await f.input('outcomeTransfer', '12000'); await f.click('outcomeSave');
-    const sent = assertSingle(f.state.posts); assert.equal(sent.url, '/admin/api/delivery-trips/11/orders/21/outcome');
-    assert.equal(sent.headers.RequestVerificationToken, 'csrf'); assert.equal(sent.body.expectedTripVersion, version);
-    assert.deepEqual(sent.body.lines, [{ lineId: 31, deliveredBaseQuantityText: '2.5', reportedReturnBaseQuantityText: '1.5' }]);
-    assert.deepEqual(Object.keys(sent.body).sort(), ['clientRequestId', 'customerReceivedAtUtc', 'expectedOrderVersion', 'expectedTripVersion', 'lines', 'outcome', 'reason', 'reportSource', 'reportedCashText', 'reportedCourierUserId', 'reportedTransferText'].sort());
-    assert.match(f.get('outcomeDetail').textContent, /chưa xác nhận/); assert.match(f.get('outcomeDetail').textContent, /Nhân viên Bình/);
+    await f.click('outcomeNone'); assert.equal(f.state.posts.length, 0); assert.equal(f.get('outcomeConfirm').disabled, true);
+    await f.input('outcomeReason', 'Khách từ chối'); await f.check('outcomePhysicalConfirmed');
+    assert.equal(f.get('outcomeConfirm').disabled, false); await f.click('outcomeConfirm');
+    const sent = assertSingle(f.state.posts); assert.equal(sent.body.outcome, 'NotDelivered');
+    assert.equal(sent.body.actualReceivedCashText, '0'); assert.equal(sent.body.physicalGoodsConfirmed, true);
+    assert.deepEqual(sent.body.lines, [{ lineId: 31, deliveredBaseQuantityText: '0', actualReturnedBaseQuantityText: '4' }]);
     assert.match(f.get('outcomeProgress').textContent, /1\/2/);
 });
 
-test('Drafts survive switching and polling; discard removes only the selected order draft', async () => {
+test('Partial handover sends only the selected order, current versions, CSRF and confirmed transfer', async () => {
+    const f = await fixture(); await f.qty(31, '2,5'); await f.input('outcomeReason', 'Khách nhận một phần');
+    await f.click('outcomePaymentBankTransfer'); await f.input('outcomeTransfer', '25000');
+    assert.equal(f.get('outcomeConfirm').disabled, true);
+    await f.check('outcomeTransferConfirmed'); await f.check('outcomePhysicalConfirmed'); await f.click('outcomeConfirm');
+    const sent = assertSingle(f.state.posts); assert.equal(sent.url, '/admin/api/delivery-trips/11/handover/21');
+    assert.equal(sent.headers.RequestVerificationToken, 'csrf'); assert.equal(sent.body.expectedTripVersion, version); assert.equal(sent.body.expectedOrderVersion, version);
+    assert.deepEqual(sent.body.lines, [{ lineId: 31, deliveredBaseQuantityText: '2.5', actualReturnedBaseQuantityText: '1.5' }]);
+    assert.equal(sent.body.paymentKind, 'BankTransfer'); assert.equal(sent.body.transferConfirmed, true); assert.equal(sent.body.bankAccountId, 1);
+    assert.equal(sent.body.actualReceivedCashText, '0'); assert.equal(sent.body.confirmedTransferText, '25000');
+    assert.match(f.get('outcomeSettlement').textContent, /25\.000/); assert.equal(f.state.model.orders[1].settlement, null);
+});
+
+test('Handover drafts survive switching and polling; discard clears only the selected order', async () => {
     const f = await fixture(); await f.qty(31, '2.5'); await f.input('outcomeReason', 'Đơn thứ nhất');
     const reads = f.state.reads.length; await f.poll(); assert.equal(f.state.reads.length, reads);
     await f.click('outcomeOrder-22'); await f.qty(32, '1'); await f.input('outcomeReason', 'Đơn thứ hai');
     await f.click('outcomeOrder-21'); assert.equal(f.workspace.querySelector('[data-delivered-line="31"]').value, '2.5');
-    assert.equal(f.get('outcomeReason').value, 'Đơn thứ nhất'); await f.click('outcomeDiscard');
-    assert.equal(f.workspace.querySelector('[data-delivered-line="31"]').value, '');
+    await f.click('outcomeDiscard'); assert.equal(f.workspace.querySelector('[data-delivered-line="31"]').value, '');
     await f.click('outcomeOrder-22'); assert.equal(f.workspace.querySelector('[data-delivered-line="32"]').value, '1');
     assert.equal(f.get('outcomeReason').value, 'Đơn thứ hai'); assert.equal(f.state.posts.length, 0);
 });
 
-test('Saving one dirty order rebases another only when its own version stays unchanged; conflict reload preserves stale inputs', async () => {
-    const f = await fixture(); await f.qty(31, '2.5'); await f.input('outcomeKind', 'Partial'); await f.input('outcomeReason', 'Đơn thứ nhất');
-    await f.click('outcomeOrder-22'); await f.qty(32, '1'); await f.input('outcomeKind', 'Partial'); await f.input('outcomeReason', 'Đơn thứ hai');
-    await f.click('outcomeOrder-21'); await f.click('outcomeSave'); assert.equal(f.state.posts.length, 1);
-    await f.click('outcomeOrder-22'); assert.equal(f.workspace.querySelector('[data-delivered-line="32"]').value, '1');
-    assert.equal(f.get('outcomeReason').value, 'Đơn thứ hai'); assert.equal(f.get('outcomeSave').disabled, false);
-    await f.click('outcomeSave'); assert.equal(f.state.posts.length, 2);
-    assert.equal(f.state.posts[1].body.expectedTripVersion, nextVersion); assert.equal(f.state.posts[1].body.expectedOrderVersion, version);
-    const stale = await fixture(); await stale.qty(31, '2'); await stale.input('outcomeReason', 'Giữ bản đang nhập');
-    stale.state.model.revision++; stale.state.model.version = nextVersion;
-    stale.state.model.orders[0].version = nextVersion; stale.state.model.orders[0].revision++;
-    await stale.click('outcomeReload'); assert.equal(stale.workspace.querySelector('[data-delivered-line="31"]').value, '2');
-    assert.equal(stale.get('outcomeReason').value, 'Giữ bản đang nhập'); assert.equal(stale.get('outcomeSave').disabled, true);
-    assert.equal(stale.state.posts.length, 0); await stale.click('outcomeDiscard'); assert.equal(stale.get('outcomeSave').disabled, false);
+test('Cash discrepancy and stale order versions block confirmation while preserving inputs', async () => {
+    const f = await fixture(); await f.click('outcomeFull'); await f.check('outcomePhysicalConfirmed');
+    await f.input('outcomeActualCash', '1'); assert.equal(f.get('outcomeConfirm').disabled, true);
+    assert.match(f.get('outcomeCashDifference').textContent, /thiếu/); assert.equal(f.state.posts.length, 0);
+    await f.input('outcomeActualCash', '40000'); assert.equal(f.get('outcomeConfirm').disabled, false);
+    f.state.model.trip.version = nextVersion; f.state.model.trip.revision++;
+    f.state.model.trip.orders[0].version = nextVersion; f.state.model.trip.orders[0].revision++;
+    await f.click('outcomeReload'); assert.equal(f.get('outcomeActualCash').value, '40000'); assert.equal(f.get('outcomeConfirm').disabled, true);
+    assert.equal(f.state.posts.length, 0);
 });
 
-test('Arrival-first requires a checkbox and actual courier; all order versions and missing-report progress stay unchanged', async () => {
-    const f = await fixture(), original = clone(f.state.model.orders); await f.click('outcomeRecordReturn'); assert.equal(f.state.posts.length, 0);
-    const check = f.get('outcomeReturnConfirmed'); check.checked = true; await check.emit('change');
-    await f.input('outcomeReturnNote', 'Đã về tiệm'); await f.click('outcomeRecordReturn');
-    const sent = assertSingle(f.state.posts); assert.equal(sent.url, '/admin/api/delivery-trips/11/return-to-store');
-    assert.equal(sent.body.confirmedCourierUserId, 8); assert.equal(sent.body.physicalReturnConfirmed, true);
-    assert.deepEqual(f.state.model.orders, original); assert.equal(f.state.model.readyForReconciliation, false);
-    assert.match(f.get('outcomeReturn').textContent, /Còn 2 đơn/); assert.match(f.get('outcomeProgress').textContent, /0\/2/);
+test('Handover requires the actual physical checkbox and an open counter owned by this actor', async () => {
+    const f = await fixture(); await f.click('outcomeFull'); assert.equal(f.get('outcomeConfirm').disabled, true);
+    await f.check('outcomePhysicalConfirmed'); assert.equal(f.get('outcomeConfirm').disabled, false);
+    const model = clone(f.state.model); model.counter.ownerUserId = 99;
+    const foreign = await fixture({ model }); assert.equal(foreign.get('outcomeFull').disabled, true);
+    assert.equal(foreign.get('outcomeConfirm').disabled, true); assert.equal(foreign.state.posts.length, 0);
+    assert.match(foreign.get('outcomeReturn').textContent, /Chưa có ca mở của bạn/);
 });
 
-test('Lost response keeps pending body, blocks edits, and reload never POSTs until explicit exact retry', async () => {
-    const f = await fixture(); f.state.networkFail = true; await f.click('outcomeFull'); await f.click('outcomeSave');
-    const sent = assertSingle(f.state.posts); assert.equal(f.get('outcomeSave').disabled, true); assert.equal(f.get('outcomePending').hidden, false);
+test('Lost handover response preserves exact body across reload and only explicit retry posts it', async () => {
+    const f = await fixture(); f.state.networkFail = true; await f.click('outcomeFull'); await f.check('outcomePhysicalConfirmed'); await f.click('outcomeConfirm');
+    const sent = assertSingle(f.state.posts); assert.equal(f.get('outcomeConfirm').disabled, true); assert.equal(f.get('outcomePending').hidden, false);
     await f.poll(); assert.equal(f.state.posts.length, 1);
     const reloaded = await fixture({ storage: f.disk }); assert.equal(reloaded.state.posts.length, 0);
-    assert.equal(reloaded.get('outcomeSave').disabled, true); await reloaded.click('outcomeRetry');
-    assert.equal(assertSingle(reloaded.state.posts).raw, sent.raw); assert.equal(reloaded.get('outcomePending').hidden, true);
+    await reloaded.click('outcomeRetry'); assert.equal(assertSingle(reloaded.state.posts).raw, sent.raw);
+    assert.equal(reloaded.get('outcomePending').hidden, true); assert.match(reloaded.get('outcomeSettlement').textContent, /Đã chốt/);
 });
 
-test('Read-only and post-ACK stale reads block writes without losing a confirmed report', async () => {
-    const read = await fixture({ readonly: true }); assert.equal(read.get('outcomeSave').disabled, true);
-    assert.equal(read.get('outcomeFull').disabled, true); assert.equal(read.document.getElementById('outcomeRecordReturn'), null);
-    await read.click('outcomeSave'); assert.equal(read.state.posts.length, 0);
-    const f = await fixture(); f.state.freshFail = true; await f.click('outcomeFull'); await f.click('outcomeSave');
-    assert.equal(f.state.posts.length, 1); assert.equal(f.get('outcomeSave').disabled, true);
-    assert.match(f.get('outcomeMessage').textContent, /Cần tải bản mới/); assert.equal(f.get('outcomePending').hidden, true);
-    assert.equal(f.state.model.orders[0].outcome.outcome, 'Full');
-    f.state.freshFail = false; await f.click('outcomeReload'); assert.equal(f.get('outcomeSave').disabled, false);
-    assert.match(f.get('outcomeProgress').textContent, /1\/2/);
+test('Read-only and post-ACK read failures block writes without losing confirmed settlement', async () => {
+    const read = await fixture({ readonly: true }); assert.equal(read.get('outcomeConfirm').disabled, true);
+    assert.equal(read.get('outcomeFull').disabled, true); await read.click('outcomeConfirm'); assert.equal(read.state.posts.length, 0);
+    const f = await fixture(); f.state.freshFail = true; await f.click('outcomeFull'); await f.check('outcomePhysicalConfirmed'); await f.click('outcomeConfirm');
+    assert.equal(f.state.posts.length, 1); assert.equal(f.get('outcomeConfirm').disabled, true);
+    assert.match(f.get('outcomeMessage').textContent, /cần tải bản mới/i); assert.equal(f.get('outcomePending').hidden, true);
+    assert.equal(f.state.model.orders[0].settlement.receivedCashText, '40000');
+    f.state.freshFail = false; await f.click('outcomeReload'); assert.match(f.get('outcomeSettlement').textContent, /Đã chốt/);
+    assert.match(f.get('outcomeProgress').textContent, /1\/2/); assert.equal(f.state.posts.length, 1);
 });
 
 function assertSingle(rows) { assert.equal(rows.length, 1); return rows[0]; }

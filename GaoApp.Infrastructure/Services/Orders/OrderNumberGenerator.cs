@@ -21,7 +21,7 @@ public sealed class OrderNumberGenerator : IOrderNumberGenerator
     public async Task<string> NextAsync(CancellationToken ct = default)
     {
         var storeId = _tenantContext.StoreId!.Value;
-        var dateKey = DateTime.Now.ToString("yyyyMMdd");
+        var dateKey = VietnamTime.Now.ToString("yyyyMMdd");
 
         var seq = await _db.Set<OrderNumberSequence>()
             .FirstOrDefaultAsync(x => x.StoreId == storeId && x.DateKey == dateKey, ct);

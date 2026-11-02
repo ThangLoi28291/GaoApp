@@ -29,14 +29,18 @@ public sealed record DatabaseCompatibilityResult(
 
 public sealed class DatabaseCompatibilityException : Exception
 {
-    public DatabaseCompatibilityException(DatabaseCompatibilityResult result)
+    public DatabaseCompatibilityException(DatabaseCompatibilityResult result, bool migrationWasAttempted = false)
         : base(
-            $"Database compatibility preflight rejected the target. ReasonCode={result.SafeReasonCode}. No schema or data changes were applied.")
+            migrationWasAttempted
+                ? $"Schema verification after migration failed. State={result.State}; ReasonCode={result.SafeReasonCode}; SourceMigrations={result.SourceMigrationCount}; AppliedMigrations={result.AppliedMigrationCount}; SchemaMismatchCategories={result.SchemaMismatchCategoryCount}; SchemaMismatchChecks={result.SchemaMismatches?.CheckConstraints ?? 0}. Migrations may already be committed; inspect the current database before retrying."
+                : $"Database compatibility preflight rejected the target. ReasonCode={result.SafeReasonCode}. No schema or data changes were applied.")
     {
         Result = result;
+        MigrationWasAttempted = migrationWasAttempted;
     }
 
     public DatabaseCompatibilityResult Result { get; }
+    public bool MigrationWasAttempted { get; }
 }
 
 public interface IDatabaseBaselinePreflight

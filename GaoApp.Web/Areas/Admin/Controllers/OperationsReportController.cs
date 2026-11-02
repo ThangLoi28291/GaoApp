@@ -56,7 +56,8 @@ public sealed class OperationsReportController(IOperationsReportService reports,
                 Row("Quỹ", "Đầu kỳ", "Thu", "Chi", "Thuần", "Cuối kỳ");
                 foreach (var x in report.Summary) Row(x.Name, Number(x.Opening), Number(x.Inflow), Number(x.Outflow), Number(x.Net), Number(x.Closing));
                 Row("Mã", "Thời điểm UTC+7", "Quỹ", "Nội dung", "Nguồn", "Số tiền có dấu", "Tham chiếu", "Chuyển quỹ");
-                foreach (var x in report.Items) Row(x.Id, x.AtUtc.AddHours(7).ToString("yyyy-MM-dd HH:mm"), x.Fund, x.Name, x.Source, Number(x.Amount), x.Reference ?? "", x.IsTransfer ? "Có" : "");
+                foreach (var x in report.Items) Row(x.Id, x.TimeText??x.AtUtc.AddHours(7).ToString("yyyy-MM-dd HH:mm"), x.Fund, x.Name, x.Source, Number(x.Amount), x.Reference ?? "", x.IsTransfer ? "Có" : "");
+                if(report.BankReceiptReviews is {Count:>0}){Row("Bằng chứng cần đối soát — chưa cộng vào quỹ","Số tiền","Ngày ngân hàng","Lý do");foreach(var x in report.BankReceiptReviews)Row(x.Id,Number(x.Amount),x.BankDay??"Chưa xác minh",x.Reason);}
             } else if (section == "inventory") {
                 var report = await reports.StockAsync(query, ct);
                 Row("Từ ngày", report.Period.FromDate.ToString("yyyy-MM-dd"), "Đến ngày", report.Period.ToDate.ToString("yyyy-MM-dd"));

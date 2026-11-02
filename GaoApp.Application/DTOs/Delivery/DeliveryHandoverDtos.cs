@@ -37,7 +37,10 @@ public sealed record DeliveryHandoverResultDto(int DeliveryOrderId, int? SaleOrd
     DateTimeOffset RecordedAtUtc);
 public sealed record DeliveryHandoverOrderDto(int DeliveryOrderId, int? SourceCustomerId,
     bool CustomerCreditEligible, bool CanConfirm, DeliveryHandoverPreviewDto? SavedPreview,
-    DeliveryHandoverResultDto? Settlement, string? CostQuality);
+    DeliveryHandoverResultDto? Settlement, string? CostQuality)
+{
+    public IReadOnlyList<DeliveryHandoverLineRequest>? SettledLines { get; init; }
+}
 public sealed record DeliveryHandoverWorkspaceDto(DeliveryTripDetailDto Trip,
     DeliveryHandoverCounterDto? Counter, DeliveryHandoverCapabilitiesDto Capabilities,
     IReadOnlyList<DeliveryHandoverBankDto> BankAccounts, IReadOnlyList<DeliveryHandoverOrderDto> Orders);

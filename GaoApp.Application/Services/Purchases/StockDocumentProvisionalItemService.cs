@@ -415,7 +415,6 @@ public sealed partial class StockDocumentProvisionalItemService
                     ? PurchaseShortageDisposition.WaitForBackorder : PurchaseShortageDisposition.None
             };
             document.Lines.Add(line);
-            await _repository.SaveChangesAsync(ct);
         }
         else
         {
@@ -424,6 +423,10 @@ public sealed partial class StockDocumentProvisionalItemService
             if (line.ReceiptAllocationKind == ReceiptAllocationKind.OutsidePo)
                 line.OutsidePoDecisionStatus = OutsidePoDecisionStatus.Pending;
         }
+
+        // Barcode catalog services can save the shared context. Capture new and
+        // accumulated receipt-line evidence first, within the receiving transaction.
+        await _repository.SaveChangesAsync(ct);
 
         var barcodeRemembered = false;
         if (rememberBarcode && !string.IsNullOrWhiteSpace(item.RawBarcodeSnapshot) &&
@@ -504,6 +507,9 @@ public sealed partial class StockDocumentProvisionalItemService
             var document = await _repository.LockAndGetDocumentAsync(
                 RequireStore(), stockDocumentId, ct)
                 ?? throw new BusinessRuleException("Phiếu nhận hàng không tồn tại.");
+            if (document.PurchaseOrderId.HasValue && document.ReceiptSource != PurchaseReceiptSource.PurchaseOrder)
+                throw new BusinessRuleException(
+                    "Nguồn phiếu không khớp đơn mua đang liên kết. Vui lòng yêu cầu quản lý kiểm tra dữ liệu nguồn trước khi nhận hoặc sửa hàng.");
             await operation(document);
             await transaction.CommitAsync(ct);
             var refreshed = await _repository.GetDocumentAsync(
@@ -628,12 +634,13 @@ public sealed partial class StockDocumentProvisionalItemService
 
     private ProvisionalReceivingStateDto Map(StockDocument document)
     {
-        var warehouseMutable = (document.Status is StockDocumentStatus.Draft or StockDocumentStatus.Rejected) &&
+        var sourceConsistent = !document.PurchaseOrderId.HasValue || document.ReceiptSource == PurchaseReceiptSource.PurchaseOrder;
+        var warehouseMutable = sourceConsistent && (document.Status is StockDocumentStatus.Draft or StockDocumentStatus.Rejected) &&
             (document.ReceiptSource != PurchaseReceiptSource.PurchaseOrder ||
              (document.ReceivingSessionState == ReceivingSessionState.Active &&
               document.ReceivingOwnerUserId == _user.UserId &&
               document.ReceivingLeaseExpiresAtUtc > DateTime.UtcNow));
-        var managerMutable = document.Status == StockDocumentStatus.PendingApproval;
+        var managerMutable = sourceConsistent && document.Status == StockDocumentStatus.PendingApproval;
         var items = document.ProvisionalItems.Where(x => !x.IsDeleted)
             .OrderByDescending(x => x.Id).Select(x =>
             {
@@ -690,7 +697,8 @@ public sealed partial class StockDocumentProvisionalItemService
         return new ProvisionalReceivingStateDto
         {
             StockDocumentId = document.Id,
-            ReceiptSource = document.ReceiptSource,
+            ReceiptSource = document.PurchaseOrderId.HasValue
+                ? PurchaseReceiptSource.PurchaseOrder : document.ReceiptSource,
             ReceivingRevision = document.ReceivingRevision,
             DocumentRowVersion = Convert.ToBase64String(document.RowVersion ?? []),
             UnresolvedCount = items.Count(x =>

@@ -406,8 +406,8 @@
 
     function formatDate(value) {
         if (!value) return '—';
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
+        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function formatNumber(value) {

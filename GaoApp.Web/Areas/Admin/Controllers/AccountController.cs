@@ -134,6 +134,14 @@ public class AccountController : Controller
             new(ClaimTypes.Role, result.RoleCode ?? string.Empty)
         };
 
+        if (result.DeviceId is > 0)
+        {
+            claims.Add(new(PosDeviceSession.IdClaim, result.DeviceId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            claims.Add(new(PosDeviceSession.StampClaim, result.DeviceSessionStamp));
+        }
+        else if (vm.ManageTerminals && result.TerminalId == 0)
+            claims.Add(new(PosDeviceSession.ManagementClaim, "1"));
+
         var identity = new ClaimsIdentity(
             claims,
             CookieAuthenticationDefaults.AuthenticationScheme);
@@ -141,7 +149,13 @@ public class AccountController : Controller
         // Technical authentication-handler failures must reach the global owner.
         await HttpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(identity));
+            new ClaimsPrincipal(identity),
+            // Mobile browsers may discard session cookies when the OS closes the
+            // browser. Persist the ticket within the existing eight-hour sliding
+            // lifetime; the current account/device revocation checks still apply.
+            new AuthenticationProperties { IsPersistent = true, AllowRefresh = true });
+        HttpContext.RequestServices.GetService<GaoApp.Web.Services.StoreMonitor.StoreActivityRegistry>()?
+            .Online(result.StoreId, result.UserId, Guid.Empty, result.FullName ?? result.UserName);
 
         await TryWriteAuditAsync(new WriteAuditLogRequest
         {
@@ -178,6 +192,9 @@ public class AccountController : Controller
         }, "Logout", ct);
 
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        if (int.TryParse(User.FindFirstValue("store_id"), out var monitorStore) &&
+            int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var monitorUser))
+            HttpContext.RequestServices.GetService<GaoApp.Web.Services.StoreMonitor.StoreActivityRegistry>()?.Logout(monitorStore, monitorUser);
         HttpContext.RequestServices.GetRequiredService<GaoApp.Web.Hubs.RevocablePosHubLifetimeManager>()
             .RevokeSession(User);
         return Redirect("/admin/account/login");

@@ -1,0 +1,99 @@
+/* UI-17: phone presentation of the existing ACB read models. Desktop and print retain the original stylesheet. */
+@media screen and (max-width: 767.98px) {
+    body[data-bank-workspace-phone] { background: #f3f6fb; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] { width: 100%; max-width: 100%; min-width: 0; padding: 0; color: #172d4d; font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; }
+    body[data-bank-workspace-phone="embedded"] { margin: 0; background: #f3f6fb; }
+    body[data-bank-workspace-phone="embedded"] [data-bank-workspace-phone-root] { padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)); }
+    body[data-bank-workspace-phone] .gao-admin-page-heading-content { min-width: 0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-leading] { display: flex; align-items: center; justify-content: center; min-height: 46px; width: 100%; padding: 10px 13px; border: 1px solid #cddaf0; border-radius: 12px; color: #365573; background: #fff; font-size: 13px; line-height: 1.6; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] :is(p, small, strong, code, .text-break) { overflow-wrap: anywhere; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-heading { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 20px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-heading-title { gap: 12px; min-width: 0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-bank-icon { display: grid; width: 42px; height: 42px; border-radius: 13px; color: #2463eb; background: #e8efff; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-bank-icon svg { width: 25px; height: 25px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-eyebrow { font-size: 10px; line-height: 1.6; letter-spacing: .08em; color: #71839a; margin-bottom: 4px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-heading h1 { font-size: 23px; line-height: 1.35; letter-spacing: -.4px; color: #172d4d; margin-bottom: 8px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-heading p { font-size: 13px; line-height: 1.65; color: #62758e; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] :is(.acb-button,.btn,summary) { min-height: 44px; font-family: inherit; font-size: 13px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-button:not([hidden]):not(.d-none) { display: inline-flex; align-items: center; justify-content: center; min-width: 0; max-width: 100%; padding: 11px 13px; border-radius: 12px; border-color: #cddaf0; color: #365573; background: #fff; white-space: normal; overflow-wrap: anywhere; text-align: center; text-decoration: none; line-height: 1.5; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-button.acb-primary:not([hidden]):not(.d-none) { background: #2463eb; border-color: #2463eb; color: #fff; box-shadow: 0 5px 12px #2463eb14; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-button.acb-danger-button:not([hidden]):not(.d-none) { color: #b64040; border-color: #edcccc; background: #fff7f7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-heading > .acb-button { width: 100%; min-height: 48px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-overview { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; overflow: visible; border: 0; border-radius: 0; margin: 0 0 16px; background: transparent; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric { min-width: 0; padding: 15px; background: #fff; border: 1px solid #dce5f0; border-radius: 16px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric + .acb-metric::before { display: none; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric span { min-height: 0; margin-bottom: 9px; font-size: 11px; line-height: 1.5; color: #62758e; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric strong { font-size: 23px; line-height: 1.35; letter-spacing: -.4px; color: #172d4d; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric-accent { background: #edf4ff; border-color: #d3e2ff; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric-accent strong { color: #1956c7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-metric small { display: block; font-size: 11px; line-height: 1.5; margin-top: 6px; color: #62758e; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] :is(.acb-status,.acb-footer,.acb-bank-note,.acb-filter-note) { font-size: 12px; line-height: 1.7; color: #62758e; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-status { padding: 0 2px 16px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-error { padding: 13px 15px; background: #fff0ef; color: #9e3832; border-radius: 13px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-panel { min-width: 0; margin-bottom: 16px; border: 1px solid #dce5f0; border-radius: 18px; box-shadow: none; overflow: hidden; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-panel-head { gap: 10px; align-items: flex-start; flex-wrap: wrap; padding: 15px; background: #fff; border-bottom-color: #dce5f0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-panel-head h2 { min-width: 0; flex-wrap: wrap; font-size: 16px; line-height: 1.5; color: #172d4d; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-panel-note { display: block; font-size: 11px; line-height: 1.55; color: #71839a; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-badge { max-width: 100%; white-space: normal; font-size: 11px; line-height: 1.55; padding: 5px 9px; border-radius: 8px; overflow-wrap: anywhere; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-table-scroll { max-width: 100%; min-width: 0; overflow: visible; padding: 12px; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table]:not([hidden]):not(.d-none) { display: block; width: 100%; min-width: 0; border: 0; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] tbody:not([hidden]):not(.d-none) { display: block; min-width: 0; width: 100%; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] tbody tr:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 12px; min-width: 0; padding: 14px; margin-bottom: 12px; border: 1px solid #dce5f0; border-radius: 15px; background: #fff; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] tbody tr:last-child { margin-bottom: 0; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] tbody tr[data-bank-workspace-phone-continuation] { border-top-style: dashed; background: #f8faff; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] tbody tr[data-bank-workspace-phone-continuation]::before { content: 'Giao dịch tiếp theo của cùng mã QR'; grid-column: 1 / -1; color: #62758e; font-size: 11px; line-height: 1.6; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td:not([hidden]):not(.d-none) { display: block; min-width: 0; width: auto !important; max-width: 100%; padding: 0; border: 0; white-space: normal; text-align: left; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td[data-bank-workspace-phone-label]::before { content: attr(data-bank-workspace-phone-label); display: block; margin-bottom: 5px; font-size: 11px; line-height: 1.55; color: #71839a; font-weight: 500; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td[data-bank-workspace-phone-wide] { grid-column: 1 / -1; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td.acb-tx-date { grid-column: 1 / -1; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td :is(.acb-tx-content,strong,.acb-confirmation-label) { font-size: 13px; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td :is(small,.acb-confirmation small) { font-size: 11px; line-height: 1.65; }
+    body[data-bank-workspace-phone] table[data-bank-workspace-phone-table] td .acb-button { width: 100%; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-row { min-width: 0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-row summary { display: grid; grid-template-columns: 14px minmax(0,1fr) minmax(0,1fr); gap: 10px; align-items: start; padding: 15px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-chevron { grid-column: 1; grid-row: 1; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-identity { grid-column: 2 / -1; grid-row: 1; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-identity strong { font-size: 13px; line-height: 1.6; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-identity small { font-size: 11px; line-height: 1.6; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-date { display: block; grid-column: 2 / -1; grid-row: 2; font-size: 11px; line-height: 1.6; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-row summary > .acb-number { grid-column: 2; grid-row: 3; text-align: left; font-size: 17px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-row summary > .acb-badge { grid-column: 3; grid-row: 3; justify-self: end; align-self: center; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-detail { padding: 14px 15px; font-size: 13px; line-height: 1.7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-qr-confirmation { margin-bottom: 13px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-confirmation-label { font-size: 13px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-confirmation :is(small,.acb-confirmation-heading) { font-size: 11px; line-height: 1.7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-filter { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 15px 10px; padding: 15px; border: 1px solid #dce5f0; border-radius: 18px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-filter > div { min-width: 0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-filter > :is(div:nth-child(3),.acb-filter-note) { grid-column: 1 / -1; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-filter label { font-size: 12px; color: #52647c; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] :is(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),select,textarea) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; min-height: 46px; padding: 10px 11px; border: 1px solid #cddaf0; border-radius: 11px; background: #fff; color: #172d4d; font-family: inherit; font-size: 16px; line-height: 1.5; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] :is(input[type="checkbox"],input[type="radio"]) { width: 20px; height: 20px; flex-shrink: 0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] label:has(> input[type="checkbox"]) { min-height: 44px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-source-heading { gap: 9px; margin-top: 22px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-source-heading h2 { font-size: 18px; line-height: 1.45; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-source-heading p { font-size: 12px; line-height: 1.65; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-paging { display: flex; flex-wrap: wrap; gap: 13px; padding: 14px; line-height: 1.6; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-paging > div { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; min-width: 0; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-paging label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-report-paging input { width: 80px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] :is(.acb-bank-meta,.acb-bank-message) { margin: 0; padding: 15px; font-size: 12px; line-height: 1.7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-bank-meta strong { font-size: 14px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-bank-overview { margin: 0 12px 12px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-bank-note { padding: 0 14px 15px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-empty { padding: 23px 15px; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] .acb-empty :is(strong,p) { font-size: 13px; line-height: 1.7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] #acb-callback-health :is(p,code,.text-muted) { font-size: 12px; line-height: 1.7; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] #acb-callback-health > .acb-panel > .p-3 > .d-flex { gap: 14px !important; }
+    body[data-bank-workspace-phone] [data-bank-workspace-phone-root] #acb-callback-health details > summary { display: flex; align-items: center; line-height: 1.6; }
+    body[data-bank-workspace-phone] .acb-dialog { box-sizing: border-box; width: calc(100vw - 16px); height: calc(var(--gao-mobile-visible-height,100dvh) - 16px); max-width: none; max-height: none; margin: auto; border: 1px solid #dce5f0; border-radius: 18px; padding: 0; overflow: hidden; }
+    body[data-bank-workspace-phone] .acb-dialog-header { box-sizing: border-box; display: flex; gap: 10px; height: 64px; padding: 8px 12px; font-size: 11px; line-height: 1.5; }
+    body[data-bank-workspace-phone] .acb-dialog-header > span { min-width: 0; }
+    body[data-bank-workspace-phone] .acb-dialog-close { flex: 0 0 44px; min-width: 44px; width: 44px; height: 44px; margin: 0; }
+    body[data-bank-workspace-phone] .acb-dialog iframe { display: block; width: 100%; height: calc(100% - 64px); border: 0; }
+    body[data-bank-workspace-phone] :is([data-bank-workspace-phone-root],.acb-dialog) :is(button,a,summary,input,select,textarea):focus-visible { outline: 3px solid #2463eb80; outline-offset: 3px; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    body[data-bank-workspace-phone] :is([data-bank-workspace-phone-root],.acb-dialog) * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

@@ -115,7 +115,7 @@
 
     function parseDate(value) {
         if (!value) return null;
-        const date = new Date(value);
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
         return Number.isNaN(date.getTime()) ? null : date;
     }
 
@@ -123,7 +123,7 @@
         const date = value instanceof Date ? value : parseDate(value);
         if (!date) return '-';
 
-        return date.toLocaleString('vi-VN', {
+        return date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -135,7 +135,7 @@
     function formatClock(value) {
         const date = value instanceof Date ? value : parseDate(value);
         if (!date) return '--:--:--';
-        return date.toLocaleTimeString('vi-VN');
+        return date.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function formatElapsed(openedAtUtc) {
@@ -462,26 +462,28 @@
 
     function floorToLocalHour(date) {
         const d = new Date(date.getTime());
-        d.setMinutes(0, 0, 0);
+        d.setUTCMinutes(0, 0, 0);
         return d;
     }
 
     function formatBucketLabel(date, spansMultipleDays) {
-        const hour = String(date.getHours()).padStart(2, '0') + 'h';
+        date = new Date(date.getTime() + 7 * 3600000);
+        const hour = String(date.getUTCHours()).padStart(2, '0') + 'h';
 
         if (!spansMultipleDays) {
             return hour;
         }
 
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
         return hour + ' · ' + day + '/' + month;
     }
 
     function formatBucketDetailLabel(date) {
-        const hour = String(date.getHours()).padStart(2, '0') + 'h';
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
+        date = new Date(date.getTime() + 7 * 3600000);
+        const hour = String(date.getUTCHours()).padStart(2, '0') + 'h';
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
         return hour + ' · ' + day + '/' + month;
     }
 
@@ -535,13 +537,14 @@
                 date: '-'
             };
         }
+        const vietnamDate = new Date(date.getTime() + 7 * 3600000);
 
         return {
-            hour: String(date.getHours()).padStart(2, '0') + 'h',
+            hour: String(vietnamDate.getUTCHours()).padStart(2, '0') + 'h',
             date:
-                String(date.getDate()).padStart(2, '0') +
+                String(vietnamDate.getUTCDate()).padStart(2, '0') +
                 '/' +
-                String(date.getMonth() + 1).padStart(2, '0')
+                String(vietnamDate.getUTCMonth() + 1).padStart(2, '0')
         };
     }
 
@@ -1098,6 +1101,8 @@
 
             state.resizeTimer = window.setTimeout(function () {
                 if (state.disposed || !state.lastGoodData) return;
+                // Resizing must not reveal a previous shift while loading or showing a state panel.
+                if (root.getAttribute('aria-busy') === 'true' || elements.content.hidden) return;
                 renderSnapshot(state.lastGoodData);
             }, 160);
         });

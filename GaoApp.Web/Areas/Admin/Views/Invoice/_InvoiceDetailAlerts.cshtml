@@ -94,7 +94,7 @@ else if (invoice.IsLocked)
                     @if (invoice.AdditionalReferenceDateUtc.HasValue)
                     {
                         <span>
-                            - ngày @invoice.AdditionalReferenceDateUtc.Value.ToString("dd/MM/yyyy")
+                            - ngày @invoice.AdditionalReferenceDateUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy")
                         </span>
                     }
                 </div>

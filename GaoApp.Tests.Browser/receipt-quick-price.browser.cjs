@@ -158,7 +158,7 @@ const { chromium } = require('playwright');
         await assertMobileActionReachable(seed.setLineId, 'cancel');
         await control(seed.setLineId, 'cancel').click();
         assert.equal(await panel(seed.setLineId).isHidden(), true);
-        await assertMobileLayout('sticky');
+        await assertMobileLayout('static'); // UI-11 phone footer follows content
         await observeNoAutosave();
         assert.deepEqual(await prices(), originalPrices, 'Mobile Hủy must retain every Goods price.');
         assert.deepEqual(writes, [], 'Mobile Hủy must not write a price draft or pricing plan.');
@@ -170,7 +170,7 @@ const { chromium } = require('playwright');
             response.request().method() === 'POST' && response.request().postDataJSON().lines.some(line => line.stockDocumentLineId === seed.setLineId && line.unitPriceBeforeVat === 79000));
         await control(seed.setLineId, 'approve').click();
         assert.equal(await panel(seed.setLineId).isHidden(), true);
-        await assertMobileLayout('sticky');
+        await assertMobileLayout('static'); // UI-11 phone footer follows content
         assert.equal(Number(await input(seed.setLineId).inputValue()), 79000);
         assert.equal(Number(await input(seed.packLineId).inputValue()), 10);
         assert.equal(Number(await input(seed.cartonLineId).inputValue()), 10);

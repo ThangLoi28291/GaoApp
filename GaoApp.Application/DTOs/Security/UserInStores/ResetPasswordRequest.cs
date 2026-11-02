@@ -2,7 +2,7 @@
 
 namespace GaoApp.Application.DTOs.Security.UserInStores;
 
-public class ResetPasswordRequest
+public class ResetPasswordRequest : GaoApp.Application.DTOs.Security.SecurityActionConfirmation
 {
     public int UserId { get; set; }
 

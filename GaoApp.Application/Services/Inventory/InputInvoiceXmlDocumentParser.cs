@@ -71,6 +71,8 @@ public sealed class InputInvoiceXmlDocumentParser : IInputInvoiceXmlDocumentPars
                 continue;
             var supplierItemCode = ChildValue(item, "MHHDVu");
             var unitName = ChildValue(item, "DVTinh");
+            var lineAmount = ParseMoney(ChildValue(item, "ThTien"));
+            var vatRate = ChildValue(item, "TSuat");
             invoice.Details.Add(new InputInvoiceDetail
             {
                 LineNo = ParseInt(ChildValue(item, "STT")),
@@ -85,9 +87,10 @@ public sealed class InputInvoiceXmlDocumentParser : IInputInvoiceXmlDocumentPars
                     InputInvoiceItemIdentityNormalizer.NormalizeText(unitName),
                 Quantity = ParseMoney(ChildValue(item, "SLuong")),
                 UnitPrice = ParseMoney(ChildValue(item, "DGia")),
-                LineAmount = ParseMoney(ChildValue(item, "ThTien")),
-                VatRate = ChildValue(item, "TSuat"),
-                VatAmount = ExtractVatAmount(item)
+                LineAmount = lineAmount,
+                VatRate = vatRate,
+                VatAmount = ExtractVatAmount(item) ??
+                    InputInvoiceVatAmounts.VatAmount(lineAmount, vatRate, 0m)
             });
         }
 
@@ -104,12 +107,15 @@ public sealed class InputInvoiceXmlDocumentParser : IInputInvoiceXmlDocumentPars
     private static string? ChildValue(XElement? parent, string name) =>
         parent?.Elements().FirstOrDefault(x => x.Name.LocalName == name)?.Value.Trim();
 
-    private static decimal ExtractVatAmount(XElement item)
+    private static decimal? ExtractVatAmount(XElement item)
     {
+        var direct = ChildValue(item, "TThue");
+        if (direct is not null) return ParseMoney(direct);
         var node = item.Descendants().Where(x => x.Name.LocalName == "TTin")
             .FirstOrDefault(x => x.Elements().Any(e =>
                 e.Name.LocalName == "TTruong" && e.Value.Trim() == "VATAmount"));
-        return ParseMoney(ChildValue(node, "DLieu"));
+        var value = ChildValue(node, "DLieu");
+        return value is null ? null : ParseMoney(value);
     }
 
     private static DateTime? ParseDate(string? value)

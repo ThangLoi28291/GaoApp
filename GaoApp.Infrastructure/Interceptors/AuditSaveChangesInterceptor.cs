@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Audit;
@@ -7,272 +7,195 @@ using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Interceptors.Auditing;
+using GaoApp.Infrastructure.Services.Audit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace GaoApp.Infrastructure.Interceptors;
 
-/// <summary>
-/// Interceptor ghi audit trail nghiệp vụ vào bảng AuditLogs.
-/// Lưu ý:
-/// - KHÔNG set CreatedAtUtc / UpdatedAtUtc / IsDeleted ở đây
-/// - vì AppDbContext đã xử lý phần audit fields + soft delete + tenant rules
-/// - interceptor này chỉ chuyên snapshot thay đổi và ghi AuditLog
-/// </summary>
-public class AuditSaveChangesInterceptor : SaveChangesInterceptor
+/// <summary>Persist audit evidence on the primary connection before its transaction can commit.</summary>
+public sealed class AuditSaveChangesInterceptor(IAuditExecutionContextAccessor auditExecutionContextAccessor) : SaveChangesInterceptor
 {
-    private readonly IAuditExecutionContextAccessor _auditExecutionContextAccessor;
-    private readonly IDbContextFactory<AuditLogDbContext> _auditLogDbContextFactory;
-    private readonly ILogger<AuditSaveChangesInterceptor> _logger;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = false
-    };
-
-    /// <summary>
-    /// Các field hệ thống không cần đưa vào changed columns.
-    /// </summary>
+    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
     private readonly HashSet<string> _ignoreProperties = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "CreatedAtUtc",
-        "UpdatedAtUtc",
-        "CreatedBy",
-        "UpdatedBy",
-        "RowVersion"
-    };
+    { "CreatedAtUtc", "UpdatedAtUtc", "CreatedBy", "UpdatedBy", "RowVersion" };
+    private readonly Dictionary<DbContext, SaveState> _pendingAudits = new();
 
-    /// <summary>
-    /// Pending audits theo từng DbContext instance.
-    /// Key = DbContext hiện tại
-    /// Value = danh sách audit snapshot đã chụp trước save
-    /// </summary>
-    private readonly Dictionary<DbContext, List<PendingAuditLogItem>> _pendingAudits = new();
-
-    public AuditSaveChangesInterceptor(
-        IAuditExecutionContextAccessor auditExecutionContextAccessor,
-        IDbContextFactory<AuditLogDbContext> auditLogDbContextFactory,
-        ILogger<AuditSaveChangesInterceptor> logger)
+    private sealed class SaveState(List<PendingAuditLogItem> items, IDbContextTransaction transaction, bool ownsTransaction)
     {
-        _auditExecutionContextAccessor = auditExecutionContextAccessor;
-        _auditLogDbContextFactory = auditLogDbContextFactory;
-        _logger = logger;
+        public List<PendingAuditLogItem> Items { get; } = items;
+        public IDbContextTransaction Transaction { get; } = transaction;
+        public bool OwnsTransaction { get; } = ownsTransaction;
+        public string? Savepoint { get; set; }
+        public bool PrimarySaved { get; set; }
     }
 
-    public override InterceptionResult<int> SavingChanges(
-        DbContextEventData eventData,
-        InterceptionResult<int> result)
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
     {
-        CapturePendingAudits(eventData.Context);
-        return base.SavingChanges(eventData, result);
-    }
-
-    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
-        DbContextEventData eventData,
-        InterceptionResult<int> result,
-        CancellationToken cancellationToken = default)
-    {
-        CapturePendingAudits(eventData.Context);
-        return base.SavingChangesAsync(eventData, result, cancellationToken);
-    }
-
-    public override int SavedChanges(
-        SaveChangesCompletedEventData eventData,
-        int result)
-    {
-        FlushPendingAudits(eventData.Context);
-        return base.SavedChanges(eventData, result);
-    }
-
-    public override async ValueTask<int> SavedChangesAsync(
-        SaveChangesCompletedEventData eventData,
-        int result,
-        CancellationToken cancellationToken = default)
-    {
-        await FlushPendingAuditsAsync(eventData.Context, cancellationToken);
-        return await base.SavedChangesAsync(eventData, result, cancellationToken);
-    }
-
-    public override void SaveChangesFailed(DbContextErrorEventData eventData)
-    {
-        ClearPendingAudits(eventData.Context);
-        base.SaveChangesFailed(eventData);
-    }
-
-    public override Task SaveChangesFailedAsync(
-        DbContextErrorEventData eventData,
-        CancellationToken cancellationToken = default)
-    {
-        ClearPendingAudits(eventData.Context);
-        return base.SaveChangesFailedAsync(eventData, cancellationToken);
-    }
-
-    /// <summary>
-    /// Chụp snapshot thay đổi trước khi EF save xuống DB.
-    /// Đây là bước quan trọng nhất để không bị mất state.
-    /// </summary>
-    private void CapturePendingAudits(DbContext? context)
-    {
-        if (context == null)
-            return;
-
-        // Nếu context này đang ở phase flush audit thì không capture lại
-        if (_pendingAudits.ContainsKey(context))
-            return;
-
-        var executionCtx = _auditExecutionContextAccessor.GetCurrent();
-
-        // Không có execution context => bỏ qua audit.
-        // Tránh lỗi ở startup / migrate / seed / background flow không có HTTP request.
-        if (executionCtx == null)
-            return;
-
-        var pendingItems = new List<PendingAuditLogItem>();
-
-        var entries = context.ChangeTracker.Entries()
-            .Where(e =>
-                e.Entity is IAuditTrackedEntity &&
-                e.Entity is not AuditLog &&
-                (e.State == EntityState.Added ||
-                 e.State == EntityState.Modified ||
-                 e.State == EntityState.Deleted))
-            .ToList();
-
-        foreach (var entry in entries)
+        var context = eventData.Context;
+        var items = CapturePendingAudits(context);
+        if (context is null || items.Count == 0) return result;
+        if (!context.Database.IsRelational())
         {
-            var pending = BuildPendingAudit(entry, executionCtx);
-            if (pending != null)
+            context.Set<AuditOutboxMessage>().AddRange(items.Select(x => AuditOutboxEvidence.Create(ToAuditLog(x))));
+            return result;
+        }
+        var existing = context.Database.CurrentTransaction;
+        var state = new SaveState(items, existing ?? context.Database.BeginTransaction(), existing is null);
+        _pendingAudits.Add(context, state);
+        if (!state.OwnsTransaction && state.Transaction.SupportsSavepoints)
+        {
+            state.Savepoint = Guid.NewGuid().ToString("N");
+            try { state.Transaction.CreateSavepoint(state.Savepoint); }
+            catch { Release(context); throw; }
+        }
+        return result;
+    }
+
+    public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+        InterceptionResult<int> result, CancellationToken cancellationToken = default)
+    {
+        var context = eventData.Context;
+        var items = CapturePendingAudits(context);
+        if (context is null || items.Count == 0) return result;
+        if (!context.Database.IsRelational())
+        {
+            context.Set<AuditOutboxMessage>().AddRange(items.Select(x => AuditOutboxEvidence.Create(ToAuditLog(x))));
+            return result;
+        }
+        var existing = context.Database.CurrentTransaction;
+        var state = new SaveState(items, existing ?? await context.Database.BeginTransactionAsync(cancellationToken), existing is null);
+        _pendingAudits.Add(context, state);
+        if (!state.OwnsTransaction && state.Transaction.SupportsSavepoints)
+        {
+            state.Savepoint = Guid.NewGuid().ToString("N");
+            try { await state.Transaction.CreateSavepointAsync(state.Savepoint, cancellationToken); }
+            catch { await ReleaseAsync(context); throw; }
+        }
+        return result;
+    }
+
+    public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
+    {
+        var context = eventData.Context;
+        if (context is null || !_pendingAudits.TryGetValue(context, out var state)) return result;
+        state.PrimarySaved = true;
+        try
+        {
+            using var audit = CreateEnlistedContext(context);
+            audit.Database.UseTransaction(state.Transaction.GetDbTransaction());
+            audit.AuditOutbox.AddRange(state.Items.Select(x => AuditOutboxEvidence.Create(ToAuditLog(x))));
+            audit.SaveChanges();
+            if (state.OwnsTransaction) state.Transaction.Commit();
+            else if (state.Savepoint is not null) state.Transaction.ReleaseSavepoint(state.Savepoint);
+        }
+        catch
+        {
+            Abort(context);
+            throw new InvalidOperationException("Không lưu được bằng chứng kiểm toán. Giao dịch chưa hoàn tất.");
+        }
+        finally { Release(context); }
+        return result;
+    }
+
+    public override async ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result,
+        CancellationToken cancellationToken = default)
+    {
+        var context = eventData.Context;
+        if (context is null || !_pendingAudits.TryGetValue(context, out var state)) return result;
+        state.PrimarySaved = true;
+        try
+        {
+            await using var audit = CreateEnlistedContext(context);
+            await audit.Database.UseTransactionAsync(state.Transaction.GetDbTransaction(), cancellationToken);
+            audit.AuditOutbox.AddRange(state.Items.Select(x => AuditOutboxEvidence.Create(ToAuditLog(x))));
+            await audit.SaveChangesAsync(cancellationToken);
+            if (state.OwnsTransaction) await state.Transaction.CommitAsync(cancellationToken);
+            else if (state.Savepoint is not null) await state.Transaction.ReleaseSavepointAsync(state.Savepoint, cancellationToken);
+        }
+        catch
+        {
+            await AbortAsync(context);
+            throw new InvalidOperationException("Không lưu được bằng chứng kiểm toán. Giao dịch chưa hoàn tất.");
+        }
+        finally { await ReleaseAsync(context); }
+        return result;
+    }
+
+    public override void SaveChangesFailed(DbContextErrorEventData eventData) => Abort(eventData.Context);
+    public override Task SaveChangesFailedAsync(DbContextErrorEventData eventData, CancellationToken cancellationToken = default)
+        => AbortAsync(eventData.Context);
+    public override void SaveChangesCanceled(DbContextEventData eventData) => Abort(eventData.Context);
+    public override Task SaveChangesCanceledAsync(DbContextEventData eventData, CancellationToken cancellationToken = default)
+        => AbortAsync(eventData.Context);
+
+    private static AuditLogDbContext CreateEnlistedContext(DbContext context)
+    {
+        if (!context.Database.IsSqlServer()) throw new NotSupportedException("Durable audit requires SQL Server.");
+        return new AuditLogDbContext(new DbContextOptionsBuilder<AuditLogDbContext>()
+            .UseSqlServer(context.Database.GetDbConnection()).Options);
+    }
+
+    private void Abort(DbContext? context)
+    {
+        if (context is null || !_pendingAudits.TryGetValue(context, out var state)) return;
+        try
+        {
+            if (!state.PrimarySaved && state.Savepoint is not null)
             {
-                pendingItems.Add(pending);
+                try { state.Transaction.RollbackToSavepoint(state.Savepoint); }
+                catch { state.Transaction.Rollback(); } // SQL THROW/XACT_ABORT can make a savepoint unusable.
             }
-        }
-
-        // Chống duplicate trong cùng một lần flush
-        // Trường hợp hiếm EF / flow nghiệp vụ tạo nhiều audit item giống hệt nhau.
-        if (pendingItems.Count > 1)
-        {
-            pendingItems = pendingItems
-                .GroupBy(x => new
-                {
-                    x.StoreId,
-                    x.ActorUserId,
-                    x.Module,
-                    x.ActionType,
-                    x.EntityName,
-                    x.EntityId,
-                    x.Summary,
-                    x.OldValuesJson,
-                    x.NewValuesJson,
-                    x.ChangedColumnsJson,
-                    x.TraceId,
-                    x.Path
-                })
-                .Select(g => g.First())
-                .ToList();
-        }
-
-        if (pendingItems.Count > 0)
-        {
-            _pendingAudits[context] = pendingItems;
-        }
-    }
-
-    /// <summary>
-    /// Sau khi SaveChanges thành công, ghi pending audits vào bảng AuditLogs.
-    /// Dùng AuditLogDbContext riêng để tránh recursion / circular dependency.
-    /// </summary>
-    private void FlushPendingAudits(DbContext? context)
-    {
-        if (context == null)
-            return;
-
-        if (!_pendingAudits.TryGetValue(context, out var pendingItems) || pendingItems.Count == 0)
-        {
-            _pendingAudits.Remove(context);
-            return;
-        }
-
-        try
-        {
-            var logs = pendingItems.Select(ToAuditLog).ToList();
-
-            using var auditDbContext = _auditLogDbContextFactory.CreateDbContext();
-
-            auditDbContext.AuditLogs.AddRange(logs);
-            auditDbContext.SaveChanges();
-        }
-        catch (Exception ex)
-        {
-            // Primary SaveChanges has already succeeded. Audit persistence is
-            // best-effort so it must not turn a committed write into a failure.
-            _logger.LogError(
-                "Audit persistence failed after primary SaveChanges; primary data remains committed. AuditCount={AuditCount}; TraceId={TraceId}; ExceptionType={ExceptionType}",
-                pendingItems.Count,
-                pendingItems[0].TraceId,
-                ex.GetType().Name);
+            else state.Transaction.Rollback(); // Missing audit evidence aborts the entire business transaction.
         }
         finally
         {
-            _pendingAudits.Remove(context);
+            if (state.PrimarySaved) context.ChangeTracker.Clear();
+            Release(context);
         }
     }
 
-    private async Task FlushPendingAuditsAsync(
-        DbContext? context,
-        CancellationToken cancellationToken = default)
+    private async Task AbortAsync(DbContext? context)
     {
-        if (context == null)
-            return;
-
-        if (!_pendingAudits.TryGetValue(context, out var pendingItems) || pendingItems.Count == 0)
-        {
-            _pendingAudits.Remove(context);
-            return;
-        }
-
+        if (context is null || !_pendingAudits.TryGetValue(context, out var state)) return;
         try
         {
-            var logs = pendingItems.Select(ToAuditLog).ToList();
-
-            await using var auditDbContext =
-                await _auditLogDbContextFactory.CreateDbContextAsync(cancellationToken);
-
-            auditDbContext.AuditLogs.AddRange(logs);
-            await auditDbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            // Primary SaveChanges has already succeeded. Audit persistence is
-            // best-effort so it must not turn a committed write into a failure.
-            _logger.LogError(
-                "Audit persistence failed after primary SaveChanges; primary data remains committed. AuditCount={AuditCount}; TraceId={TraceId}; ExceptionType={ExceptionType}",
-                pendingItems.Count,
-                pendingItems[0].TraceId,
-                ex.GetType().Name);
+            if (!state.PrimarySaved && state.Savepoint is not null)
+            {
+                try { await state.Transaction.RollbackToSavepointAsync(state.Savepoint, CancellationToken.None); }
+                catch { await state.Transaction.RollbackAsync(CancellationToken.None); }
+            }
+            else await state.Transaction.RollbackAsync(CancellationToken.None);
         }
         finally
         {
-            _pendingAudits.Remove(context);
+            if (state.PrimarySaved) context.ChangeTracker.Clear();
+            await ReleaseAsync(context);
         }
     }
 
-    /// <summary>
-    /// Nếu SaveChanges fail thì phải xóa pending audits để tránh log rác.
-    /// </summary>
-    private void ClearPendingAudits(DbContext? context)
+    private void Release(DbContext context)
     {
-        if (context == null)
-            return;
-
-        _pendingAudits.Remove(context);
+        if (_pendingAudits.Remove(context, out var state) && state.OwnsTransaction) state.Transaction.Dispose();
+    }
+    private async Task ReleaseAsync(DbContext context)
+    {
+        if (_pendingAudits.Remove(context, out var state) && state.OwnsTransaction) await state.Transaction.DisposeAsync();
     }
 
+    private List<PendingAuditLogItem> CapturePendingAudits(DbContext? context)
+    {
+        if (context is null) return [];
+        if (_pendingAudits.ContainsKey(context)) throw new InvalidOperationException("Reentrant audited SaveChanges is not supported.");
+        context.ChangeTracker.DetectChanges();
+        var executionCtx = auditExecutionContextAccessor.GetCurrent()
+            ?? throw new InvalidOperationException("An audit execution context is required.");
+        return context.ChangeTracker.Entries().Where(e => e.Entity is IAuditTrackedEntity && e.Entity is not AuditLog &&
+                e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(e => BuildPendingAudit(e, executionCtx)).OfType<PendingAuditLogItem>().ToList();
+    }
     private PendingAuditLogItem? BuildPendingAudit(
         EntityEntry entry,
         AuditExecutionContextDto executionCtx)
@@ -326,7 +249,12 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
             DetectModifiedValues(entry, oldValues, newValues, changedColumns);
 
             if (changedColumns.Count == 0)
-                return null;
+            {
+                // Record credential-only changes without storing credential names or values.
+                if (!entry.Properties.Any(p => p.IsModified && AuditSensitiveData.IsSensitive(p.Metadata.Name) &&
+                    !Equals(p.OriginalValue, p.CurrentValue))) return null;
+                changedColumns.Add("CredentialsChanged");
+            }
 
             if (IsRestore(oldValues, newValues))
             {
@@ -347,12 +275,8 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
 
         var storeId = TryResolveStoreId(entry, executionCtx.StoreId);
 
-        // Không có StoreId => bỏ qua audit thay vì làm chết app.
-        // Rất hữu ích cho startup / seed / system flow.
-        if (!storeId.HasValue)
-        {
-            return null;
-        }
+        if (storeId is not > 0)
+            throw new InvalidOperationException("Không xác định được cửa hàng để lưu bằng chứng kiểm toán.");
 
         return new PendingAuditLogItem
         {
@@ -387,6 +311,11 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
 
     private AuditLog ToAuditLog(PendingAuditLogItem x)
     {
+        var entityId = x.EntityId ?? GetPrimaryKeyValue(x.Entry!);
+        var newValuesJson = x.NewValuesJson;
+        if (x.ActionType == AuditActionType.Create && x.Entry is not null)
+            newValuesJson = JsonSerializer.Serialize(x.Entry.Properties.Where(p => !ShouldIgnoreProperty(p))
+                .ToDictionary(p => p.Metadata.Name, p => p.CurrentValue), JsonOptions);
         return new AuditLog
         {
             StoreId = x.StoreId,
@@ -397,12 +326,12 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
             ActionType = x.ActionType,
 
             EntityName = x.EntityName,
-            EntityId = x.EntityId ?? GetPrimaryKeyValue(x.Entry!),
-            EntityDisplay = x.EntityDisplay,
+            EntityId = entityId,
+            EntityDisplay = $"{x.EntityName} #{entityId}",
             Summary = x.Summary,
 
             OldValuesJson = x.OldValuesJson,
-            NewValuesJson = x.NewValuesJson,
+            NewValuesJson = newValuesJson,
             ChangedColumnsJson = x.ChangedColumnsJson,
 
             TraceId = x.TraceId,

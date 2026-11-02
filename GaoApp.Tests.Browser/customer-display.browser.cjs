@@ -13,6 +13,13 @@ const { chromium } = require('playwright');
     const page = await context.newPage(), errors = [];
     page.on('pageerror', e => errors.push(e.message));
     let draft = null, media = [], screenUnavailable = false, mediaUnavailable = false;
+    // This visual fixture controls the read API; it never asks the real hub to relay financial payloads.
+    let paymentFixture = { mode: 'idle', key: 'idle', payload: null }, paymentFixtureVersion = 0;
+    await page.route('**/admin/pos/customer-display/payment-state', route => route.fulfill({
+        status: screenUnavailable ? 503 : 200, contentType: 'application/json',
+        body: JSON.stringify({ storeId: info.storeId, terminalId: info.terminalId, orderId: draft?.orderId ?? null,
+            validUntilUtc: new Date(Date.now() + 30000).toISOString(), ...paymentFixture })
+    }));
     await page.route('**/admin/pos/screen', route => route.fulfill({ status: screenUnavailable ? 503 : 200, contentType: 'application/json', body: JSON.stringify({ currentDraft: draft }) }));
     await page.route('**/admin/displaypromotion/activeforcustomerdisplay', route => route.fulfill({ status: mediaUnavailable ? 503 : 200, contentType: 'application/json', body: JSON.stringify({ data: media }) }));
     // Product artwork belongs only to this browser fixture; production uses catalog images.
@@ -27,7 +34,9 @@ const { chromium } = require('playwright');
     const products = [ ['Sữa tươi không đường 180 ml', 3, 8500, 'hộp'], ['Bánh mì nguyên cám', 1, 35000, 'gói'], ['Trà xanh hương nhài', 2, 12000, 'chai'], ['Sữa chua vị việt quất', 2, 28000, 'lốc'], ['Ngũ cốc dinh dưỡng', 1, 68000, 'hộp'], ['Nước ép cam nguyên chất', 1, 42000, 'chai'] ];
     const lines = products.map(([itemName, quantity, unitPrice, sellingUnitName], i) => ({ lineId: i + 1, itemName, quantity, unitPrice, sellingUnitName, lineTotal: quantity * unitPrice, imageThumbUrl: '/display-fixture/item-' + i }));
     const subtotal = lines.reduce((sum, x) => sum + x.lineTotal, 0);
-    const sampleDraft = { orderId: 9001, cashierName: 'Người tạo đơn cũ', customerName: 'Nguyễn Minh Anh', customerPhone: '', lines, subtotal, discountTotal: 15000, orderDiscount: 0, grandTotal: subtotal - 15000, paidTotal: 0, balanceDue: subtotal - 15000, changeDue: 0 };
+    const sampleDraft = { orderId: 9001, cashierName: 'Người tạo đơn cũ', customerId: 123, customerName: 'Nguyễn Minh Anh', customerPhone: '0901234567',
+        customerPriceTier: 'RETAIL', rewardSummary: { customerId: 123, isPointEligible: true, availablePoints: 1250 },
+        lines, subtotal, discountTotal: 15000, orderDiscount: 0, grandTotal: subtotal - 15000, paidTotal: 0, balanceDue: subtotal - 15000, changeDue: 0 };
     async function connectBridge() {
         await page.waitForFunction(() => window.signalR && document.querySelector('.cd-status').textContent.includes('Sẵn sàng'));
         await page.evaluate(async ({ storeId, terminalId }) => {
@@ -36,7 +45,12 @@ const { chromium } = require('playwright');
             await window.displayProbeBridge.invoke('JoinStoreGroup', storeId, String(terminalId));
         }, info);
     }
-    const send = (eventType, payload = {}) => page.evaluate(async ({ eventType, payload }) => {
+    const send = async (eventType, payload = {}) => {
+        if (eventType.startsWith('customer_payment_') || eventType === 'customer_display_reset') {
+            const mode = { customer_payment_preview: 'preview', customer_payment_qr_created: 'qr', customer_payment_success: 'recorded' }[eventType] || 'idle';
+            paymentFixture = { mode, key: 'visual-' + (++paymentFixtureVersion), payload };
+        }
+        return page.evaluate(async ({ eventType, payload }) => {
         if (eventType === 'customer_display_promotion_changed') {
             // Promotion broadcasts are server-only. Use a real authorized admin action on fixture data.
             if (!window.probePromotionToken) {
@@ -53,10 +67,13 @@ const { chromium } = require('playwright');
             if (result.id) window.probePromotionId = result.id;
             return;
         }
-        await window.displayProbeBridge.invoke('BroadcastTerminalEvent', { eventType, payload });
-    }, { eventType, payload });
+        await window.displayProbeBridge.invoke('BroadcastTerminalEvent', { eventType: 'customer_payment_refresh', payload: {} });
+        }, { eventType, payload });
+    };
     async function screenshot(name) {
-        await page.evaluate(() => Promise.all(document.getAnimations().map(animation => animation.finished.catch(() => {}))));
+        await page.evaluate(() => Promise.all(document.getAnimations()
+            .filter(animation => Number.isFinite(animation.effect.getTiming().iterations))
+            .map(animation => animation.finished.catch(() => {}))));
         await inViewport('#cdCashierName');
         await inViewport('#cdTerminalName');
         assert.equal(await page.locator('#cdCashierName').innerText(), 'Nguyễn Minh An', 'The display must retain this device operator instead of the old order creator.');
@@ -104,7 +121,7 @@ const { chromium } = require('playwright');
         await page.waitForFunction(() => document.querySelector('#cdWifiName').textContent === 'GẠO MARKET · Guest');
         assert.equal(await page.locator('#cdWifiPassword').innerText(), 'Gao@2026');
         await settings.close();
-        await page.locator('.cd-idle-media-fallback img').waitFor();
+        await page.locator('.cd-idle-media-fallback.cd-hw-scene').waitFor();
         await screenshot('idle-1440');
         for (const size of [{ width: 800, height: 600 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
             await page.setViewportSize(size); await inViewport('#cdIdleMediaStage'); await inViewport('.cd-welcome h1');
@@ -116,14 +133,48 @@ const { chromium } = require('playwright');
         await page.waitForFunction(total => document.querySelector('#cdGrandTotal').textContent === total, money(draft.grandTotal));
         await page.waitForFunction(() => document.querySelector('#cdHeroImage').complete);
         assert.equal(await page.locator('.cd-line').count(), 6);
+        assert.equal(await page.locator('#cdCustomerName').innerText(), 'Nguyễn Minh Anh');
+        assert.equal(await page.locator('#cdCustomerPhone').innerText(), '0901234567');
+        assert.equal(await page.locator('#cdCustomerPoints').innerText(), '1.250');
+        assert.equal(await page.locator('#cdCustomerPointsBox').isVisible(), true);
         await screenshot('cart-1440');
         for (const size of [{ width: 1920, height: 1080 }, { width: 1366, height: 768 }, { width: 1024, height: 768 }, { width: 800, height: 600 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
             await page.setViewportSize(size);
             await inViewport('.cd-total-box'); await inViewport('.cd-footer');
+            await inViewport('#cdCustomerName'); await inViewport('#cdCustomerPhone'); await inViewport('#cdCustomerPointsBox');
             assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
             await screenshot(`cart-${size.width}x${size.height}`);
         }
         await page.setViewportSize({ width: 1440, height: 900 });
+        draft = { ...structuredClone(sampleDraft), customerName: 'Khách sỉ', customerPriceTier: 'WHOLESALE' };
+        await send('customer_payment_changed');
+        await page.waitForFunction(() => document.querySelector('#cdCustomerName').textContent === 'Khách sỉ');
+        assert.equal(await page.locator('#cdCustomerPointsBox').isVisible(), false);
+        assert.equal(await page.locator('#cdCustomerPoints').textContent(), '');
+        await screenshot('customer-wholesale-no-points');
+        draft = { ...structuredClone(sampleDraft), customerId: 124, customerName: 'Khách chưa có điểm', customerPhone: '' };
+        await send('customer_payment_changed');
+        await page.waitForFunction(() => document.querySelector('#cdCustomerName').textContent === 'Khách chưa có điểm');
+        assert.equal(await page.locator('#cdCustomerPointsBox').isVisible(), false, 'A stale summary for another customer cannot be shown.');
+        draft.rewardSummary = { customerId: 124, availablePoints: 0 };
+        await send('customer_payment_changed');
+        await page.waitForFunction(() => document.querySelector('#cdCustomerPoints').textContent === '0');
+        assert.equal(await page.locator('#cdCustomerPointsBox').isVisible(), true);
+        assert.equal(await page.locator('#cdCustomerPhone').isVisible(), false);
+        draft = { ...structuredClone(sampleDraft), customerId: null, customerName: null, customerPhone: null, rewardSummary: null };
+        await send('customer_payment_changed');
+        await page.waitForFunction(() => document.querySelector('#cdCustomerName').textContent === 'Khách lẻ');
+        assert.equal(await page.locator('#cdCustomerPointsBox').isVisible(), false);
+        draft = { ...structuredClone(sampleDraft), lines: [] };
+        await send('customer_payment_changed');
+        await page.waitForFunction(() => document.querySelector('#customerDisplayApp').dataset.view === 'idle' && !document.querySelector('#cdIdleCustomerSection').hidden);
+        assert.equal(await page.locator('#cdIdleCustomerPoints').innerText(), '1.250');
+        await inViewport('#cdIdleCustomerSection');
+        await screenshot('customer-selected-before-products');
+        draft = structuredClone(sampleDraft);
+        await send('customer_payment_changed');
+        await page.waitForFunction(() => document.querySelector('#cdCustomerPoints').textContent === '1.250' && document.querySelector('#customerDisplayApp').dataset.view === 'cart');
+        console.log('PASS customer identity/current points, selected empty carts, confirmed zero balance, wholesale hiding, customer changes and stale summary clearing.');
         // The product card, cart/totals and promotions must all remain visible together.
         media = [{ mediaType: 'text', title: 'Tươi ngon mỗi ngày', description: 'Khám phá những lựa chọn yêu thích tại tiệm.', backgroundColor: '#173c32', textColor: '#f7f7ef', durationSeconds: 120, isFullscreen: true }];
         await send('customer_display_promotion_changed');
@@ -165,16 +216,24 @@ const { chromium } = require('playwright');
         await send('customer_payment_preview', { method: 0, amount: 300000, expectedBalance: 0, expectedChange: 4500 });
         await page.locator('#cdPaymentOverlay:not(.d-none)').waitFor();
         await screenshot('payment-cash');
+        assert.equal(await page.locator('#cdPaymentCustomerPoints').innerText(), '1.250');
+        await inViewport('#cdPaymentCustomerPointsBox');
         assert.match(await page.locator('#cdPaymentMessage').innerText(), /4\.500 ₫/);
         const qrContext = {}; vm.runInNewContext(fs.readFileSync('GaoApp.Web/wwwroot/Admin/js/pos/qrcodegen.js', 'utf8'), qrContext);
         const qr = qrContext.qrcodegen.QrCode.encodeText('DISPLAY-TEST-NOT-A-PAYMENT', qrContext.qrcodegen.QrCode.Ecc.MEDIUM);
-        let cells = ''; for (let y = 0; y < qr.size; y++) for (let x = 0; x < qr.size; x++) if (qr.getModule(x, y)) cells += `<rect x="${x + 4}" y="${y + 4}" width="1" height="1"/>`;
-        const qrDataUrl = 'data:image/svg+xml;base64,' + Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${qr.size + 8} ${qr.size + 8}"><rect width="100%" height="100%" fill="white"/><g fill="black">${cells}</g></svg>`).toString('base64');
+        const qrDataUrl = await page.evaluate(({ size, modules }) => {
+            const canvas = document.createElement('canvas'); canvas.width = canvas.height = (size + 8) * 6;
+            const drawing = canvas.getContext('2d'); drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, canvas.width, canvas.height);
+            drawing.fillStyle = '#000';
+            for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (modules[y][x]) drawing.fillRect((x + 4) * 6, (y + 4) * 6, 6, 6);
+            return canvas.toDataURL('image/png');
+        }, { size: qr.size, modules: Array.from({ length: qr.size }, (_, y) => Array.from({ length: qr.size }, (_, x) => qr.getModule(x, y))) });
         await send('customer_payment_qr_created', { bankName: 'NGÂN HÀNG KIỂM THỬ', accountNumber: '0123456789', accountName: 'GẠO MARKET · KIỂM THỬ', qrDataUrl, amount: draft.grandTotal, content: 'TEST POS 9001' });
         await page.locator('#cdQrBox:not(.d-none)').waitFor();
         await page.waitForFunction(() => document.querySelector('#cdQrImage').complete);
         for (const size of [{ width: 1920, height: 1080 }, { width: 1440, height: 900 }, { width: 1366, height: 768 }, { width: 1200, height: 700 }, { width: 1024, height: 768 }, { width: 800, height: 600 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
             await page.setViewportSize(size); await inViewport('#cdQrImage'); await inViewport('#cdQrAmount'); await inViewport('#cdQrContent');
+            await inViewport('#cdPaymentCustomerName'); await inViewport('#cdPaymentCustomerPointsBox');
             assert.equal(await page.locator('.cd-payment-visual').evaluate(el => el.scrollHeight <= el.clientHeight + 2), true, 'QR panel must fit without scrolling.');
             if (size.width >= 1200) {
                 const ad = await page.locator('#cdIdleScreen').boundingBox(), payment = await page.locator('#cdPaymentOverlay').boundingBox();
@@ -197,7 +256,10 @@ const { chromium } = require('playwright');
         await send('customer_display_reset');
         await page.locator('#cdSuccessOverlay').waitFor({ state: 'hidden' });
         await page.locator('#cdIdleScreen:not(.d-none)').waitFor();
-        assert.equal(await page.locator('#cdCustomerName').innerText(), 'Quý khách');
+        assert.equal(await page.locator('#cdCustomerName').innerText(), 'Khách lẻ');
+        assert.equal(await page.locator('#cdCustomerPhone').textContent(), '');
+        assert.equal(await page.locator('#cdCustomerPoints').textContent(), '');
+        assert.equal(await page.locator('#cdCustomerPointsBox').evaluate(element => element.hidden), true);
         // Large carts retain every row, long names and safe text rendering.
         draft = structuredClone(sampleDraft);
         draft.lines = Array.from({ length: 22 }, (_, i) => ({ ...lines[i % lines.length], lineId: i + 1, itemName: i === 0 ? '<img src=x onerror=alert(1)> Sản phẩm có tên rất dài cần hiển thị an toàn' : lines[i % lines.length].itemName }));

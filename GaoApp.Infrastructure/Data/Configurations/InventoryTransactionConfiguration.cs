@@ -10,6 +10,7 @@ public class InventoryTransactionConfiguration : IEntityTypeConfiguration<Invent
     {
         builder.ToTable("InventoryTransactions", t => {
             t.HasTrigger("TR_InventoryTransactions_DeliveryProof");
+            t.HasCheckConstraint("CK_InventoryTransactions_NoStorefrontPhysical", "[ReferenceType]<>12");
             t.HasCheckConstraint("CK_InventoryTransactions_PostingPrecision", "[PostingPrecisionPolicy]=0 OR [PostingPrecisionPolicy]=1 OR [PostingPrecisionPolicy]=2");
             t.HasCheckConstraint("CK_InventoryTransactions_DeliveryPosting", "[PostingPrecisionPolicy]<>2 OR ([ReferenceType]=11 AND [ReferenceLineId] IS NOT NULL AND [IdempotencyKey] IS NOT NULL AND (([TransactionType]=80 AND [QuantityChange]<0) OR ([TransactionType]=81 AND [QuantityChange]>0)))");
         });

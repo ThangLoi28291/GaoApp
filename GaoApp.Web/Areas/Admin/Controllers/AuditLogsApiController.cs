@@ -22,6 +22,7 @@ public class AuditLogsApiController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetList([FromQuery] AuditLogQueryDto query, CancellationToken ct)
     {
+        query.NormalizeAndValidate();
         var result = await _auditLogService.SearchAsync(query, ct);
         return Ok(result);
     }

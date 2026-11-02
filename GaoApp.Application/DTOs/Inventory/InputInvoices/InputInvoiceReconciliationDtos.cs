@@ -52,6 +52,7 @@ public sealed class InputInvoiceCommercialPreviewLineRequest
 
 public sealed class InputInvoiceHeaderReconciliationDto
 {
+    public bool VatBreakdownComparable { get; set; } = true;
     public decimal ReceiptSubtotalBeforeVat { get; set; }
     public decimal XmlTotalBeforeTax { get; set; }
     public decimal SubtotalDifference { get; set; }
@@ -93,6 +94,15 @@ public sealed class InputInvoiceDetailReconciliationDto
     public decimal ReceiptVatAmount { get; set; }
     public decimal XmlVatAmount { get; set; }
     public decimal VatAmountDifference { get; set; }
+    public bool VatBreakdownComparable { get; set; } = true;
+    public decimal ReceiptAfterVatAmount => ReceiptBeforeVatAmount + ReceiptVatAmount;
+    public decimal XmlAfterVatAmount => XmlBeforeVatAmount + XmlVatAmount;
+    public decimal? ReceiptBaseUnitPriceAfterVat => ReceiptBaseQuantity > 0m
+        ? ReceiptAfterVatAmount / ReceiptBaseQuantity : null;
+    public decimal? XmlBaseUnitPriceAfterVat => DerivedBaseQuantity > 0m
+        ? XmlAfterVatAmount / DerivedBaseQuantity : null;
+    public decimal? BaseUnitPriceAfterVatDifference =>
+        ReceiptBaseUnitPriceAfterVat - XmlBaseUnitPriceAfterVat;
     public bool IsIgnored { get; set; }
     public string? IgnoreReason { get; set; }
     public List<int> StockDocumentLineIds { get; set; } = [];
@@ -135,6 +145,14 @@ public sealed class InputInvoiceProductReconciliationSummaryDto
     public decimal ReceiptVatAmount { get; set; }
     public decimal XmlVatAmount { get; set; }
     public decimal VatAmountDifference { get; set; }
+    public decimal ReceiptAfterVatAmount => ReceiptBeforeVatAmount + ReceiptVatAmount;
+    public decimal XmlAfterVatAmount => XmlBeforeVatAmount + XmlVatAmount;
+    public decimal? ReceiptBaseUnitPriceAfterVat => ReceiptBaseQuantity > 0m
+        ? ReceiptAfterVatAmount / ReceiptBaseQuantity : null;
+    public decimal? XmlBaseUnitPriceAfterVat => XmlBaseQuantity > 0m
+        ? XmlAfterVatAmount / XmlBaseQuantity : null;
+    public decimal? BaseUnitPriceAfterVatDifference =>
+        XmlBaseUnitPriceAfterVat - ReceiptBaseUnitPriceAfterVat;
     public string VatStatus { get; set; } = "NeedsReview";
 }
 

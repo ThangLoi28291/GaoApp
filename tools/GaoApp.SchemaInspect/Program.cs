@@ -4,6 +4,7 @@ using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Data.Migrations;
+using GaoApp.Infrastructure.Tenant;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
@@ -37,7 +38,11 @@ try
     }
     Console.WriteLine($"READ ONLY | Environment: {environment} | No migration, seed, or repair will run.");
     var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlServer(connection).Options;
-    await using var db = new AppDbContext(options, new InspectTenant(), new InspectUser());
+    var tenant = new TenantContext();
+    // EF's migration-history metadata commands are unclassified SQL. This trusted
+    // maintenance entry point needs the same scope as the migrator; ReadAsync only reads.
+    using var inspectionScope = tenant.BeginSystemAccess(SystemDataAccessPurpose.Provisioning);
+    await using var db = new AppDbContext(options, tenant, new InspectUser());
     stage = "schema inspection";
     var report = await new DatabaseSchemaInspection(db).ReadAsync();
     stage = "report writing";
@@ -55,12 +60,6 @@ catch (Exception ex)
     return 1;
 }
 
-sealed class InspectTenant : ITenantContext
-{
-    public int? StoreId => null;
-    public bool IsHostAdmin => true;
-    public string? Subdomain => null;
-}
 sealed class InspectUser : ICurrentUser
 {
     public int? UserId => null;

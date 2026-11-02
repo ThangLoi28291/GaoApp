@@ -1,0 +1,9 @@
+Measured at: 2026-11-02T15:20:57.3301972+07:00
+Logical processors visible: 12
+Drive C: free GiB 428,87; used GiB 501,81
+Drive E: free GiB 539,84; used GiB 391,67
+RAM: NOT VERIFIED; CIM denied in this environment; no elevation requested.
+SQL Server edition, size limit, test row counts: NOT TESTED; no SQL connection opened.
+SDK selected: 10.0.403; installed runtime: 10.0.14; repo minimum RuntimeFrameworkVersion: 10.0.13 with LatestPatch.
+dotnet --info: exit 1 because workload inspection could not open Service Control Manager; build with MSBuildEnableWorkloadResolver=false succeeded separately.
+Node: v24.18.0

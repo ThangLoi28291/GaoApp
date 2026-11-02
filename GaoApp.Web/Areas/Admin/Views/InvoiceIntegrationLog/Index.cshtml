@@ -1,4 +1,4 @@
-﻿@using GaoApp.Domain.Enums
+@using GaoApp.Domain.Enums
 @model GaoApp.Web.Areas.Admin.ViewModels.Invoices.InvoiceIntegrationLogIndexViewModel
 
 @{
@@ -191,7 +191,7 @@
                                name="Keyword"
                                value="@q.Keyword"
                                class="form-control"
-                               placeholder="invoiceNo, UUID, URL, mã lỗi..." />
+                               placeholder="Số hóa đơn, UUID, mã HTTP hoặc mã lỗi chuẩn..." />
                     </div>
 
                     <div class="col-md-2">
@@ -243,7 +243,7 @@
                 <thead class="table-light">
                     <tr>
                         <th>ID</th>
-                        <th>Thời gian UTC</th>
+                        <th>Thời gian</th>
                         <th>Hóa đơn</th>
                         <th>API</th>
                         <th>Kết quả</th>
@@ -273,11 +273,11 @@
                                 </td>
 
                                 <td>
-                                    <div>@item.StartedAtUtc.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                                    <div>@item.StartedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</div>
                                     @if (item.FinishedAtUtc.HasValue)
                                     {
                                         <small class="text-muted">
-                                            Kết thúc: @item.FinishedAtUtc.Value.ToString("HH:mm:ss")
+                                            Kết thúc: @item.FinishedAtUtc.Value.ToVietnamTime().ToString("HH:mm:ss")
                                         </small>
                                     }
                                 </td>
@@ -454,3 +454,11 @@
     </div>
 
 </div>
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-operations.mobile.css" asp-append-version="true" />
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-operations.mobile.js" asp-append-version="true"></script>
+}

@@ -72,7 +72,6 @@ async function prepare(page, context, info, output) {
     await verifyStoreIdentity(studio, page, context, info, output);
     await verifyWidePreview(studio, output);
     await verifyClassicPreview(studio, output);
-    await mockPrinters(studio);
     await studio.locator('[data-size="45"]').click();
     assert.equal(await studio.locator('.template-card').count(), 3);
     await studio.locator('[data-template-key="modern-45"]').click();
@@ -80,16 +79,14 @@ async function prepare(page, context, info, output) {
     await studio.locator('#designFooter').fill('Cảm ơn quý khách!\nĐổi hàng trong 7 ngày với hóa đơn.');
     await studio.locator('#saveTemplate').click();
     await studio.locator('#studioMessage').filter({ hasText: 'Đã lưu mẫu.' }).waitFor();
-    await studio.locator('#printMode').selectOption('qz');
-    await studio.locator('#connectPrinters').click();
-    await studio.locator('#studioMessage').filter({ hasText: 'Đã tìm thấy 2 máy in' }).waitFor();
-    await studio.locator('#clientPrinter').selectOption('Linux_CUPS_HP');
-    await studio.locator('#printCopies').fill('2');
-    await studio.locator('#applyTemplate').click();
     await studio.locator('#setStoreDefault').click();
     await studio.locator('#studioMessage').filter({hasText:'Đã đặt mẫu mặc định'}).waitFor();
     await page.waitForFunction(() => PosOffline.status().context.receiptDefault?.template?.design.paperSize === '45');
-    await studio.locator('#activePrintProfile').filter({ hasText: 'Linux_CUPS_HP' }).waitFor();
+    const printerSettings=await context.newPage();await printerSettings.goto(info.baseUrl+'/admin/pos/printer-settings');await mockPrinters(printerSettings);
+    await printerSettings.locator('#printMode').selectOption('qz');await printerSettings.locator('#connectPrinters').click();
+    await printerSettings.locator('#printerSettingsMessage').filter({hasText:'Đã tìm thấy 2 máy in'}).waitFor();
+    await printerSettings.locator('#clientPrinter').selectOption('Linux_CUPS_HP');await printerSettings.locator('#printCopies').fill('2');await printerSettings.locator('#applyTemplate').click();
+    await printerSettings.locator('#activePrintProfile').filter({hasText:'Linux_CUPS_HP'}).waitFor();await printerSettings.close();
     await studio.screenshot({ path: path.join(output, 'studio-45.png'), fullPage: true });
     const receipt = { storeName: 'GẠO · MARKET', storeAddress: '128 Nguyễn Văn Cừ, TP. Hồ Chí Minh', storePhone: '0901 234 567',
         orderNumber: 'POS-001286', createdAtUtc: '2026-09-10T03:25:00Z', cashierName: 'Nguyễn Minh Anh', customerName: 'Nguyễn Hoàng An',
@@ -142,7 +139,10 @@ async function verifyWidePreview(studio, output) {
     const preview = studio.frameLocator('#receiptPreview');
     await preview.locator('.receipt.itemwide[data-paper-size="80"]').waitFor();
     assert.equal(await preview.locator('.item-heading td[colspan="4"]').count(), 3);
-    assert.deepEqual(await preview.locator('.item-values').first().locator('td').allTextContents(), ['2','Gói','85.000','170.000']);
+    const firstValues = preview.locator('.item-values').first();
+    assert.deepEqual(await firstValues.locator('td').allTextContents(), ['2','Gói','85.00077.500','155.000']);
+    assert.equal(await firstValues.locator('.original-price').textContent(), '85.000');
+    assert.equal(await firstValues.locator('.discounted-price').textContent(), '77.500');
     await assertBlackInk(preview); await assertMoneyFits(preview);
     await studio.locator('.studio-preview-panel').screenshot({path:path.join(output,'itemwide-preview-80.png')});
     await studio.locator('#designName').fill('Tên hàng rộng · Mẫu quầy');
@@ -269,9 +269,18 @@ async function onlinePrint(context, info, orderId, output) {
     await staff.locator('[name=UserName]').fill(info.cashierUser); await staff.locator('[name=Password]').fill(info.cashierPassword);
     if (await staff.locator('[name=SelectedTerminalId]').count()) await staff.locator('[name=SelectedTerminalId]').selectOption(String(info.terminalId));
     await Promise.all([staff.waitForURL(url => !url.pathname.endsWith('/login')), staff.locator('#loginForm button[type=submit]').click()]);
-    await staff.goto(info.baseUrl + '/admin/receipt-templates');
-    assert.equal(new URL(staff.url()).pathname, '/admin/account/access-denied');
-    assert.equal(await staff.locator('#receiptStudio').count(), 0);
+    await staff.goto(info.baseUrl + '/admin/pos/printer-settings');
+    assert.equal(new URL(staff.url()).pathname, '/admin/pos/printer-settings');
+    assert.equal(await staff.locator('#designName,#receiptStoreName').count(), 0);
+    assert.equal(await staff.locator('#saveTemplate').count(), 0);
+    const deniedSave = await staff.evaluate(async () => {
+        const response = await fetch('/admin/receipt-templates/store-info', { method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest',
+                RequestVerificationToken: document.querySelector('[name=__RequestVerificationToken]').value },
+            body: JSON.stringify({ storeName: 'Unauthorized fixture edit' }) });
+        return response.status;
+    });
+    assert.equal(deniedSave, 403, 'Read-only printer setup must not grant shared configuration writes');
     // A fresh employee browser with an old local template must still receive the shared 45 mm design.
     await staff.goto(info.baseUrl + `/admin/pos/orders/${orderId}/print?autoPrint=false&size=A4`);
     await staff.evaluate(() => {
@@ -282,6 +291,7 @@ async function onlinePrint(context, info, orderId, output) {
     await staff.frameLocator('#receiptPaper').locator('.receipt[data-paper-size="45"]').waitFor();
     assert.equal(await staff.locator('#printTemplateChoice').count(), 0);
     assert.equal(await staff.locator('a[href="/admin/receipt-templates"]').count(), 0);
+    assert.equal(await staff.locator('a[href="/admin/pos/printer-settings"]').count(), 1);
     assert.match(await staff.locator('#printTemplateName').innerText(), /Bill quầy 45 mm/);
     await staff.evaluate(() => { window.__staffPrints = 0; document.getElementById('receiptPaper').contentWindow.print = () => window.__staffPrints++; });
     await staff.locator('#printReceipt').click();

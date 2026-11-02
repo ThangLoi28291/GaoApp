@@ -11,6 +11,9 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Authorize(Policy = PermissionCodes.Delivery.View)]
 public sealed class DeliveryPickingController(IDeliveryPickingService picking) : ControllerBase
 {
+    [HttpPost("complete"), Authorize(Policy = PermissionCodes.Delivery.Pick), ValidateAntiForgeryToken]
+    public Task<IActionResult> Complete(int id, [FromBody] DeliveryPickingReportRequest request, CancellationToken ct)
+        => Execute(() => picking.CompleteAsync(id, request, ct));
     [HttpGet("")]
     public Task<IActionResult> Get(int id, CancellationToken ct) => Execute(() => picking.GetAsync(id, ct));
     [HttpGet("replacement-options"), Authorize(Policy = PermissionCodes.Delivery.ApproveChanges)]

@@ -58,6 +58,7 @@ public sealed class POSShiftManagerDashboardDto
 /// </summary>
 public sealed class POSShiftManagerOverviewDto
 {
+    public POSShiftPaymentBreakdownDto PaymentBreakdown { get; set; } = new();
     public int TotalShifts { get; set; }
 
     public int OpenShifts { get; set; }
@@ -108,6 +109,7 @@ public sealed class POSShiftManagerOverviewDto
 /// </summary>
 public sealed class POSShiftManagerEmployeeStatDto
 {
+    public POSShiftPaymentBreakdownDto PaymentBreakdown { get; set; } = new();
     public int UserId { get; set; }
 
     public string? UserName { get; set; }
@@ -142,6 +144,7 @@ public sealed class POSShiftManagerEmployeeStatDto
 /// </summary>
 public sealed class POSShiftManagerShiftItemDto
 {
+    public POSShiftPaymentBreakdownDto PaymentBreakdown { get; set; } = new();
     public int Id { get; set; }
 
     public string? ShiftCode { get; set; }

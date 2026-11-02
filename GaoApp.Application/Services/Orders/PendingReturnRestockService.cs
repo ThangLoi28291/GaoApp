@@ -27,6 +27,7 @@ public sealed class PendingReturnRestockService(
     public async Task<List<PendingReturnRestockDto>> GetPendingAsync(CancellationToken ct = default)
     {
         var rows = await pending.GetPendingAsync(null, ct);
+        var completed = await pending.GetCompletedQuantitiesAsync(rows.Select(x => x.SalesReturnLineId).Distinct().ToArray(), ct);
         var result = new List<PendingReturnRestockDto>();
         foreach (var group in rows.GroupBy(x => x.SalesReturnLine.SalesReturnId))
         {
@@ -44,7 +45,11 @@ public sealed class PendingReturnRestockService(
                     catch (SaleRestockCostException ex) { reasons.Add(ex.SafeMessage + " " + ex.ActionHint); dto.CanComplete = false; }
                     catch (BusinessRuleException ex) { reasons.Add(ex.SafeMessage); dto.CanComplete = false; }
                 }
-                dto.Items.Add(new PendingReturnRestockItemDto {ItemName = row.SalesReturnLine.ItemName,
+                dto.Items.Add(new PendingReturnRestockItemDto {ReturnLineId = row.SalesReturnLineId,
+                    ReceivedQuantity = row.SalesReturnLine.ReturnQuantity, ReceivedUnitName = row.SalesReturnLine.UnitName,
+                    ReceivedBaseQuantity = row.SalesReturnLine.ReturnBaseQuantity,
+                    RestockedBaseQuantity = completed.GetValueOrDefault((row.SalesReturnLineId, row.SourceValuationEntry.WarehouseId)),
+                    ItemName = row.SalesReturnLine.ItemName,
                     WarehouseName = row.SourceValuationEntry.Warehouse?.Name ?? "Kho xuất bán", BaseQuantity = itemGroup.Sum(x => x.BaseQuantity),
                     BlockReason = reasons.Count == 0 ? null : string.Join(" ", reasons.Distinct())});
             }

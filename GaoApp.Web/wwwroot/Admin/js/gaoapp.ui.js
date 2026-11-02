@@ -1,5 +1,6 @@
 (function (window, document) {
     'use strict';
+    if (window.toastr) window.toastr.options.escapeHtml = true;
 
     if (window.GaoAppUI && window.GaoAppUI.initialized) {
         return;

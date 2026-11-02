@@ -1,0 +1,72 @@
+/* UI-17: screen-only phone layout. Native live rows, amounts, authorization and commands stay unchanged. */
+@media screen and (max-width: 767.98px) {
+    body[data-bank-notifications-phone], body[data-bank-notifications-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root], body[data-bank-notifications-phone] #adminBankApprovalModal { color: #172d4d; font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] { width: 100%; max-width: 100%; min-width: 0; padding: 0 0 24px !important; overflow-wrap: anywhere; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] > h1 { margin: 3px 0 8px; color: #172d4d; font-size: 23px; font-weight: 750; line-height: 1.35; letter-spacing: -.4px; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] > p { color: #62738b; font-size: 13px; line-height: 1.65; margin-bottom: 17px; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] .card { min-width: 0; border: 1px solid #dce5f0; border-radius: 18px; background: #fff; box-shadow: 0 3px 14px #172d4d04; overflow: visible; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] .card-body { min-width: 0; padding: 16px; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] h2 { margin-bottom: 14px; color: #172d4d; font-size: 17px; font-weight: 700; line-height: 1.45; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] :is(.small, small) { font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] .text-muted { color: #71839a !important; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] form.row:not([hidden]):not(.d-none) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 15px; margin: 0; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] form.row > div { min-width: 0; width: auto; margin: 0; padding: 0; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] .form-label { margin-bottom: 7px; color: #52647c; font-size: 13px; font-weight: 600; line-height: 1.5; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] :is(input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]), select, textarea) { min-width: 0; width: 100%; max-width: 100%; min-height: 46px; border: 1px solid #cfdbea; border-radius: 12px; font-size: 16px; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] :is(input, select, textarea):focus { border-color: #2463eb; box-shadow: 0 0 0 3px #2463eb18; }
+    body[data-bank-notifications-phone] :is([data-bank-notifications-phone-root], #adminBankApprovalModal) .btn { display: inline-flex; align-items: center; justify-content: center; min-width: 0; max-width: 100%; min-height: 46px; padding: 10px 13px; border-radius: 12px; font-size: 13px; line-height: 1.45; white-space: normal !important; overflow-wrap: anywhere; }
+    body[data-bank-notifications-phone] :is([data-bank-notifications-phone-root], #adminBankApprovalModal) .btn-primary { color: #fff; background: #2463eb; border-color: #2463eb; box-shadow: 0 4px 12px #2463eb1f; }
+    body[data-bank-notifications-phone] :is([data-bank-notifications-phone-root], #adminBankApprovalModal) .btn-outline-primary { color: #2463eb; background: #fff; border-color: #b7cefa; }
+    body[data-bank-notifications-phone] :is([data-bank-notifications-phone-root], #adminBankApprovalModal) .btn-outline-secondary { color: #52647c; border-color: #b7c5d7; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] .btn-outline-danger { color: #b42338; background: #fff; border-color: #f1c1c8; }
+    body[data-bank-notifications-phone] [data-bank-notifications-phone-root] form.row .btn { width: 100%; min-height: 48px; }
+    body[data-bank-notifications-phone] #bankNotificationLiveStatus { padding: 11px 13px; border: 1px solid #d7e5ff; border-radius: 12px; background: #edf3ff; color: #395b8e !important; line-height: 1.6; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState .table-responsive { min-width: 0; overflow: visible; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState table:not([hidden]):not(.d-none) { display: block; width: 100%; min-width: 0; margin: 0 0 13px; border: 0; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState thead:not([hidden]):not(.d-none) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState tbody:not([hidden]):not(.d-none) { display: block; width: 100%; min-width: 0; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState tbody > tr:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 14px; min-width: 0; margin: 0 0 12px; padding: 14px; border: 1px solid #dce5f0; border-radius: 15px; background: #fff; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState tbody > tr:last-child { margin-bottom: 0; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState td:not([hidden]):not(.d-none) { display: block; width: auto !important; min-width: 0; max-width: 100%; padding: 0; border: 0; color: #52647c; font-size: 13px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState td:not([colspan])::before { display: block; margin-bottom: 5px; color: #71839a; font-size: 11px; font-weight: 500; line-height: 1.5; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState td[colspan] { grid-column: 1 / -1; padding: 12px 0; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:is(:first-child, :last-child), body[data-bank-notifications-phone] #bankNotificationWaitingRows td:is(:first-child, :nth-child(4), :last-child), body[data-bank-notifications-phone] #bankNotificationHistoryRows td:is(:first-child, :nth-child(3), :nth-child(5), :last-child) { grid-column: 1 / -1; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:first-child { color: #172d4d; font-size: 16px; font-weight: 700; }
+    body[data-bank-notifications-phone] #bankNotificationWaitingRows td:nth-child(3), body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(2) { color: #172d4d; font-size: 18px; font-weight: 750; font-variant-numeric: tabular-nums; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:nth-child(1):not([colspan])::before { content: "Điện thoại"; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:nth-child(2):not([colspan])::before { content: "Tài khoản"; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:nth-child(3):not([colspan])::before { content: "Trạng thái"; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:nth-child(4):not([colspan])::before { content: "Liên lạc gần nhất · giờ VN"; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:nth-child(5):not([colspan])::before { content: "Kết nối"; }
+    body[data-bank-notifications-phone] #bankNotificationWaitingRows td:nth-child(1):not([colspan])::before { content: "Quầy"; }
+    body[data-bank-notifications-phone] #bankNotificationWaitingRows td:nth-child(2):not([colspan])::before { content: "Đơn"; }
+    body[data-bank-notifications-phone] #bankNotificationWaitingRows td:nth-child(3):not([colspan])::before { content: "Số tiền chờ"; }
+    body[data-bank-notifications-phone] #bankNotificationWaitingRows td:nth-child(4):not([colspan])::before { content: "Mã QR"; }
+    body[data-bank-notifications-phone] #bankNotificationWaitingRows td:nth-child(5):not([colspan])::before { content: "Đối chiếu"; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(1):not([colspan])::before { content: "Giờ VN"; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(2):not([colspan])::before { content: "Số tiền"; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(3):not([colspan])::before { content: "Người chuyển"; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(4):not([colspan])::before { content: "POS"; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(5):not([colspan])::before { content: "Mã giao dịch"; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows td:nth-child(6):not([colspan])::before { content: "Kết quả và bằng chứng"; }
+    body[data-bank-notifications-phone] #bankNotificationDeviceRows td:last-child form:not([hidden]):not(.d-none) { display: inline-flex !important; max-width: 100%; margin: 4px 4px 0 0; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState form[data-bank-approval] { min-width: 0; max-width: 100%; gap: 8px !important; flex-wrap: wrap; }
+    body[data-bank-notifications-phone] #bankNotificationHistoryRows form[data-bank-approval] { flex-direction: column; align-items: stretch; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState form[data-bank-approval] .btn { min-height: 48px; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState details { min-width: 0; margin-top: 10px; padding: 0 11px; border: 1px solid #dce5f0; border-radius: 12px; background: #f8faff; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState summary { display: flex; align-items: center; min-height: 44px; color: #2463eb; font-size: 13px; font-weight: 600; cursor: pointer; }
+    body[data-bank-notifications-phone] #bankNotificationLiveState pre { min-width: 0; max-width: 100%; max-height: 40dvh; padding: 0 0 11px; white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; font-size: 12px; line-height: 1.65; color: #52647c; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal .modal-dialog { display: flex; flex-direction: column; width: 100%; max-width: none !important; height: var(--gao-mobile-visible-height, 100dvh); max-height: var(--gao-mobile-visible-height, 100dvh); min-height: 0; margin: 0; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+    body[data-bank-notifications-phone] #adminBankApprovalModal .modal-content { min-height: 0; max-height: 100%; overflow: hidden; border: 0; border-radius: 18px; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal .modal-body { display: flex; flex-direction: column; min-height: 0; max-height: 100%; overflow: hidden; padding: 0 !important; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal [data-bank-notifications-phone-modal-title] { flex-shrink: 0; margin: 0; padding: 17px 16px 0; color: #172d4d; font-size: 19px; line-height: 1.4; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal .bank-notifications-phone-modal-scroll { flex: 1 1 auto; min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal #adminApprovalAmount { color: #172d4d; font-size: 30px !important; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal [data-bank-notifications-phone-footer] { flex-shrink: 0; padding: 12px; border-top: 1px solid #dce5f0; background: #fff; }
+    body[data-bank-notifications-phone] #adminBankApprovalModal [data-bank-notifications-phone-footer] .btn { flex: 1 1 0; min-height: 48px; margin: 0; }
+    body[data-bank-notifications-phone] :is([data-bank-notifications-phone-root], #adminBankApprovalModal) :is(button, a, summary):focus-visible { outline: 3px solid #2463eb80; outline-offset: 3px; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    body[data-bank-notifications-phone] :is([data-bank-notifications-phone-root], #adminBankApprovalModal, #adminBankApprovalModal .modal-dialog) { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

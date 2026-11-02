@@ -1,0 +1,38 @@
+@model GaoApp.Application.DTOs.AdminMenus.AdminMenuPinWorkspace
+@using System.Text.Json
+@{ ViewData["Title"] = "Mục ghim điện thoại"; }
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.menu-pin-editor.css" asp-append-version="true" />
+}
+<main class="gao-pin-editor" data-pin-editor data-gao-theme="commerce"
+      data-workspace-url="@Url.Action("Workspace")" data-preview-url="@Url.Action("Preview")" data-save-url="@Url.Action("Save")">
+    @Html.AntiForgeryToken()
+    <script type="application/json" data-pin-workspace>@Html.Raw(JsonSerializer.Serialize(Model, new JsonSerializerOptions(JsonSerializerDefaults.Web)))</script>
+    <header class="gao-pin-header"><span>ĐIỀU HƯỚNG ĐIỆN THOẠI</span><h1>Chức năng luôn trong tầm tay</h1><p>Chọn tối đa 4 mục từ menu của cửa hàng. Mỗi người chỉ thấy những mục họ được phép dùng.</p></header>
+    <div class="gao-pin-feedback" data-pin-feedback role="status" aria-live="polite" hidden></div>
+    <section class="gao-pin-card" aria-labelledby="pin-selected-heading">
+        <div class="gao-pin-card-heading"><h2 id="pin-selected-heading">Mục đã ghim</h2><span data-pin-count>0/4</span></div>
+        <p>Thứ tự bên dưới là thứ tự trên thanh menu điện thoại.</p>
+        <ol class="gao-pin-selected" data-pin-selected></ol>
+        <p data-pin-empty>Chưa ghim mục nào. Thanh dưới cùng vẫn có nút Menu.</p>
+    </section>
+    <section class="gao-pin-card" aria-labelledby="pin-choices-heading">
+        <h2 id="pin-choices-heading">Chọn từ menu của bạn</h2>
+        <label class="gao-pin-search"><i class="bx bx-search" aria-hidden="true"></i><input type="search" data-pin-search placeholder="Tìm chức năng…" aria-label="Tìm mục để ghim" autocomplete="off" /></label>
+        <p id="pin-limit-help" data-pin-limit>Chọn tối đa 4 mục; bỏ một mục để chọn mục khác.</p>
+        <div class="gao-pin-choices" data-pin-choices></div>
+        <p data-pin-no-choices hidden>Không có chức năng phù hợp trong menu hiện tại.</p>
+    </section>
+    <section class="gao-pin-card" aria-labelledby="pin-preview-heading">
+        <h2 id="pin-preview-heading">Xem trước thanh menu</h2>
+        <label class="gao-pin-subject-label" for="pin-preview-subject">Hiển thị với</label>
+        <select id="pin-preview-subject" data-pin-subject><option value="">Tài khoản của tôi</option></select>
+        <div class="gao-pin-preview" data-pin-preview aria-label="Xem trước mục ghim"></div>
+        <p data-pin-preview-status role="status">Mục không có quyền hoặc đang ẩn sẽ không hiển thị.</p>
+    </section>
+    <footer class="gao-pin-actions"><button type="button" data-pin-reload>Tải lại</button><button type="button" class="gao-pin-save" data-pin-save disabled>Lưu mục ghim</button></footer>
+    <noscript>Bật JavaScript để chọn và sắp xếp mục ghim.</noscript>
+</main>
+@section PageScripts {
+    <script src="~/Admin/js/gaoapp.menu-pin-editor.js" asp-append-version="true"></script>
+}

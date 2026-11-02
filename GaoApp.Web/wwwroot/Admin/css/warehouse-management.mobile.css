@@ -1,0 +1,79 @@
+/* UI-13: warehouse phone presentation only. */
+@media (max-width: 767.98px) {
+    body[data-warehouse-phone] { --warehouse-phone-ink: #172d4d; --warehouse-phone-blue: #2463eb; --warehouse-phone-line: #dce5f0; background: #f3f6fb; }
+    body[data-warehouse-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    [data-warehouse-phone-root] { min-width: 0; max-width: 100%; gap: 16px; color: var(--warehouse-phone-ink); }
+    [data-warehouse-phone-root] :is(.row > *,.card-body,.gds-filter-bar,.gds-filter-control,.gds-filter-bar__search,.warehouse-mobile-card__header > *) { min-width: 0; max-width: 100%; }
+    [data-warehouse-phone-root] :is(h3,h4,h5,p,strong,label,small,.badge,.warehouse-name,.warehouse-place-note,.warehouse-code) { overflow-wrap: anywhere; white-space: normal; }
+    [data-warehouse-phone-root] :is(.card,.warehouse-list-panel) { border: 1px solid var(--warehouse-phone-line) !important; border-radius: 18px; box-shadow: none !important; overflow: hidden; }
+    [data-warehouse-phone-root] :is(.card-body,.card-header) { padding: 16px !important; }
+    [data-warehouse-phone-root] .card-header { padding-bottom: 0 !important; }
+    body[data-warehouse-phone] .gao-admin-page-heading-content .gds-page-header { flex-direction: column; align-items: stretch; gap: 12px; }
+    body[data-warehouse-phone] .gao-admin-page-heading-content .gds-page-header__title { font-size: 22px; line-height: 1.35; color: var(--warehouse-phone-ink); }
+    body[data-warehouse-phone] .gao-admin-page-heading-content .gds-page-header__subtitle { font-size: 13px; line-height: 1.6; }
+    body[data-warehouse-phone] .gao-admin-page-heading-content .gds-page-header__actions { width: 100%; }
+    body[data-warehouse-phone] #btnCreateWarehouse { width: 100%; }
+    [data-warehouse-phone-root] > section:first-child > .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
+    [data-warehouse-phone-root] > section:first-child > .row > .col { width: auto; padding: 0; margin: 0; }
+    [data-warehouse-phone-root] .warehouse-kpi-filter { position: relative; min-height: 98px; padding: 14px; border-radius: 16px; transform: none; }
+    [data-warehouse-phone-root] .gds-kpi-card__icon { position: absolute; width: 28px; height: 28px; top: 10px; right: 10px; font-size: 16px; border-radius: 8px; }
+    [data-warehouse-phone-root] .gds-kpi-card__body { display: grid; gap: 5px; min-width: 0; }
+    [data-warehouse-phone-root] .gds-kpi-card__label { padding-right: 24px; font-size: 11px; white-space: normal; }
+    [data-warehouse-phone-root] .gds-kpi-card__value { font-size: 25px; line-height: 1.4; }
+    [data-warehouse-phone-root] .warehouse-default-value { font-size: 16px; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+    [data-warehouse-phone-root] .warehouse-kpi-filter[aria-pressed="true"] { border-color: var(--warehouse-phone-blue) !important; box-shadow: 0 0 0 2px #2463eb24 !important; }
+    [data-warehouse-phone-root] .warehouse-filter-bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .warehouse-phone-filters { min-width: 0; border-top: 1px solid var(--warehouse-phone-line); padding-top: 8px; }
+    .warehouse-phone-filters > summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; cursor: pointer; color: var(--warehouse-phone-blue); font-weight: 600; font-size: 14px; list-style: none; }
+    .warehouse-phone-filters > summary::-webkit-details-marker { display: none; }
+    .warehouse-phone-filters > summary::after { content: '+'; font-size: 20px; }
+    .warehouse-phone-filters[open] > summary::after { content: '−'; }
+    .warehouse-phone-filter-fields { display: grid; gap: 12px; padding: 10px 0 0; }
+    [data-warehouse-phone-root] .warehouse-negative-warning { margin: 0; padding: 14px; border-radius: 14px; }
+    [data-warehouse-phone-root] .warehouse-negative-warning span { font-size: 12px; line-height: 1.6; }
+    [data-warehouse-phone-root] .warehouse-mobile-list { padding: 12px; gap: 12px; }
+    [data-warehouse-phone-root] .warehouse-mobile-card { padding: 16px; border-color: var(--warehouse-phone-line); border-radius: 16px; box-shadow: none; gap: 12px; }
+    [data-warehouse-phone-root] .warehouse-mobile-card__header { flex-wrap: wrap; gap: 8px; }
+    [data-warehouse-phone-root] .warehouse-name { color: var(--warehouse-phone-ink); font-size: 16px; line-height: 1.5; }
+    [data-warehouse-phone-root] .warehouse-mobile-card__facts { gap: 8px; }
+    [data-warehouse-phone-root] .warehouse-mobile-card__facts > div { min-width: 0; padding: 12px; border-radius: 12px; background: #f3f6fb; }
+    [data-warehouse-phone-root] .warehouse-mobile-card__facts strong { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+    [data-warehouse-phone-root] .warehouse-config-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    [data-warehouse-phone-root] .warehouse-switch-control { min-height: 44px; padding: 8px; border: 1px solid var(--warehouse-phone-line); border-radius: 12px; }
+    [data-warehouse-phone-root] .warehouse-switch-label { font-size: 12px; white-space: normal; }
+    [data-warehouse-phone-root] .warehouse-pagination { display: grid; gap: 12px; padding: 16px; }
+    [data-warehouse-phone-root] .warehouse-pagination .btn-group { display: flex; width: 100%; }
+    [data-warehouse-phone-root] .warehouse-pagination .btn-group > .btn { flex: 1; }
+    body[data-warehouse-phone] :is([data-warehouse-phone-root],.gao-admin-page-heading-content,.modal) :is(.btn,.gds-action-button) { min-width: 44px; min-height: 44px; border-radius: 12px; white-space: normal; }
+    body[data-warehouse-phone] :is([data-warehouse-phone-root],.gao-admin-page-heading-content,.modal) .btn-primary { background: var(--warehouse-phone-blue); border-color: var(--warehouse-phone-blue); box-shadow: none; }
+    body[data-warehouse-phone] :is([data-warehouse-phone-root],.modal) :is(.form-control,.form-select) { min-height: 48px; font-size: 16px !important; border-radius: 12px; }
+    body[data-warehouse-phone] :is([data-warehouse-phone-root],.modal) .form-label { font-size: 13px; font-weight: 600; color: #405572; }
+    body[data-warehouse-phone] .modal textarea.form-control { min-height: 96px; }
+    body[data-warehouse-phone] :is(button,a,input,select,textarea,summary):focus-visible { outline: 3px solid #2463eb70; outline-offset: 3px; }
+    body[data-warehouse-phone] .modal .modal-dialog:not(.modal-fullscreen) { display: flex; align-items: flex-end; width: auto; max-width: none; height: var(--gao-mobile-visible-height, 100dvh); min-height: 0; margin: 0; padding: max(12px, env(safe-area-inset-top)) 8px 0; box-sizing: border-box; }
+    body[data-warehouse-phone] .modal .modal-content { width: 100%; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); border-radius: 22px 22px 0 0; overflow: hidden; }
+    body[data-warehouse-phone] .modal-content > form { display: flex; flex-direction: column; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); }
+    body[data-warehouse-phone] .modal :is(.modal-header,.modal-footer) { flex-shrink: 0; padding: 16px; gap: 10px; }
+    body[data-warehouse-phone] .modal .modal-header { align-items: flex-start; }
+    body[data-warehouse-phone] .modal .modal-header > :first-child:not(.btn-close) { flex: 1; min-width: 0; }
+    body[data-warehouse-phone] .modal .modal-header .btn-close { position: static; inset: auto; transform: none !important; flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; padding: 0; margin: 0; }
+    body[data-warehouse-phone] .modal .modal-title { color: var(--warehouse-phone-ink); font-size: 19px; line-height: 1.4; overflow-wrap: anywhere; }
+    body[data-warehouse-phone] .modal .modal-body { min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+    body[data-warehouse-phone] .modal .form-check { display: flex; align-items: center; gap: 12px; min-height: 44px; padding-left: 0; margin: 0; }
+    body[data-warehouse-phone] .modal .form-check-input { float: none; flex-shrink: 0; margin: 0; }
+    body[data-warehouse-phone] .modal .modal-footer { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+    body[data-warehouse-phone] .modal .modal-footer > .btn { flex: 1; margin: 0; }
+    body[data-warehouse-phone] .swal2-container { padding: 12px !important; }
+    body[data-warehouse-phone] .swal2-popup.swal2-modal { display: flex !important; flex-direction: column; width: 100% !important; max-width: 100%; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 24px); overflow: hidden; border-radius: 22px; padding: 0 0 16px; }
+    body[data-warehouse-phone] .swal2-popup.swal2-modal > :not(.swal2-html-container) { flex-shrink: 0; }
+    body[data-warehouse-phone] .swal2-popup.swal2-modal .swal2-html-container { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; margin: 16px; font-size: 14px; line-height: 1.6; }
+    body[data-warehouse-phone] .swal2-popup.swal2-modal .swal2-title { padding: 18px 16px 0; font-size: 21px; }
+    body[data-warehouse-phone] .swal2-popup.swal2-modal .swal2-actions { flex: 0 0 auto; flex-direction: row; flex-wrap: wrap; gap: 10px; margin: 8px 16px 0; }
+    body[data-warehouse-phone] .swal2-popup.swal2-modal .swal2-actions button.swal2-styled { flex: 1 1 0; width: auto; min-height: 48px; margin: 0; padding: 12px; }
+    body[data-warehouse-phone] :is(.modal.fade .modal-dialog,.warehouse-mobile-card) { transition: transform .18s ease-out; }
+    body[data-warehouse-phone] .modal.fade .modal-dialog { transform: translateY(20px); }
+    body[data-warehouse-phone] .modal.show .modal-dialog { transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+        body[data-warehouse-phone] :is([data-warehouse-phone-root] *,.modal-dialog,.swal2-popup) { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    }
+}

@@ -150,48 +150,6 @@
         });
     }
 
-    function bindCustomerDisplay() {
-        const button =
-            document.getElementById('btnOpenCustomerDisplay');
-
-        if (!button) return;
-
-        button.addEventListener('click', function () {
-            const url =
-                button.getAttribute('data-url') ||
-                '/admin/pos/customer-display';
-
-            const features = [
-                'popup=yes',
-                'width=1280',
-                'height=720',
-                'left=1920',
-                'top=0',
-                'menubar=no',
-                'toolbar=no',
-                'location=no',
-                'status=no',
-                'resizable=yes',
-                'scrollbars=no'
-            ].join(',');
-
-            const popup = window.open(
-                url,
-                'GaoMartCustomerDisplay',
-                features
-            );
-
-            if (popup) {
-                popup.focus();
-                return;
-            }
-
-            window.alert(
-                'Trình duyệt đang chặn popup. Hãy cho phép popup cho trang POS.'
-            );
-        });
-    }
-
     function updateCartCount() {
         const body =
             document.getElementById('currentDraftBody');
@@ -282,7 +240,6 @@
 
         bindCommandHints();
         bindShortcutPanel();
-        bindCustomerDisplay();
         bindCartCount();
         bindViewportSync();
     }

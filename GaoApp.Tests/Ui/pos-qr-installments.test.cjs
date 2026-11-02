@@ -8,15 +8,38 @@ const source = fs.readFileSync(path.resolve(__dirname, '../../GaoApp.Web/wwwroot
 const commonContext = { window: {} };
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../GaoApp.Web/wwwroot/Admin/js/pos/pos.common.js'), 'utf8'), commonContext);
 const { parseMoneyInput, setMoneyInput, bindMoneyInput } = commonContext.window.PosCommon;
-function harness(post, storage = new Map()) {
-    const elements = new Map(), listeners = new Map(), calls = [], printed = [], printCalls = [], tracked = [], errors = [];
+function harness(post, storage = new Map(), options = {}) {
+    const elements = new Map(), listeners = new Map(), documentListeners = [], calls = [], printed = [], printCalls = [], tracked = [], errors = [], modalShows = [];
     const noop = () => {}; const timers = [];
     function el(id) {
-        if (!elements.has(id)) elements.set(id, { id, style: {}, dataset: {}, value: '', textContent: '',
-            classList: { contains: () => false, toggle: noop, add: noop, remove: noop },
-            setAttribute: noop, removeAttribute: noop, addEventListener: noop, appendChild: noop, before: noop, replaceChildren: noop, add: noop,
-            querySelector: () => null, querySelectorAll: () => [], closest: () => null, focus: noop, select: noop });
+        if (!elements.has(id)) {
+            const classes = new Set(), handlers = new Map();
+            elements.set(id, { id, style: {}, dataset: {}, value: '', textContent: '',
+                classList: { contains: name => classes.has(name), toggle: (name, active) => active ? classes.add(name) : classes.delete(name),
+                    add: name => classes.add(name), remove: name => classes.delete(name) },
+                setAttribute: noop, removeAttribute: noop,
+                addEventListener(name, action, flags) { if (!handlers.has(name)) handlers.set(name, []); handlers.get(name).push({ action, once: flags?.once }); },
+                removeEventListener(name, action) { handlers.set(name, (handlers.get(name) || []).filter(entry => entry.action !== action)); },
+                emit(name, event = {}) { for (const entry of [...handlers.get(name) || []]) {
+                    if (entry.once) this.removeEventListener(name, entry.action);
+                    entry.action.call(this, { target: this, preventDefault: noop, stopPropagation: noop, ...event });
+                } },
+                click() { this.emit('click'); }, appendChild: noop, before: noop, replaceChildren: noop, add: noop,
+                querySelector: () => null, querySelectorAll: () => [], closest: () => null, contains(target) { return target === this; }, focus: noop, select: noop });
+        }
         return elements.get(id);
+    }
+    const modalInstances = new Map();
+    function modal(node) {
+        if (!modalInstances.has(node)) modalInstances.set(node, {
+            show() {
+                modalShows.push(node.id); node.classList.add('show'); node.emit('shown.bs.modal');
+                if (node.id === 'paymentQrPendingModal' && options.autoAcknowledge !== false)
+                    queueMicrotask(() => this.hide());
+            },
+            hide() { node.emit('hide.bs.modal'); node.classList.remove('show'); node.emit('hidden.bs.modal'); }
+        });
+        return modalInstances.get(node);
     }
     let reopen;
     const history = { refresh: noop, invalidate: noop, open: async () => false };
@@ -25,10 +48,12 @@ function harness(post, storage = new Map()) {
     const context = { console, navigator: {onLine:true}, crypto: { randomUUID }, Option: class { constructor(text,value){this.text=text;this.value=value;} },
         setTimeout: (callback, delay) => timers.push({ callback, delay }), clearTimeout: noop,
         sessionStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
-        document: { getElementById: el, createElement: el, querySelector: () => null },
+        document: { getElementById: el, createElement: el, querySelector: () => null,
+            addEventListener: (name, action) => { if (name === 'keydown') documentListeners.push(action); } },
         window: { addEventListener: (name, action) => listeners.set(name, action),
+            bootstrap: { Modal: { getOrCreateInstance: modal, getInstance: node => modalInstances.get(node) } },
             PosCommon: { parseMoneyInput, setMoneyInput, bindMoneyInput,
-                clearInlineError: noop, setInlineError: (_, message) => errors.push(message), refreshUiLocks: noop },
+                clearInlineError: noop, setInlineError: (_, message) => errors.push(message), refreshUiLocks: noop, registerUiLock: noop },
             PosQrHistory: { create: options => { reopen = options.onOpen; return history; } },
             PosAcb: { track: qr => tracked.push(qr.id), check: id => calls.push(['check', id]) } }
     };
@@ -44,9 +69,66 @@ function harness(post, storage = new Map()) {
             openReceiptPrint: (...args) => { printed.push(args[0]); printCalls.push(args); },
             requestScreenRefresh: async () => { state.business.currentDraft.balanceDue = 3000; }
         } });
-    return { payment, el, calls, errors, printed, printCalls, tracked, reopen, history, state, listeners, storage, timers };
+    return { payment, el, calls, errors, printed, printCalls, tracked, reopen, history, state, listeners, storage, timers, modalShows, window: context.window,
+        async key(key, target, extra = {}) {
+            for (const action of documentListeners) await action({ key, target, repeat: false, preventDefault: noop, stopPropagation: noop, ...extra });
+        } };
 }
 const qr = (id, amount) => ({ id, orderId: 15, amount, requestCode: `QR-${id}`, qrDataUrl: `saved-${id}`, bankName: 'Test', content: `Test-${id}` });
+
+test('waiting QR only offers waiting and cancellation; rejecting the bank suggestion enables the saved manual flow', async () => {
+    const h = harness(async () => ({ qrId: 1, orderId: 15, finalized: false, remainingAmount: 3000 }));
+    h.reopen(qr(1, 2000));
+    assert.equal(h.el('paymentQrPopupTitle').textContent, 'Đợi xác nhận chuyển khoản');
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, 'none');
+    assert.equal(h.el('btnCancelPaymentQr').hidden, false);
+    await h.payment.addPayment(); assert.equal(h.calls.length, 0, 'Enter/add payment while waiting only reopens the QR');
+    await h.listeners.get('bank-notification:manual-fallback')({ detail: { orderId: 15, qrId: 1 } });
+    assert.equal(h.el('paymentQrPopupTitle').textContent, 'Kiểm tra chuyển khoản thủ công');
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, '');
+    assert.equal(h.calls.length, 0);
+    await h.payment.confirmPaymentQrPaid(); assert.match(h.calls[0][0], /\/1\/manual-confirm$/);
+});
+
+test('F9 only checks notifications while waiting and confirms manually only after rejecting a bank suggestion', async () => {
+    const start = source.indexOf('        async function handlePaymentQrModalHotkeys(');
+    const end = source.indexOf('\n        /*', start);
+    let manual = false, confirmed = 0, checked = 0;
+    const env = { currentPaymentQr: { id: 5 }, document: { getElementById: () => ({ classList: { contains: () => true } }) },
+        window: { PosBankNotifications: { refresh: async () => { checked++; } } },
+        isManualQrMode: () => manual, confirmPaymentQrPaid: async () => { confirmed++; } };
+    vm.runInNewContext(source.slice(start, end), env);
+    const key = repeat => ({ key: 'F9', repeat, preventDefault() {}, stopPropagation() {} });
+    await env.handlePaymentQrModalHotkeys(key(false)); assert.equal(manual, false); assert.equal(checked, 1); assert.equal(confirmed, 0);
+    await env.handlePaymentQrModalHotkeys(key(true)); assert.equal(confirmed, 0);
+    assert.equal(checked, 1); manual = true;
+    await env.handlePaymentQrModalHotkeys(key(false)); assert.equal(confirmed, 1);
+});
+
+test('offline mode and an unconnected notification account cannot silently enable manual confirmation', async () => {
+    const h = harness(async () => { throw Error('unexpected confirmation'); });
+    h.window.PosOffline = { localMode: () => true, manualQr: qr => ({ ...qr, manualRequested: true, savedMessage: 'Mất kết nối: kiểm tra tiền rồi bấm Đã nhận thủ công.' }) };
+    h.window.PosBankNotifications = { enabled: () => false, isManual: () => false, track() {} };
+    h.reopen(qr(1, 2000));
+    assert.equal(h.el('paymentQrPopupTitle').textContent, 'Đợi xác nhận chuyển khoản');
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, 'none');
+    assert.match(h.el('acbPaymentCheckStatus').textContent, /đang chờ kết quả/);
+    assert.ok(!h.el('acbPaymentCheckStatus').textContent.includes('thủ công'));
+    await h.payment.addPayment(); assert.equal(h.calls.length, 0);
+    h.window.PosOffline.localMode = () => false;
+    h.listeners.get('pos:offline-status')();
+    assert.equal(h.el('paymentQrWaitTitle').textContent, 'Đang đợi tiền chuyển khoản');
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, 'none');
+    const view = fs.readFileSync(path.resolve(__dirname, '../../GaoApp.Web/Areas/Admin/Views/POS/Index.cshtml'), 'utf8');
+    assert.match(view, /id="btnManualPaymentQr"[^>]*hidden/, 'manual fallback is initially hidden until the server waiting deadline');
+});
+
+test('rejecting a suggestion for another order does not enable confirmation on the current QR', async () => {
+    const h = harness(async () => { throw Error('unexpected confirmation'); });
+    h.reopen(qr(1, 2000));
+    await h.listeners.get('bank-notification:manual-fallback')({ detail: { orderId: 16, qrId: 2 } });
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, 'none'); assert.equal(h.calls.length, 0);
+});
 
 test('POS creates the next installment after confirmation and reopening retains the entered amount', async () => {
     let id = 0;
@@ -136,9 +218,40 @@ test('seven repeated attempts reopen the pending QR and show its warning without
     assert.equal(h.el('payAmount').value, '3000');
     assert.equal(h.el('paymentQrPendingWarning').hidden, false);
     assert.match(h.el('paymentQrPendingWarning').textContent, /Xác nhận đã nhận tiền hoặc hủy/);
-    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, '');
+    assert.equal(h.el('paymentQrPopupTitle').textContent, 'QR trước chưa được xử lý');
+    assert.equal(h.modalShows.filter(id => id === 'paymentQrModal').length, 8);
+    assert.equal(h.modalShows.includes('paymentQrPendingModal'), false);
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, 'none');
     assert.equal(h.el('btnCancelPaymentQr').hidden, false);
     assert.equal(h.storage.size, 0);
+});
+
+test('closing QR and scanning more items reopens the exact unpaid QR as a warning popup without changing its amount', async () => {
+    let created = 0;
+    const original = qr(1, 2000);
+    const h = harness(async () => {
+        if (created) throw pendingConflict({ qr: original, status: 'Pending', canCancel: true, readOnly: false });
+        created++; return original;
+    });
+    h.el('payAmount').value = '2.000';
+    await h.payment.createPaymentQr();
+    h.window.bootstrap.Modal.getInstance(h.el('paymentQrModal')).hide();
+    // The order identity stays the same while the persisted cart gains more items.
+    h.state.business.currentDraft = { ...h.state.business.currentDraft, grandTotal: 12000, balanceDue: 8000 };
+    h.el('payAmount').value = '8.000';
+    await h.payment.createPaymentQr();
+    assert.equal(created, 1);
+    assert.equal(h.calls.length, 2);
+    assert.ok(h.calls.every(([url]) => url.endsWith('/cart/current/payment-qr')), 'Closing never cancels or records a transfer');
+    assert.equal(h.modalShows.at(-1), 'paymentQrModal');
+    assert.equal(h.el('paymentQrModal').classList.contains('show'), true);
+    assert.equal(h.el('paymentQrPopupTitle').textContent, 'QR trước chưa được xử lý');
+    assert.equal(h.el('paymentQrPendingWarning').hidden, false);
+    assert.equal(h.el('paymentQrImage').src, 'saved-1');
+    assert.equal(h.el('paymentQrAmount').textContent, '2.000');
+    assert.match(h.el('paymentQrPendingBalance').textContent, /2\.000/);
+    assert.match(h.el('paymentQrPendingBalance').textContent, /8\.000/);
+    assert.equal(h.el('payAmount').value, '8.000');
 });
 
 test('server conflict restores the unresolved QR even when a different archived QR is currently open', async () => {
@@ -146,7 +259,7 @@ test('server conflict restores the unresolved QR even when a different archived 
     h.reopen({ ...qr(1, 2000), readOnly: true, canCancel: false });
     await h.payment.createPaymentQr();
     assert.equal(h.el('paymentQrImage').src, 'saved-2');
-    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, '');
+    assert.equal(h.el('btnConfirmPaymentQrPaid').style.display, 'none');
 });
 
 test('ACB received conflict offers bank checking and does not enable manual confirmation or cancellation', async () => {
@@ -168,9 +281,13 @@ test('pending warning clears when cancellation succeeds and a fresh QR is create
     });
     await h.payment.createPaymentQr();
     await h.payment.cancelPaymentQr();
+    h.el('payAmount').value = '3000';
     await h.payment.createPaymentQr();
     assert.equal(h.el('paymentQrImage').src, 'saved-2');
     assert.equal(h.el('paymentQrPendingWarning').hidden, true);
+    assert.equal(h.calls[1][0], '/admin/pos/payment-qr/1/cancel');
+    assert.equal(h.calls[2][1].amount, 3000);
+    assert.equal(h.modalShows.at(-1), 'paymentQrModal');
 });
 
 test('pending conflict arriving after a cart change cannot reopen the previous order QR', async () => {
@@ -189,6 +306,36 @@ test('pending QR without an image displays the recovery warning and cannot displ
     await h.payment.createPaymentQr();
     assert.equal(h.el('paymentQrImage').src, undefined);
     assert.match(h.errors[0], /chưa được xử lý/);
+    assert.deepEqual(h.modalShows, ['paymentQrPendingModal']);
+    assert.match(h.el('paymentQrPendingMessage').textContent, /chưa được xử lý/);
+    assert.equal(h.el('paymentQrPendingHistoryLink').href, '/admin/acb/payments/orders/15');
+});
+
+test('missing image on the pending QR cannot reuse an archived QR image as the recovery popup', async () => {
+    const h = harness(async () => { throw pendingConflict({ qr: { ...qr(1, 2000), qrDataUrl: '' }, status: 'Pending', canCancel: true }); });
+    h.reopen({ ...qr(7, 7000), readOnly: true, canCancel: false });
+    h.window.bootstrap.Modal.getInstance(h.el('paymentQrModal')).hide();
+    const previousQrShows = h.modalShows.filter(id => id === 'paymentQrModal').length;
+    await h.payment.createPaymentQr();
+    assert.equal(h.modalShows.filter(id => id === 'paymentQrModal').length, previousQrShows);
+    assert.equal(h.modalShows.at(-1), 'paymentQrPendingModal');
+    assert.equal(h.el('paymentQrModal').classList.contains('show'), false);
+    assert.equal(h.calls.length, 1);
+});
+
+test('the missing-image warning owns Enter and Ctrl+Enter instead of mutating the payment form underneath', async () => {
+    const h = harness(async url => {
+        if (url.endsWith('/payment-qr')) throw pendingConflict(null);
+        throw new Error('A payment action escaped the warning dialog: ' + url);
+    }, new Map(), { autoAcknowledge: false });
+    h.payment.bindEvents();
+    h.el('paymentModalEl').classList.add('show');
+    await h.payment.createPaymentQr();
+    assert.equal(h.el('paymentQrPendingModal').classList.contains('show'), true);
+    h.el('payReference').value = 'TEST-STILL-UNPAID';
+    await h.key('Enter', h.el('paymentQrPendingModal'));
+    await h.key('Enter', h.el('paymentQrPendingModal'), { ctrlKey: true });
+    assert.equal(h.calls.length, 1, 'Only the initial rejected QR request is allowed');
 });
 
 test('an id-only conflict automatically loads the exact pending QR from saved history', async () => {
@@ -204,6 +351,21 @@ test('an id-only conflict automatically loads the exact pending QR from saved hi
     assert.equal(h.el('paymentQrImage').src, 'saved-1');
     assert.equal(h.el('paymentQrPendingWarning').hidden, false);
     assert.equal(h.calls.length, 1);
+});
+
+test('the exact pending QR still reopens when its history list fails but the saved attempt can be read', async () => {
+    const h = harness(async () => { throw pendingConflict(null); });
+    const opened = [];
+    h.history.refresh = async () => undefined;
+    h.history.open = async (id, warning) => {
+        opened.push(id); h.reopen({ ...qr(id, 2000), pendingWarningMessage: warning }); return true;
+    };
+    await h.payment.createPaymentQr();
+    assert.deepEqual(opened, [1]);
+    assert.equal(h.modalShows.at(-1), 'paymentQrModal');
+    assert.equal(h.el('paymentQrImage').src, 'saved-1');
+    assert.equal(h.el('paymentQrAmount').textContent, '2.000');
+    assert.equal(h.modalShows.includes('paymentQrPendingModal'), false);
 });
 
 test('changing carts while saved QR is loading cannot leave a warning on the new order', async () => {
@@ -254,14 +416,46 @@ test('manual partial collection keeps its identity after a lost response and res
     assert.notEqual(next.calls[0][1].clientRequestId, next.calls[1][1].clientRequestId);
 });
 
-test('delayed cash finalization uses the paid order even when the screen changes carts', async () => {
+test('cash finalization follows collection with its paid order and no timer gap', async () => {
     const h = harness(async () => ({ orderId: 15, status: 0, grandTotal: 9000, paidTotal: 9000, balanceDue: 0, payments: [] }));
     h.el('payMethod').value = '0'; h.el('payAmount').value = '5000';
     await h.payment.addPayment();
-    h.state.business.currentDraft = { orderId: 16, status: 0, grandTotal: 10000, balanceDue: 10000 };
-    await h.timers.find(t => t.delay === 150).callback();
+    assert.equal(h.timers.some(t => t.delay === 150), false);
     assert.equal(h.calls[1][0], '/admin/pos/15/finalize');
     assert.equal(h.calls.length, 2);
+});
+test('repeated collection and finalize requests are ignored through the whole cash checkout and print once', async () => {
+    let receive, finalize;
+    const h = harness(async url => url.endsWith('/payments') ? new Promise(resolve => { receive = resolve; }) : new Promise(resolve => { finalize = resolve; }));
+    h.el('payMethod').value = '0'; h.el('payAmount').value = '10000';
+    const checkout = h.payment.addPayment();
+    await Promise.all(Array.from({ length: 8 }, () => h.payment.addPayment()));
+    await h.payment.finalizeFromPaymentModal();
+    assert.equal(h.calls.length, 1);
+    receive({ orderId: 15, status: 0, grandTotal: 9000, paidTotal: 14000, balanceDue: 0, changeDue: 5000, payments: [{ method: 'Cash', amount: 10000 }] });
+    await new Promise(setImmediate);
+    assert.equal(h.calls.length, 2); assert.equal(h.calls[1][0], '/admin/pos/15/finalize');
+    await Promise.all(Array.from({ length: 8 }, () => h.payment.addPayment()));
+    await h.payment.finalizeFromPaymentModal();
+    assert.equal(h.calls.length, 2, 'No extra collection or finalize while closing the paid order');
+    finalize({ orderId: 15 }); await checkout;
+    await h.payment.finalizeFromPaymentModal();
+    assert.equal(h.calls.length, 2); assert.equal(h.printCalls.length, 1);
+});
+test('a failed cash finalize unlocks a retry without collecting or printing the cash twice', async () => {
+    let fail = true;
+    const h = harness(async url => {
+        if (url.endsWith('/payments')) return { orderId: 15, status: 0, grandTotal: 9000, paidTotal: 9000, balanceDue: 0, payments: [] };
+        if (fail) throw Error('finalize temporarily failed');
+        return { orderId: 15 };
+    });
+    h.el('payMethod').value = '0'; h.el('payAmount').value = '5000';
+    await assert.rejects(h.payment.addPayment(), /temporarily failed/);
+    assert.equal(h.printCalls.length, 0);
+    fail = false; await h.payment.finalizeFromPaymentModal();
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/payments')).length, 1);
+    assert.equal(h.calls.filter(([url]) => url.endsWith('/finalize')).length, 2);
+    assert.equal(h.printCalls.length, 1);
 });
 test('manual VND collection rejects fractions and out-of-range values before storing or posting', async () => {
     const h = harness(async () => { throw new Error('unexpected collection'); });

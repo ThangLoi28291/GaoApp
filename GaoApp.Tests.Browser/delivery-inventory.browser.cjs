@@ -11,6 +11,7 @@ const path = require('node:path');
     const recordAck = ack => { assert.ok(ack.clientRequestId); commandIds.add(ack.clientRequestId); };
     async function accountPage(account, width = 1440) {
         const context = await browser.newContext({ viewport: { width, height: 1000 } }); contexts.push(context); const page = await context.newPage();
+        await require('./delivery-mobile-review.cjs').protect(page, info.baseUrl);
         page.on('pageerror', e => errors.push(e.message));
         page.on('request', request => { if (request.method() === 'POST' && /\/(picking|inventory)\//.test(request.url())) requests.push({ url: new URL(request.url()).pathname, body: request.postData() }); });
         page.on('response', response => {
@@ -24,7 +25,7 @@ const path = require('node:path');
     }
     async function open(page, order) {
         await page.goto(info.baseUrl + '/admin/deliveries?key=' + encodeURIComponent(order.lookupToken) + '&revision=1');
-        await page.locator('#deliveryInventory').waitFor(); await page.waitForFunction(() => document.querySelector('#deliveryPageMessage').textContent === '');
+        await require('./browser-contract.cjs').reveal(page, '#deliveryInventory'); await page.waitForFunction(() => document.querySelector('#deliveryPageMessage').textContent === '');
     }
     async function http(page, method, url, body, csrf = true) {
         return await page.evaluate(async ({ method, url, body, csrf }) => {
@@ -39,7 +40,10 @@ const path = require('node:path');
     async function inventory(page, order) { const result = await http(page, 'GET', '/admin/api/deliveries/' + order.id + '/inventory'); assert.equal(result.status, 200, result.text); return result.data; }
     async function saved(page, selector) { await page.locator(selector).click(); await page.waitForFunction(() => /Đã (lưu thao tác|xác nhận yêu cầu cũ)/.test(document.querySelector('#deliveryPageMessage').textContent)); }
     async function pending(page) { return await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('gao.delivery.inventory.v1:')).map(key => ({ key, intent: JSON.parse(localStorage.getItem(key)) }))); }
-    async function quantity(page, field, expected) { assert.equal((await page.locator('#deliveryInventory [data-quantity="' + field + '"]').innerText()).split(' ')[0], expected); }
+    async function quantity(page, field, expected) {
+        await require('./browser-contract.cjs').reveal(page, '#deliveryInventory');
+        assert.equal((await page.locator('#deliveryInventory [data-quantity="' + field + '"]').innerText()).trim().split(/\s+/)[0], expected);
+    }
     try {
         const creator = await accountPage(info.creator), viewer = await accountPage(info.viewer), costViewer = await accountPage(info.costViewer), canceller = await accountPage(info.cancel);
         await open(creator, info.created); await quantity(creator, 'heldBaseQuantityText', '0');
@@ -114,7 +118,7 @@ const path = require('node:path');
         await quantity(creator, 'heldBaseQuantityText', '0'); assert.equal(await creator.locator('#deliveryCancel').count(), 0);
         checks.push('5: confirmed cancel with fresh GET failure blocks new mutation; delayed precommand GET cannot restore stale capability; explicit fresh read shows Cancelled');
 
-        await open(viewer, info.posted); await viewer.screenshot({ path: path.join(info.evidenceDirectory, 'inventory-desktop-1440.png'), fullPage: true });
+        await open(viewer, info.posted); await require('./delivery-mobile-review.cjs').review(viewer, 'inventory-source', info.evidenceDirectory); await viewer.screenshot({ path: path.join(info.evidenceDirectory, 'inventory-desktop-1440.png'), fullPage: true });
         const mobile = await accountPage(info.viewer, 390); await open(mobile, info.posted); await quantity(mobile, 'stockOutsideBaseQuantityText', '6');
         assert.equal(await mobile.locator('#deliveryInventory img,#deliveryInventory script').count(), 0);
         assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);

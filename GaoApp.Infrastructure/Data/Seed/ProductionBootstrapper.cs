@@ -47,13 +47,16 @@ public sealed class ProductionBootstrapper : IProductionBootstrapper
 {
     private readonly AppDbContext _db;
     private readonly ProductionBootstrapOptions _options;
+    private readonly ProvisioningAuditContext? _auditContext;
 
     public ProductionBootstrapper(
         AppDbContext db,
-        IOptions<ProductionBootstrapOptions> options)
+        IOptions<ProductionBootstrapOptions> options,
+        ProvisioningAuditContext? auditContext = null)
     {
         _db = db;
         _options = options.Value;
+        _auditContext = auditContext;
     }
 
     public async Task<ProductionBootstrapPlan> InspectAsync(
@@ -219,6 +222,10 @@ public sealed class ProductionBootstrapper : IProductionBootstrapper
 
         _db.Stores.Add(store);
         await _db.SaveChangesAsync(ct);
+
+        // The first global User has no store mapping yet. Attribute its audit
+        // evidence to the store just created, inside the same atomic bootstrap.
+        using var auditStore = _auditContext?.BeginStore(store.Id);
 
         var legalEntity = new LegalEntity
         {

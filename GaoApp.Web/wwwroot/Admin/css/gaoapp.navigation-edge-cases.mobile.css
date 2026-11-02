@@ -1,0 +1,25 @@
+/* UI-02f: phone only. Existing desktop/tablet styles retain their declarations. */
+@media (max-width: 767.98px) {
+    /* Keep deep configured trees readable without using up the row width on indentation. */
+    #layout-menu[data-admin-navigation] .menu-sub .menu-sub { padding-inline: 0; }
+    #layout-menu[data-admin-navigation] .menu-item { min-width: 0; }
+    #layout-menu[data-admin-navigation] .gao-nav-label { flex: 1 1 auto; }
+
+    [data-configured-pos-nav] .pos-nav-group { min-width: 0; max-width: 100%; }
+    .pos-top-nav.pos-workspace-nav[data-configured-pos-nav] :is(.pos-nav-link,.pos-nav-button) { min-width: 0; max-width: 100%; white-space: normal; }
+    [data-configured-pos-nav] :is(.pos-nav-link,.pos-nav-button) > span { min-width: 0; overflow-wrap: anywhere; }
+    [data-configured-pos-nav] .pos-nav-icon { flex-shrink: 0; }
+
+    /* Bootstrap keeps positioning/keyboard ownership; long menus scroll within the viewport. */
+    [data-configured-pos-menu] {
+        max-width: calc(100vw - 24px);
+        max-height: 60vh;
+        max-height: 60dvh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+    [data-configured-pos-menu] :is(.dropdown-item,.dropdown-header) { white-space: normal; overflow-wrap: anywhere; }
+    [data-configured-pos-menu] .dropdown-item > span { min-width: 0; }
+    [data-configured-pos-menu] .dropdown-item > i { flex-shrink: 0; }
+}

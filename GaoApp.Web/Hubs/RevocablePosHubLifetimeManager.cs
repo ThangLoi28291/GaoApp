@@ -45,13 +45,14 @@ public sealed class RevocablePosHubLifetimeManager(
         return base.OnDisconnectedAsync(connection);
     }
 
-    public async Task EnsureCurrentAsync(string connectionId, CancellationToken ct, bool requirePaymentPermission = false)
+    public async Task<PosRealtimeSessionValidator.Session> EnsureCurrentAsync(string connectionId, CancellationToken ct, bool requirePaymentPermission = false)
     {
         if (!connections.TryGetValue(connectionId, out var connection) ||
             (await CurrentRecipientsAsync([connection], ct)).Length == 0)
             throw new HubException("Phiên POS đã thay đổi hoặc hết quyền. Vui lòng đăng nhập lại.");
         if (requirePaymentPermission && !connection.CanBroadcastPayment)
             throw new HubException("Không có quyền phát thông báo thanh toán.");
+        return connection.Session;
     }
 
     public Task RevalidateConnectionsAsync(CancellationToken ct) => CurrentRecipientsAsync(connections.Values.ToArray(), ct);
@@ -60,7 +61,8 @@ public sealed class RevocablePosHubLifetimeManager(
     {
         // Close this signed-in user's connections for the same store/terminal and credential generation.
         foreach (var connection in connections.Values)
-            if (new[] { ClaimTypes.NameIdentifier, "store_id", "terminal_id", AuthSessionStamp.ClaimType }
+            if (new[] { ClaimTypes.NameIdentifier, "store_id", "terminal_id", AuthSessionStamp.ClaimType,
+                    PosDeviceSession.IdClaim, PosDeviceSession.StampClaim }
                 .All(claim => principal.FindFirstValue(claim) is string value && value == connection.Session.Principal.FindFirstValue(claim)))
                 Revoke(connection);
     }
@@ -69,6 +71,13 @@ public sealed class RevocablePosHubLifetimeManager(
     {
         foreach (var connection in connections.Values)
             if (connection.Session.UserId == userId) Revoke(connection);
+    }
+
+    public void RevokeDevice(int storeId, int deviceId)
+    {
+        foreach (var connection in connections.Values)
+            if (connection.Session.StoreId == storeId && PosDeviceSession.DeviceId(connection.Session.Principal) == deviceId)
+                Revoke(connection);
     }
 
     private async Task<string[]> CurrentRecipientsAsync(Connection[] candidates, CancellationToken ct)

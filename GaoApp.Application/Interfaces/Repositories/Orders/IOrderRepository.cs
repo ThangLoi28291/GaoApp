@@ -45,9 +45,12 @@ public interface IOrderRepository
     // NEW
     Task<List<Order>> GetHeldOrdersByStoreAsync(int storeId, CancellationToken ct = default);
 
+    Task<List<GaoApp.Application.DTOs.POS.HeldOrderDto>> GetHeldOrderSummariesByStoreAsync(int storeId, CancellationToken ct = default);
+
     Task<List<Order>> GetDraftOrdersByShiftAsync(int shiftId, CancellationToken ct = default);
 
     Task<Order?> GetByIdWithDetailsAsync(int orderId, CancellationToken ct = default);
+    Task<Order?> GetForReceiptAsync(int orderId, CancellationToken ct = default);
 
     Task<GaoApp.Application.DTOs.POS.OrderDeliveryInfoDto?> GetDeliveryInfoAsync(int orderId, CancellationToken ct = default)
         => Task.FromResult<GaoApp.Application.DTOs.POS.OrderDeliveryInfoDto?>(null);

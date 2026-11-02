@@ -31,7 +31,7 @@ public sealed class SalesReportReadRepositoryTests
             tiedNewerId = tiedNewer.Id;
         }
 
-        await using var read = CreateContext(options);
+        await using var read = CreateContext(options, 1);
         var repository = new SalesReportReadRepository(read);
         var query = new SalesReportingPeriodPolicy().ResolveDetail(new SalesDetailQueryDto
         {
@@ -169,7 +169,7 @@ public sealed class SalesReportReadRepositoryTests
             await seed.SaveChangesAsync();
         }
 
-        await using var read = CreateContext(options);
+        await using var read = CreateContext(options, 1);
         var repository = new SalesReportReadRepository(read);
         var resolved = new SalesReportingPeriodPolicy().Resolve(
             new SalesExecutiveDashboardQueryDto
@@ -254,7 +254,7 @@ public sealed class SalesReportReadRepositoryTests
             await seed.SaveChangesAsync();
         }
 
-        await using var read = CreateContext(options);
+        await using var read = CreateContext(options, 1);
         var repository = new SalesReportReadRepository(read);
         var policy = new SalesReportingPeriodPolicy();
         var resolved = policy.Resolve(
@@ -296,7 +296,7 @@ public sealed class SalesReportReadRepositoryTests
             await seed.SaveChangesAsync();
         }
 
-        await using var read = CreateContext(options);
+        await using var read = CreateContext(options, 1);
         var repository = new SalesReportReadRepository(read);
         var policy = new SalesReportingPeriodPolicy();
         var resolved = policy.ResolveDetail(new SalesDetailQueryDto { FromDate = new DateTime(2026,9,7), ToDate = new DateTime(2026,9,7), Page=1, PageSize=25 }, Utc(2026,9,7,10));
@@ -712,11 +712,15 @@ public sealed class SalesReportReadRepositoryTests
             .Options;
 
     private static InMemoryAppDbContext CreateContext(
-        DbContextOptions<InMemoryAppDbContext> options)
+        DbContextOptions<InMemoryAppDbContext> options, int? storeId = null)
     {
+        var tenant = new TenantContext();
+        // The fixture intentionally seeds several stores; only seeding has system access.
+        if (storeId.HasValue) tenant.SetStore(storeId.Value, "sales-report-test");
+        else { tenant.SetHostAdmin(); tenant.SetAuthenticatedHostAdmin(true); }
         var context = new InMemoryAppDbContext(
             options,
-            new TenantContext(),
+            tenant,
             new TestCurrentUser());
         context.VerifyRowVersionConfiguration();
         return context;

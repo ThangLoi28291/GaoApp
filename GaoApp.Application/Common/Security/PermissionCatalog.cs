@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using GaoApp.Application.Storefront;
 
 namespace GaoApp.Application.Common.Security;
 
@@ -11,10 +12,38 @@ public static class PermissionCatalog
     public static readonly IReadOnlyList<PermissionRecord> All = new ReadOnlyCollection<PermissionRecord>(
         new List<PermissionRecord>
         {
+            P(StorefrontPermissions.ViewSettings, "Xem cấu hình website bán hàng", "Storefront", "storefront", "settings", "view"),
+            P(StorefrontPermissions.ManageSettings, "Sửa cấu hình website bán hàng", "Storefront", "storefront", "settings", "manage"),
+            P(StorefrontPermissions.ManageShipping, "Quản lý vùng giao và phí website", "Storefront", "storefront", "shipping", "manage"),
+            P(StorefrontPermissions.ViewProducts, "Xem sản phẩm đăng website", "Storefront", "storefront", "products", "view"),
+            P(StorefrontPermissions.ManageProducts, "Quản lý sản phẩm đăng website", "Storefront", "storefront", "products", "manage"),
+            P(StorefrontPermissions.ViewOrders, "Xem đơn đặt website", "Storefront", "storefront", "orders", "view"),
+            P(StorefrontPermissions.Prepare, "Chuẩn bị đơn website", "Storefront", "storefront", "orders", "prepare"),
+            P(StorefrontPermissions.Dispatch, "Bàn giao đơn website", "Storefront", "storefront", "orders", "dispatch"),
+            P(StorefrontPermissions.RecordDelivery, "Ghi kết quả giao website", "Storefront", "storefront", "orders", "delivery"),
+            P(StorefrontPermissions.ReceiveReturns, "Nhận hàng giao thất bại website", "Storefront", "storefront", "orders", "returns"),
+            P(StorefrontPermissions.Reconcile, "Đối soát tiền đơn website", "Storefront", "storefront", "orders", "reconcile"),
+            P(StorefrontPermissions.PostSale, "Ghi nhận bán đơn website", "Storefront", "storefront", "orders", "post-sale"),
+            P(StorefrontPermissions.ApproveCancellation, "Duyệt hoặc từ chối hủy đơn website", "Storefront", "storefront", "orders", "cancel-approve"),
+            P(StorefrontPermissions.ApproveRefund, "Duyệt yêu cầu hoàn tiền website", "Storefront", "storefront", "refunds", "approve"),
+            P(StorefrontPermissions.ConfirmRefund, "Xác nhận chứng cứ thực hoàn website", "Storefront", "storefront", "refunds", "confirm"),
+            P("customer.service.view", "Xem hộp thư chăm sóc khách hàng", "Customer Service", "customer", "service", "view"),
+            P("customer.service.reply", "Tiếp nhận và trả lời khách", "Customer Service", "customer", "service", "reply"),
+            P("customer.service.manage", "Cấu hình và điều phối chăm sóc khách hàng", "Customer Service", "customer", "service", "manage"),
+            P("customer.service.verify", "Xác minh khách và cấp quyền tra cứu CSKH", "Customer Service", "customer", "service", "verify"),
+            P(PermissionCodes.CustomerService.InvoiceNotifications, "Quản lý thông báo hóa đơn CSKH", "Customers", "customer", "service", "invoice-notifications"),
+            P(PermissionCodes.CustomerService.MarketingConsent, "Quản lý đồng ý nhận quảng cáo Zalo", "Customers", "customer", "service", "marketing-consent"),
+            P(AssistantPermissions.Use, "Sử dụng trợ lý", "Assistant", "assistant", "assistant", "use"),
+            P(AssistantPermissions.Chat, "Hội thoại với trợ lý", "Assistant", "assistant", "assistant", "chat"),
+            P(AssistantPermissions.Receiving, "Đề xuất nhập hàng bằng trợ lý", "Assistant", "assistant", "receiving", "resolve"),
+            P(AssistantPermissions.NormalizeName, "Đề xuất tên sản phẩm", "Assistant", "assistant", "product", "normalize-name"),
+            P(AssistantPermissions.Retail, "Tra giá lẻ qua trợ lý", "Assistant", "assistant", "quote", "retail"),
+            P(AssistantPermissions.Wholesale, "Tra giá sỉ qua trợ lý", "Assistant", "assistant", "quote", "wholesale"),
             P(PermissionCodes.Delivery.View, "Xem đơn giao", "Delivery", "delivery", "order", "view"),
             P(PermissionCodes.Delivery.Create, "Tạo đơn giao / sửa người nhận trước soạn", "Delivery", "delivery", "order", "create"),
             P(PermissionCodes.Delivery.Pick, "Soạn hàng giao", "Delivery", "delivery", "order", "pick"),
             P(PermissionCodes.Delivery.ApproveChanges, "Duyệt thay đổi hàng giao", "Delivery", "delivery", "order", "approve-changes"),
+            P(PermissionCodes.Delivery.EditSalePrice, "Sửa giá bán đơn giao chưa chốt tiền", "Delivery", "delivery", "order", "edit-sale-price"),
             P(PermissionCodes.Delivery.Handover, "Bàn giao hàng cho người giao", "Delivery", "delivery", "order", "handover"),
             P(PermissionCodes.Delivery.RecordDeparture, "Ghi nhận xuất phát", "Delivery", "delivery", "order", "depart"),
             P(PermissionCodes.Delivery.ReportOwnOutcome, "Báo kết quả đơn mình giao", "Delivery", "delivery", "order", "report-own"),

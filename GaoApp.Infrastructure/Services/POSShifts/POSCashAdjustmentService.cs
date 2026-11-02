@@ -128,6 +128,10 @@ public sealed class POSCashAdjustmentService(AppDbContext db, ITenantContext ten
         var row = await db.Set<POSShiftCashTransaction>().SingleOrDefaultAsync(x => x.StoreId == StoreId && x.Id == transactionId && !x.IsDeleted, ct)
             ?? throw new ConflictAppException("Phiếu đã bị hủy.");
         if (DepositVoucher(row)) throw new ConflictAppException("Đây là phiếu cọc. Hãy đề nghị đổi phương thức từ khoản nhận cọc để số quỹ và sổ cọc cùng khớp.");
+        if (await db.Set<GaoApp.Domain.Storefront.StorefrontRefundEvidence>().AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == row.Id && x.FundingId != null, ct))
+            throw new ConflictAppException("Phiếu chi đã là chứng cứ thực hoàn website; không sửa/hủy riêng nguồn đã xác nhận.");
+        if (await db.Set<GaoApp.Domain.Storefront.StorefrontCodReceipt>().AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == row.Id, ct))
+            throw new ConflictAppException("Phiếu tiền mặt đã là nguồn thực nộp COD website; cần đối soát nguồn, không sửa/hủy riêng phiếu ca.");
         if (await db.TreasuryEntries.AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == row.Id, ct))
             throw new ConflictAppException("Phiếu đã liên kết sổ thu chi. Hủy liên kết trong báo cáo dòng tiền trước khi sửa/hủy phiếu ca.");
         if (Version(row.RowVersion) != input.RowVersion) throw new ConflictAppException("Phiếu đã thay đổi. Vui lòng tải lại.");
@@ -160,6 +164,10 @@ public sealed class POSCashAdjustmentService(AppDbContext db, ITenantContext ten
             var row = await db.Set<POSShiftCashTransaction>().SingleOrDefaultAsync(x => x.StoreId == StoreId && x.Id == r.TransactionId && x.POSShiftId == shift.Id && !x.IsDeleted, ct)
                 ?? throw new ConflictAppException("Phiếu đã bị hủy hoặc không còn hợp lệ.");
             if (DepositVoucher(row)) throw new ConflictAppException("Phiếu cọc cần điều chỉnh từ khoản nhận cọc. Hãy từ chối yêu cầu sửa phiếu này.");
+            if (await db.Set<GaoApp.Domain.Storefront.StorefrontRefundEvidence>().AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == row.Id && x.FundingId != null, ct))
+                throw new ConflictAppException("Phiếu chi đã được xác nhận thực hoàn website; không duyệt điều chỉnh riêng nguồn tiền.");
+            if (await db.Set<GaoApp.Domain.Storefront.StorefrontCodReceipt>().AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == row.Id, ct))
+                throw new ConflictAppException("Phiếu thực nộp COD đã được đối soát; không duyệt sửa/hủy riêng nguồn tiền.");
             if (await db.TreasuryEntries.AnyAsync(x => x.StoreId == StoreId && x.POSShiftCashTransactionId == row.Id, ct))
                 throw new ConflictAppException("Phiếu đã liên kết sổ thu chi. Hủy liên kết trước khi duyệt điều chỉnh.");
             if (Version(row.RowVersion) != r.TransactionVersion) throw new ConflictAppException("Phiếu gốc đã thay đổi. Hãy từ chối yêu cầu này và lập yêu cầu mới.");

@@ -75,10 +75,12 @@ public class AuthService : IAuthService
         var devicePaired = false;
 
         GaoApp.Domain.Entities.POSTerminal? terminal = null;
+        GaoApp.Domain.Entities.POSTerminalDevice? device = null;
 
         if (!string.IsNullOrWhiteSpace(deviceKey))
         {
-            terminal = await _terminals.GetByDeviceKeyAsync(storeId, deviceKey, ct);
+            device = await _terminals.GetActiveDeviceByKeyAsync(storeId, deviceKey, ct);
+            terminal = device?.Terminal;
         }
 
         // 3. Nếu chưa có terminal từ cookie thì bắt buộc chọn terminal để ghép
@@ -104,7 +106,8 @@ public class AuthService : IAuthService
                 lastIp: clientIp,
                 ct: ct);
 
-            terminal = await _terminals.GetByDeviceKeyAsync(storeId, deviceKey, ct);
+            device = await _terminals.GetActiveDeviceByKeyAsync(storeId, deviceKey, ct);
+            terminal = device?.Terminal;
 
             if (terminal == null)
                 return Result<LoginResponse>.Failure(AuthErrors.DevicePairingFailed);
@@ -116,6 +119,8 @@ public class AuthService : IAuthService
             new LoginResponse
             {
                 SessionStamp = AuthSessionStamp.Create(user, userInStore),
+                DeviceId = device?.Id,
+                DeviceSessionStamp = device == null ? string.Empty : PosDeviceSession.CreateStamp(device),
                 UserId = user.Id,
                 UserName = user.UserName,
                 FullName = user.FullName,

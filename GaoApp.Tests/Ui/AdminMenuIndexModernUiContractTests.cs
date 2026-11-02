@@ -113,11 +113,19 @@ public sealed class AdminMenuIndexModernUiContractTests
         Assert.Contains("GetForAdminAsync(CurrentStoreId", controller, StringComparison.Ordinal);
         Assert.Contains("[ValidateAntiForgeryToken]", controller, StringComparison.Ordinal);
         Assert.Contains("DeleteAsync(CurrentStoreId", controller, StringComparison.Ordinal);
-        Assert.Contains("GetForRenderAsync", verticalMenu, StringComparison.Ordinal);
-        Assert.Contains("Where(x => x.IsActive && ShowReceiptMenu(x))", verticalMenu, StringComparison.Ordinal);
-        Assert.Contains("GetHiddenIdsAsync", verticalMenu, StringComparison.Ordinal);
+        Assert.Contains("Navigation.GetAsync(ViewContext)", verticalMenu, StringComparison.Ordinal);
+        var provider = File.ReadAllText(Path.Combine(RepositoryRoot,
+            "GaoApp.Web", "Services", "AdminNavigationProvider.cs"));
+        Assert.Contains("menus.GetForRenderAsync(storeId, userId, ct)", provider, StringComparison.Ordinal);
+        Assert.Contains("AdminNavigation.Build", provider, StringComparison.Ordinal);
+        Assert.Contains("PermissionCodes.Pos.Order.View", provider, StringComparison.Ordinal);
+        Assert.Contains("PermissionCodes.Pos.Shift.View", provider, StringComparison.Ordinal);
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot,
+            "GaoApp.Application", "Services", "AdminMenus", "AdminMenuService.cs"));
+        Assert.Contains("_visibilityService.GetHiddenIdsAsync(storeId, userId, ct)", service, StringComparison.Ordinal);
         Assert.DoesNotContain("GetForAdminAsync", verticalMenu, StringComparison.Ordinal);
-        Assert.Contains("children.Any()", verticalMenu, StringComparison.Ordinal);
+        Assert.DoesNotContain("GetForAdminAsync", provider, StringComparison.Ordinal);
+        Assert.Contains("Sections/Menu/_NavigationItems", verticalMenu, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

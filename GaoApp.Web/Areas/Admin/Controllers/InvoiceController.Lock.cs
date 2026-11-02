@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GaoApp.Web.Areas.Admin.Controllers;
@@ -24,7 +25,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxBadRequest(
-     result.Error?.Message,
+     InvoiceErrorReadSanitizer.UserMessage(result.Error),
      "Không khóa được hóa đơn.");
         }
 
@@ -52,7 +53,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxBadRequest(
-     result.Error?.Message,
+     InvoiceErrorReadSanitizer.UserMessage(result.Error),
      "Không mở khóa được hóa đơn.");
         }
 

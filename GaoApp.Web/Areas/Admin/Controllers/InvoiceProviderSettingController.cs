@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Enums;
@@ -25,7 +25,7 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message;
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error);
             return View(new List<InvoiceProviderSettingListItemDto>());
         }
 
@@ -68,7 +68,7 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message;
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error);
             return View("Form", vm);
         }
 
@@ -85,7 +85,7 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message;
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error);
             return RedirectToAction(nameof(Index));
         }
 
@@ -106,7 +106,7 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            ModelState.AddModelError(string.Empty, result.Error?.Message ?? "Không thể lưu cấu hình.");
+            ModelState.AddModelError(string.Empty, InvoiceErrorReadSanitizer.UserMessage(result.Error) ?? "Không thể lưu cấu hình.");
             return View("Form", vm);
         }
 
@@ -124,7 +124,7 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message;
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error);
             return RedirectToAction(nameof(Index));
         }
 
@@ -144,20 +144,20 @@ public class InvoiceProviderSettingController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message;
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error);
             return RedirectToAction(nameof(Index));
         }
 
         if (result.Value.IsSuccess)
         {
             TempData["Success"] =
-                $"Cấu hình #{id}: {result.Value.Message} Thời gian: {result.Value.DurationMs}ms.";
-            TempData["InvoiceConnectionWarning"] = result.Value.WarningMessage;
+                $"Cấu hình #{id}: Kết nối hóa đơn thành công. Thời gian: {result.Value.DurationMs}ms.";
+            TempData["InvoiceConnectionWarning"] = InvoiceErrorReadSanitizer.Warning(result.Value.WarningMessage);
         }
         else
         {
             TempData["Error"] =
-                $"{result.Value.Message} Thời gian: {result.Value.DurationMs}ms.";
+                $"{InvoiceErrorReadSanitizer.UserMessage(result.Value.Message)} Thời gian: {result.Value.DurationMs}ms.";
         }
         return RedirectToAction(nameof(Index));
     }

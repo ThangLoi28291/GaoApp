@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <!-- Reviewed .NET 10 servicing baseline. Framework-dependent apps must not
+         silently start on an older patch; self-contained printing bundles ship it. -->
+    <RuntimeFrameworkVersion>10.0.13</RuntimeFrameworkVersion>
+    <RollForward>LatestPatch</RollForward>
+    <!-- A relocated checkout may retain old project output folders while a
+         portable local build writes to a custom artifacts path. Never compile or copy
+         those previous bin/obj trees as source under the new output layout. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/bin/**;**/obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

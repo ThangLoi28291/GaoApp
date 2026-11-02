@@ -1,6 +1,7 @@
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.DTOs.Inventory.InputInvoices;
 using GaoApp.Application.DTOs.Purchases;
 using GaoApp.Application.Interfaces.Repositories.LegalEntities;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
@@ -106,6 +107,9 @@ public partial class StockDocumentService : IStockDocumentService
 
     public Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default)
         => _stockDocumentRepository.GetReceiptListAsync(ct);
+
+    public Task<List<StockDocumentListItemDto>> GetReceivingReceiptListAsync(CancellationToken ct = default)
+        => _stockDocumentRepository.GetReceivingReceiptListAsync(ct);
 
     public async Task<StockReceiptFormOptionsDto> GetReceiptFormOptionsAsync(
         CancellationToken ct = default)
@@ -364,6 +368,12 @@ public partial class StockDocumentService : IStockDocumentService
         }
     }
 
+    public async Task<StockDocumentWorkflowContextDto?> GetWorkflowContextAsync(int id, CancellationToken ct = default)
+    {
+        var document = await _stockDocumentRepository.GetByIdAsync(id, ct);
+        return document is null ? null : new(document.ReceiptSource, document.PurchaseOrderId);
+    }
+
     public async Task<StockDocumentDto?> GetDetailAsync(int id, CancellationToken ct = default)
     {
         var document = await _stockDocumentRepository.GetDetailAsync(id, ct);
@@ -381,7 +391,7 @@ public partial class StockDocumentService : IStockDocumentService
             .ToDictionary(x => x.Key, x => x.First())
             ?? new Dictionary<int, StockDocumentLineInputInvoiceMap>();
 
-        return new StockDocumentDto
+        var result = new StockDocumentDto
         {
             Id = document.Id,
             DocumentNo = document.DocumentNo,
@@ -403,7 +413,8 @@ public partial class StockDocumentService : IStockDocumentService
 
             Note = document.Note,
             TotalAmount = document.TotalAmount,
-            ReceiptSource = document.ReceiptSource,
+            ReceiptSource = document.PurchaseOrderId.HasValue
+                ? PurchaseReceiptSource.PurchaseOrder : document.ReceiptSource,
             PurchaseOrderId = document.PurchaseOrderId,
             PurchaseOrderNumber = document.PurchaseOrder?.OrderNumber,
             PurchaseOrderTitle = document.PurchaseOrder?.Title,
@@ -417,8 +428,8 @@ public partial class StockDocumentService : IStockDocumentService
             FreightTotal = document.FreightTotal,
             FreightPayeeName = document.FreightPayeeName,
             FreightNote = document.FreightNote,
-            IsFreightPaid = document.IsFreightPaid,
-            IsMerchandisePaid = document.IsMerchandisePaid,
+            IsFreightPaid = IsConfirmedPayablePaid(document, PurchasePayableType.Freight, document.IsFreightPaid),
+            IsMerchandisePaid = IsConfirmedPayablePaid(document, PurchasePayableType.Merchandise, document.IsMerchandisePaid),
             MerchandisePayeeName = document.MerchandisePayeeName,
 
             SubmittedAtUtc = document.SubmittedAtUtc,
@@ -575,6 +586,13 @@ public partial class StockDocumentService : IStockDocumentService
                 })
                 .ToList()
         };
+        if (document.Type == StockDocumentType.Receipt &&
+            document.Status is StockDocumentStatus.PendingApproval or StockDocumentStatus.Rejected)
+        {
+            var revisionEvents = await _stockDocumentRepository.GetPurchaseReceiptAuditEventsAsync(id, ct);
+            PurchaseReceiptRevisionReviewPolicy.Apply(result, document.StoreId, revisionEvents);
+        }
+        return result;
     }
 
     public async Task CompleteLegacyCatalogProductAsync(
@@ -774,9 +792,8 @@ public partial class StockDocumentService : IStockDocumentService
 
             RecalculateDocumentTotals(document);
 
-            await InvalidateReconciliationAsync(document,
+            await SaveReceiptAndInvalidateReconciliationAsync(document,
                 "Dòng nhận hàng đã thay đổi.", ct);
-            await _stockDocumentRepository.SaveChangesAsync(ct);
             return existingLine.Id;
         }
 
@@ -814,9 +831,8 @@ public partial class StockDocumentService : IStockDocumentService
 
         RecalculateDocumentTotals(document);
 
-        await InvalidateReconciliationAsync(document,
+        await SaveReceiptAndInvalidateReconciliationAsync(document,
             "Dòng nhận hàng đã được thêm.", ct);
-        await _stockDocumentRepository.SaveChangesAsync(ct);
 
         return line.Id;
     }
@@ -893,9 +909,8 @@ public partial class StockDocumentService : IStockDocumentService
 
             RecalculateDocumentTotals(document);
 
-            await InvalidateReconciliationAsync(document,
+            await SaveReceiptAndInvalidateReconciliationAsync(document,
                 "Dòng nhận hàng đã thay đổi qua barcode.", ct);
-            await _stockDocumentRepository.SaveChangesAsync(ct);
             return existing.Id;
         }
 
@@ -927,20 +942,25 @@ public partial class StockDocumentService : IStockDocumentService
         document.Lines.Add(line);
         RecalculateDocumentTotals(document);
 
-        await InvalidateReconciliationAsync(document,
+        await SaveReceiptAndInvalidateReconciliationAsync(document,
             "Dòng nhận hàng đã được thêm qua barcode.", ct);
-        await _stockDocumentRepository.SaveChangesAsync(ct);
         return line.Id;
     }
 
-    public async Task UpdateLineAsync(int lineId, UpdateStockDocumentLineRequest request, CancellationToken ct = default)
+    public async Task UpdateLineAsync(int documentId, int lineId, UpdateStockDocumentLineRequest request, CancellationToken ct = default)
     {
         var line = await _stockDocumentRepository.GetLineByIdAsync(lineId, ct);
-        if (line == null)
+        if (line == null || line.IsDeleted || line.StockDocumentId != documentId)
             throw new BusinessRuleException("Dòng phiếu nhập không tồn tại.");
 
-        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(line.StockDocument.Status);
-        EnsureDirectLineEditing(line.StockDocument);
+        var document = await _stockDocumentRepository.GetDetailAsync(documentId, ct)
+            ?? throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
+        if (document.Id != documentId || !document.Lines.Any(x => x.Id == lineId && !x.IsDeleted))
+            throw new BusinessRuleException("Dòng phiếu nhập không tồn tại trong phiếu này.");
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(document.Status);
+        EnsureDirectLineEditing(document);
+        EnsurePhysicalEditVersion(document.RowVersion, request.RowVersion, "Phiếu");
+        EnsurePhysicalEditVersion(line.RowVersion, request.LineRowVersion, "Dòng phiếu");
 
         if (request.Quantity <= 0)
             throw new BusinessRuleException("Số lượng phải lớn hơn 0.");
@@ -956,8 +976,6 @@ public partial class StockDocumentService : IStockDocumentService
 
         var factor = NormalizeFactor(conversion.Factor);
 
-        var document = await _stockDocumentRepository.GetDetailAsync(line.StockDocumentId, ct)
-            ?? throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
         Tax? tax = null;
         if (document.HasVat)
         {
@@ -996,22 +1014,24 @@ public partial class StockDocumentService : IStockDocumentService
 
         RecalculateDocumentTotals(document);
 
-        await InvalidateReconciliationAsync(document,
+        await SaveReceiptAndInvalidateReconciliationAsync(document,
             "Số lượng, đơn vị, giá hoặc VAT của dòng nhận hàng đã thay đổi.", ct);
-        await _stockDocumentRepository.SaveChangesAsync(ct);
     }
-    public async Task DeleteLineAsync(int lineId, CancellationToken ct = default)
+    public async Task DeleteLineAsync(int documentId, int lineId, DeleteStockDocumentLineRequest request, CancellationToken ct = default)
     {
         var line = await _stockDocumentRepository.GetLineByIdAsync(lineId, ct);
-        if (line == null)
+        if (line == null || line.IsDeleted || line.StockDocumentId != documentId)
             throw new BusinessRuleException("Dòng phiếu nhập không tồn tại.");
 
-        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(line.StockDocument.Status);
-        EnsureDirectLineEditing(line.StockDocument);
-
-        var document = await _stockDocumentRepository.GetDetailAsync(line.StockDocumentId, ct);
+        var document = await _stockDocumentRepository.GetDetailAsync(documentId, ct);
         if (document == null)
             throw new BusinessRuleException("Phiếu nhập kho không tồn tại.");
+        if (document.Id != documentId || !document.Lines.Any(x => x.Id == lineId && !x.IsDeleted))
+            throw new BusinessRuleException("Dòng phiếu nhập không tồn tại trong phiếu này.");
+        PurchaseReceiptWorkflowPolicy.EnsurePhysicalFieldsEditable(document.Status);
+        EnsureDirectLineEditing(document);
+        EnsurePhysicalEditVersion(document.RowVersion, request.RowVersion, "Phiếu");
+        EnsurePhysicalEditVersion(line.RowVersion, request.LineRowVersion, "Dòng phiếu");
 
         await _stockDocumentRepository.BeginTransactionAsync(ct);
         try
@@ -1041,6 +1061,9 @@ public partial class StockDocumentService : IStockDocumentService
         if (document.Status is not (StockDocumentStatus.Draft or StockDocumentStatus.PendingApproval or StockDocumentStatus.Rejected))
             throw new BusinessRuleException("Phiếu đã duyệt nên phân bổ vận chuyển đã bị khóa.");
         EnsureRowVersion(document.RowVersion, request.RowVersion);
+
+        EnsureReceiptSourceConsistent(document);
+        EnsureSettlementRequiresTreasury(isMerchandisePaid: false, request.IsFreightPaid);
 
         var lines = document.Lines.Where(x => !x.IsDeleted).OrderBy(x => x.LineNo).ToList();
         if (!request.HasFreight)
@@ -1111,7 +1134,7 @@ public partial class StockDocumentService : IStockDocumentService
         document.FreightTotal = freightTotal;
         document.FreightPayeeName = request.FreightPayeeName.Trim();
         document.FreightNote = request.FreightNote?.Trim();
-        document.IsFreightPaid = request.IsFreightPaid;
+        document.IsFreightPaid = false;
         foreach (var line in lines) line.FreightAllocation = allocations[line.Id];
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
@@ -1132,6 +1155,8 @@ public partial class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Chỉ phiếu nháp hoặc phiếu bị từ chối mới được gửi duyệt.");
         }
         EnsureRowVersion(document.RowVersion, rowVersion);
+
+        EnsureReceiptSourceConsistent(document);
 
         if (!document.Lines.Any(x => !x.IsDeleted) &&
             !document.ProvisionalItems.Any(x => !x.IsDeleted &&
@@ -1199,6 +1224,9 @@ public partial class StockDocumentService : IStockDocumentService
             throw new BusinessRuleException("Chứng từ này không phải phiếu nhập kho.");
         if (document.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được chốt giá và duyệt nhập kho.");
+        EnsureReceiptSourceConsistent(document);
+        EnsureRevisionRequestResolved(document);
+        EnsureSettlementRequiresTreasury(request.IsMerchandisePaid, request.IsFreightPaid);
         if (request.ApprovalNote?.Length > 1000)
             throw new BusinessRuleException("Ghi chú duyệt không được vượt quá 1.000 ký tự.");
         if (request.MerchandisePayeeName?.Length > 250)
@@ -1385,7 +1413,7 @@ public partial class StockDocumentService : IStockDocumentService
         document.IncludeVatInInventoryCost = request.IncludeVatInInventoryCost;
         document.SupplierId = request.SupplierId;
         document.Supplier = supplier;
-        document.IsMerchandisePaid = request.IsMerchandisePaid;
+        document.IsMerchandisePaid = false;
         document.MerchandisePayeeName = merchandisePayeeName;
 
         foreach (var line in activeLines)
@@ -1408,7 +1436,7 @@ public partial class StockDocumentService : IStockDocumentService
         document.FreightTotal = freightTotal;
         document.FreightPayeeName = request.HasFreight ? request.FreightPayeeName!.Trim() : null;
         document.FreightNote = request.HasFreight ? request.FreightNote?.Trim() : null;
-        document.IsFreightPaid = request.HasFreight && request.IsFreightPaid;
+        document.IsFreightPaid = false;
         document.WaitForInputInvoice = request.WaitForInputInvoice;
         RecalculateDocumentTotals(document);
 
@@ -1421,6 +1449,7 @@ public partial class StockDocumentService : IStockDocumentService
             request.OverdeliveryNote,
             priceVarianceContext,
             request.AcceptPriceVariance,
+            request.InputInvoiceReview,
             ct);
     }
 
@@ -1443,6 +1472,7 @@ public partial class StockDocumentService : IStockDocumentService
             overdeliveryNote: null,
             priceVarianceContext: null,
             acceptPriceVariance: false,
+            inputInvoiceReview: null,
             ct);
     }
 
@@ -1467,6 +1497,7 @@ public partial class StockDocumentService : IStockDocumentService
             overdeliveryNote,
             priceVarianceContext: null,
             acceptPriceVariance: false,
+            inputInvoiceReview: null,
             ct);
     }
 
@@ -1479,6 +1510,7 @@ public partial class StockDocumentService : IStockDocumentService
         string? overdeliveryNote,
         IReadOnlyList<PriceVarianceValidationLine>? priceVarianceContext,
         bool acceptPriceVariance,
+        ReceiptInvoiceReviewAcknowledgement? inputInvoiceReview,
         CancellationToken ct)
     {
 
@@ -1492,6 +1524,9 @@ public partial class StockDocumentService : IStockDocumentService
 
         if (document.Status != StockDocumentStatus.PendingApproval)
             throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được duyệt nhập kho.");
+        EnsureReceiptSourceConsistent(document);
+        EnsureRevisionRequestResolved(document);
+        EnsureSettlementRequiresTreasury(document.IsMerchandisePaid, document.IsFreightPaid);
         if (overdeliveryNote?.Length > 1000)
             throw new BusinessRuleException("Ghi chú nhận vượt không được vượt quá 1.000 ký tự.");
 
@@ -1720,15 +1755,45 @@ public partial class StockDocumentService : IStockDocumentService
                     document.WarehouseId,
                     line.ProductVariantId)),
                 ct);
+            await _inventoryMovementService.PreparePurchaseReceiptAsync(
+                activeLines.Select(line => new InventoryPostingLockKey(
+                    document.StoreId, document.WarehouseId, line.ProductVariantId)), ct);
 
             // Đồng bộ lại tổng tiền phiếu theo các dòng hợp lệ trước khi duyệt.
             RecalculateDocumentTotals(document);
 
+            // XML matching is documentary support, not a prerequisite for posting
+            // the physical receipt. Keep its current evidence and discrepancies
+            // without treating incomplete/mismatched XML as an approval gate.
+            StockDocumentInputInvoiceReconciliation? reviewedInvoice = null;
+            if (inputInvoiceReview is not null)
+            {
+                if (_inputInvoiceRepository is null || _inputInvoiceReconciliationService is null ||
+                    _currentUser.UserId is not > 0)
+                    throw new BusinessRuleException("Chưa thể xác nhận kiểm tra hóa đơn. Vui lòng tải lại phiếu.");
+                var snapshots = await _inputInvoiceRepository.GetReconciliationsAsync(
+                    document.StoreId, document.Id, tracking: false, ct);
+                reviewedInvoice = snapshots.Count == 1 ? snapshots[0] : null;
+                if (inputInvoiceReview.MapId <= 0 ||
+                    string.IsNullOrWhiteSpace(inputInvoiceReview.EvidenceFingerprint) ||
+                    reviewedInvoice is null || activeInputInvoices.Count != 1 ||
+                    reviewedInvoice.StockDocumentInputInvoiceMapId != inputInvoiceReview.MapId ||
+                    reviewedInvoice.InputInvoiceHeadId != activeInputInvoices[0].Id ||
+                    reviewedInvoice.EvidenceFingerprint != inputInvoiceReview.EvidenceFingerprint)
+                    throw new BusinessRuleException(
+                        "Hóa đơn hoặc số liệu đối chiếu đã thay đổi. Vui lòng tải lại và kiểm tra lại trước khi duyệt.");
+            }
+            InputInvoiceReconciliationDto? finalInvoiceEvidence = null;
             if (_inputInvoiceReconciliationService is not null)
-                await _inputInvoiceReconciliationService
-                    .EnsureConfirmableWithinTransactionAsync(
+                finalInvoiceEvidence = await _inputInvoiceReconciliationService
+                    .RefreshWithinTransactionAsync(
                         document.StoreId, document.Id, ct);
+            if (reviewedInvoice is not null &&
+                (finalInvoiceEvidence?.InputInvoiceHeadId != reviewedInvoice.InputInvoiceHeadId ||
+                 string.IsNullOrWhiteSpace(finalInvoiceEvidence.EvidenceFingerprint)))
+                throw new BusinessRuleException("Không thể ghi nhận kiểm tra hóa đơn hiện tại. Vui lòng tải lại phiếu.");
 
+            var movementRequests = new List<CreateInventoryMovementRequest>(activeLines.Count);
             foreach (var line in activeLines)
             {
                 // line.UnitCost là giá theo đơn vị nhập.
@@ -1767,29 +1832,14 @@ public partial class StockDocumentService : IStockDocumentService
                     lineNo: line.LineNo,
                     occurredAtUtc: warehouseOccurredAtUtc);
 
-                await _inventoryMovementService.CreateAsync(movementRequest, ct);
-
-                var revaluationNote =
-                    $"Revalue provisional sau nhập kho từ phiếu {document.DocumentNo}, dòng {line.LineNo}.";
-
-                var inboundEntries = await _valuationRepository.GetByReferenceAsync(
-                    InventoryReferenceType.StockDocument,
-                    document.Id.ToString(),
-                    line.Id,
-                    ct);
-
-                var inboundEntry = inboundEntries
-                    .FirstOrDefault(x => x.EntryType == InventoryValuationEntryType.Inbound);
-
-                if (inboundEntry?.InventoryCostLayerId != null)
-                {
-                    await _inventoryRevaluationService.ResolveByInboundLayerAsync(
-                        inboundEntry.InventoryCostLayerId.Value,
-                        warehouseOccurredAtUtc,
-                        revaluationNote,
-                        ct);
-                }
+                movementRequests.Add(movementRequest);
+                // The movement engine resolves provisional costs atomically for
+                // both legacy and source-budget inbound layers. A second pass
+                // would reread the same evidence after every receipt line.
             }
+            if (!await _inventoryMovementService.TryCreatePurchaseReceiptBatchAsync(movementRequests, ct))
+                foreach (var movementRequest in movementRequests)
+                    await _inventoryMovementService.CreateAsync(movementRequest, ct);
 
             // =====================================================
             // PHASE 2.7:
@@ -1850,6 +1900,27 @@ public partial class StockDocumentService : IStockDocumentService
                     .BuildAuditEvidence(priceVariances));
             if (_pricingAllocationService is not null)
                 await _pricingAllocationService.MarkConfirmedWithinTransactionAsync(document, ct);
+            if (reviewedInvoice is not null)
+                await _inputInvoiceRepository!.AddPurchaseReceiptAuditEventAsync(new PurchaseReceiptAuditEvent
+                {
+                    StoreId = document.StoreId, StockDocumentId = document.Id,
+                    EventType = PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed,
+                    ActorUserId = _currentUser.UserId!.Value, ActorUserName = _currentUser.UserName,
+                    OccurredAtUtc = auditNowUtc, IsSuccess = true,
+                    Reason = "Đã kiểm tra hóa đơn XML khi duyệt và ghi sổ phiếu nhập.",
+                    ChangedFieldsJson = "[\"InvoiceFollowUp\"]",
+                    OldValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        InvoiceFollowUp = ReceiptInvoiceFollowUp.Resolve(document.WaitForInputInvoice, true,
+                            finalInvoiceEvidence!.State)
+                    }),
+                    NewValuesJson = System.Text.Json.JsonSerializer.Serialize(new
+                    {
+                        InvoiceFollowUp = "Reviewed",
+                        MapId = reviewedInvoice.StockDocumentInputInvoiceMapId,
+                        EvidenceFingerprint = finalInvoiceEvidence!.EvidenceFingerprint
+                    })
+                }, ct);
             await _stockDocumentRepository.SaveChangesAsync(ct);
             await _stockDocumentRepository.CommitTransactionAsync(ct);
         }
@@ -1924,6 +1995,59 @@ public partial class StockDocumentService : IStockDocumentService
         catch (FormatException) { throw new BusinessRuleException("RowVersion không hợp lệ."); }
         if (!current.SequenceEqual(expected))
             throw new BusinessRuleException("Phiếu đã được người khác cập nhật. Vui lòng tải lại trang.");
+    }
+
+    private static void EnsurePhysicalEditVersion(byte[]? current, string? posted, string subject)
+    {
+        byte[] expected;
+        try
+        {
+            expected = string.IsNullOrWhiteSpace(posted)
+                ? [] : Convert.FromBase64String(posted);
+        }
+        catch (FormatException)
+        {
+            throw new ConcurrencyException($"{subject} thiếu phiên bản hợp lệ. Vui lòng tải lại phiếu trước khi sửa.");
+        }
+        if (current is null || current.Length == 0 || expected.Length == 0 || !current.SequenceEqual(expected))
+            throw new ConcurrencyException($"{subject} đã thay đổi hoặc thiếu phiên bản. Vui lòng tải lại phiếu trước khi sửa.");
+    }
+
+    private static void EnsureRevisionRequestResolved(StockDocument document)
+    {
+        if (document.HasRevisionRequest)
+            throw new BusinessRuleException(
+                "Phiếu còn yêu cầu xin sửa chưa được giải quyết. Vui lòng trả về sửa hoặc bác yêu cầu có lý do trước khi duyệt.");
+    }
+
+    private static void EnsureReceiptSourceConsistent(StockDocument document)
+    {
+        if (document.PurchaseOrderId.HasValue && document.ReceiptSource != PurchaseReceiptSource.PurchaseOrder)
+            throw new BusinessRuleException(
+                "Nguồn phiếu nhập không khớp liên kết đơn mua. Vui lòng kiểm tra và điều chỉnh nguồn phiếu trước khi tiếp tục; không thể duyệt như phiếu nhập trực tiếp.");
+    }
+
+    private static void EnsureSettlementRequiresTreasury(bool isMerchandisePaid, bool isFreightPaid)
+    {
+        if (isMerchandisePaid || isFreightPaid)
+            throw new BusinessRuleException(
+                "Duyệt phiếu chỉ ghi nhận công nợ. Thanh toán phải có phiếu chi tại Thu/chi.");
+    }
+
+    private static bool IsConfirmedPayablePaid(StockDocument document, PurchasePayableType type, bool legacySnapshot)
+    {
+        if (document.Status != StockDocumentStatus.Confirmed)
+            return false;
+
+        // Treasury owns settlement after confirmation. Receipt flags are only
+        // a fallback for historical receipts which have no payable of this type.
+        var payables = document.PurchasePayables
+            .Where(x => !x.IsDeleted && x.Type == type)
+            .ToArray();
+        if (payables.Length == 0)
+            return legacySnapshot;
+        var active = payables.Where(x => x.Status != PurchasePayableStatus.Cancelled).ToArray();
+        return active.Length > 0 && active.All(x => x.Status == PurchasePayableStatus.Paid);
     }
 
     private static void EnsureDirectLineEditing(StockDocument document)
@@ -2559,11 +2683,9 @@ public partial class StockDocumentService : IStockDocumentService
                         ?? document.Supplier?.Name
                         ?? document.PurchaseOrder?.Supplier?.Name,
                     Amount = document.TotalAmount,
-                    Status = document.IsMerchandisePaid
-                        ? PurchasePayableStatus.Paid
-                        : PurchasePayableStatus.Outstanding,
+                    Status = PurchasePayableStatus.Outstanding,
                     RecognizedAtUtc = occurredAtUtc,
-                    PaidAtUtc = document.IsMerchandisePaid ? occurredAtUtc : null,
+                    PaidAtUtc = null,
                     Note = $"Tiền hàng theo phiếu nhập {document.DocumentNo}."
                 }, ct);
             }
@@ -2583,9 +2705,9 @@ public partial class StockDocumentService : IStockDocumentService
                     SupplierId = null,
                     PayeeName = document.FreightPayeeName,
                     Amount = document.FreightTotal,
-                    Status = document.IsFreightPaid ? PurchasePayableStatus.Paid : PurchasePayableStatus.Outstanding,
+                    Status = PurchasePayableStatus.Outstanding,
                     RecognizedAtUtc = occurredAtUtc,
-                    PaidAtUtc = document.IsFreightPaid ? occurredAtUtc : null,
+                    PaidAtUtc = null,
                     Note = document.FreightNote
                 }, ct);
             }
@@ -2948,6 +3070,33 @@ public partial class StockDocumentService : IStockDocumentService
         return string.IsNullOrWhiteSpace(fallbackBarcode) ? null : fallbackBarcode;
     }
 
+    private async Task SaveReceiptAndInvalidateReconciliationAsync(
+        StockDocument document,
+        string reason,
+        CancellationToken ct)
+    {
+        if (_inputInvoiceReconciliationService is null)
+        {
+            await _stockDocumentRepository.SaveChangesAsync(ct);
+            return;
+        }
+
+        await _stockDocumentRepository.BeginTransactionAsync(ct);
+        try
+        {
+            // Stage receipt evidence first; reconciliation can flush the same context.
+            // Keep both saves atomic if invalidating accepted XML evidence fails.
+            await _stockDocumentRepository.SaveChangesAsync(ct);
+            await InvalidateReconciliationAsync(document, reason, ct);
+            await _stockDocumentRepository.CommitTransactionAsync(ct);
+        }
+        catch
+        {
+            await _stockDocumentRepository.RollbackTransactionAsync(ct);
+            throw;
+        }
+    }
+
     private Task InvalidateReconciliationAsync(
         StockDocument document,
         string reason,
@@ -3071,6 +3220,13 @@ public partial class StockDocumentService : IStockDocumentService
 
         if (approvalNote?.Length > 1000)
             throw new BusinessRuleException("Ghi chú xử lý yêu cầu sửa không được vượt quá 1.000 ký tự.");
+        if (!returnToEdit && string.IsNullOrWhiteSpace(approvalNote))
+            throw new BusinessRuleException("Vui lòng nhập lý do bác yêu cầu xin sửa.");
+        if (returnToEdit && document.ReceivingSessionState != ReceivingSessionState.None &&
+            document.PurchaseOrderId.HasValue &&
+            await _stockDocumentRepository.HasOtherActiveReceivingDraftAsync(
+                document.StoreId, document.PurchaseOrderId.Value, document.Id, ct))
+            throw new BusinessRuleException("Đơn đặt hàng đã có một phiên nhận khác đang hoạt động.");
 
         document.HasRevisionRequest = false;
         document.RevisionResolvedAtUtc = DateTime.UtcNow;
@@ -3078,12 +3234,6 @@ public partial class StockDocumentService : IStockDocumentService
 
         if (returnToEdit)
         {
-            if (document.ReceivingSessionState != ReceivingSessionState.None &&
-                document.PurchaseOrderId.HasValue &&
-                await _stockDocumentRepository.HasOtherActiveReceivingDraftAsync(
-                    document.StoreId, document.PurchaseOrderId.Value, document.Id, ct))
-                throw new BusinessRuleException(
-                    "Đơn đặt hàng đã có một phiên nhận khác đang hoạt động.");
             document.Status = StockDocumentStatus.Rejected;
             if (document.ReceivingSessionState != ReceivingSessionState.None)
             {
@@ -3104,8 +3254,7 @@ public partial class StockDocumentService : IStockDocumentService
             returnToEdit
                 ? PurchaseReceiptAuditEventType.RevisionReturnedForEditing
                 : PurchaseReceiptAuditEventType.RevisionRequestDismissed,
-            reason: returnToEdit ? document.ApprovalNote : null,
-            note: returnToEdit ? null : approvalNote);
+            reason: returnToEdit ? document.ApprovalNote : approvalNote!.Trim());
         await _stockDocumentRepository.SaveChangesAsync(ct);
     }
 

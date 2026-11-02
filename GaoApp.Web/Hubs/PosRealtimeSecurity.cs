@@ -19,11 +19,13 @@ public sealed class PosSessionHubFilter(RevocablePosHubLifetimeManager lifetime)
     public async ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext,
         Func<HubInvocationContext, ValueTask<object?>> next)
     {
-        // Hub invocations have fresh DI scopes without the HTTP tenant middleware's scoped tenant.
-        // Check the operation against the freshly validated connection's store and grants instead.
-        await lifetime.EnsureCurrentAsync(invocationContext.Context.ConnectionId, invocationContext.Context.ConnectionAborted,
+        // Use only the server's freshly validated connection, never the invocation payload.
+        var session = await lifetime.EnsureCurrentAsync(invocationContext.Context.ConnectionId, invocationContext.Context.ConnectionAborted,
             requirePaymentPermission: invocationContext.HubMethodName == nameof(PosHub.BroadcastTerminalEvent));
-        return await next(invocationContext);
+        var tenant = invocationContext.ServiceProvider.GetRequiredService<GaoApp.Application.Common.ITenantContextWriter>();
+        tenant.SetStore(session.StoreId, "pos-realtime");
+        try { return await next(invocationContext); }
+        finally { tenant.Clear(); }
     }
 }
 

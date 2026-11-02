@@ -1,0 +1,44 @@
+@using GaoApp.Domain.Entities
+@model IReadOnlyList<BankNotificationDevice>
+@{
+    ViewData["Title"] = "Nhận thông báo chuyển khoản ACB";
+    var accounts = (IReadOnlyList<StoreBankAccount>)ViewBag.Accounts;
+
+}
+<div class="container-fluid py-3">
+    <h1 class="h4">Nhận thông báo chuyển khoản ACB</h1>
+    <p>Điện thoại đọc thông báo ACB và gửi đến cửa hàng. Có POS và đúng khoản chờ thì quầy tự xác nhận; thiếu POS thì thu ngân chọn Đúng hoặc Bỏ qua.</p>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h6">Kết nối điện thoại với tài khoản nhận</h2>
+        <form method="post" action="@Url.Action("CreateDevice")" class="row g-2">
+            @Html.AntiForgeryToken()
+            <div class="col-md-5"><label class="form-label" for="bridgeBank">Tài khoản ACB nhận thông báo trên điện thoại</label>
+                <select class="form-select" id="bridgeBank" name="bankAccountId" required>
+                    @foreach (var account in accounts) { <option value="@account.Id">@account.AccountNumber — @account.AccountName</option> }
+                </select>
+            </div>
+            <div class="col-md-4"><label class="form-label" for="bridgeName">Tên điện thoại</label><input class="form-control" id="bridgeName" name="name" maxlength="120" required placeholder="Điện thoại nhận thông báo cửa hàng" /></div>
+            <div class="col-md-3 d-flex align-items-end"><button class="btn btn-primary" type="submit" disabled="@(accounts.Count == 0)">Tải cấu hình điện thoại</button></div>
+        </form>
+        <p class="small text-muted mt-2 mb-0">Chép file cấu hình sang điện thoại, mở GaoApp ACB Probe → Kết nối web → Nhập cấu hình. File cấp quyền gửi thông báo cho tài khoản đã chọn; chỉ giao cho điện thoại của cửa hàng. Thiết bị không được cấp quyền tự sửa hoặc chốt đơn qua API gửi thông báo.</p>
+    </div></div>
+    <p class="small text-muted mb-3" id="bankNotificationLiveStatus" role="status" aria-live="polite" data-live-url="@Url.Action("LiveState")">Tự cập nhật mỗi 3 giây.</p>
+    @await Html.PartialAsync("_LiveState", Model)
+</div>
+<div class="modal fade" id="adminBankApprovalModal" tabindex="-1" aria-labelledby="adminBankApprovalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:480px"><div class="modal-content"><div class="modal-body p-4">
+        <h2 class="h5" id="adminBankApprovalTitle">Xác nhận đã nhận chuyển khoản</h2>
+        <p class="text-muted mb-3">Chỉ xác nhận sau khi đã đối chiếu tiền vào ngân hàng.</p>
+        <div class="text-center py-3 bg-light rounded mb-3"><div id="adminApprovalSender"></div><div class="fs-2 fw-bold" id="adminApprovalAmount"></div></div>
+        <div id="adminApprovalTarget" class="fw-semibold"></div><div id="adminApprovalReference" class="small text-muted text-break mb-3"></div>
+        <p class="small text-muted">Lệnh được gửi đến quầy đang chờ. Đơn chỉ chốt khi đã nhận đủ tiền.</p>
+        <div id="adminApprovalError" class="text-danger small mb-2" role="alert"></div>
+        <div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="adminApprovalCancel">Quay lại</button><button type="button" class="btn btn-primary flex-grow-1" id="adminApprovalConfirm">Đúng — Đã nhận tiền</button></div>
+    </div></div></div>
+</div>
+@section Scripts { <script src="~/Admin/js/pos/bank-notifications.admin.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/bank-notifications.mobile.js" asp-append-version="true"></script> }
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/bank-notifications.mobile.css" asp-append-version="true" />
+}

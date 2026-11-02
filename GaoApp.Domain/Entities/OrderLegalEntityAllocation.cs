@@ -4,6 +4,7 @@ using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Domain.Entities;
+public enum OrderAllocationInvoiceUnitKind { SellingUnit, NativeBaseUnit }
 
 /// <summary>
 /// Source of truth cho phần hàng/doanh thu của một OrderLine được xuất bởi
@@ -12,6 +13,10 @@ namespace GaoApp.Domain.Entities;
 [Table("OrderLegalEntityAllocations")]
 public sealed class OrderLegalEntityAllocation : BaseStoreEntity
 {
+    public OrderAllocationInvoiceUnitKind InvoiceUnitKind { get; set; }
+    public int? InvoiceUnitId { get; set; }
+    public string? InvoiceUnitName { get; set; }
+    public decimal StorefrontHeaderDiscountAllocated { get; set; }
     public int OrderId { get; set; }
     public Order Order { get; set; } = default!;
 

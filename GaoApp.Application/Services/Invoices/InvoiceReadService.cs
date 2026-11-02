@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
@@ -26,8 +27,9 @@ public class InvoiceReadService : IInvoiceReadService
     {
         query ??= new InvoiceListQueryDto();
 
-        var page = query.Page <= 0 ? 1 : query.Page;
-        var pageSize = query.PageSize <= 0 ? 20 : query.PageSize;
+        query.NormalizeAndValidate();
+        var page = query.Page;
+        var pageSize = query.PageSize;
 
         var (items, total) = await _invoiceRepository.QueryInvoiceHeadsAsync(
             query.FromDate,
@@ -40,14 +42,16 @@ public class InvoiceReadService : IInvoiceReadService
             pageSize,
             ct);
 
-        var dtoItems = items
-            .Select(InvoiceDtoMapper.ToListItemDto)
-            .ToList();
+        foreach (var item in items)
+        {
+            item.LastErrorMessage = InvoiceErrorReadSanitizer.Message(item.LastErrorMessage, item.LastErrorCode);
+            item.LastErrorCode = InvoiceErrorReadSanitizer.Code(item.LastErrorCode);
+        }
 
         return Result<PagedResult<InvoiceListItemDto>>.Success(
             new PagedResult<InvoiceListItemDto>
             {
-                Items = dtoItems,
+                Items = items,
                 Page = page,
                 PageSize = pageSize,
                 TotalItems = total

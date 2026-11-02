@@ -17,6 +17,7 @@ public sealed record ReceiptDesign
     [StringLength(300)] public string HeaderText { get; init; } = "";
     [StringLength(400)] public string FooterText { get; init; } = "Cảm ơn quý khách. Hẹn gặp lại!";
     public bool ShowCustomer { get; init; } = true;
+    public bool ShowCustomerPoints { get; init; } = true;
     public bool ShowCashier { get; init; } = true;
     public bool ShowSku { get; init; }
     public bool ShowPayments { get; init; } = true;

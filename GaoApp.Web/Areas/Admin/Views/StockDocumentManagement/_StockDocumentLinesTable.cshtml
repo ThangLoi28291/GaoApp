@@ -115,14 +115,14 @@
                         ? line.BarcodeSnapshot
                         : (!string.IsNullOrWhiteSpace(line.SkuSnapshot) ? line.SkuSnapshot : "-");
 
-                    <tr data-line-id="@line.Id">
+                    <tr data-line-id="@line.Id" data-row-version="@line.RowVersion">
                         <td class="text-center fw-bold text-muted">@line.LineNo</td>
                         <td class="sd-commercial-image-column">
                             @if (hasImage)
                             {
                                 <button type="button" class="sd-commercial-image-button" aria-label="Phóng to ảnh @line.ProductNameSnapshot" aria-expanded="false">
                                     <img class="sd-commercial-thumbnail" src="@line.ProductImageUrl" alt="@line.ProductNameSnapshot" loading="lazy"
-                                         onerror="this.hidden=true; this.nextElementSibling.hidden=false; this.parentElement.disabled=true;" />
+                                         data-csp-image="stock-line" />
                                     <i class="bx bx-image" hidden aria-hidden="true"></i>
                                 </button>
                             }

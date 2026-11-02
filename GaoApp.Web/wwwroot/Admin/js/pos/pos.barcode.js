@@ -961,23 +961,27 @@ window.PosBarcode = (function () {
             const rawInput = txtBarcode?.value || '';
             const keyword = parseQtyPrefixedInput(rawInput).keyword;
             const numericInput = /^\d+$/.test(keyword);
+            const searchVisible = keyword === barcodeSearchState.keyword
+                && barcodeAutocomplete && barcodeAutocomplete.style.display !== 'none';
             productEnterPending = true;
             try {
                 let selected = getCurrentProductSelection();
-                if (!selected && !numericInput && keyword.length >= 2) {
-                    // Finish a pending name search instead of submitting the name as a barcode.
+                if (!selected && (!numericInput || searchVisible) && keyword.length >= 2) {
+                    // Finish a visible search, including partial numeric codes, before choosing a row.
                     debouncedSearch.cancel?.();
                     await searchBarcodeAutocomplete(rawInput);
                     if (txtBarcode?.value !== rawInput || barcodeSearchState.keyword !== keyword) return;
                     selected = getCurrentProductSelection();
                 }
 
-                // Numeric scans resolve the exact barcode, never a fuzzy first suggestion.
-                // An explicitly highlighted unit row still supports keyboard selection.
-                if (selected && (!numericInput || selected.kind === 'child')) {
+                // A visible suggestion is a product selection even when the search is numeric.
+                // Scanner Enter arrives before autocomplete opens and resolves the exact code below.
+                if (selected) {
                     await selectAutocompleteItem(selected);
                     return;
                 }
+                // An empty search stays available for editing; it is not a failed barcode scan.
+                if (!numericInput || searchVisible) return;
                 await scanCurrentCart();
             } finally {
                 productEnterPending = false;
@@ -1361,6 +1365,14 @@ window.PosBarcode = (function () {
             const cachedItems = barcodeSearchState.cache.get(cacheKey);
 
             if (cachedItems) {
+                if (!cachedItems.length) {
+                    barcodeSearchState.parentItems = [];
+                    barcodeSearchState.flatItems = [];
+                    barcodeSearchState.items = [];
+                    barcodeSearchState.activeIndex = -1;
+                    renderBarcodeAutocompleteEmpty(barcodeAutocomplete, actualKeyword);
+                    return;
+                }
                 normalizeAutocompleteItems(cachedItems || []);
                 renderBarcodeAutocomplete(barcodeSearchState.parentItems || []);
                 return;

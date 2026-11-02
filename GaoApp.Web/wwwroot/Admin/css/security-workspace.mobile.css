@@ -1,0 +1,112 @@
+/* UI-21. Presentation only; the existing forms, security challenges and owners stay native. */
+@media screen and (max-width: 767.98px) {
+    body:has([data-ui21-view]) { --u21-ink: #173354; --u21-muted: #647a96; --u21-line: #d8e3f2; --u21-blue: #2563eb; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] { color: var(--u21-ink); padding-inline: 12px; padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+    body:has([data-ui21-view]) [data-mobile-shell-content] > .container-fluid { padding-inline: 0; }
+    body:has([data-ui21-view]) :is(h1,h2,h3,h4,h5,p,dd,.alert,.badge) { overflow-wrap: anywhere; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(h1,h3) { font-size: 1.45rem; line-height: 1.35; letter-spacing: -.025em; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(.card,.rp-group,.rp-toolbar,.rp-role-card,.rp-empty-start) { border: 1px solid var(--u21-line) !important; border-radius: 18px; box-shadow: 0 6px 22px #1b365908 !important; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(.card-body,.card-header) { padding: 18px !important; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] .card-header { background: #f5f8ff !important; border-bottom-color: var(--u21-line); border-radius: 18px 18px 0 0; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(.form-control,.form-select,select:not([hidden]),textarea,input:not([type=hidden]):not([type=checkbox]):not([type=radio])) { font-size: 16px; min-height: 46px; max-width: 100%; border-radius: 12px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] textarea { min-height: 96px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(.btn,.rp-btn,.rp-group-tab,.rp-text-link) { min-height: 44px; white-space: normal; line-height: 1.4; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] .btn { border-radius: 12px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(.btn-primary,.rp-primary) { background: var(--u21-blue); border-color: var(--u21-blue); color: #fff; }
+    body:has([data-ui21-view]) :is(.alert-info,.alert-light) { color: #315779; background: #edf4fc; border-color: var(--u21-line); }
+    body:has([data-ui21-view]) .alert-success { color: #19614b; background: #edf8f2; border-color: #c9e7d8; }
+    body:has([data-ui21-view]) .alert-warning { color: #805300; background: #fff5df; border-color: #eed5a2; }
+    body:has([data-ui21-view]) :is(.text-muted,.form-text) { color: #52677f !important; }
+    body:has([data-ui21-view]) :is(.text-success,.badge.bg-label-success) { color: #236a3c !important; }
+    body:has([data-ui21-view]) :is(.text-warning,.badge.bg-label-warning) { color: #805300 !important; }
+    body:has([data-ui21-view]) :is(.text-info,.badge.bg-label-info) { color: #205b83 !important; }
+    body:has([data-ui21-view]) .badge.bg-success { color: #164b26 !important; background: #dff3e5 !important; }
+    body:has([data-ui21-view]) .badge.bg-danger { color: #8c2525 !important; background: #fde9e8 !important; }
+    body:has([data-ui21-view]) .btn-outline-secondary { color: #52677f; }
+    body:has([data-ui21-view]) :is(.btn-outline-primary,.rp-text-link,.gds-kpi-card__value.text-primary) { color: #2459c4 !important; }
+    body:has([data-ui21-view]) .btn-outline-primary:is(:hover,:focus-visible,:active) { color: #fff !important; background: #2459c4; border-color: #2459c4; }
+    body:has([data-ui21-view]) .btn-outline-secondary:is(:hover,:focus-visible,:active) { color: #fff; background: #52677f; border-color: #52677f; }
+    body:has([data-ui21-view]) #togglePasswordBtn { min-width: 58px; font-size: 14px; }
+    body:has([data-ui21-view]) #togglePasswordBtn .bi { display: none; }
+    body:has([data-ui21-view]) #newPassword[type=password] + #togglePasswordBtn::after { content: 'Hiện'; }
+    body:has([data-ui21-view]) #newPassword[type=text] + #togglePasswordBtn::after { content: 'Ẩn'; }
+    body:has([data-ui21-view]) [data-security-confirmation] { background: #f5f8ff; border-color: var(--u21-line) !important; border-radius: 14px !important; padding: 16px !important; }
+    body:has([data-ui21-view]) [data-security-confirmation] > p { color: #415a78 !important; }
+    /* Native checkbox hits must stay outside the shared left-edge swipe target. */
+    body:has([data-ui21-view]) :is(.form-check,.rp-select-feature) { margin-left: 10px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] .form-label { color: #29496c; line-height: 1.5; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] .row { --bs-gutter-x: 16px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] .d-flex { min-width: 0; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] > .d-flex { flex-wrap: wrap; gap: 12px; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] .text-nowrap { white-space: normal !important; }
+    body:has([data-ui21-view]) [data-mobile-shell-content] :is(.form-text,.text-muted) { overflow-wrap: anywhere; }
+    body:has([data-ui21-view]) :is(.employee-index-page,.role-index-page) .gds-kpi-card { min-height: 106px; }
+    body:has([data-ui21-view]) :is(.employee-index-page,.role-index-page) .gds-kpi-card__value { font-size: 1.65rem; }
+    body:has([data-ui21-view]) :is(.employee-index-page,.role-index-page) :is(.gds-kpi-card__body,.gds-kpi-card__label,.gds-kpi-card__value) { display: block; }
+    body:has([data-ui21-view]) :is(.employee-index-page,.role-index-page) .gds-kpi-card { align-items: flex-start; gap: 10px; padding: 14px; }
+    body:has([data-ui21-view]) :is(.employee-index-page,.role-index-page) :is(.gds-kpi-grid,.gds-kpi-row) { gap: 8px; }
+    body:has([data-ui21-view]) :is(.employee-index-mobile-card,.role-index-mobile-card) { border-radius: 16px; border-color: var(--u21-line); }
+    body:has([data-ui21-view]) #employeeCreateTabs { display: grid; grid-template-columns: minmax(0,1fr); }
+    body:has([data-ui21-view]) #employeeCreateTabs .nav-link { width: 100%; min-height: 46px; text-align: left; border-radius: 12px; }
+    body:has([data-ui21-view]) #employeeCreateTabs .nav-link.active { background: var(--u21-blue); }
+    body:has([data-ui21-view]) :is(.create-userinstore-page,.edit-userinstore-page) form > .mt-4 { display: grid !important; grid-template-columns: minmax(0,1fr) auto; }
+    /* The original table rows become labelled cards. No duplicate data or commands. */
+    body:has([data-ui21-view]) .table-responsive:has(table[data-ui21-cards]) { overflow: visible; border: 0; }
+    body:has([data-ui21-view]) table[data-ui21-cards] { display: block; width: 100%; border: 0; }
+    body:has([data-ui21-view]) table[data-ui21-cards] thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    body:has([data-ui21-view]) table[data-ui21-cards] tbody { display: grid; gap: 12px; padding: 12px; }
+    body:has([data-ui21-view]) table[data-ui21-cards] tr { display: grid; grid-template-columns: minmax(0,1fr); border: 1px solid var(--u21-line); border-radius: 16px; background: white; padding: 8px 14px; }
+    body:has([data-ui21-view]) table[data-ui21-cards] td { display: block; width: auto !important; min-width: 0; padding: 10px 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+    body:has([data-ui21-view]) table[data-ui21-cards] td + td { border-top: 1px solid #edf2f9; }
+    body:has([data-ui21-view]) table[data-ui21-cards] td[data-ui21-label]::before { content: attr(data-ui21-label); display: block; font-size: 12px; color: var(--u21-muted); margin-bottom: 5px; font-weight: 500; }
+    body:has([data-ui21-view]) table[data-ui21-cards] td:only-child::before { display: none; }
+    body:has([data-ui21-view]) table[data-ui21-cards] td form { margin: 0; }
+    body:has([data-ui21-view]) #pagingInfo { font-size: 13px; padding: 8px; text-align: center; }
+    body:has([data-ui21-view="KioskManagement/Index"]) [data-kiosk-id] .d-flex:has(>form) { display: grid !important; grid-template-columns: repeat(2,minmax(0,1fr)); }
+    body:has([data-ui21-view="KioskManagement/Index"]) [data-kiosk-id] form .btn { width: 100%; height: 100%; }
+    body:has([data-ui21-view="KioskManagement/Index"]) .col-md-4 .btn { width: 100%; }
+    body:has([data-ui21-view="KioskManagement/Activation"]) textarea,
+    body:has([data-ui21-view="POSTerminals/KeyCreated"]) textarea { font-family: ui-monospace, monospace; font-size: 17px; line-height: 1.65; min-height: 120px; overflow-wrap: anywhere; }
+    /* Native role matrix: compact summary, horizontal task groups, original checked/disabled state. */
+    body:has([data-ui21-view]) .rp-page { --rp-accent: #2563eb; --rp-ink: #173354; --rp-border: #d8e3f2; padding: 0 0 20px; }
+    body:has([data-ui21-view]) .rp-header { background: linear-gradient(135deg,#fff,#eef4ff); padding: 18px; border: 1px solid var(--u21-line); border-radius: 18px; flex-wrap: wrap; }
+    body:has([data-ui21-view]) .rp-actions { flex-wrap: wrap; gap: 8px; }
+    body:has([data-ui21-view]) .rp-header .rp-actions { width: 100%; }
+    body:has([data-ui21-view]) .rp-summary { gap: 8px; }
+    body:has([data-ui21-view]) .rp-stat { padding: 14px; border-radius: 15px; min-width: 0; }
+    body:has([data-ui21-view]) .rp-stat strong { color: #245bd2; }
+    body:has([data-ui21-view]) .rp-sidebar { display: flex; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-inline: contain; scroll-snap-type: x proximity; padding: 10px; border-radius: 15px; }
+    body:has([data-ui21-view]) .rp-sidebar h2 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    body:has([data-ui21-view]) .rp-group-tab { flex: 0 0 auto; max-width: 85vw; padding: 10px 12px; scroll-snap-align: start; text-align: left; }
+    body:has([data-ui21-view]) .rp-toolbar { padding: 16px; }
+    body:has([data-ui21-view]) .rp-permission { padding: 14px 12px 14px 18px; min-height: 56px; border-radius: 12px; }
+    body:has([data-ui21-view]) .rp-permission.rp-modified { padding-left: 16px; }
+    body:has([data-ui21-view]) .rp-permission input { margin-top: 3px; }
+    body:has([data-ui21-view]) .rp-feature > header { gap: 10px; }
+    body:has([data-ui21-view]) .rp-save-bar { position: static; border-radius: 16px; padding: 16px; }
+    body:has([data-ui21-view]) .rp-save-bar .rp-actions { width: 100%; display: grid; grid-template-columns: auto minmax(0,1fr); }
+    body:has([data-ui21-view]) :is(.rp-group-heading,.rp-tools) { flex-wrap: wrap; gap: 10px; }
+    body:has([data-ui21-view]) .rp-dialog[open] { display: block; width: calc(100vw - 16px); max-height: calc(100dvh - 16px); margin: auto; overflow-y: auto; border-radius: 20px; }
+    body:has([data-ui21-view]) .rp-dialog > header { padding: 16px; align-items: start; position: sticky; top: 0; z-index: 2; background: #fff; }
+    body:has([data-ui21-view]) .rp-dialog > header h2 { font-size: 20px; }
+    body:has([data-ui21-view]) .rp-dialog > footer { position: sticky; bottom: 0; padding: 12px; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }
+    body:has([data-ui21-view]) .rp-dialog .rp-close { min-width: 44px; flex: 0 0 44px; }
+    body:has([data-ui21-view]) .rp-dialog .rp-changes-list { max-height: 32dvh; overflow-y: auto; }
+    body:has([data-ui21-view]) .rp-dialog [data-security-confirmation] { margin: 12px !important; }
+    body:has([data-ui21-view]) .modal .modal-dialog { margin: 8px; min-height: calc(100dvh - 16px); display: flex; align-items: center; }
+    body:has([data-ui21-view]) .modal .modal-content { max-height: calc(100dvh - 16px); border-radius: 20px; width: 100%; }
+    body:has([data-ui21-view]) .modal .modal-content > form { display: flex; flex-direction: column; min-height: 0; max-height: inherit; }
+    body:has([data-ui21-view]) .modal .modal-header { padding: 16px; gap: 12px; flex-shrink: 0; }
+    body:has([data-ui21-view]) .modal .modal-body { padding: 16px; overflow-y: auto; min-height: 0; }
+    body:has([data-ui21-view]) .modal .modal-footer { padding: 12px; flex-shrink: 0; }
+    body:has([data-ui21-view]) .modal .btn-close { width: 44px; height: 44px; box-sizing: border-box; margin: 0; padding: 12px; flex-shrink: 0; position: static; transform: none; }
+    body:has([data-ui21-view]) .offcanvas-bottom { height: min(88dvh, 660px); max-height: calc(100dvh - 16px); border-radius: 20px 20px 0 0; }
+    body:has([data-ui21-view]) .offcanvas .offcanvas-body { overflow-y: auto; min-height: 0; padding: 16px; }
+    body:has([data-ui21-view]) .offcanvas .btn-close { min-width: 44px; min-height: 44px; margin: 0; }
+    body:has([data-ui21-view]) #auditLogDetailModal :is(dd,pre) { overflow-wrap: anywhere; white-space: pre-wrap; word-break: break-word; }
+    body:has([data-ui21-view]) #auditLogDetailModal dt { margin-top: 12px; }
+}
+@media screen and (max-width: 359.98px) {
+    body:has([data-ui21-view]) .rp-dialog > footer { grid-template-columns: minmax(0,1fr); }
+    body:has([data-ui21-view]) [data-kiosk-id] .d-flex:has(>form) { grid-template-columns: minmax(0,1fr); }
+}

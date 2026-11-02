@@ -30,6 +30,9 @@ public sealed class OrderLegalEntityAllocationConfiguration
         builder.Property(x => x.RowVersion).IsRowVersion();
 
         builder.Property(x => x.Quantity).HasPrecision(18, 4);
+        builder.Property(x => x.InvoiceUnitName).HasMaxLength(100);
+        builder.Property(x => x.StorefrontHeaderDiscountAllocated).HasPrecision(18, 2).HasDefaultValue(0m);
+        builder.HasOne<Unit>().WithMany().HasForeignKey(x => new { x.StoreId, x.InvoiceUnitId }).HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
         builder.Property(x => x.BaseQuantity).HasPrecision(18, 4);
         builder.Property(x => x.UnitPrice).HasPrecision(18, 2);
         builder.Property(x => x.LineTotal).HasPrecision(18, 2);

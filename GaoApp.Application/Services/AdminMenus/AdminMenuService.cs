@@ -1,10 +1,11 @@
 ﻿// GaoApp.Application/Services/AdminMenus/AdminMenuService.cs
 using GaoApp.Application.DTOs.AdminMenus;
-using GaoApp.Application.Interfaces.Common;
+using GaoApp.Application.Common.Exceptions;
 using GaoApp.Application.Interfaces.Repositories.AdminMenus;
 using GaoApp.Application.Interfaces.Services.AdminMenus;
 using GaoApp.Application.Interfaces.Services.Security;
 using GaoApp.Domain.Entities;
+using GaoApp.Application.Common.Security;
 
 namespace GaoApp.Application.Services.AdminMenus;
 
@@ -12,22 +13,22 @@ public class AdminMenuService : IAdminMenuService
 {
     private readonly IAdminMenuRepository _adminMenuRepository;
     private readonly IAdminMenuPermissionRepository _menuPermissionRepository;
-    private readonly IAppUnitOfWork _uow;
     private readonly ICurrentStorePermissionService _permissionService;
     private readonly IAdminMenuVisibilityService? _visibilityService;
+    private readonly ISecurityAdministrationGuard? _security;
 
     public AdminMenuService(
         IAdminMenuRepository adminMenuRepository,
         IAdminMenuPermissionRepository menuPermissionRepository,
-        IAppUnitOfWork uow,
         ICurrentStorePermissionService permissionService,
-        IAdminMenuVisibilityService? visibilityService = null)
+        IAdminMenuVisibilityService? visibilityService = null,
+        ISecurityAdministrationGuard? security = null)
     {
         _adminMenuRepository = adminMenuRepository;
         _menuPermissionRepository = menuPermissionRepository;
-        _uow = uow;
         _permissionService = permissionService;
         _visibilityService = visibilityService;
+        _security = security;
     }
 
     public async Task<List<AdminMenuItemDto>> GetForRenderAsync(
@@ -79,7 +80,16 @@ public class AdminMenuService : IAdminMenuService
     {
         var menus = await GetForAdminAsync(storeId, ct);
         var permissions = await _menuPermissionRepository.GetPermissionsAsync(ct);
-        var roles = await _menuPermissionRepository.GetRolesAsync(storeId, ct);
+        var current = excludeMenuId.HasValue
+            ? await _adminMenuRepository.GetByIdAsync(storeId, excludeMenuId.Value, ct)
+            : null;
+        if (!string.IsNullOrWhiteSpace(current?.PermissionCode) &&
+            !permissions.Any(x => x.Code.Equals(current.PermissionCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            // Keep a legacy menu's condition visible so a metadata edit cannot silently clear it.
+            permissions.Add(new Permission { Code = current.PermissionCode,
+                Name = "Quyền đang dùng (không còn trong danh mục)" });
+        }
 
         if (excludeMenuId.HasValue)
             menus = RemoveMenuFromTree(menus, excludeMenuId.Value);
@@ -98,16 +108,6 @@ public class AdminMenuService : IAdminMenuService
                     Name = x.Name,
                     GroupName = x.GroupName
                 })
-                .ToList(),
-
-            Roles = roles
-                .OrderBy(x => x.Name)
-                .Select(x => new AdminMenuRoleOptionDto
-                {
-                    RoleId = x.Id,
-                    RoleCode = x.Code,
-                    RoleName = x.Name
-                })
                 .ToList()
         };
     }
@@ -118,10 +118,16 @@ public class AdminMenuService : IAdminMenuService
         SaveAdminMenuItemRequest request,
         CancellationToken ct = default)
     {
+        await using var security = await (_security ?? throw new InvalidOperationException("Security guard is required."))
+            .BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Permissions, ct);
+        security.RequireAdministrator();
+        RejectLegacyPermissionFields(request);
+        if (!string.IsNullOrWhiteSpace(request.PermissionCode))
+            await security.ConfirmAsync(request, true, ct);
         var now = DateTime.UtcNow;
 
-        var permissionResult = await ResolvePermissionAsync(request, ct);
-        var permissionCode = permissionResult.Code;
+        var permissionCode = await ResolvePermissionAsync(request.PermissionCode, null, ct);
+        await ValidateParentAsync(storeId, request.ParentId, null, ct);
 
         var entity = new AdminMenuItem
         {
@@ -143,13 +149,8 @@ public class AdminMenuService : IAdminMenuService
 
         await _adminMenuRepository.AddAsync(entity, ct);
 
-        await SyncPermissionRolesAsync(
-            storeId,
-            permissionResult.Permission,
-            request.AssignRoleIds,
-            ct);
-
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Tạo menu", nameof(AdminMenuItem), 0,
+            null, Snapshot(entity), request.Reason, ct: ct);
 
         return entity.Id;
     }
@@ -160,16 +161,21 @@ public class AdminMenuService : IAdminMenuService
         SaveAdminMenuItemRequest request,
         CancellationToken ct = default)
     {
+        await using var security = await (_security ?? throw new InvalidOperationException("Security guard is required."))
+            .BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Permissions, ct);
+        security.RequireAdministrator();
+        RejectLegacyPermissionFields(request);
         var entity = await _adminMenuRepository.GetByIdAsync(storeId, request.Id, ct);
 
         if (entity == null)
             return false;
 
-        if (request.ParentId == request.Id)
-            throw new InvalidOperationException("Không được chọn chính menu hiện tại làm menu cha.");
+        var before = Snapshot(entity);
+        if (!string.IsNullOrWhiteSpace(request.PermissionCode) || !string.IsNullOrWhiteSpace(entity.PermissionCode))
+            await security.ConfirmAsync(request, true, ct);
 
-        var permissionResult = await ResolvePermissionAsync(request, ct);
-        var permissionCode = permissionResult.Code;
+        var permissionCode = await ResolvePermissionAsync(request.PermissionCode, entity.PermissionCode, ct);
+        await ValidateParentAsync(storeId, request.ParentId, entity.Id, ct);
 
         entity.ParentId = request.ParentId;
         entity.Title = request.Title.Trim();
@@ -184,13 +190,8 @@ public class AdminMenuService : IAdminMenuService
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = actorUserId;
 
-        await SyncPermissionRolesAsync(
-            storeId,
-            permissionResult.Permission,
-            request.AssignRoleIds,
-            ct);
-
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Sửa menu", nameof(AdminMenuItem), entity.Id,
+            before, Snapshot(entity), request.Reason, ct: ct);
 
         return true;
     }
@@ -201,6 +202,9 @@ public class AdminMenuService : IAdminMenuService
         int? actorUserId,
         CancellationToken ct = default)
     {
+        await using var security = await (_security ?? throw new InvalidOperationException("Security guard is required."))
+            .BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Permissions, ct);
+        security.RequireAdministrator();
         var entity = await _adminMenuRepository.GetByIdAsync(storeId, id, ct);
 
         if (entity == null)
@@ -214,76 +218,60 @@ public class AdminMenuService : IAdminMenuService
         if (hasChildren)
             return (false, "Menu đang có menu con, vui lòng xóa menu con trước.");
 
+        var before = Snapshot(entity);
         entity.IsDeleted = true;
         entity.IsActive = false;
         entity.UpdatedAtUtc = DateTime.UtcNow;
         entity.UpdatedBy = actorUserId;
 
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Xóa menu", nameof(AdminMenuItem), entity.Id,
+            before, Snapshot(entity), ct: ct);
 
         return (true, null);
     }
 
-    private async Task<(string? Code, Permission? Permission)> ResolvePermissionAsync(
-        SaveAdminMenuItemRequest request,
+    private async Task<string?> ResolvePermissionAsync(
+        string? requestedCode,
+        string? existingCode,
         CancellationToken ct)
     {
-        if (!request.CreateNewPermission)
+        if (string.IsNullOrWhiteSpace(requestedCode)) return null;
+        var code = requestedCode.Trim();
+        var permission = await _menuPermissionRepository.GetPermissionByCodeAsync(code, ct);
+        if (permission is not null) return permission.Code;
+        if (!string.IsNullOrWhiteSpace(existingCode) && code.Equals(existingCode, StringComparison.OrdinalIgnoreCase))
+            return existingCode;
+        throw new ValidationAppException("Quyền đã chọn không còn trong danh mục. Hãy tải lại và chọn quyền có sẵn.");
+    }
+
+    private static void RejectLegacyPermissionFields(SaveAdminMenuItemRequest request)
+    {
+        if (request.CreateNewPermission.HasValue || request.AssignRoleIds is not null ||
+            request.NewPermissionCode is not null || request.NewPermissionName is not null || request.NewPermissionGroupName is not null)
+            throw new ValidationAppException("Biểu mẫu menu đã thay đổi. Hãy tải lại trang. Cấp hoặc thu hồi quyền tại Phân quyền vai trò.");
+    }
+
+    private async Task ValidateParentAsync(int storeId, int? parentId, int? menuId, CancellationToken ct)
+    {
+        if (parentId is null) return;
+        var menus = (await _adminMenuRepository.GetAllForStoreAsync(storeId, ct)).ToDictionary(x => x.Id);
+        var visited = new HashSet<int>();
+        if (menuId.HasValue) visited.Add(menuId.Value);
+        while (parentId.HasValue)
         {
-            var selectedCode = string.IsNullOrWhiteSpace(request.PermissionCode)
-                ? null
-                : request.PermissionCode.Trim();
-
-            if (selectedCode == null)
-                return (null, null);
-
-            var selectedPermission = await _menuPermissionRepository
-                .GetPermissionByCodeAsync(selectedCode, ct);
-
-            return (selectedCode, selectedPermission);
+            if (!visited.Add(parentId.Value))
+                throw new ValidationAppException("Không được chọn chính menu hoặc menu con của nó làm menu cha.");
+            if (!menus.TryGetValue(parentId.Value, out var parent) || parent.StoreId != storeId)
+                throw new ValidationAppException("Menu cha không tồn tại hoặc không thuộc cửa hàng hiện tại.");
+            parentId = parent.ParentId;
         }
-
-        var code = request.NewPermissionCode?.Trim();
-
-        if (string.IsNullOrWhiteSpace(code))
-            throw new InvalidOperationException("Vui lòng nhập mã quyền mới.");
-
-        var existed = await _menuPermissionRepository.GetPermissionByCodeAsync(code, ct);
-
-        if (existed != null)
-            return (existed.Code, existed);
-
-        var permission = new Permission
-        {
-            Code = code,
-            Name = string.IsNullOrWhiteSpace(request.NewPermissionName)
-                ? code
-                : request.NewPermissionName.Trim(),
-            GroupName = string.IsNullOrWhiteSpace(request.NewPermissionGroupName)
-                ? "Menu"
-                : request.NewPermissionGroupName.Trim()
-        };
-
-        await _menuPermissionRepository.AddPermissionAsync(permission, ct);
-
-        return (permission.Code, permission);
     }
 
-    private async Task SyncPermissionRolesAsync(
-        int storeId,
-        Permission? permission,
-        List<int> roleIds,
-        CancellationToken ct)
+    private static object Snapshot(AdminMenuItem item) => new
     {
-        if (permission == null)
-            return;
-
-        await _menuPermissionRepository.SyncPermissionRolesAsync(
-            storeId,
-            permission,
-            roleIds ?? new List<int>(),
-            ct);
-    }
+        item.ParentId, item.Title, item.Area, item.Controller, item.Action, item.Url,
+        item.Icon, item.PermissionCode, item.SortOrder, item.IsActive, item.IsDeleted
+    };
 
     private static List<AdminMenuItemDto> BuildTree(List<AdminMenuItem> items)
     {
@@ -337,16 +325,5 @@ public class AdminMenuService : IAdminMenuService
                 return x;
             })
             .ToList();
-    }
-    public async Task<List<int>> GetAssignedRoleIdsAsync(
-        int storeId,
-        string? permissionCode,
-        CancellationToken ct = default)
-    {
-        if (string.IsNullOrWhiteSpace(permissionCode))
-            return new List<int>();
-
-        return await _menuPermissionRepository
-            .GetRoleIdsByPermissionCodeAsync(storeId, permissionCode, ct);
     }
 }

@@ -241,6 +241,72 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         IDictionary<DatabaseObjectIdentity, MutableTable> tables,
         string defaultSchema)
     {
+        if(migrationId==StorefrontCancellationSchemaSqlCatalog.MigrationId&&!operation.SuppressTransaction)
+        {
+            if(operation.Sql==StorefrontCancellationSchemaSqlCatalog.PreflightSql||operation.Sql==StorefrontCancellationSchemaSqlCatalog.PermissionSql)return true;
+            if(StorefrontCancellationSchemaSqlCatalog.TryGetTrigger(migrationId,operation,out var cancellationTrigger))
+            {
+                if(!tables.TryGetValue(new DatabaseObjectIdentity("dbo",cancellationTrigger.Table),out var cancellationTable)||cancellationTable.Triggers.Any(x=>x.Name==cancellationTrigger.Trigger.Name))throw new InvalidOperationException("Cancellation proof table is missing or duplicated.");
+                cancellationTable.Triggers.Add(cancellationTrigger.Trigger);return true;
+            }
+        }
+        if(migrationId==StorefrontFulfillmentSchemaSqlCatalog.MigrationId&&!operation.SuppressTransaction)
+        {
+            if(operation.Sql==StorefrontFulfillmentSchemaSqlCatalog.PreflightSql||operation.Sql==StorefrontFulfillmentSchemaSqlCatalog.PermissionSql)return true;
+            foreach(var nativeReplacement in StorefrontFulfillmentSchemaSqlCatalog.Replacements)
+                if(operation.Sql==$"DROP TRIGGER [dbo].[{nativeReplacement.Name}];")
+                {
+                    if(!tables.TryGetValue(new DatabaseObjectIdentity("dbo",nativeReplacement.Table),out var nativeTable))throw new InvalidOperationException("Native source nativeReplacement table is missing.");
+                    var old=nativeTable.Triggers.SingleOrDefault(x=>x.Name==DatabaseSchemaNormalization.NormalizeIdentifier(nativeReplacement.Name));
+                    if(old is null||old.Definition!=DeliverySchemaSqlCatalog.NormalizeDefinition(nativeReplacement.Previous)||old.IsDisabled||old.IsNotForReplication||!old.UsesAnsiNulls||!old.UsesQuotedIdentifier)
+                        throw new InvalidOperationException("Native source nativeReplacement requires the exact trusted historical proof.");
+                    nativeTable.Triggers.Remove(old);return true;
+                }
+            if(StorefrontFulfillmentSchemaSqlCatalog.TryGetTrigger(migrationId,operation,out var nativeTrigger))
+            {
+                if(!tables.TryGetValue(new DatabaseObjectIdentity("dbo",nativeTrigger.Table),out var nativeTable)||nativeTable.Triggers.Any(x=>x.Name==nativeTrigger.Trigger.Name))throw new InvalidOperationException("Native proof table is missing or duplicated.");
+                nativeTable.Triggers.Add(nativeTrigger.Trigger);return true;
+            }
+        }
+        if(migrationId==StorefrontQrBankSchemaSqlCatalog.MigrationId&&!operation.SuppressTransaction&&operation.Sql==StorefrontQrBankSchemaSqlCatalog.PreflightSql)return true;
+        if(migrationId==StorefrontQrBankSchemaSqlCatalog.MigrationId&&!operation.SuppressTransaction&&operation.Sql==StorefrontQrBankSchemaSqlCatalog.ReplaceEventDropSql)
+        {
+            var bankEventIdentity=new DatabaseObjectIdentity("dbo","StorefrontEvents");
+            if(!tables.TryGetValue(bankEventIdentity,out var bankEventTable))throw new InvalidOperationException("Bank event proof requires its existing manifest table.");
+            var previousBankGuard=bankEventTable.Triggers.SingleOrDefault(x=>x.Name==DatabaseSchemaNormalization.NormalizeIdentifier(StorefrontCheckoutSchemaSqlCatalog.EventTriggerName));
+            if(previousBankGuard is null||previousBankGuard.Definition!=DeliverySchemaSqlCatalog.NormalizeDefinition(StorefrontCheckoutSchemaSqlCatalog.EventSql)||previousBankGuard.IsDisabled||previousBankGuard.IsNotForReplication||!previousBankGuard.UsesAnsiNulls||!previousBankGuard.UsesQuotedIdentifier)
+                throw new InvalidOperationException("Bank checkout upgrade requires the exact trusted WEB04 event proof.");
+            bankEventTable.Triggers.Remove(previousBankGuard);return true;
+        }
+        if(StorefrontQrBankSchemaSqlCatalog.TryGetTrigger(migrationId,operation,out var bankQrTrigger))
+        {
+            var bankQrIdentity=new DatabaseObjectIdentity("dbo",bankQrTrigger.Table);
+            if(!tables.TryGetValue(bankQrIdentity,out var bankQrTable)||bankQrTable.Triggers.Any(x=>x.Name==bankQrTrigger.Trigger.Name))throw new InvalidOperationException("Bank proof trigger table is missing or duplicated.");
+            bankQrTable.Triggers.Add(bankQrTrigger.Trigger);return true;
+        }
+        if (StorefrontCheckoutSchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var checkoutTrigger))
+        {
+            var checkoutIdentity = new DatabaseObjectIdentity("dbo", checkoutTrigger.Table);
+            if (!tables.TryGetValue(checkoutIdentity, out var checkoutTable) || checkoutTable.Triggers.Any(x => x.Name == checkoutTrigger.Trigger.Name))
+                throw new InvalidOperationException("Checkout trigger references a missing table or duplicate trigger.");
+            checkoutTable.Triggers.Add(checkoutTrigger.Trigger); return true;
+        }
+        if (migrationId == StorefrontCheckoutSchemaSqlCatalog.MigrationId && !operation.SuppressTransaction &&
+            (operation.Sql == StorefrontCheckoutSchemaSqlCatalog.PermissionSql || operation.Sql == StorefrontCheckoutSchemaSqlCatalog.PreflightSql)) return true;
+        if (StorefrontFoundationSchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var storefrontTrigger))
+        {
+            var storefrontIdentity = new DatabaseObjectIdentity("dbo", storefrontTrigger.Table);
+            if (!tables.TryGetValue(storefrontIdentity, out var storefrontTable) || storefrontTable.Triggers.Any(x => x.Name == storefrontTrigger.Trigger.Name))
+                throw new InvalidOperationException("Storefront trigger references a missing table or duplicate trigger.");
+            storefrontTable.Triggers.Add(storefrontTrigger.Trigger);
+            return true;
+        }
+        if (BankNotificationSchemaSqlCatalog.TryGetOperation(migrationId, operation, out var notificationOperation))
+        {
+            ApplyOperation(migrationId, notificationOperation, tables,
+                new Dictionary<DatabaseObjectIdentity, DatabaseSequenceSchema>(), defaultSchema);
+            return true;
+        }
         if (DeliverySchemaSqlCatalog.IsInventoryPreflight(migrationId, operation))
         {
             foreach (var name in new[] { "InventoryBalances", "InventoryReservations", "DeliveryJournalEntries", "DeliveryDispatchCostFragments" })
@@ -271,6 +337,17 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 openingTable.Triggers.Any(x => x.Name == openingTrigger.Trigger.Name))
                 throw new InvalidOperationException("Opening protection references a missing table or duplicate trigger.");
             openingTable.Triggers.Add(openingTrigger.Trigger);
+            return true;
+        }
+        if (DeliverySchemaSqlCatalog.TryGetProvisionalReplacementDrop(migrationId, operation, out var replacement))
+        {
+            if (!tables.TryGetValue(new DatabaseObjectIdentity("dbo", replacement.Table), out var replacementTable))
+                throw new InvalidOperationException("Provisional replacement references a missing manifest table.");
+            var old = replacementTable.Triggers.SingleOrDefault(x => x.Name == replacement.Name);
+            if (old is null || old.Definition != replacement.PreviousDefinition || old.IsDisabled || old.IsNotForReplication ||
+                !old.UsesAnsiNulls || !old.UsesQuotedIdentifier)
+                throw new InvalidOperationException("Provisional replacement requires the exact trusted historical protection.");
+            replacementTable.Triggers.Remove(old);
             return true;
         }
         if (DeliverySchemaSqlCatalog.TryGetTrigger(migrationId, operation, out var deliveryTrigger))
@@ -324,6 +401,9 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
 
     private static void EnsureReviewedDataOnlySql(string migrationId, string sql)
     {
+        if (migrationId == StorefrontFoundationSchemaSqlCatalog.MigrationId && sql == StorefrontFoundationSchemaSqlCatalog.PermissionSql)
+            return;
+        if (ReviewedPermissionCatalogSql.IsMatch(migrationId, sql)) return;
         if (string.Equals(migrationId, InputInvoiceReconciliationMigrationId,
                 StringComparison.Ordinal))
             throw new InvalidOperationException(
@@ -747,7 +827,7 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
                 defaultValue: false),
             IsDisabled: false,
             DatabaseSchemaNormalization.NormalizeSqlExpression(
-                operation.Filter)));
+                RecentSchemaIndexCompatibility.Filter(operation))));
     }
 
     private static void ApplyDropIndex(
@@ -976,3 +1056,4 @@ public sealed class EfCoreDatabaseSchemaManifestCatalog
         int? Precision,
         int? Scale);
 }
+

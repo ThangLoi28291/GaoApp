@@ -1,0 +1,148 @@
+/* UI-07c — phone only. Keep all desktop rules and original business controls. */
+@media (max-width: 767.98px) {
+    .recon-heading, .manager-head {
+        padding: 18px; border-radius: 20px; background: #172d4d; color: #fff;
+        gap: 16px; margin-bottom: 14px;
+    }
+    .recon-heading h1, .manager-head .manager-title {color: #fff; font-size: 1.35rem; line-height: 1.35; margin: 3px 0 8px;}
+    .recon-heading p, .manager-head .manager-subtitle, .recon-eyebrow {color: #d5e2f4; font-weight: 500; line-height: 1.5;}
+    .recon-eyebrow {font-size: .7rem; letter-spacing: .1em;}
+    .recon-head-actions, .manager-head > .d-flex {display: grid !important; grid-template-columns: 1fr 1fr; width: 100%; gap: 8px !important;}
+    .manager-head #btnReloadDashboard {grid-column: 1 / -1;}
+    .recon-head-actions .btn, .manager-head .btn {min-height: 44px; font-size: .85rem; padding: 10px 8px; border-radius: 12px; white-space: normal;}
+    .recon-head-actions .btn-outline-primary, .manager-head .btn-outline-primary {color: #fff; border-color: #7994bb;}
+    .recon-head-actions .btn-primary, .manager-head .btn-primary {background: #2463eb; border-color: #2463eb;}
+    .manager-head #btnExportExcel {background: transparent; border-color: #7994bb; color: #fff;}
+    .manager-head .btn, .recon-head-actions .btn, #shiftDetailModal .btn {box-shadow: none;}
+    #shiftReconciliation, .manager-dashboard {color: #172d4d; font-size: .9rem; padding-bottom: 18px;}
+    #shiftReconciliation *, .manager-dashboard *, #shiftDetailModal * {min-width: 0; box-sizing: border-box;}
+    .manager-dashboard [hidden] {display: none !important;}
+    #shiftReconciliation .form-control, #shiftReconciliation .form-select,
+    .manager-dashboard .form-control, .manager-dashboard .form-select,
+    #shiftDetailModal .form-control, #shiftDetailModal .form-select {font-size: 16px; min-height: 48px; border-radius: 12px; border-color: #dce5f0; max-width: 100%;}
+    #shiftReconciliation button, #shiftReconciliation summary, .manager-dashboard button,
+    .manager-dashboard summary, #shiftDetailModal button, #shiftDetailModal summary {min-height: 44px;}
+    #shiftReconciliation .recon-context {display: block; background: #eaf0fa; border: 1px solid #dce5f0; border-radius: 16px; padding: 14px; overflow-wrap: anywhere;}
+    #shiftReconciliation .recon-context strong {font-size: 1rem;}
+    #shiftReconciliation .recon-context > div + div {margin-top: 10px;}
+    #shiftReconciliation .recon-context > div:last-child {text-align: left;}
+    #shiftReconciliation .recon-totals {grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 12px 0;}
+    #shiftReconciliation .recon-card {border-color: #dce5f0; border-radius: 16px; padding: 14px; box-shadow: none;}
+    #shiftReconciliation .recon-totals article {padding: 14px 10px;}
+    #shiftReconciliation .recon-totals span {font-size: .77rem; line-height: 1.4;}
+    #shiftReconciliation .recon-totals strong {font-size: clamp(1rem,4.5vw,1.65rem); letter-spacing: -.03em; overflow-wrap: anywhere;}
+    #shiftReconciliation .recon-totals small {font-size: .73rem; line-height: 1.45;}
+    #shiftReconciliation #reconDifferenceCard {grid-column: 1 / -1; background: #f3f6fb;}
+    #shiftReconciliation #reconDifferenceCard.is-short {background: #fff1f3;}
+    #shiftReconciliation #reconDifferenceCard.is-over {background: #fffaeb;}
+    #shiftReconciliation #reconDifferenceCard.is-match {background: #ecfdf3;}
+    #shiftReconciliation .recon-card-head {flex-wrap: wrap; gap: 10px;}
+    #shiftReconciliation h2 {font-size: 1rem;}
+    #shiftReconciliation .recon-card-head p {font-size: .8rem; line-height: 1.5;}
+    #shiftReconciliation .recon-attention {grid-template-columns: 1fr; gap: 8px;}
+    #shiftReconciliation .recon-item-actions {width: 100%; gap: 8px;}
+    #shiftReconciliation .recon-item-actions .btn {flex: 1 1 130px; min-height: 44px; font-size: .8rem; white-space: normal; padding: 10px 8px;}
+    #shiftReconciliation .recon-tabs, #shiftDetailModal .manager-evidence-tabs {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); overflow: visible; gap: 8px;}
+    #shiftReconciliation .recon-tabs button, #shiftDetailModal .manager-evidence-tabs button {width: 100%; white-space: normal; font-size: .82rem; padding: 10px 6px; border-radius: 12px;}
+    #shiftReconciliation .recon-tabs .active, #shiftDetailModal .manager-evidence-tabs .active {background: #2463eb; border-color: #2463eb; color: #fff;}
+    #shiftReconciliation .recon-more-tabs {grid-column: 1 / -1;}
+    #shiftReconciliation .recon-more-tabs > div {display: grid; grid-template-columns: 1fr 1fr; gap: 8px;}
+    #shiftReconciliation .recon-filters, #shiftReconciliation .recon-extra-filters > div,
+    #shiftDetailModal .manager-evidence-filters {display: grid; grid-template-columns: minmax(0,1fr); gap: 10px;}
+    #shiftDetailModal .manager-evidence-filters input {width: 100%;}
+    #shiftReconciliation .recon-filters label, #shiftReconciliation .recon-search {min-width: 0 !important; width: 100%;}
+    #shiftReconciliation .recon-extra-filters, #shiftReconciliation .recon-extra-filters > div {width: 100%;}
+    #shiftReconciliation .recon-breakdown > summary, #shiftReconciliation .recon-extra-filters > summary,
+    .shift-review-disclosure > summary {padding: 13px 14px; color: #172d4d; font-weight: 750; cursor: pointer; overflow-wrap: anywhere;}
+    .shift-review-disclosure {border: 1px solid #dce5f0; background: #fff; border-radius: 16px; margin-bottom: 12px;}
+    .shift-review-disclosure[open] > summary {border-bottom: 1px solid #e6edf5; margin-bottom: 12px;}
+    #shiftReconciliation .recon-item > summary {grid-template-columns: minmax(0,1fr); padding: 14px; gap: 12px;}
+    #shiftReconciliation .recon-item > summary::after {display: none;}
+    .recon-item-title, .recon-item-sub, .recon-badges, .recon-item-body {overflow-wrap: anywhere;}
+    #shiftReconciliation .recon-amounts {flex-wrap: wrap; gap: 10px 18px; overflow-wrap: anywhere;}
+    #shiftReconciliation .recon-badges {max-width: 100%;}
+    #shiftReconciliation .recon-item-body {padding: 14px;}
+    #shiftReconciliation .recon-pager {flex-wrap: wrap; gap: 10px;}
+    #shiftReconciliation .recon-pager > div {display: flex; gap: 8px; margin-left: auto;}
+    .manager-dashboard .manager-card {border-radius: 16px; border-color: #dce5f0; box-shadow: none; margin-bottom: 12px;}
+    .manager-dashboard .manager-card-head {padding: 14px; gap: 12px;}
+    .manager-dashboard .manager-card-body {padding: 12px;}
+    .manager-dashboard .manager-card-title {font-size: 1rem;}
+    .manager-dashboard .manager-filter-card {border: 0; box-shadow: none; padding: 0 12px 12px; margin: 0;}
+    .manager-dashboard .manager-filter-grid {grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 8px;}
+    .manager-dashboard .manager-filter-grid > :nth-child(n+3) {grid-column: 1 / -1;}
+    .manager-dashboard #btnApplyFilter {width: 100%;}
+    .manager-dashboard .quick-group {display: grid; grid-template-columns: 1fr 1fr; gap: 8px;}
+    .manager-dashboard .quick-group .btn {border-radius: 10px; font-size: .82rem; white-space: normal;}
+    .manager-dashboard [data-shift-phone-queue] .manager-card-head > .d-flex {width: 100%;}
+    .manager-dashboard #filterCashReceipt {width: 100% !important;}
+    .manager-dashboard #cashReceiptPendingCount {color: #945000 !important; background: #fffaeb; border-radius: 8px; padding: 4px 8px; font-size: .78rem;}
+    .manager-dashboard #shiftTotalText {margin-left: auto; font-size: .78rem;}
+    .manager-dashboard .kpi-grid {grid-template-columns: repeat(2,minmax(0,1fr)); padding: 0 12px; gap: 8px;}
+    .manager-dashboard .kpi-card {padding: 12px; min-height: 0; border-radius: 12px; box-shadow: none;}
+    .manager-dashboard .kpi-icon {display: none;}
+    .manager-dashboard .kpi-label {font-size: .68rem;}
+    .manager-dashboard .kpi-value {font-size: 1.15rem; overflow-wrap: anywhere; margin-top: 8px;}
+    .manager-dashboard .kpi-note {font-size: .73rem;}
+    .manager-dashboard .shift-review-disclosure > .manager-card {border: 0; margin: 0;}
+    .manager-dashboard .table-responsive, #shiftReconciliation .recon-table-wrap, #shiftDetailModal .recon-table-wrap {overflow: visible;}
+    .manager-dashboard .manager-table, #shiftReconciliation .recon-table, #shiftDetailModal .recon-table {display: block; width: 100%;}
+    .manager-dashboard .manager-table thead, #shiftReconciliation .recon-table thead, #shiftDetailModal .recon-table thead {position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);}
+    .manager-dashboard .manager-table tbody, #shiftReconciliation .recon-table tbody, #shiftDetailModal .recon-table tbody {display: grid; gap: 12px;}
+    .manager-dashboard .manager-table tbody tr, #shiftReconciliation .recon-table tbody tr, #shiftDetailModal .recon-table tbody tr {display: grid; border: 1px solid #dce5f0; border-radius: 14px; padding: 6px 12px; background: #fff;}
+    .manager-dashboard .manager-table td, #shiftReconciliation .recon-table td, #shiftDetailModal .recon-table td {display: block; width: auto; min-width: 0; padding: 9px 0; border: 0; border-bottom: 1px solid #edf1f5; text-align: left !important; white-space: normal; overflow-wrap: anywhere; font-size: .85rem;}
+    .manager-dashboard .manager-table td:last-child, #shiftReconciliation .recon-table td:last-child, #shiftDetailModal .recon-table td:last-child {border-bottom: 0;}
+    .manager-dashboard td[data-phone-label]::before, #shiftReconciliation td[data-phone-label]::before, #shiftDetailModal td[data-phone-label]::before {content: attr(data-phone-label); display: block; color: #667085; font-weight: 500; font-size: .72rem; margin-bottom: 4px;}
+    .manager-dashboard .table-action-btn {min-height: 44px; white-space: normal;}
+    .manager-dashboard #shiftBody tr {grid-template-columns: repeat(2,minmax(0,1fr)); column-gap: 12px;}
+    .manager-dashboard #shiftBody td:nth-child(1), .manager-dashboard #shiftBody td:nth-child(2),
+    .manager-dashboard #shiftBody td:nth-child(6), .manager-dashboard #shiftBody td:nth-child(7),
+    .manager-dashboard #shiftBody td:nth-child(8), .manager-dashboard #shiftBody td[colspan] {grid-column: 1 / -1;}
+    .manager-dashboard #shiftBody .table-action-btn {width: 100%; background: #edf3ff; color: #1c50bb; border-color: #d6e3ff;}
+    .manager-dashboard .manager-card-body > .d-flex:last-child {gap: 12px !important;}
+    .manager-dashboard .manager-card-body > .d-flex:last-child > .d-flex {flex-wrap: wrap; width: 100%;}
+    .manager-dashboard #shiftPageSize {width: 100% !important;}
+    .manager-dashboard #btnShiftPrev, .manager-dashboard #btnShiftNext,
+    .manager-dashboard #btnDiffPrev, .manager-dashboard #btnDiffNext {flex: 1;}
+    .manager-dashboard #differenceBody > * {overflow-wrap: anywhere;}
+    #shiftDetailModal.modal {top: var(--shift-review-top,0px) !important; left: 0; width: 100vw; height: var(--shift-review-height,100dvh) !important; padding: 0 !important; overflow: hidden;}
+    #shiftDetailModal .modal-dialog {width: 100%; max-width: none; height: 100%; min-height: 0; max-height: none; margin: 0 !important; padding: 0 !important;}
+    #shiftDetailModal .modal-content {width: 100%; height: 100%; max-height: 100%; border-radius: 0 !important; background: #f3f6fb; box-shadow: none;}
+    #shiftDetailModal .modal-header {padding: max(14px,env(safe-area-inset-top)) 16px 14px; background: #172d4d; color: #fff; align-items: flex-start;}
+    #shiftDetailModal #detailTitle {color: #fff; font-size: 1.05rem;}
+    #shiftDetailModal #detailSub {color: #d5e2f4 !important; font-size: .77rem; line-height: 1.4;}
+    #shiftDetailModal .btn-close {filter: invert(1) grayscale(1) brightness(2); background-color: transparent; box-shadow: none; min-width: 44px; margin: -8px -8px -8px 4px; padding: 12px;}
+    #shiftDetailModal .modal-body {padding: 12px; overflow: auto; overscroll-behavior: contain; flex: 1 1 auto;}
+    #shiftDetailModal #cashReceiptForm {margin: 0 0 12px !important; border: 1px solid #dce5f0 !important; border-radius: 16px !important; padding: 16px !important; background: #fff;}
+    #shiftDetailModal #cashReceiptForm h6 {font-size: 1rem; line-height: 1.45; color: #172d4d;}
+    #shiftDetailModal #cashReceiptSummary {font-size: .84rem; overflow-wrap: anywhere; border: 0; background: #edf3ff; color: #244775; border-radius: 12px;}
+    #shiftDetailModal #cashReceiptDifference, #shiftDetailModal #cashReceiptError {line-height: 1.5; overflow-wrap: anywhere;}
+    #shiftDetailModal .modal-footer {display: grid; grid-template-columns: 1fr 1fr; padding: 10px 12px max(10px,env(safe-area-inset-bottom)); gap: 8px; background: #fff; border-top: 1px solid #dce5f0; flex: 0 0 auto;}
+    #shiftDetailModal .modal-footer > .btn {margin: 0; min-height: 44px; border-radius: 12px; padding: 10px; font-size: .82rem; white-space: normal;}
+    #shiftDetailModal #btnConfirmCashReceipt {grid-column: 1 / -1; grid-row: 1; min-height: 48px; background: #2463eb; border-color: #2463eb; color: #fff;}
+    #shiftDetailModal #btnPrintClosingSlip {background: #edf3ff; color: #1c50bb; border-color: #d6e3ff;}
+    #shiftDetailModal [hidden] {display: none !important;}
+    #shiftDetailModal .manager-cash-check {grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px;}
+    #shiftDetailModal .manager-cash-check > :last-child {grid-column: 1 / -1;}
+    #shiftDetailModal .manager-cash-check > div {padding: 12px; border-radius: 12px;}
+    #shiftDetailModal .manager-cash-check strong {font-size: 1.1rem; overflow-wrap: anywhere;}
+    #shiftDetailModal .manager-detail-columns, #shiftDetailModal .manager-popup-grid {grid-template-columns: minmax(0,1fr);}
+    .manager-dashboard .manager-payment-grid, #shiftDetailModal .manager-payment-grid {grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px;}
+    .manager-dashboard .manager-payment-card, #shiftDetailModal .manager-payment-card {padding: 12px; border-radius: 12px; overflow-wrap: anywhere;}
+    .manager-dashboard .manager-payment-card strong, #shiftDetailModal .manager-payment-card strong {font-size: 1.05rem;}
+    #shiftDetailModal .recon-item > summary {grid-template-columns: minmax(0,1fr); gap: 12px; padding: 12px;}
+    #shiftDetailModal .recon-item > summary::after {display: none;}
+    #shiftDetailModal .recon-amounts {flex-wrap: wrap; gap: 12px; overflow-wrap: anywhere;}
+    #shiftDetailModal .recon-badges {max-width: 100%;}
+    #shiftDetailModal .recon-item-body {padding: 12px;}
+    #shiftReconciliation .recon-formula button, #shiftDetailModal .recon-formula button {gap: 10px; text-align: left;}
+    #shiftReconciliation .recon-formula strong, #shiftDetailModal .recon-formula strong {white-space: normal; text-align: right; overflow-wrap: anywhere;}
+    #shiftDetailModal [data-manager-rows] > .recon-pager, #shiftDetailModal .recon-pager {flex-wrap: wrap; gap: 8px;}
+    #shiftDetailModal .manager-popup-item, #shiftDetailModal .manager-detail-warning {overflow-wrap: anywhere;}
+    .shift-review-disclosure:focus-within {border-color: #9ebcf6;}
+    #shiftDetailModal :focus-visible, #shiftReconciliation :focus-visible, .manager-dashboard :focus-visible {outline: 3px solid #9ab8ff; outline-offset: 2px;}
+    @media (prefers-reduced-motion: reduce) {
+        #shiftDetailModal.fade .modal-dialog {transition: none; transform: none;}
+        .manager-dashboard *, #shiftReconciliation * {scroll-behavior: auto !important;}
+    }
+}

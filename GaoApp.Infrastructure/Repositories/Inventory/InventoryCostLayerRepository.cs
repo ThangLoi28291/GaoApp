@@ -71,15 +71,16 @@ public class InventoryCostLayerRepository : IInventoryCostLayerRepository
         int productVariantId,
         CancellationToken ct = default)
     {
-        var rows = await _db.InventoryCostLayers
+        var query = _db.InventoryCostLayers
             .Where(x =>
                 x.WarehouseId == warehouseId &&
                 x.ProductVariantId == productVariantId &&
                 x.RemainingQuantity > 0)
             .OrderBy(x => x.OccurredAtUtc)
-            .ThenBy(x => x.Id)
-            .ToListAsync(ct);
-        foreach (var row in rows) await InventoryPostingLockState.RefreshOnceAsync(_db, row, ct);
+            .ThenBy(x => x.Id);
+        if (_db.Database.CurrentTransaction is null) return await query.ToListAsync(ct);
+        var snapshots = await query.AsNoTracking().ToListAsync(ct);
+        var rows = InventoryPostingLockState.TrackFresh(_db, snapshots);
         return rows.Where(x => !x.IsDeleted && x.RemainingQuantity > 0).ToList();
     }
 

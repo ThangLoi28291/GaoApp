@@ -74,6 +74,8 @@ public class POSPaymentQrService : IPOSPaymentQrService
 
         var entity = new PosPaymentQrRequest
         {
+            AccountIdentitySnapshot = GaoApp.Application.Storefront.BankPhysicalAccountIdentity.Create(bank.BankCode, bank.AccountNumber),
+            AccountVersionSnapshot = Convert.ToBase64String(bank.RowVersion ?? []),
             OrderId = currentDraft.OrderId,
             BankAccountId = bank.Id,
             Amount = amount,

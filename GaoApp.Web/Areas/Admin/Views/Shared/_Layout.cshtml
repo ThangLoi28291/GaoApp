@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="@(ViewData["MobileStatePage"] is true ? "width=device-width, initial-scale=1.0, viewport-fit=cover" : "width=device-width, initial-scale=1.0")" />
     <title>@ViewData["Title"] - GaoMart.PosCore</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css"  asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/GaoApp.Web.styles.css" asp-append-version="true" />
+    @if (ViewData["MobileStatePage"] is true)
+    {
+        <link rel="stylesheet" href="~/Admin/css/gaoapp.mobile-account-states.css" asp-append-version="true" />
+    }
 </head>
-<body>
+<body data-mobile-state-document="@(ViewData["MobileStatePage"] is true ? "true" : null)">
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3">
             <div class="container-fluid">
@@ -41,8 +45,8 @@
             &copy; 2025 - GaoMart.PosCore - <a asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
         </div>
     </footer>
-    <script src="~/lib/jquery/dist/jquery.min.js"></script>
-    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/lib/jquery/dist/jquery.min.js" asp-append-version="true"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js" asp-append-version="true"></script>
     <script src="~/js/site.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
     

@@ -1,0 +1,42 @@
+@model GaoApp.Application.Interfaces.Services.Orders.DepositReceiptDto
+@using GaoApp.Domain.Enums
+@{
+    Layout = null;
+    var number = $"PCOC-{Model.Id:D6}";
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phiếu cọc @number</title>
+    <link rel="stylesheet" href="~/Admin/css/customer-deposit-print.css" asp-append-version="true" />
+
+<link rel="stylesheet" href="~/Admin/css/print-page.mobile.css" asp-append-version="true" />
+<script src="~/Admin/js/print-page.mobile.js" asp-append-version="true" defer></script>
+</head>
+<body>
+<span hidden data-ui22-print-page="CustomerDeposit/Print"></span>
+    <nav class="deposit-print-actions" aria-label="Thao tác phiếu cọc"><a href="/admin/customer-deposit?customerId=@Model.CustomerId&amp;tab=list">Sổ cọc khách hàng</a><button type="button" id="depositReceiptPrint">In phiếu cọc</button><span class="deposit-print-paper-size">Phiếu cọc · Khổ 80mm</span></nav>
+    <article class="deposit-receipt" aria-label="Phiếu nhận tiền đặt cọc">
+        <header class="deposit-receipt-store"><strong>@Model.StoreName</strong>@if(!string.IsNullOrWhiteSpace(Model.StoreAddress)){<div>@Model.StoreAddress</div>}@if(!string.IsNullOrWhiteSpace(Model.StorePhone)){<div>Điện thoại: @Model.StorePhone</div>}</header>
+        <div class="deposit-receipt-heading"><h1>PHIẾU NHẬN TIỀN ĐẶT CỌC</h1><strong>@number</strong><p>Ngày nhận: @Model.At.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") (UTC+7)</p></div>
+        <dl class="deposit-receipt-info">
+            <div><dt>Khách hàng</dt><dd>@Model.CustomerName</dd></div>
+            <div><dt>Điện thoại</dt><dd>@(Model.CustomerPhone ?? "—")</dd></div>
+            @if(!string.IsNullOrWhiteSpace(Model.CustomerAddress)){<div class="deposit-receipt-field--full"><dt>Địa chỉ</dt><dd>@Model.CustomerAddress</dd></div>}
+            <div class="deposit-receipt-field--full"><dt>Nội dung đặt cọc</dt><dd>@Model.Purpose</dd></div>
+            <div><dt>Ngày dự kiến giao</dt><dd>@(Model.ExpectedDeliveryDate?.ToString("dd/MM/yyyy") ?? "Chưa hẹn ngày giao")</dd></div>
+            <div class="deposit-receipt-amount"><dt>Số tiền đã nhận</dt><dd>@Model.Amount.ToString("N0") đ</dd></div>
+            <div><dt>Phương thức nhận</dt><dd>@(Model.Method == PaymentMethod.Cash ? "Tiền mặt" : Model.Method == PaymentMethod.BankTransfer ? "Chuyển khoản" : "—")</dd></div>
+            @if(!string.IsNullOrWhiteSpace(Model.Bank)){<div class="deposit-receipt-field--full"><dt>Tài khoản nhận</dt><dd>@Model.Bank</dd></div>}
+            @if(!string.IsNullOrWhiteSpace(Model.Reference)){<div class="deposit-receipt-field--full"><dt>Mã giao dịch</dt><dd>@Model.Reference</dd></div>}
+            @if(!string.IsNullOrWhiteSpace(Model.Note)){<div class="deposit-receipt-field--full"><dt>Ghi chú</dt><dd>@Model.Note</dd></div>}
+            <div><dt>Người thu / ca</dt><dd>@(Model.EmployeeName ?? $"NV #{Model.EmployeeId}") · Ca #@Model.ShiftId</dd></div>
+        </dl>
+        <p class="deposit-receipt-balance">Số dư phiếu tại thời điểm xem: <strong>@Model.Balance.ToString("N0") đ</strong></p>
+        <div class="deposit-receipt-signatures"><div><strong>Người nộp tiền</strong><small>(Ký, ghi rõ họ tên)</small></div><div><strong>Người thu tiền</strong><small>(Ký, ghi rõ họ tên)</small></div></div>
+    </article>
+    <script src="~/Admin/js/customer-deposit-print.js" asp-append-version="true"></script>
+</body>
+</html>

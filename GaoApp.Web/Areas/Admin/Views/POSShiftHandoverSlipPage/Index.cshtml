@@ -8,6 +8,8 @@
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/pos/pos-shift.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-handover-slip.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift.mobile.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-shift-records.mobile.css" asp-append-version="true" />
 }
 
 @section header {
@@ -78,6 +80,12 @@
                         <i class="bx bx-search"></i>
                         Lọc
                     </button>
+                </div>
+                <div class="handover-phone-filter" hidden>
+                    <label for="phoneSlipTerminalFilter" class="shift-form-label">Quầy nhận ca</label>
+                    <select id="phoneSlipTerminalFilter" class="form-select">
+                        <option value="">Tất cả quầy</option>
+                    </select>
                 </div>
             </div>
 
@@ -285,4 +293,5 @@
 @section PageScripts {
     <script src="~/Admin/js/pos/pos.error.js" asp-append-version="true"></script>
     <script src="~/Admin/js/pos/pos.shift-handover-slip.page.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.shift-records.mobile.js" asp-append-version="true"></script>
 }

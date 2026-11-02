@@ -12,7 +12,7 @@ namespace GaoApp.Infrastructure.Data.Repositories.Orders;
 /// - Code mới phải ưu tiên query theo Store + Terminal.
 /// - Các method không có store/terminal chỉ là legacy để giữ tương thích tạm thời.
 /// </summary>
-public class POSShiftRepository : IPOSShiftRepository
+public partial class POSShiftRepository : IPOSShiftRepository
 {
     private readonly AppDbContext _db;
 

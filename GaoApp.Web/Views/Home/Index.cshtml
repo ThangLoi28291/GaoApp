@@ -2,7 +2,15 @@
     ViewData["Title"] = "Home Page";
 }
 
-<div class="text-center">
+<div class="text-center gp-desktop">
     <h1 class="display-4">Welcome</h1>
     <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
 </div>
+<section class="gp-phone gp-card" lang="vi" aria-labelledby="gp-home-title">
+    <span class="gp-eyebrow">CHÀO MỪNG ĐẾN GAOAPP</span>
+    <h1 id="gp-home-title">Cửa hàng trong<br />tầm tay bạn.</h1>
+    <p>Đăng nhập để tiếp tục công việc tại cửa hàng của bạn.</p>
+    <a class="gp-action" href="@Url.Content("~/admin/account/login")">Đăng nhập hệ thống <span aria-hidden="true">&nbsp;→</span></a>
+    <h2>Bạn là khách mua hàng?</h2>
+    <p>Để cập nhật thông tin hóa đơn hoặc trò chuyện với cửa hàng, hãy mở đúng liên kết cửa hàng đã gửi cho bạn.</p>
+</section>

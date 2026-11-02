@@ -1,75 +1,46 @@
 using GaoApp.Application.DTOs.Audit;
 using GaoApp.Application.Interfaces.Services.Audit;
 using GaoApp.Domain.Common;
-using GaoApp.Infrastructure.Data;
+using GaoApp.Domain.Entities;
+using GaoApp.Infrastructure.Data.Configurations;
 using GaoApp.Infrastructure.Interceptors;
+using GaoApp.Infrastructure.Services.Audit;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace GaoApp.Tests.Observability;
 
 public sealed class AuditSaveChangesInterceptorTests
 {
     [Fact]
-    public void Audit_failure_after_save_does_not_turn_committed_primary_write_into_failure()
+    public async Task Automatic_audit_stages_evidence_with_the_write_without_calling_a_separate_sink()
     {
-        const string secret = "Server=private;Password=synthetic-audit-secret";
-        var logger =
-            new GlobalExceptionMiddlewareTests.RecordingLogger<AuditSaveChangesInterceptor>();
-        var interceptor = new AuditSaveChangesInterceptor(
-            new FakeAuditContextAccessor(),
-            new ThrowingAuditContextFactory(new IOException(secret)),
-            logger);
         var options = new DbContextOptionsBuilder<PrimaryTestDbContext>()
-            .UseInMemoryDatabase($"r1.6-audit-{Guid.NewGuid():N}")
-            .AddInterceptors(interceptor)
-            .Options;
-
-        using var db = new PrimaryTestDbContext(options);
-        db.Entities.Add(new AuditTrackedTestEntity
-        {
-            StoreId = 7,
-            Name = "Synthetic brand"
-        });
-
-        var affected = db.SaveChanges();
-
-        Assert.Equal(1, affected);
-        Assert.Single(db.Entities);
-        var log = Assert.Single(
-            logger.Entries,
-            x => x.Level == LogLevel.Error);
-        Assert.Contains(nameof(IOException), log.Message, StringComparison.Ordinal);
-        Assert.DoesNotContain(secret, log.Message, StringComparison.Ordinal);
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new AuditSaveChangesInterceptor(new AuditContext())).Options;
+        await using var db = new PrimaryTestDbContext(options);
+        var entity = new Tracked { StoreId = 7, Name = "Synthetic brand" };
+        db.Add(entity);
+        await db.SaveChangesAsync();
+        var evidence = AuditOutboxEvidence.Read(Assert.Single(await db.Set<AuditOutboxMessage>().ToListAsync()));
+        Assert.Equal(entity.Id.ToString(), evidence.EntityId);
+        Assert.Equal("trace-audit", evidence.TraceId);
+        Assert.Equal(7, evidence.StoreId);
+        Assert.Contains("Synthetic brand", evidence.NewValuesJson);
     }
 
-    private sealed class PrimaryTestDbContext(
-        DbContextOptions<PrimaryTestDbContext> options) : DbContext(options)
+    private sealed class PrimaryTestDbContext(DbContextOptions<PrimaryTestDbContext> options) : DbContext(options)
     {
-        public DbSet<AuditTrackedTestEntity> Entities => Set<AuditTrackedTestEntity>();
+        protected override void OnModelCreating(ModelBuilder builder)
+        { builder.Entity<Tracked>(); builder.ApplyConfiguration(new AuditOutboxMessageConfiguration()); }
     }
-
-    private sealed class AuditTrackedTestEntity : IAuditTrackedEntity
+    private sealed class Tracked : IAuditTrackedEntity
     {
         public int Id { get; set; }
         public int StoreId { get; set; }
-        public string Name { get; set; } = string.Empty;
+        public string Name { get; set; } = "";
     }
-
-    private sealed class FakeAuditContextAccessor : IAuditExecutionContextAccessor
+    private sealed class AuditContext : IAuditExecutionContextAccessor
     {
-        public AuditExecutionContextDto GetCurrent() => new()
-        {
-            StoreId = 7,
-            UserId = 1,
-            TraceId = "trace-audit-r1.6",
-            Path = "/synthetic"
-        };
-    }
-
-    private sealed class ThrowingAuditContextFactory(Exception exception)
-        : IDbContextFactory<AuditLogDbContext>
-    {
-        public AuditLogDbContext CreateDbContext() => throw exception;
+        public AuditExecutionContextDto GetCurrent() => new() { StoreId = 7, UserId = 1, TraceId = "trace-audit" };
     }
 }

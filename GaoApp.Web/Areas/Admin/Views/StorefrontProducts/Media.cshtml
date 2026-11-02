@@ -1,0 +1,10 @@
+@model IReadOnlyList<GaoApp.Application.Storefront.StorefrontMediaOption>
+@{ ViewData["Title"] = "Media cho hàng website"; int page = ViewBag.Page; }
+<div class="container-fluid py-3">
+    <h1 class="h3">Media đã lưu của cửa hàng</h1>
+    <p>Dùng mã tài sản trong màn hình hàng website. Chỉ liệt kê ảnh / 3D hợp lệ, không tạm.</p>
+    <form method="get" class="d-flex gap-2 mb-3"><input name="search" value="@ViewBag.Search" maxlength="200" class="form-control" aria-label="Tìm tên media" /><button class="btn btn-primary">Tìm</button></form>
+    @if (Model.Count == 0) { <p>Không có media hợp lệ ở trang này.</p> }
+    <div class="table-responsive"><table class="table"><thead><tr><th>Mã</th><th>Tên tài sản</th><th>Loại</th></tr></thead><tbody>@foreach (var media in Model) { <tr><td>@media.Id</td><td>@media.Name</td><td>@media.ContentType</td></tr> }</tbody></table></div>
+    <nav class="d-flex gap-3" aria-label="Trang media">@if (page > 1) { <a asp-action="Media" asp-route-search="@ViewBag.Search" asp-route-page="@(page - 1)">Trang trước</a> }<a asp-action="Media" asp-route-search="@ViewBag.Search" asp-route-page="@(page + 1)">Trang sau</a></nav>
+</div>

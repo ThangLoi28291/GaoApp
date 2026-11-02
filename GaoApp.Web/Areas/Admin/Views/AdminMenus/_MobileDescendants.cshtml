@@ -1,0 +1,43 @@
+@model IReadOnlyList<GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminMenuMobileEntry>
+@foreach (var entry in Model)
+{
+    var item = entry.Item;
+    var destination = !string.IsNullOrWhiteSpace(item.Url) ? item.Url : $"{(string.IsNullOrWhiteSpace(item.Area) ? "Admin" : item.Area)} / {(string.IsNullOrWhiteSpace(item.Controller) ? "—" : item.Controller)} / {(string.IsNullOrWhiteSpace(item.Action) ? "Index" : item.Action)}";
+    var permission = string.IsNullOrWhiteSpace(item.PermissionCode) ? "Không yêu cầu quyền" : item.PermissionCode;
+    var type = item.IsSystem ? "Hệ thống" : "Tùy chỉnh";
+    var lifecycle = item.IsActive ? "Đang hoạt động" : "Đã tắt";
+    <article class="admin-menu-index-mobile-card is-child" data-admin-menu-mobile-item data-menu-phone-only hidden
+             data-menu-key="@item.Id" data-menu-parent-key="@entry.ParentId" data-menu-level="child"
+             data-menu-type="@(item.IsSystem ? "system" : "custom")" data-menu-lifecycle="@(item.IsActive ? "active" : "inactive")"
+             data-menu-title="@item.Title" data-menu-parent="@entry.ParentTitle" data-menu-destination="@destination"
+             data-menu-permission="@permission" data-menu-sort-order="@item.SortOrder" data-menu-type-label="@type"
+             data-menu-lifecycle-label="@lifecycle" data-menu-child-count="@item.Children.Count"
+             data-menu-search="@($"{item.Title} {entry.ParentTitle} {item.Controller} {item.Action} {item.Url} {item.PermissionCode}")">
+        <div class="admin-menu-index-mobile-card__header">
+            <span class="admin-menu-index-icon"><i class="icon-base @(item.Icon ?? "bx bx-folder")" aria-hidden="true"></i></span>
+            <div class="admin-menu-index-mobile-card__title"><strong>@item.Title</strong><span>Trong @entry.ParentTitle · Cấp @(entry.Depth + 1)</span></div>
+            @if (item.Children.Count > 0)
+            {
+                <button type="button" class="admin-menu-index-collapse" data-admin-menu-collapse="@item.Id" aria-expanded="true" aria-label="Thu gọn hoặc mở rộng @item.Title"><i class="bx bx-chevron-down" aria-hidden="true"></i></button>
+            }
+        </div>
+        <div class="admin-menu-index-mobile-card__badges"><span class="admin-menu-index-type @(item.IsSystem ? "is-system" : "is-custom")">@type</span><span class="admin-menu-index-status @(item.IsActive ? "is-active" : "is-inactive")">@lifecycle</span></div>
+        <dl class="admin-menu-index-mobile-card__details"><div><dt>Đích đến</dt><dd>@destination</dd></div><div><dt>Quyền</dt><dd>@permission</dd></div><div><dt>Thứ tự</dt><dd>@item.SortOrder</dd></div></dl>
+        <div class="admin-menu-index-mobile-card__actions">
+            <button type="button" class="btn admin-menu-index-action btn-label-secondary" data-admin-menu-quick-view><i class="bx bx-show" aria-hidden="true"></i><span>Xem</span></button>
+            <a asp-action="Create" asp-route-parentId="@item.Id" class="btn admin-menu-index-action btn-label-success"><i class="bx bx-subdirectory-right" aria-hidden="true"></i><span>Thêm con</span></a>
+            <a asp-action="Edit" asp-route-id="@item.Id" class="btn admin-menu-index-action btn-label-primary"><i class="bx bx-edit-alt" aria-hidden="true"></i><span>Sửa</span></a>
+            @if (item.IsSystem || item.Children.Count > 0)
+            {
+                <span class="admin-menu-index-lock" data-delete-locked><i class="bx bx-lock-alt" aria-hidden="true"></i><span>@(item.IsSystem ? "Hệ thống" : "Có menu con")</span></span>
+            }
+            else
+            {
+                <form asp-area="Admin" asp-controller="AdminMenus" asp-action="Delete" asp-route-id="@item.Id" method="post" data-admin-menu-delete-form data-menu-delete-title="@item.Title">
+                    @Html.AntiForgeryToken()
+                    <button type="button" class="btn admin-menu-index-action btn-label-danger w-100" data-admin-menu-delete-trigger><i class="bx bx-trash" aria-hidden="true"></i><span>Xóa</span></button>
+                </form>
+            }
+        </div>
+    </article>
+}

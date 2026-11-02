@@ -18,11 +18,14 @@ public sealed class StoreActivityEnricherTests
         var seed=await database.SeedInventoryCatalogAsync(); int documentId,itemId;
         await using (var db=database.CreateTenantContext(seed.StoreId))
         {
-            var document=new StockDocument { StoreId=seed.StoreId,WarehouseId=seed.WarehouseId,DocumentNo="CAPTURE-BOUNDS",DocumentDate=DateTime.Today,Type=StockDocumentType.Receipt };
+            var document=new StockDocument { StoreId=seed.StoreId,WarehouseId=seed.WarehouseId,DocumentNo="CAPTURE-BOUNDS",DocumentTitle="Nhập gạo tháng 10",DocumentDate=DateTime.Today,Type=StockDocumentType.Receipt };
             document.ProvisionalItems.Add(new() { StoreId=seed.StoreId,NameSnapshot="Saved rice",UnitNameSnapshot="kg",Quantity=1,Note="PRIVATE NOTE",ReviewDraftJson="PRIVATE DRAFT" });
             db.Add(document); await db.SaveChangesAsync(); documentId=document.Id; itemId=document.ProvisionalItems.Single().Id;
         }
         await using var operationDb=database.CreateTenantContext(seed.StoreId);
+        var page = await StoreActivityWorkContext.Page(operationDb, seed.StoreId, "WarehouseReceiving", documentId, default);
+        Assert.Equal("Nhập gạo tháng 10", page!.DocumentTitle);
+        Assert.Null(await StoreActivityWorkContext.Page(operationDb, seed.StoreId + 100000, "WarehouseReceiving", documentId, default));
         var item=await operationDb.StockDocumentProvisionalItems.Include(x => x.StockDocument).SingleAsync(x => x.Id == itemId);
         var command=Guid.NewGuid(); var args=new Dictionary<string,object?> { ["documentId"]=documentId,["itemId"]=itemId,["request"]=new { CommandId=command,Quantity=999,Note="PRIVATE REQUEST",PurchasePrice=888 } };
         using var operation=new StoreActivityEnricher.SavedOperation(operationDb,seed.StoreId,includeBefore:true,actor:101);
@@ -41,6 +44,7 @@ public sealed class StoreActivityEnricherTests
         var before=await operation.Prior("ReceiptIntake","Quantity",args,after,default);
         Assert.Equal(1m,before!.Line!.Quantity);
         var activity=StoreActivityEnricher.Describe("ReceiptIntake","Quantity",after,before,StoreActivityEnricher.Request(args));
+        Assert.Equal("Nhập gạo tháng 10", activity.DocumentTitle);
         Assert.Contains("1 kg → 3 kg",activity.Detail); Assert.DoesNotContain("PRIVATE",activity.Detail); Assert.DoesNotContain("999",activity.Detail); Assert.DoesNotContain("888",activity.Detail);
         Assert.False(foreign.HasIntake("Quantity",args)); Assert.False(wrongActor.HasIntake("Quantity",args));
         foreach (var wrong in new[] {
@@ -198,6 +202,8 @@ public sealed class StoreActivityEnricherTests
         Assert.Contains(verb, result.Text); Assert.Contains("Gạo ST25", result.Text);
         Assert.Contains("Số lượng 5 kg", result.Detail); Assert.Contains("NH-001", result.Detail);
         Assert.Equal("receipt:42", result.WorkKey); Assert.Equal("Phiếu nhập #42", result.Document);
+        var named = StoreActivityEnricher.Describe("StockDocuments", action, Receipt() with { DocumentTitle="Nhập gạo tháng 10" });
+        Assert.Equal("Nhập gạo tháng 10", named.DocumentTitle); Assert.Equal(result.Document, named.Document);
     }
     [Fact]
     public void Edits_show_old_and_new_units_and_deleted_rows_keep_old_saved_name()

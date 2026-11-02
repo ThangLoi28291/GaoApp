@@ -1,0 +1,100 @@
+@model System.Collections.Generic.IReadOnlyList<GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminNavigationNode>
+@using GaoApp.Application.Common.Security
+@using Microsoft.AspNetCore.Authorization
+@inject IAuthorizationService HomeAuthorization
+@inject GaoApp.Web.Services.AdminNavigationProvider Navigation
+@{
+    var navigation = await Navigation.GetAsync(ViewContext);
+    var canSales = (await HomeAuthorization.AuthorizeAsync(User, null, PermissionCodes.Report.Sales.View)).Succeeded;
+    var reportMenu = canSales ? navigation.Destinations.FirstOrDefault(item => new[] { "/admin/reports/overview", "/admin/reports/sales" }
+        .Contains(navigation.LocalPath(item), StringComparer.OrdinalIgnoreCase)) : null;
+}
+
+<div class="gao-mobile-home" data-mobile-home>
+    <header class="gmh-welcome">
+        <p class="gmh-eyebrow">TỔNG QUAN CỬA HÀNG</p>
+        <h1 data-home-person>Chào bạn</h1>
+        <p class="gmh-subtitle">Theo dõi kinh doanh và tiếp tục công việc của bạn.</p>
+    </header>
+
+    @if (canSales)
+    {
+        <section class="gmh-sales" data-home-sales data-home-sales-url="@Url.Action("GetData", "SalesExecutiveReport", new { area = "Admin" })" aria-labelledby="mobileHomeSalesTitle" aria-busy="false">
+            <div class="gmh-section-heading">
+                <div>
+                    <h2 id="mobileHomeSalesTitle">Kinh doanh hôm nay</h2>
+                    <p data-home-period>Toàn cửa hàng · UTC+7</p>
+                </div>
+                <button type="button" class="gmh-refresh" data-home-refresh aria-label="Làm mới tổng quan kinh doanh" title="Làm mới"><i class="bx bx-refresh" aria-hidden="true"></i></button>
+            </div>
+
+            <div class="gmh-status" data-home-status role="status" aria-live="polite">
+                <i class="bx bx-info-circle" aria-hidden="true"></i>
+                <span data-home-status-text>Chưa tải tổng quan kinh doanh.</span>
+                <button type="button" class="gmh-reload" data-home-reload data-csp-action="reload" hidden>Tải lại trang</button>
+            </div>
+            <div class="gmh-skeleton" data-home-loading hidden aria-hidden="true">
+                <div class="gmh-skeleton-hero"></div>
+                <div class="gmh-skeleton-grid"><div></div><div></div></div>
+            </div>
+
+            <div class="gmh-sales-content" data-home-content hidden>
+                <article class="gmh-revenue" aria-labelledby="mobileHomeRevenueTitle">
+                    <div class="gmh-revenue-top"><span id="mobileHomeRevenueTitle">Doanh thu thuần</span><i class="bx bx-line-chart" aria-hidden="true"></i></div>
+                    <strong data-home-metric="netSales">—</strong>
+                    <p>Doanh thu sau giảm giá, trừ giá trị trả hàng.</p>
+                </article>
+                <div class="gmh-metrics">
+                    <article class="gmh-metric">
+                        <span class="gmh-metric-icon"><i class="bx bx-receipt" aria-hidden="true"></i></span>
+                        <h3>Đơn bán</h3><strong data-home-metric="salesOrders">—</strong>
+                        <p>Trong ngày báo cáo</p>
+                    </article>
+                    <article class="gmh-metric">
+                        <span class="gmh-metric-icon"><i class="bx bx-wallet" aria-hidden="true"></i></span>
+                        <h3>Trung bình / đơn</h3><strong data-home-metric="aov">—</strong>
+                        <p>Doanh thu sau giảm giá / đơn bán</p>
+                    </article>
+                </div>
+                <div class="gmh-activity" aria-label="Trả hàng và hủy đơn trong ngày">
+                    <div><span class="gmh-activity-icon"><i class="bx bx-undo" aria-hidden="true"></i></span><span>Trả hàng<small><span data-home-metric="returnCount">—</span> phiếu</small></span><strong data-home-metric="returns">—</strong></div>
+                    <div><span class="gmh-activity-icon"><i class="bx bx-x-circle" aria-hidden="true"></i></span><span>Đơn hủy</span><strong data-home-metric="voidCount">—</strong></div>
+                </div>
+                <p class="gmh-empty-day" data-home-empty-day hidden>Chưa có đơn bán, phiếu trả hàng hoặc đơn hủy trong ngày.</p>
+                <div class="gmh-report-footer"><span>Cập nhật <time data-home-generated>—</time></span>
+                    @if (reportMenu is not null)
+                    {
+                        <a href="@reportMenu.Href" data-menu-id="@reportMenu.Id">Xem báo cáo<i class="bx bx-chevron-right" aria-hidden="true"></i></a>
+                    }
+                </div>
+            </div>
+            <noscript><p class="gmh-status">Bật JavaScript để tải tổng quan kinh doanh. Các mục ghim và menu vẫn dùng được.</p></noscript>
+        </section>
+    }
+    else
+    {
+        <section class="gmh-limited" aria-label="Tổng quan kinh doanh">
+            <span class="gmh-limited-icon"><i class="bx bx-lock-alt" aria-hidden="true"></i></span>
+            <div><h2>Tổng quan kinh doanh</h2><p>Tài khoản hiện tại chưa được cấp quyền xem báo cáo bán hàng. Bạn vẫn có thể dùng các chức năng trong menu.</p></div>
+        </section>
+    }
+
+    <section class="gmh-shortcuts" aria-labelledby="mobileHomePinsTitle">
+        <div class="gmh-section-heading">
+            <div><h2 id="mobileHomePinsTitle">Ghim nhanh</h2><p>Các mục bạn đã chọn · <span data-home-pin-count>@Model.Count</span>/4</p></div>
+            <button type="button" class="gmh-menu-button layout-menu-toggle" aria-controls="layout-menu" aria-label="Mở toàn bộ menu cửa hàng">Tất cả<i class="bx bx-chevron-right" aria-hidden="true"></i></button>
+        </div>
+        <div class="gmh-pin-grid" data-home-pins>
+            @foreach (var item in Model)
+            {
+                <a href="@item.Href" data-menu-id="@item.Id" data-home-pin-id="@item.Id" title="@item.Title">
+                    <span class="gmh-pin-icon"><i class="@item.Icon" aria-hidden="true"></i></span><span>@item.Title</span><i class="bx bx-chevron-right" aria-hidden="true"></i>
+                </a>
+            }
+        </div>
+        <div class="gmh-empty-pins" data-home-empty-pins hidden="@(Model.Count > 0)">
+            <i class="bx bx-bookmark" aria-hidden="true"></i><strong>Chưa có mục ghim</strong><p>Mở menu để dùng các chức năng của cửa hàng và chọn mục muốn ghim.</p>
+            <button type="button" class="gmh-primary-button layout-menu-toggle" aria-controls="layout-menu">Mở menu cửa hàng</button>
+        </div>
+    </section>
+</div>

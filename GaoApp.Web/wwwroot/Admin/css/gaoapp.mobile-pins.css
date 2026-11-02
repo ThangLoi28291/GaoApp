@@ -1,0 +1,47 @@
+/* Existing desktop/tablet navigation has no visual changes. */
+.gao-mobile-pins, #layout-menu[data-admin-navigation] .gao-mobile-pin-settings { display: none; }
+@media (max-width: 767.98px) {
+    .layout-content-navbar .gao-mobile-pins {
+        position: fixed; inset: auto 0 0; z-index: 1035; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0,1fr);
+        gap: 3px; padding: 7px max(8px,env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));
+        border-top: 1px solid var(--commerce-line); background: var(--commerce-surface); box-shadow: 0 -6px 24px #192c4a08;
+    }
+    .gao-mobile-pins .gao-mobile-pin {
+        position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-width: 0; min-height: 52px;
+        margin: 0; padding: 7px 4px; border: 0; border-radius: 13px; background: transparent; color: var(--commerce-muted);
+        font: 500 11px/1.25 var(--commerce-font); text-align: center; text-decoration: none;
+        transition: background-color 160ms ease, color 160ms ease;
+    }
+    .gao-mobile-pins .gao-mobile-pin > i { flex: none; width: 21px; height: 21px; margin: 0; color: inherit; background-color: currentColor; }
+    /* Phone tab symbols stay recognizable even when the store menu uses the generic circle. */
+    .gao-mobile-pins .gao-mobile-pin[aria-label="Đơn hàng"] > i {
+        --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='black' d='M21 11h-3V4a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v14c0 1.654 1.346 3 3 3h14c1.654 0 3-1.346 3-3v-6a1 1 0 0 0-1-1M5 19a1 1 0 0 1-1-1V5h12v13c0 .351.061.688.171 1zm15-1a1 1 0 0 1-2 0v-5h2z'/%3E%3Cpath fill='black' d='M6 7h8v2H6zm0 4h8v2H6zm5 4h3v2h-3z'/%3E%3C/svg%3E");
+    }
+    .gao-mobile-pins .gao-mobile-pin[aria-label="Nhập hàng"] > i {
+        --svg: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='24' height='24'%3E%3Cpath fill='black' d='M22 8a.8.8 0 0 0 0-.21v-.08a1 1 0 0 0-.07-.16a.4.4 0 0 0-.05-.08l-.1-.13l-.08-.06l-.12-.09l-9-5a1 1 0 0 0-1 0l-9 5l-.09.07l-.11.08a.4.4 0 0 0-.07.11a.4.4 0 0 0-.08.1a.6.6 0 0 0-.06.14a.3.3 0 0 0 0 .1A.8.8 0 0 0 2 8v8a1 1 0 0 0 .52.87l9 5a1 1 0 0 0 .13.06h.1a1.06 1.06 0 0 0 .5 0h.1l.14-.06l9-5A1 1 0 0 0 22 16zm-10 3.87L5.06 8l2.76-1.52l6.83 3.9zm0-7.72L18.94 8L16.7 9.25L9.87 5.34zM4 9.7l7 3.92v5.68l-7-3.89zm9 9.6v-5.68l3-1.68V15l2-1v-3.18l2-1.11v5.7z'/%3E%3C/svg%3E");
+    }
+    .gao-mobile-pins .gao-mobile-pin > span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .gao-mobile-pins .gao-mobile-pin::before { content: ""; position: absolute; top: -7px; left: calc(50% - 12px); width: 24px; height: 3px; border-radius: 3px; background: transparent; }
+    .gao-mobile-pins .gao-mobile-pin[aria-current="page"] { color: var(--commerce-primary); font-weight: 700; }
+    .gao-mobile-pins .gao-mobile-pin[aria-current="page"]::before { background: var(--commerce-primary); }
+    .gao-mobile-pins .gao-mobile-pin:active { background: #e6ecfc; }
+    .gao-mobile-pins .gao-mobile-pin:focus-visible { outline: 3px solid var(--commerce-focus); outline-offset: -3px; }
+    .layout-content-navbar:has(> .layout-container > .gao-mobile-pins) .gds-responsive-nav-trigger { display: none; }
+    .layout-content-navbar:has(> .layout-container > .gao-mobile-pins) > .layout-container > .layout-page > .content-wrapper { padding-bottom: calc(88px + env(safe-area-inset-bottom)) !important; }
+    .layout-menu-expanded .layout-content-navbar .gao-mobile-pins { display: none; }
+    /* Existing receiving app mode already owns its bottom actions and menu. */
+    .wrd-app-mode .layout-content-navbar .gao-mobile-pins { display: none; }
+    .wrd-app-mode .layout-content-navbar:has(> .layout-container > .gao-mobile-pins) > .layout-container > .layout-page > .content-wrapper { padding-bottom: 0 !important; }
+    #layout-menu[data-admin-navigation] .gao-mobile-pin-settings { display: block; flex: 0 0 auto; padding: 0 16px 12px; }
+    #layout-menu[data-admin-navigation] .gao-mobile-pin-settings a { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 10px 13px; border: 1px solid var(--commerce-line); border-radius: 13px; background: white; color: var(--commerce-primary); font-size: 13px; }
+    #layout-menu[data-admin-navigation] .gao-mobile-pin-settings a > i:last-child { margin-inline-start: auto; }
+    /* POS owns its checkout dock: pins live inside its existing drawer. */
+    .pos-prime-admin-drawer .gao-mobile-pins { display: flex; flex-shrink: 0; gap: 4px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid #e5eaf1; background: white; }
+    .pos-prime-admin-drawer .gao-mobile-pins .gao-mobile-pin { flex: 1 1 58px; }
+    .pos-prime-admin-drawer .gao-mobile-pins [data-pins-menu] { display: none; }
+    .pos-prime-admin-drawer .gao-mobile-pins:not(:has(a)) { display: none; }
+    .pos-prime-admin-drawer .pos-prime-menu-host:has(> .gao-mobile-pins) { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+    .pos-prime-admin-drawer .pos-prime-menu-host:has(> .gao-mobile-pins) > #layout-menu[data-admin-navigation] { flex: 1 1 auto; min-height: 0; height: auto !important; }
+}
+@media (prefers-reduced-motion: reduce) { .gao-mobile-pins .gao-mobile-pin { transition: none; } }
+@media (forced-colors: active) { .gao-mobile-pins .gao-mobile-pin[aria-current="page"] { outline: 2px solid Highlight; } }

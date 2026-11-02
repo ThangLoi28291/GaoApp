@@ -1,0 +1,138 @@
+/* UI-07a. Every presentation rule is phone-only; original desktop rules remain authoritative. */
+@media (max-width: 767.98px) {
+    .shift-shell { --shift-ink: #172d4d; --shift-blue: #2463eb; color: var(--shift-ink); padding-bottom: 16px; }
+    .shift-shell *, .shift-modal * { min-width: 0; }
+    .shift-title-only.shift-title-only h1 { font-size: 20px; letter-spacing: -.3px; }
+    .shift-phone-context { border: 1px solid #dce5f0; background: #fff; border-radius: 14px; padding: 0 12px; margin: 0 0 14px; }
+    .shift-phone-context > summary { min-height: 48px; padding: 12px 0; color: #526780; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .pos-context-bar.pos-context-bar { padding: 0; border: 0; background: transparent; margin-bottom: 14px; }
+    .pos-context-grid.pos-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .pos-context-item.pos-context-item { min-height: 0; padding: 12px; border-radius: 12px; box-shadow: none; }
+    .pos-context-item.pos-context-item:first-child { grid-column: 1 / -1; }
+    .pos-context-item.pos-context-item:nth-child(3), .pos-context-item.shift-card { display: none; }
+    .pos-context-label.pos-context-label { font-size: 10px; margin-bottom: 6px; }
+    .pos-context-value.pos-context-value { font-size: 13px; }
+    .pos-context-inline-meta.pos-context-inline-meta { margin-top: 4px; padding: 2px 6px; font-size: 11px; }
+    .shift-shell .shift-command-bar { background: #172d4d; border: 0; border-radius: 20px; padding: 18px; box-shadow: 0 8px 24px #172d4d12; }
+    .shift-shell .shift-hero-card__content { flex-direction: column; align-items: stretch; gap: 18px; }
+    .shift-shell .shift-command-identity { align-items: flex-start; flex-direction: column; gap: 12px; }
+    .shift-shell .shift-command-copy, .shift-shell .shift-hero-card__title { color: #fff; overflow-wrap: anywhere; }
+    .shift-shell .shift-hero-card__title { font-size: 18px; line-height: 1.5; }
+    .shift-shell .shift-command-meta, .shift-shell .shift-command-meta strong { color: #dce7f7; }
+    .shift-shell .shift-command-meta { flex-wrap: wrap; gap: 8px; }
+    .shift-shell summary { min-height: 44px; display: flex; align-items: center; text-decoration: underline; text-underline-offset: 4px; }
+    .shift-shell .shift-status-pill { font-size: 13px; border: 0; box-shadow: none; }
+    .shift-shell .shift-action-group { display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 10px; }
+    .shift-shell .shift-toolbar-btn { width: 100%; min-height: 48px; padding: 10px; border-radius: 12px; font-size: 14px; white-space: normal; }
+    .shift-shell #btnShowOpenModal { grid-column: 1 / -1; background: #2463eb; }
+    .shift-shell #btnShowCashTxnModal, .shift-shell #btnShowDrawerModal { color: #fff; border-color: #6f839e; background: #ffffff0c; }
+    .shift-shell #btnShowCloseModal { background: #fff; border-color: #fff; color: #ae2737; }
+    .shift-shell .shift-empty-card, .shift-shell .shift-cash-position-card, .shift-shell .shift-secondary-card { border: 1px solid #dce5f0; border-radius: 18px; box-shadow: none; background: #fff; }
+    .shift-shell .shift-empty { padding: 20px 0; }
+    .shift-shell .shift-tabs-nav { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; gap: 4px; background: #edf2f8; border: 0; border-radius: 14px; margin: 18px 0; }
+    .shift-shell .shift-tab-btn { min-height: 48px; padding: 8px; font-size: 13px; white-space: normal; border: 0; border-radius: 10px; }
+    .shift-shell .shift-tab-btn.active { color: #2463eb; background: #fff; box-shadow: 0 2px 6px #172d4d0a; }
+    .shift-shell .shift-summary-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    .shift-shell .shift-cash-position-card, .shift-shell .shift-secondary-card { padding: 16px; }
+    .shift-shell .shift-section-title { font-size: 18px; line-height: 1.4; color: #172d4d; }
+    .shift-shell .shift-section-eyebrow { color: #526780; letter-spacing: .02em; font-size: 11px; }
+    .shift-shell .shift-cash-position-sub { font-size: 12px; }
+    .shift-shell .shift-cash-flow-row { gap: 10px; padding: 12px 0; }
+    .shift-shell .shift-cash-flow-label { font-size: 13px; }
+    .shift-shell .shift-cash-flow-value { font-size: 16px; overflow-wrap: anywhere; text-align: right; font-variant-numeric: tabular-nums; }
+    .shift-shell .shift-cash-position-total { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 16px; border-radius: 14px; background: #edf4ff; border: 1px solid #d5e3fc; }
+    .shift-shell .shift-cash-position-total__value { font-size: clamp(24px, 7vw, 32px); color: #174cae; overflow-wrap: anywhere; }
+    .shift-shell .shift-secondary-grid { grid-template-columns: minmax(0, 1fr); }
+    .shift-shell .shift-secondary-item { padding: 12px; }
+    .shift-shell .shift-note-text { overflow-wrap: anywhere; }
+    .shift-shell #shiftCashFeedback { font-size: 13px; border-radius: 12px; padding: 12px; }
+    .shift-shell #shiftCashFeedback.alert-success { color: #17634d; background: #edf9f3; border: 1px solid #c5e9d8; }
+    .shift-shell .shift-table-wrap, .shift-shell .table-responsive { overflow: visible; }
+    .shift-shell .shift-table { min-width: 0; width: 100%; }
+    .shift-shell .shift-table thead { display: none; }
+    .shift-shell #cashTxnBody { display: grid; gap: 12px; }
+    .shift-shell #cashTxnBody tr { display: grid; grid-template-columns: minmax(0, 1fr); padding: 12px; background: #fff; border: 1px solid #dce5f0; border-radius: 14px; }
+    .shift-shell #cashTxnBody td { width: auto; display: block; padding: 6px 0; border: 0; white-space: normal; overflow-wrap: anywhere; }
+    .shift-shell #cashTxnBody td:not([colspan])::before { display: block; color: #60728a; font-size: 11px; font-weight: 500; }
+    .shift-shell #cashTxnBody td:nth-child(1):not([colspan])::before { content: 'Thời gian'; }
+    .shift-shell #cashTxnBody td:nth-child(2)::before { content: 'Loại'; }
+    .shift-shell #cashTxnBody td:nth-child(3)::before { content: 'Số tiền'; }
+    .shift-shell #cashTxnBody td:nth-child(4)::before { content: 'Lý do'; }
+    .shift-shell #cashTxnBody td:nth-child(5)::before { content: 'Ghi chú'; }
+    .shift-shell #cashTxnBody td button { min-height: 44px; width: 100%; }
+    body[data-mobile-viewport] .shift-modal.shift-modal.shift-modal { top: var(--shift-visible-top, 0px); height: var(--shift-visible-height, 100dvh); padding: 0 !important; }
+    .shift-modal { top: var(--shift-visible-top, 0px); height: var(--shift-visible-height, 100dvh); padding: 0 !important; }
+    .shift-modal .modal-dialog, .shift-modal .modal-open-shift { width: 100%; max-width: none; height: 100%; min-height: 0; margin: 0 !important; }
+    .shift-modal .modal-content { height: 100%; max-height: 100%; display: flex; border: 0; border-radius: 0; background: #f3f6fb; overflow: hidden; box-shadow: none; }
+    .shift-modal .modal-header { height: auto; flex: 0 0 auto; padding: max(12px, env(safe-area-inset-top)) 16px 12px !important; background: #fff !important; border-bottom: 1px solid #dce5f0 !important; }
+    .shift-modal .modal-title, .shift-modal .shift-open-cashier-header .modal-title { font-size: 19px !important; line-height: 1.35; letter-spacing: -.3px; color: #172d4d !important; }
+    .shift-modal .shift-open-cashier-title { gap: 10px; }
+    .shift-modal .shift-open-cashier-icon { width: 38px; height: 38px; flex-shrink: 0; background: #edf4ff; color: #2463eb; box-shadow: none; font-size: 22px; border-radius: 11px; }
+    .shift-modal .shift-modal-subtitle { font-size: 12px; line-height: 1.5; margin-top: 4px; }
+    .shift-modal .btn-close { min-width: 44px; width: 44px; height: 44px; padding: 0; margin: 0 -8px 0 4px; flex-shrink: 0; background-size: 12px; }
+    .shift-modal .modal-body, .shift-modal .shift-open-cashier-body { flex: 1 1 auto; min-height: 0; max-height: none; padding: 14px 12px !important; overflow: auto; overscroll-behavior: contain; background: #f3f6fb; scroll-padding: 16px; }
+    .shift-modal .shift-open-cashier-layout { display: flex; flex-direction: column; gap: 14px; }
+    .shift-modal .shift-open-cashier-layout > .shift-open-left, .shift-modal .shift-open-cashier-layout > .shift-open-right { display: none; }
+    .shift-modal .shift-open-block, .shift-modal .shift-open-direct-card, .shift-modal .shift-open-summary-card, .shift-modal .shift-open-warning-card { padding: 16px; margin: 0; border: 1px solid #dce5f0; border-radius: 16px; background: #fff; box-shadow: none; }
+    .shift-modal .shift-open-block-title { font-size: 12px; line-height: 1.5; color: #526780; }
+    .shift-modal .shift-open-big-money { font-size: 28px; overflow-wrap: anywhere; }
+    .shift-modal .shift-open-direct-card { background: #edf4ff; border-color: #d5e3fc; }
+    .shift-modal .shift-open-direct-input { height: 56px !important; font-size: 26px !important; text-align: left; padding: 10px 34px 10px 12px !important; background: #fff; color: #172d4d; }
+    .shift-modal .shift-keypad { display: none; }
+    .shift-modal .form-control, .shift-modal .form-select { font-size: 16px; min-height: 48px; border-radius: 10px; border-color: #c6d3e3; }
+    .shift-modal textarea.form-control { min-height: 96px; }
+    .shift-modal .shift-scan-input-wrap { grid-template-columns: minmax(0, 1fr) 56px; gap: 8px; }
+    .shift-modal .shift-scan-input { font-size: 16px !important; }
+    .shift-modal .btn-primary { background: #2463eb; border-color: #2463eb; box-shadow: none; }
+    .shift-modal .btn-outline-primary { color: #2463eb; border-color: #a5bff5; }
+    .shift-modal .shift-open-money-table-card { overflow: hidden; border: 1px solid #dce5f0; border-radius: 16px; background: #fff; box-shadow: none; }
+    .shift-modal .shift-open-money-table-head { padding: 14px 12px; flex-wrap: wrap; gap: 10px; }
+    .shift-modal .shift-open-head-actions { flex-wrap: wrap; gap: 8px; }
+    .shift-modal .shift-open-action-btn { min-height: 44px; padding: 8px 10px; }
+    .shift-modal .shift-open-action-btn .bx-sparkles { display: none; }
+    .shift-modal .shift-open-money-table-header { display: none; }
+    .shift-modal .shift-open-money-row { min-width: 0; grid-template-columns: minmax(0, 1fr) 150px 44px; gap: 4px 8px; padding: 12px 10px; }
+    .shift-modal .shift-open-denom-info { grid-column: 1; gap: 0; }
+    .shift-modal .shift-open-bill-img { display: none; }
+    .shift-modal .shift-open-denom-label { font-size: 13px; }
+    .shift-modal .shift-open-stepper { grid-column: 2; grid-row: span 2; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 2px; }
+    .shift-modal .shift-open-stepper-btn { width: 44px; height: 48px; border-radius: 10px; }
+    .shift-modal .shift-open-stepper-input { width: 100%; height: 48px !important; padding: 4px !important; text-align: center; font-size: 16px !important; }
+    .shift-modal .shift-open-line-total { grid-column: 1; grid-row: 2; font-size: 12px; text-align: left; color: #60728a; }
+    .shift-modal .shift-open-line-clear { grid-column: 3; grid-row: 1 / span 2; width: 44px; height: 48px; }
+    .shift-modal .shift-open-quick-row { padding: 12px; }
+    .shift-modal .shift-open-quick-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .shift-modal .shift-open-preset-btn { min-height: 44px; width: 100%; padding: 6px; }
+    .shift-modal .shift-close-compare-box { padding: 0; border: 0; background: #fff; }
+    .shift-modal .shift-close-compare-row { gap: 12px; padding: 12px 0; }
+    .shift-modal .shift-close-compare-label { font-size: 13px; }
+    .shift-modal .shift-close-compare-value { font-size: 19px; overflow-wrap: anywhere; }
+    .shift-modal .shift-close-compare-value.expected { color: #526780; }
+    .shift-modal .shift-close-compare-value.actual { color: #174cae; }
+    .shift-modal .shift-open-summary-row { gap: 12px; font-size: 13px; }
+    .shift-modal .modal-footer, .shift-modal .shift-open-cashier-footer { height: auto; flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px max(10px, env(safe-area-inset-bottom)); background: #fff; border-top: 1px solid #dce5f0; }
+    .shift-modal .modal-footer > .btn { margin: 0; min-height: 48px; white-space: normal; }
+    .shift-modal .shift-open-cancel-btn { width: auto; flex: 0 0 72px; }
+    .shift-modal .shift-open-confirm-btn { width: auto; flex: 1; background: #2463eb; border-color: #2463eb; font-size: 15px; }
+    .shift-modal .shift-close-confirm-btn { background: #b92f42; border-color: #b92f42; }
+    .shift-modal .shift-cash-shortcut, .shift-modal .shift-tip-box { display: none; }
+    .shift-modal button:not([hidden]), .shift-modal .btn { min-height: 44px; }
+    #shiftDrawerConfirmModal .shift-drawer-confirm { padding: 0; border-radius: 0; box-shadow: none; }
+    #shiftDrawerConfirmModal .modal-body { padding: max(24px, env(safe-area-inset-top)) 20px 24px !important; }
+    #shiftDrawerConfirmModal .shift-drawer-confirm__icon { color: #2463eb; background: #edf4ff; }
+    #shiftDrawerConfirmModal .shift-drawer-confirm__eyebrow { color: #526780; }
+    #shiftDrawerConfirmModal .shift-drawer-confirm__context { overflow-wrap: anywhere; }
+    #shiftCloseConfirmModal .modal-dialog, #posErrorModal .modal-dialog { margin: 12px; max-width: calc(100% - 24px); }
+    #shiftCloseConfirmModal .modal-footer { display: grid; gap: 8px; }
+    #shiftCloseConfirmModal .btn, #posErrorModal .btn { min-height: 44px; white-space: normal; margin: 0; }
+    #shiftCloseConfirmModal .modal-content, #posErrorModal .modal-content { max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 24px); overflow: hidden; border-radius: 18px; }
+    #shiftCloseConfirmModal .modal-body, #posErrorModal .modal-body { overflow: auto; min-height: 0; }
+    #shiftCloseConfirmModal .modal-footer { grid-template-columns: minmax(0, 1fr); flex-shrink: 0; }
+    #shiftCloseConfirmModal .modal-footer .btn { width: 100%; }
+    #shiftCloseConfirmModal .btn-outline-primary { color: #2463eb; border-color: #a5bff5; }
+    #shiftCloseConfirmModal .btn-danger { background: #b92f42; border-color: #b92f42; box-shadow: none; }
+    .shift-shell :focus-visible, .shift-modal :focus-visible { outline: 3px solid #80aaff; outline-offset: 2px; }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    .shift-modal.fade .modal-dialog, #shiftCloseConfirmModal.fade .modal-dialog { transition: none; }
+}

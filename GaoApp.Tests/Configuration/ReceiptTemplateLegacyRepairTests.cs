@@ -79,7 +79,10 @@ public sealed class ReceiptTemplateLegacyRepairTests
         await db.SaveChangesAsync();
         await database.ExecuteAsync($$"""
             ALTER TABLE dbo.PosReceiptTemplates ALTER COLUMN DefinitionJson nvarchar(4000) NOT NULL;
-            UPDATE dbo.__EFMigrationsHistory SET MigrationId = N'{{Legacy}}' WHERE MigrationId = N'{{Current}}';
+            -- Reproduce the known EF8 legacy history accepted by the repair,
+            -- independently of the EF version used to create this test database.
+            UPDATE dbo.__EFMigrationsHistory SET MigrationId = N'{{Legacy}}', ProductVersion = N'8.0.29'
+            WHERE MigrationId = N'{{Current}}';
             INSERT dbo.PosReceiptTemplates (Name, DefinitionJson, CreatedAtUtc, IsDeleted, StoreId)
             VALUES (N'Mẫu giữ nguyên', N'{"footerText":"Tiếng Việt — giữ dữ liệu"}', '2026-09-10', 0, {{store.Id}});
             """);

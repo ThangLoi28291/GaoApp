@@ -13,7 +13,7 @@
 
 Worker phát hành không nằm trong IIS. Web có AcbCallbackWorker riêng để xử lý callback ACB; nó khác với AutoInvoiceWorker phát hành hóa đơn.
 
-Script `scripts/publish-staging-release.ps1` hiện chỉ đóng gói Web và Migrator (hoặc Web khi có `-WebOnly`), chưa đóng gói AutoInvoiceWorker. Phải publish Worker riêng từ cùng source. Script `scripts/auto-invoice/Install-GaoAppAutoInvoiceWorker.ps1` hiện xóa/cài lại service nếu đã tồn tại và Start ngay; không dùng script đó cho lần nâng cấp cần giữ tài khoản/config/recovery hiện có. Các bước dưới cài Manual trước, cấu hình đủ rồi mới Start.
+Script `scripts/publish-staging-release.ps1` chỉ đóng gói Web và Migrator (hoặc Web khi có `-WebOnly`), chưa đóng gói AutoInvoiceWorker. Publish Worker riêng từ cùng source. `scripts/auto-invoice/Install-GaoAppAutoInvoiceWorker.ps1` đã hỗ trợ cập nhật đường dẫn service tại chỗ, giữ tài khoản/startup/recovery. Lần cài mới dùng virtual service account, Manual và chưa Start; chỉ khởi động ngay khi truyền `-Start`.
 
 ## 2. Chuẩn bị trên server
 
@@ -57,7 +57,7 @@ Sao lưu **database + toàn bộ key ring + certificate/private key + mật kh�
 Dừng sửa source trong lúc đóng gói. Mở PowerShell tại thư mục solution. Các lệnh tạo package, không kết nối production.
 
 ```powershell
-Set-Location 'D:\GaoApp\GAOAPP-SA-20260819-01'
+# Chạy từ thư mục source đang chứa GaoApp.sln, không phụ thuộc ổ đĩa.
 dotnet restore GaoApp.sln
 if ($LASTEXITCODE -ne 0) { throw 'Restore failed' }
 dotnet build GaoApp.sln -c Release --no-restore -p:UseSharedCompilation=false
@@ -88,17 +88,10 @@ dotnet publish .\GaoApp.AutoInvoiceWorker\GaoApp.AutoInvoiceWorker.csproj `
   -c Release -r win-x64 --self-contained false -o $workerOut
 if ($LASTEXITCODE -ne 0) { throw 'Publish Worker failed' }
 
-# Worker hiện chưa import PublishSafety.targets như Web/Migrator.
-# Thay cấu hình development trong package bằng mẫu không chứa SQL/secret thực.
-Copy-Item -LiteralPath '.\eng\deployment\migrator.appsettings.json' `
-  -Destination (Join-Path $workerOut 'appsettings.json')
-$workerDevSettings = Join-Path $workerOut 'appsettings.Development.json'
-if (Test-Path -LiteralPath $workerDevSettings) {
-    Remove-Item -LiteralPath $workerDevSettings
-}
+# Project tự dùng PublishSafety.targets: chỉ đóng gói mẫu Worker không có secret.
 ```
 
-Mẫu Migrator được dùng ở đây chỉ làm **appsettings.json tối thiểu, không chứa secret**, với các mục shared infrastructure/seed/DataProtection. Nó không đổi executable Worker thành Migrator. Worker đọc phần Logging mặc định; không tự bật Serilog bằng tệp này.
+`eng/deployment/worker.appsettings.json` là mẫu publish không chứa SQL/password/key/PFX. Build/F5 vẫn có cấu hình Development; Publish tự lọc cấu hình riêng của máy, launchSettings và tệp nhạy cảm. Worker đọc cấu hình server ở ngoài thư mục publish.
 
 Kiểm tra Worker có `GaoApp.AutoInvoiceWorker.exe`, `.dll`, `.deps.json`, `.runtimeconfig.json` và các dependency. Rà các appsettings khác nếu source đã thêm cấu hình host riêng; không đưa connection string/secret development vào gói chuyển.
 
@@ -140,7 +133,9 @@ Trong IIS Configuration Editor ở cấp server: `system.applicationHost/applica
 | Proxy__EnableForwardedHeaders | true theo cấu hình IIS/proxy hiện có |
 | Proxy__KnownProxies__0 / __1 | IP proxy tin cậy thực tế; loopback khi IIS local |
 
-Giữ cấu hình tính năng và tích hợp của host. Mẫu publish đặt một số tính năng false để không tự kích hoạt khi chuyển môi trường; ví dụ InputInvoiceLibrary, ReceivingWorkbench. `AcbCallbackRouting__Hosts__0` cần giữ host callback đã đăng ký, nếu hệ thống dùng ánh xạ callback theo host. Không sao chép mù toàn bộ mẫu staging vào host đang dùng.
+Giữ cấu hình tính năng và tích hợp của host. Mẫu publish `eng/deployment/web.appsettings.json` được xuất thành `appsettings.json`; các file appsettings theo môi trường không được xuất. Theo cấu hình đã chốt cho GaoMart ngày 12/10/2026, mẫu bật InputInvoiceLibrary với RootPath=XML, MaxMonthPartitions=12, MaxCandidates=200; giữ ProductionBootstrap=false và khai báo host callback www.gaomart.com.vn. ReceivingWorkbench vẫn false. `XML` được resolve thành thư mục con của `Storage:UploadRoot` trên host, không phải thư mục source/publish. Thư mục phải tồn tại và đọc được nếu Storage:CreateIfMissing=false.
+
+Biến môi trường của pool có độ ưu tiên cao hơn mẫu publish. Nếu pool có `InputInvoiceLibrary__Enabled=false`, `AllowedHosts` cũ hoặc `AcbCallbackRouting__Hosts__0` cũ, cần sửa đúng các biến đó. Mẫu publish không chứa SQL connection, đường dẫn khóa hoặc mật khẩu của host. Nếu server hiện chỉ lưu các thông tin đó trong appsettings.json, giữ bản cấu hình server trong bước triển khai và ghép các mục tính năng/domain mới vào đó, hoặc chuyển cấu hình host sang pool trước khi thay release; không ghi đè bằng các giá trị trống/placeholder của mẫu. Không sao chép mù toàn bộ mẫu staging vào host đang dùng.
 
 Nếu ghi log Web ra file, giữ các biến Serilog file sink ở pool trỏ `C:\GaoAppData\Logs\web-.log` (xem mẫu host environment). Một số nhật ký chuyên biệt ACB hiện vẫn dùng App_Data/Logs theo content root; kiểm tra đường dẫn thực và cấp Modify có giới hạn cho thư mục log đó, không cấp Write toàn bộ release.
 
@@ -222,15 +217,15 @@ Tạo bản cấu hình gốc tại `C:\GaoAppData\DeployConfig\worker.appsettin
 
 SQL runtime nên dùng `Encrypt=True;TrustServerCertificate=False` với chứng thư SQL tin cậy, đúng database. Web/Worker có thể dùng tài khoản SQL khác nhau nhưng cùng database và quyền runtime phù hợp. Không dùng tài khoản migration/db-owner mặc định cho Worker. Storage:UploadRoot của Worker phải trỏ cùng thư mục external storage với Web để lưu/đọc file hóa đơn; nếu bỏ trống, InvoiceFileStorage hiện fallback vào wwwroot/uploads dưới thư mục Worker.
 
-Sau khi đối chiếu hash của package Worker trên server, chép cấu hình host vào **thư mục Worker mới**:
+Sau khi đối chiếu hash của package Worker trên server, giữ cấu hình host ở đường dẫn cố định ngoài release. Worker tự đọc file theo môi trường; có thể chỉ định rõ để chẩn đoán:
 
 ```powershell
 $workerDir = 'D:\GaoAppDeploy\workers\RELEASE_ID'
-Copy-Item -LiteralPath 'C:\GaoAppData\DeployConfig\worker.appsettings.Production.json' `
-    -Destination (Join-Path $workerDir 'appsettings.Production.json')
+& (Join-Path $workerDir 'GaoApp.AutoInvoiceWorker.exe') --environment Production `
+  --host-settings 'C:\GaoAppData\DeployConfig\worker.appsettings.Production.json' --check-keys
 ```
 
-Đây là file host được thêm sau khi kiểm tra package, không đưa ngược về gói development. Mỗi lần đổi release Worker phải chép lại từ bản cấu hình host đã bảo quản. Không sửa appsettings development rồi cho rằng service sẽ đọc file đó.
+File host giữ nguyên qua các lần nâng cấp, không chép vào package. Thứ tự cấu hình: appsettings → file riêng của máy → biến môi trường → đối số command line. Khởi động lại Worker sau khi sửa file riêng của máy. Xem [quy trình Visual Studio và publish](AUTO-INVOICE-VISUAL-STUDIO-PUBLISH-20261010.md).
 
 ### 8.2. Lần đầu: tạo service nhưng chưa chạy
 
@@ -247,15 +242,15 @@ if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
 New-Service -Name $serviceName `
     -DisplayName 'GaoApp Auto Invoice Worker' `
     -Description 'Phat hanh hoa don tu dong GaoApp' `
-    -BinaryPathName ('"{0}" --environment Production' -f $workerExe) `
+    -BinaryPathName ('"{0}" --environment Production --host-settings "C:\GaoAppData\DeployConfig\worker.appsettings.Production.json"' -f $workerExe) `
     -StartupType Manual
 sc.exe config $serviceName obj= 'NT SERVICE\GaoApp.AutoInvoiceWorker'
 if ($LASTEXITCODE -ne 0) { throw 'Chua cau hinh duoc tai khoan service' }
 ```
 
-Đối số `--environment Production` bảo đảm Worker đọc appsettings.Production.json; không phụ thuộc biến `$env:` trong phiên PowerShell đã đóng. Worker trong source đã đọc cấu hình từ thư mục executable, không từ System32.
+Đối số `--environment Production` chọn cấu hình Production, không phụ thuộc biến `$env:` trong phiên PowerShell đã đóng. `--host-settings` ghim file ngoài release; Worker không phụ thuộc thư mục hiện tại/System32. Có thể dùng script Install với `-WhatIf` rồi bỏ `-WhatIf` thay cho các lệnh tạo service thủ công này.
 
-Cấp quyền cho `NT SERVICE\GaoApp.AutoInvoiceWorker`: Read/Execute thư mục Worker và cấu hình của release; Modify DataProtectionKeys và thư mục lưu file hóa đơn trong Uploads (đúng phạm vi ứng dụng cần); Read certificate PFX. Cấu hình/keys/PFX không cấp đọc rộng cho Users/Everyone. Chỉ thêm quyền vào thư mục đúng phạm vi, không reset ACL cả C:\GaoAppData.
+Cấp quyền cho `NT SERVICE\GaoApp.AutoInvoiceWorker`: Read/Execute thư mục Worker, Read file host cố định và quyền đi qua thư mục chứa file; Modify DataProtectionKeys và thư mục lưu file hóa đơn trong Uploads (đúng phạm vi ứng dụng cần); Read certificate PFX. Cấu hình/keys/PFX không cấp đọc rộng cho Users/Everyone. Chỉ thêm quyền vào thư mục đúng phạm vi, không reset ACL cả C:\GaoAppData.
 
 Nếu SQL local dùng Integrated Security, tạo login/user SQL cho identity Worker và cấp quyền runtime cần thiết. Quyền của IIS AppPool không tự áp dụng cho Worker. Nếu SQL dùng SQL Authentication, connection string Worker phải chứa tài khoản runtime hợp lệ và file config được bảo vệ ACL.
 
@@ -299,17 +294,14 @@ Worker hiện chỉ cấu hình console logging (ClearProviders rồi AddConsole
 1. Publish Web và Worker cùng source vào release mới; giữ release/config cũ để quay lại.
 2. Tạm ngưng phát hành, đợi tác vụ đang gửi kết thúc/đối soát; dừng Worker, rồi dừng riêng Web/pool theo maintenance.
 3. Chỉ áp migration khi cần, có backup và review. Không chạy seed tự động.
-4. Đổi physicalPath IIS sang Web mới. Chép config production host vào Worker mới, cấp ACL như release cũ.
+4. Đổi physicalPath IIS sang Web mới. Giữ file cấu hình Worker ở ngoài release; cấp ACL đọc/chạy cho thư mục Worker mới như release cũ.
 5. Đổi đường dẫn service đang có, không xóa/cài lại service:
 
 ```powershell
-$workerExe = 'D:\GaoAppDeploy\workers\RELEASE_ID_MOI\GaoApp.AutoInvoiceWorker.exe'
-Stop-Service 'GaoApp.AutoInvoiceWorker'
-$serviceConfig = Get-CimInstance Win32_Service -Filter "Name='GaoApp.AutoInvoiceWorker'"
-if (!$serviceConfig) { throw 'Khong tim thay service' }
-$change = Invoke-CimMethod -InputObject $serviceConfig -MethodName Change `
-    -Arguments @{ PathName = ('"{0}" --environment Production' -f $workerExe) }
-if ($change.ReturnValue -ne 0) { throw "Khong doi duoc duong dan service: $($change.ReturnValue)" }
+.\scripts\auto-invoice\Install-GaoAppAutoInvoiceWorker.ps1 `
+  -InstallDirectory 'D:\GaoAppDeploy\workers\RELEASE_ID_MOI' -WhatIf
+# Sau khi kiểm tra preview, chạy cùng lệnh bỏ -WhatIf.
+# Script giữ nguyên host-settings tùy chỉnh của service đang có và để service dừng.
 ```
 
 6. Start Web, kiểm tra readiness; Start Worker, kiểm tra heartbeat/giải mã; bật lại phát hành khi đã sẵn sàng. Kiểm tra service identity/Delayed Start/Recovery được giữ.

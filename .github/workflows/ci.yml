@@ -39,7 +39,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          global-json-file: 'global.json'
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -78,13 +78,21 @@ jobs:
       - name: Publish and verify paired staging release
         shell: pwsh
         run: |
-          $releaseOutput = @(./scripts/publish-staging-release.ps1)
+          $releaseOutput = @(./scripts/publish-staging-release.ps1 -AllComponents)
           $releasePath = $releaseOutput[-1]
           "GAOAPP_TEST_RELEASE=$releasePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Verify deployment tools reject unsafe configuration
         shell: pwsh
         run: ./scripts/test-deployment-tools.ps1 -ReleasePath $env:GAOAPP_TEST_RELEASE
+
+      - name: Verify .NET servicing floor and reject obsolete runtimes
+        shell: pwsh
+        run: ./scripts/test-runtime-support.ps1
+
+      - name: Verify deployment modes and rollback boundaries
+        shell: pwsh
+        run: ./scripts/test-deployment-safety.ps1
 
       - name: Test published Production configuration and HTTPS login
         shell: pwsh

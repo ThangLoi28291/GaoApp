@@ -45,7 +45,7 @@ public sealed class LegalEntityReconciliationService : ILegalEntityReconciliatio
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        var today = DateTime.Today;
+        var today = VietnamTime.Today;
         var toDate = query.ToDate == default ? today : query.ToDate.Date;
         var fromDate = query.FromDate == default ? toDate.AddDays(-29) : query.FromDate.Date;
 
@@ -58,8 +58,8 @@ public sealed class LegalEntityReconciliationService : ILegalEntityReconciliatio
         query.Page = exportAll ? 1 : Math.Max(1, query.Page);
         query.PageSize = exportAll ? int.MaxValue : Math.Clamp(query.PageSize, 10, 100);
 
-        var fromUtc = DateTime.SpecifyKind(fromDate, DateTimeKind.Local).ToUniversalTime();
-        var toUtcExclusive = DateTime.SpecifyKind(toDate.AddDays(1), DateTimeKind.Local).ToUniversalTime();
+        var fromUtc = VietnamTime.ToUtc(fromDate);
+        var toUtcExclusive = VietnamTime.ToUtc(toDate.AddDays(1));
 
         return _repository.QueryAsync(
             _currentStore.StoreId,

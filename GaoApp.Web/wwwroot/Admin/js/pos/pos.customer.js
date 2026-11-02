@@ -252,7 +252,7 @@ window.PosCustomer = (function () {
 
             customerSearchResult.innerHTML = `
                 <div class="p-3 text-muted">
-                    Không tìm thấy khách hàng phù hợp.
+                    ${window.PosOffline?.localMode() ? 'Mất mạng: chỉ tìm được khách gắn với đơn đang xử lý và khách mới tạo offline.' : 'Không tìm thấy khách hàng phù hợp.'}
                 </div>
             `;
         }
@@ -353,7 +353,8 @@ window.PosCustomer = (function () {
             }
 
             const cacheKey = keyword.toLowerCase();
-            const cachedItems = customerSearchState.cache.get(cacheKey);
+            const localSearch = window.PosOffline?.localMode() === true;
+            const cachedItems = localSearch ? null : customerSearchState.cache.get(cacheKey);
 
             if (cachedItems) {
                 customerSearchState.items = Array.isArray(cachedItems) ? cachedItems : [];
@@ -383,7 +384,7 @@ window.PosCustomer = (function () {
                 }
 
                 customerSearchState.items = Array.isArray(items) ? items : [];
-                customerSearchState.cache.set(cacheKey, customerSearchState.items);
+                if (!localSearch) customerSearchState.cache.set(cacheKey, customerSearchState.items);
 
                 renderSearchResults(customerSearchState.items);
             } catch (err) {
@@ -408,46 +409,15 @@ window.PosCustomer = (function () {
            SET / CLEAR CUSTOMER
            - draft-local action
         ========================================================= */
-        async function shouldRepriceExistingLinesForCustomerChange(customerId) {
-            const draft = getCurrentDraft();
-            const lines = draft?.lines || draft?.Lines || [];
-
-            if (!Array.isArray(lines) || lines.length <= 0) {
-                return false;
-            }
-
-            if (typeof Swal === 'undefined') {
-                return false;
-            }
-
-            const result = await Swal.fire({
-                title: 'Áp lại giá cho giỏ hàng?',
-                html: `
-            Giỏ hiện tại đã có sản phẩm.<br>
-            Bạn có muốn cập nhật lại giá theo khách vừa chọn không?
-        `,
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Áp lại giá',
-                cancelButtonText: 'Giữ giá hiện tại',
-                reverseButtons: true
-            });
-
-            return result.isConfirmed;
-        }
-
         async function setCustomerToCurrentCart(customerId) {
             clearCustomerModalInlineError();
 
-            const repriceExistingLines =
-                await shouldRepriceExistingLinesForCustomerChange(customerId);
-
             return await runPosAction(
                 posState,
-                `customer:set:${customerId}:${repriceExistingLines ? 'reprice' : 'keep'}`,
+                `customer:set:${customerId}:reprice`,
                 async function () {
                     return await postJson(`/admin/pos/cart/current/customer/${customerId}`, {
-                        repriceExistingLines: repriceExistingLines
+                        repriceExistingLines: true
                     });
                 },
                 {
@@ -463,9 +433,7 @@ window.PosCustomer = (function () {
 
                         applyDraftSuccess({
                             draft,
-                            successMessage: repriceExistingLines
-                                ? 'Đã chọn khách hàng và áp lại giá'
-                                : 'Đã chọn khách hàng cho giỏ hiện tại',
+                            successMessage: 'Đã chọn khách hàng và áp lại giá',
                             focusBarcode: true,
                             afterSync: function () {
                                 customerModal?.hide?.();
@@ -635,9 +603,26 @@ window.PosCustomer = (function () {
             return Number(draft?.customer?.customerId || draft?.customerId || 0);
         }
 
+        function canUseCustomerPoints() {
+            const draft = getCurrentDraft();
+            const tier = draft?.customer?.priceTier || draft?.customerPriceTier || draft?.priceTier || '';
+            const reward = draft?.rewardSummary || draft?.RewardSummary;
+            return String(tier).trim().toUpperCase() !== 'WHOLESALE'
+                && reward?.isPointEligible !== false && reward?.IsPointEligible !== false;
+        }
+
         function renderRewardModal(summary) {
             const box = document.getElementById('rewardModalSummary');
             if (!box) return;
+
+            const eligible = canUseCustomerPoints() && summary?.isPointEligible !== false;
+            const redeemButton = document.getElementById('btnRedeemRewardVoucher');
+            if (redeemButton) redeemButton.disabled = !eligible;
+            if (!eligible) {
+                box.textContent = 'Khách sỉ không áp dụng tích điểm và đổi điểm.';
+                customerRewardModal?.hide();
+                return;
+            }
 
             box.innerHTML = `
         <div class="pos-reward-modal-grid">
@@ -671,6 +656,10 @@ window.PosCustomer = (function () {
             const summary = await fetchJson(`/admin/api/customers/${customerId}/reward-summary`);
 
             const draft = getCurrentDraft();
+            if (getCurrentCustomerId() !== Number(customerId)) {
+                customerRewardModal?.hide();
+                return null;
+            }
             if (draft) {
                 draft.rewardSummary = summary;
                 draft.RewardSummary = summary;
@@ -685,6 +674,10 @@ window.PosCustomer = (function () {
             const customerId = getCurrentCustomerId();
             if (!customerId) {
                 showError('Vui lòng chọn khách hàng trước.');
+                return;
+            }
+            if (!canUseCustomerPoints()) {
+                showError('Khách sỉ không áp dụng tích điểm và đổi điểm.');
                 return;
             }
 
@@ -713,6 +706,10 @@ window.PosCustomer = (function () {
         async function redeemRewardVoucher() {
             const customerId = getCurrentCustomerId();
             if (!customerId) return;
+            if (!canUseCustomerPoints()) {
+                showError('Khách sỉ không áp dụng tích điểm và đổi điểm.');
+                return;
+            }
 
             const input = document.getElementById('rewardVoucherCount');
             const count = Number(input?.value || 0);

@@ -12,6 +12,7 @@
         || Model.RefundedTotal > 0;
 
     var paymentCount = Model.Payments?.Count ?? 0;
+    var isDeliverySource = Model.Delivery is { IsSettlementSale: false };
     var lineCount = Model.Lines?.Count ?? 0;
     var vi = CultureInfo.GetCultureInfo("vi-VN");
     string Money(decimal amount) => amount.ToString("N0", vi);
@@ -31,27 +32,30 @@
     var canOpenLegalEntityInvoices =
         ViewBag.CanOpenLegalEntityInvoices as bool? == true;
 
-  var canRefund = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase)
+  var canRefund = Model.Delivery is null && string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase)
                 && Model.RefundedTotal <= 0;
-    var canVoid = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase) && Model.RefundedTotal <= 0;
-    var canReturn = string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(Model.Status, "Refunded", StringComparison.OrdinalIgnoreCase);
+    var canVoid = Model.Delivery is null && string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase) && Model.RefundedTotal <= 0;
+    var canReturn = Model.Delivery is null && (string.Equals(Model.Status, "Completed", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(Model.Status, "Refunded", StringComparison.OrdinalIgnoreCase));
 }
 
 <link rel="stylesheet" href="~/Admin/css/pos/acb.lookup.css" asp-append-version="true" />
 <script src="~/Admin/js/pos/acb.lookup.launcher.js" asp-append-version="true" defer></script>
+<div class="ord-detail-utilities" data-order-utilities>
 @if (canReturn)
 {
     @if (ViewBag.CanCompleteReturnRestock as bool? == true)
     {
-        <div class="mb-3"><a href="/admin/pos/returns/pending-restock" class="btn btn-outline-warning">Hàng trả chờ nhập kho</a></div>
+        <div class="mb-3" data-order-utility="restock"><a href="/admin/pos/returns/pending-restock" class="btn btn-outline-warning">Hàng trả chờ nhập kho</a></div>
     }
-    <div class="mb-3"><a href="/admin/pos-shift/requests?tab=payment&amp;orderId=@Model.OrderId" class="btn btn-outline-primary">Yêu cầu sửa thanh toán</a></div>
+    <div class="mb-3" data-order-utility="payment-request"><a href="/admin/pos-shift/requests?tab=payment&amp;orderId=@Model.OrderId" class="btn btn-outline-primary">Yêu cầu sửa thanh toán</a></div>
 }
 @if (Model.HasBankTransfer)
 {
-    <div class="mb-3"><a href="/admin/acb/payments/orders/@Model.OrderId" data-acb-order-id="@Model.OrderId" class="btn btn-outline-primary">Thông tin chuyển khoản</a></div>
+    <div class="mb-3" data-order-utility="bank"><a href="/admin/acb/payments/orders/@Model.OrderId" data-acb-order-id="@Model.OrderId" class="btn btn-outline-primary">Thông tin chuyển khoản</a></div>
 }
+
+</div>
 
 @functions {
     public string GetStatusBadgeClass(string? status)
@@ -179,6 +183,7 @@
     <link rel="stylesheet"
           href="~/Admin/css/pos/pos-order-detail.css"
           asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-order-detail.mobile.css" asp-append-version="true" />
 }
 
 @section header {
@@ -227,13 +232,13 @@
 
                 <button type="button"
                         class="btn btn-ord btn-ord-info"
-                        onclick="openReturnRefundModal(@Model.OrderId)">
+                        data-csp-action="return-refund" data-csp-id="@Model.OrderId">
                     Trả hàng / hoàn tiền
                 </button>
 
                 <button type="button"
                         class="btn btn-ord btn-ord-soft"
-                        onclick="openReturnHistoryModal(@Model.OrderId)">
+                        data-csp-action="return-history" data-csp-id="@Model.OrderId">
                     Lịch sử hậu mãi
                 </button>
 
@@ -257,7 +262,7 @@
                     <button type="button"
                             class="btn btn-ord btn-ord-danger-soft"
                             title="Hủy đơn vừa chốt"
-                            onclick="openOrderActionModal('void', @Model.OrderId)">
+                            data-csp-action="order-void" data-csp-id="@Model.OrderId">
                         Void đơn
                     </button>
                 }
@@ -267,7 +272,7 @@
                     <button type="button"
                             class="btn btn-ord btn-ord-warning-soft"
                             title="Refund toàn bộ đơn theo flow hiện tại"
-                            onclick="openOrderActionModal('refund', @Model.OrderId)">
+                            data-csp-action="order-refund" data-csp-id="@Model.OrderId">
                         Hoàn tiền toàn bộ
                     </button>
                 }
@@ -281,19 +286,49 @@
     </div>
 }
 
-<div class="order-page">
+<div class="order-page" data-mobile-order-detail
+     data-order-id="@Model.OrderId"
+     data-mobile-can-return="@(ViewBag.MobileCanReturn as bool? == true ? "true" : "false")"
+     data-mobile-can-void="@(ViewBag.MobileCanVoid as bool? == true ? "true" : "false")"
+     data-mobile-can-reprint="@(ViewBag.MobileCanReprint as bool? == true ? "true" : "false")"
+     data-mobile-can-view-bank="@(ViewBag.MobileCanViewBank as bool? == true ? "true" : "false")"
+     data-mobile-can-open-payment-requests="@(ViewBag.MobileCanOpenPaymentRequests as bool? == true ? "true" : "false")">
     @Html.AntiForgeryToken()
 
+    @if (Model.Delivery is not null)
+    {
+        <section data-order-delivery class="card mb-3 border shadow-none" aria-label="Hồ sơ đơn giao liên kết">
+            <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                    <div class="small text-muted mb-1">HỒ SƠ ĐƠN GIAO</div>
+                    <strong>@Model.Delivery.Code</strong>
+                    <div class="small text-muted mt-1">@(isDeliverySource ? "Phiếu gốc khi lập đơn" : "Hóa đơn chốt theo hàng thực giao")</div>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-sm btn-outline-primary" href="@Model.Delivery.BillUrl">Phiếu giao A5 · QR gốc</a>
+                    @if (Model.Delivery.SourceOrderId > 0 && Model.Delivery.SourceOrderId != Model.OrderId)
+                    {
+                        <a class="btn btn-sm btn-outline-secondary" href="/admin/pos/order-detail/@Model.Delivery.SourceOrderId">Phiếu gốc #@Model.Delivery.SourceOrderId</a>
+                    }
+                    @if (Model.Delivery.SaleOrderId is int saleId)
+                    {
+                        <a class="btn btn-sm btn-outline-primary" href="/admin/pos/order-detail/@saleId">Hóa đơn @(Model.Delivery.SaleOrderNumber ?? ("#" + saleId))</a>
+                        <a class="btn btn-sm btn-primary" href="/admin/pos/orders/@saleId/print?autoPrint=false" target="_blank" rel="noopener">In hóa đơn thanh toán</a>
+                    }
+                </div>
+            </div>
+        </section>
+    }
     <div class="ord-overview">
         <div class="ord-stat primary">
-            <div class="ord-stat-label">@(Model.Delivery is null ? "Tổng tiền đơn" : "Giá trị dự kiến khi lập đơn")</div>
+            <div class="ord-stat-label">@(isDeliverySource ? "Giá trị dự kiến khi lập đơn" : Model.Delivery is null ? "Tổng tiền đơn" : "Tổng tiền thực giao")</div>
             <div class="ord-stat-value">@Money(Model.GrandTotal) đ</div>
             <div class="ord-stat-sub">
                 Tiền hàng gốc: <strong>@Money(Model.Subtotal) đ</strong>
             </div>
         </div>
 
-        @if (Model.Delivery is not null) {
+        @if (Model.Delivery is { IsSettlementSale: false }) {
             <div class="ord-stat warning"><div class="ord-stat-label">@GetStatusTextVi(Model.DisplayStatus)</div>
                 <div class="ord-stat-value ord-delivery-status">@GetDeliveryStateText(Model.Delivery.State)</div>
                 <div class="ord-stat-sub">@(Model.Delivery.IsPendingSettlement ? "Chưa thu tiền" : "Xem thanh toán tại hồ sơ giao")</div>
@@ -311,7 +346,7 @@
 
         <div class="ord-stat info">
             <div class="ord-stat-label">Đã hoàn</div>
-            <div class="ord-stat-value">@Model.RefundedTotal.ToString("N0") đ</div>
+            <div class="ord-stat-value" data-order-refunded-value>@Model.RefundedTotal.ToString("N0") đ</div>
         </div>
 
         <div class="ord-stat warning">
@@ -334,7 +369,7 @@
     </div>
 
     <div class="ord-layout">
-        <div class="ord-card">
+        <div class="ord-card" data-order-information>
             <div class="ord-card-head">
                 <h5 class="ord-card-title">Thông tin đơn hàng</h5>
                 <div class="ord-card-subtitle">Giữ phần chính thật gọn để dễ xem, dễ thao tác tại quầy</div>
@@ -342,19 +377,19 @@
 
             <div class="ord-card-body">
                 <div class="ord-side-grid">
-                    <div class="ord-info">
+                    <div class="ord-info" data-order-field="identity">
                         <div class="ord-info-label">Mã đơn</div>
                         <div class="ord-info-value">@Model.OrderNumber</div>
                         <div class="ord-info-sub">ID: @Model.OrderId</div>
                     </div>
 
-                    <div class="ord-info">
+                    <div class="ord-info" data-order-field="status">
                         <div class="ord-info-label">Trạng thái</div>
                         <div class="ord-badges">
                             <span class="ord-badge @GetStatusBadgeClass(Model.DisplayStatus)">
                                 @GetStatusTextVi(Model.DisplayStatus)
                             </span>
-                            @if (Model.Delivery is null) {
+                            @if (!isDeliverySource) {
                             <span class="ord-badge @GetPaymentBadgeClass(Model.PaymentStatus)">
                                 @GetPaymentStatusTextVi(Model.PaymentStatus)
                             </span>
@@ -366,14 +401,14 @@
                         }
                     </div>
 
-                    <div class="ord-info">
+                    <div class="ord-info" data-order-field="customer">
                         <div class="ord-info-label">Khách hàng</div>
                         <div class="ord-info-value">@DisplayCustomerName()</div>
                         <div class="ord-info-sub">SĐT: @DisplayCustomerPhone()</div>
                     </div>
                     @if (Model.DepositAmount > 0)
                     {
-                        <div class="ord-info">
+                        <div class="ord-info" data-order-field="deposit">
                             <div class="ord-info-label">Tiền cọc đã dùng</div>
                             <div class="ord-info-value">@Model.DepositAmount.ToString("N0") đ</div>
                             <div class="ord-info-sub">Cần trả sau cọc: <strong>@Math.Max(0, Model.GrandTotal - Model.DepositAmount).ToString("N0") đ</strong></div>
@@ -382,7 +417,7 @@
                     }
                     @if (hasVoucher)
 {
-    <div class="ord-info">
+    <div class="ord-info" data-order-field="voucher">
         <div class="ord-info-label">Voucher đã dùng</div>
 
         <div class="ord-info-value">
@@ -439,7 +474,7 @@
                                 Đã hoàn: <strong>@Model.RefundedTotal.ToString("N0") đ</strong>
                                 <button type="button"
                                         class="btn btn-link btn-sm p-0 ms-1"
-                                        onclick="openReturnHistoryModal(@Model.OrderId)">
+                                        data-csp-action="return-history" data-csp-id="@Model.OrderId">
                                     Xem lịch sử
                                 </button>
                             </div>
@@ -459,7 +494,7 @@
         </div>
 
         <div>
-            <div class="ord-card">
+            <div class="ord-card" data-order-goods>
                 <div class="ord-card-head">
                     <h5 class="ord-card-title">Danh sách hàng hóa</h5>
                     <div class="ord-card-subtitle">Thông tin chính được làm nổi bật để nhìn nhanh hơn</div>
@@ -468,7 +503,7 @@
                 <div class="ord-card-body">
                     <div class="ord-table-wrap">
                         <div class="table-responsive">
-                            <table class="table ord-table align-middle">
+                            <table class="table ord-table align-middle" data-order-lines>
                                 <thead>
                                     <tr>
                                         <th style="width:68px;">#</th>
@@ -538,15 +573,15 @@
                     </div>
 
                     <section class="ord-price-breakdown">
-                        <h6>@(Model.Delivery is null ? "Chi tiết giá trị đơn" : "Giá trị dự kiến khi lập đơn")</h6>
+                        <h6>@(isDeliverySource ? "Giá trị dự kiến khi lập đơn" : "Chi tiết giá trị đơn")</h6>
                         <dl><div><dt>Tiền hàng gốc</dt><dd>@Money(Model.Subtotal) đ</dd></div>
                             @foreach (var discount in priceDiscounts.Where(x => x.Amount > 0)) { <div><dt>@discount.Label</dt><dd>−@Money(discount.Amount) đ</dd></div> }
                             @if (otherDiscount > 0) { <div><dt>Giảm giá khác</dt><dd>−@Money(otherDiscount) đ</dd></div> }
-                            <div class="ord-price-net"><dt>@(Model.Delivery is null ? "Tổng tiền" : "Giá trị dự kiến")</dt><dd>@Money(Model.GrandTotal) đ</dd></div>
+                            <div class="ord-price-net"><dt>@(isDeliverySource ? "Giá trị dự kiến" : "Tổng tiền")</dt><dd>@Money(Model.GrandTotal) đ</dd></div>
                         </dl>
-                        @if (Model.Delivery is not null) { <p>@(Model.Delivery.IsPendingSettlement ? "Chưa thu tiền. " : "")Giá trị nguồn đã lưu khi lập đơn; tra thanh toán tại hồ sơ giao.</p> }
+                        @if (isDeliverySource) { <p>@(Model.Delivery!.IsPendingSettlement ? "Chưa thu tiền. " : "")Giá trị nguồn đã lưu khi lập đơn; xem hóa đơn thanh toán liên kết ở trên.</p> }
                     </section>
-                    @if (Model.Delivery is null) {
+                    @if (!isDeliverySource) {
                     <div class="ord-section ord-payment-section">
                         <div class="ord-payment-card">
                             <div>
@@ -556,7 +591,7 @@
                                 </div>
                             </div>
 
-                            <button type="button" class="ord-link-btn ord-payment-btn" onclick="openPaymentHistoryModal()">
+                            <button type="button" class="ord-link-btn ord-payment-btn" data-csp-action="payment-history">
                                 Xem lịch sử thanh toán
                             </button>
                         </div>
@@ -570,7 +605,7 @@
     @if (Model.LegalEntityBreakdown != null)
     {
         var breakdown = Model.LegalEntityBreakdown;
-        <div class="ord-card mt-4">
+        <div class="ord-card mt-4" data-order-legal>
             <div class="ord-card-head">
                 <div>
                     <h5 class="ord-card-title">Phân bổ Hộ kinh doanh</h5>
@@ -676,7 +711,7 @@
     }
 </div>
 
-<div class="modal fade modal-clean" id="orderActionModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade modal-clean" id="orderActionModal" data-mobile-order-dialog tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered" style="max-width:620px;">
         <div class="modal-content">
             <div class="modal-header">
@@ -749,7 +784,7 @@
     </div>
 </div>
 
-<div class="modal fade modal-clean" id="paymentHistoryModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade modal-clean" id="paymentHistoryModal" data-mobile-order-dialog tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
@@ -826,7 +861,7 @@
                                         <tr>
                                             <td><strong>@p.Method</strong></td>
                                             <td>@(string.IsNullOrWhiteSpace(p.Reference) ? "-" : p.Reference)</td>
-                                            <td>@p.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                            <td>@p.CreatedAt.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</td>
                                             <td class="text-end fw-bold">@p.Amount.ToString("N0") đ</td>
                                         </tr>
                                     }
@@ -844,15 +879,15 @@
     </div>
 </div>
 
-<div class="modal fade modal-clean" id="returnRefundModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade modal-clean" id="returnRefundModal" data-mobile-order-dialog tabindex="-1" aria-labelledby="returnRefundModalTitle" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
-                    <h5 class="modal-title">Trả hàng / hoàn tiền</h5>
+                    <h5 class="modal-title" id="returnRefundModalTitle">Trả hàng / hoàn tiền</h5>
                     <div class="small text-muted mt-1">Nhập nhanh số lượng trả, tiền hoàn và lưu thành phiếu</div>
                 </div>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
             </div>
 
             <div class="modal-body">
@@ -862,6 +897,7 @@
             </div>
 
             <div class="modal-footer">
+                <div class="ret-footer-total"><span>Tổng tiền hàng trả</span><strong id="returnRefundFooterTotal" aria-live="polite">0 đ</strong></div>
                 <button type="button" class="btn btn-ord btn-ord-soft" data-bs-dismiss="modal">Đóng</button>
                 <button type="button" class="btn btn-ord btn-ord-primary" id="btnSubmitReturnRefund">Lưu phiếu</button>
             </div>
@@ -869,7 +905,7 @@
     </div>
 </div>
 
-<div class="modal fade modal-clean" id="returnHistoryModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade modal-clean" id="returnHistoryModal" data-mobile-order-dialog tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
@@ -894,6 +930,7 @@
 </div>
 
 @section PageScripts {
+    <script src="~/Admin/js/pos/pos.order.detail.mobile.js" asp-append-version="true" defer></script>
     <script id="posOrderDetailPageScript"
             src="~/Admin/js/pos/pos.order.detail.page.js"
             asp-append-version="true"

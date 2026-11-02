@@ -104,7 +104,7 @@ public sealed class PurchaseOrdersController : Controller
             Request = new SavePurchaseOrderRequest
             {
                 LegalEntityId = options.DefaultLegalEntityId ?? 0,
-                OrderDate = DateTime.Today,
+                OrderDate = VietnamTime.Today,
                 Lines = new List<PurchaseOrderLineInputDto>()
             },
             UnitNames = await GetUnitNamesAsync(ct)

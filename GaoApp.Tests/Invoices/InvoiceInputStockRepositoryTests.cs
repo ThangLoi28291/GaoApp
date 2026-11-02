@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Common.Results;
@@ -342,6 +342,9 @@ public sealed class InvoiceInputStockRepositoryTests
 
         supplemental.Select(x => x.Change).Should().Equal(100m, 20m, -30m);
         var page = InvoiceInputStockReadService.BuildPage(rows, new() { View = "ledger", PageSize = 100 });
+        // Running stock belongs to the response; shared repository rows remain read-only.
+        supplemental = page.Movements.Where(x => x.Key.StartsWith("supplemental-", StringComparison.Ordinal))
+            .OrderBy(x => x.DateUtc).ToList();
         supplemental[0].Before.Should().Be(0m); supplemental[0].After.Should().Be(100m);
         supplemental[1].Before.Should().Be(100m); supplemental[1].After.Should().Be(120m);
         supplemental[2].Before.Should().Be(120m); supplemental[2].After.Should().Be(90m);
@@ -585,9 +588,10 @@ public sealed class InvoiceInputStockRepositoryTests
 
         balance.Opening.Should().Be(100m);
         balance.Received.Should().Be(0m);
-        balance.Issued.Should().Be(4m);
+        // The issued row contains 2 units; the allocation supplies its 1:1 conversion.
+        balance.Issued.Should().Be(2m);
         balance.Held.Should().Be(4m);
-        balance.Available.Should().Be(92m);
+        balance.Available.Should().Be(94m);
         rows.Should().NotContain(x => x.InvoiceHeadId == 303);
     }
 
@@ -1159,6 +1163,128 @@ public sealed class InvoiceInputStockRepositoryTests
         }
     }
 
+    [Fact]
+    public async Task Detail_stock_combines_repeated_product_lines_and_converts_each_display_unit()
+    {
+        await using var db = CreateContext();
+        var data = await SeedBaseAsync(db, 3m);
+        var auto = db.InvoiceDetails.Single();
+        auto.UnitName = "lốc";
+        db.OrderLegalEntityAllocations.Single().BaseQuantity = 12m;
+        db.InvoiceDetails.Add(new InvoiceDetail
+        {
+            Id = 402, StoreId = 1, InvoiceHeadId = data.InvoiceHeadId,
+            SourceType = InvoiceDetailSourceType.Manual, ProductVariantId = data.VariantId,
+            ItemName = "Sữa cùng sản phẩm", UnitName = "hộp", Quantity = 4m, RowVersion = new byte[8]
+        });
+        await db.SaveChangesAsync();
+        await AddSupplementalAsync(db, 99010, data.VariantId, 10m,
+            InvoiceInputStockSupplementalMovementType.LegacyOpening, "DETAIL-STOCK", DateTime.UtcNow);
+
+        var result = await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId);
+
+        Assert.False(result.IsSufficient);
+        Assert.Equal(16m, Assert.Single(result.Lines).RequiredBaseQuantity);
+        var pack = Assert.Single(result.DetailLines, x => x.InvoiceDetailId == 401);
+        Assert.Equal("lốc", pack.UnitName);
+        Assert.Equal("hộp", pack.BaseUnitName);
+        Assert.Equal(4m, pack.UnitFactor);
+        Assert.Equal(2.5m, pack.AvailableQuantity);
+        Assert.Equal(4m, pack.RequiredQuantity);
+        Assert.Equal(1.5m, pack.ShortageQuantity);
+        Assert.Equal(2, pack.SharedLineCount);
+        Assert.Equal("Kho chính", pack.WarehouseName);
+        var box = Assert.Single(result.DetailLines, x => x.InvoiceDetailId == 402);
+        Assert.Equal(10m, box.AvailableQuantity);
+        Assert.Equal(16m, box.RequiredQuantity);
+        Assert.Equal(6m, box.ShortageQuantity);
+        Assert.Equal(2, box.SharedLineCount);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Detail_stock_preserves_legacy_and_order_line_unit_conversion(bool legacy)
+    {
+        await using var db = CreateContext();
+        var data = await SeedBaseAsync(db, 2m);
+        var detail = db.InvoiceDetails.Single();
+        detail.OrderLegalEntityAllocationId = null;
+        detail.UnitName = "lốc";
+        detail.LegacyUnitFactor = legacy ? 4m : null;
+        db.OrderLines.Single().BaseQuantity = 8m;
+        await db.SaveChangesAsync();
+        await AddSupplementalAsync(db, 99011, data.VariantId, 12m,
+            InvoiceInputStockSupplementalMovementType.LegacyOpening, "DETAIL-CONVERSION", DateTime.UtcNow);
+
+        var result = await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId);
+
+        Assert.True(result.IsSufficient);
+        var stock = Assert.Single(result.DetailLines);
+        Assert.Equal(4m, stock.UnitFactor);
+        Assert.Equal(3m, stock.AvailableQuantity);
+        Assert.Equal(2m, stock.RequiredQuantity);
+        Assert.Equal(0m, stock.ShortageQuantity);
+    }
+
+    [Fact]
+    public async Task Detail_stock_does_not_guess_an_ambiguous_warehouse_or_include_free_text_lines()
+    {
+        await using var db = CreateContext();
+        var data = await SeedBaseAsync(db, 2m);
+        var detail = db.InvoiceDetails.Single();
+        detail.OrderLegalEntityAllocationId = null;
+        detail.OrderLineId = null;
+        db.InvoiceHeads.Single().OrderId = null;
+        db.Warehouses.Add(new Warehouse { Id = 12, StoreId = 1, LegalEntityId = 1,
+            Name = "Kho khác", Code = "K2", IsActive = true, RowVersion = new byte[8] });
+        db.InvoiceDetails.Add(new InvoiceDetail { Id = 402, StoreId = 1, InvoiceHeadId = data.InvoiceHeadId,
+            ItemName = "Dịch vụ thêm tay", Quantity = 1m, RowVersion = new byte[8] });
+        await db.SaveChangesAsync();
+
+        var result = await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId);
+
+        Assert.False(result.IsSufficient);
+        Assert.Equal(0, Assert.Single(result.DetailLines).WarehouseId);
+        Assert.Equal(401, result.DetailLines.Single().InvoiceDetailId);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(5)]
+    public async Task Edited_auto_quantity_uses_original_conversion_in_preflight_and_issued_stock(int quantity)
+    {
+        await using var db = CreateContext();
+        var data = await SeedBaseAsync(db, 3m);
+        var allocation = db.OrderLegalEntityAllocations.Single();
+        allocation.BaseQuantity = 12m; // Original 3 packs, each pack contains 4 base units.
+        var detail = db.InvoiceDetails.Single();
+        detail.SourceType = InvoiceDetailSourceType.FromOrderLine;
+        detail.UnitName = "lốc";
+        detail.Quantity = quantity;
+        await db.SaveChangesAsync();
+        await AddSupplementalAsync(db, 99012, data.VariantId, 16m,
+            InvoiceInputStockSupplementalMovementType.LegacyOpening, "EDITED-AUTO", DateTime.UtcNow);
+
+        var availability = await new InvoiceInputStockRepository(db).GetAvailabilityAsync(data.InvoiceHeadId);
+        Assert.Equal(quantity * 4m, Assert.Single(availability.Lines).RequiredBaseQuantity);
+        var stock = Assert.Single(availability.DetailLines);
+        Assert.Equal(4m, stock.UnitFactor);
+        Assert.Equal(quantity, stock.RequiredQuantity);
+        Assert.Equal(Math.Max(0m, quantity - 4m), stock.ShortageQuantity);
+
+        var invoice = db.InvoiceHeads.Single();
+        invoice.ProviderStatus = InvoiceProviderStatus.Issued;
+        invoice.ProviderInvoiceNo = "TEST-EDITED-AUTO";
+        await db.SaveChangesAsync();
+        var movements = await new InvoiceInputStockReadRepository(db).GetMovementsAsync(1);
+        var outbound = Assert.Single(movements, x => x.InvoiceHeadId == data.InvoiceHeadId);
+        Assert.Equal(-quantity * 4m, outbound.Change);
+        Assert.Equal(3m, allocation.Quantity);
+        Assert.Equal(12m, allocation.BaseQuantity);
+        Assert.Equal(3m, db.OrderLines.Single().Quantity);
+    }
+
     private static InMemoryAppDbContext CreateContext()
     {
         var tenant = new TenantContext();
@@ -1174,7 +1300,7 @@ public sealed class InvoiceInputStockRepositoryTests
     private static InMemoryAppDbContext CreateHostContext()
     {
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;

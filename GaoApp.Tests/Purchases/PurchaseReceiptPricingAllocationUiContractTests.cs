@@ -6,6 +6,59 @@ namespace GaoApp.Tests.Purchases;
 public sealed class PurchaseReceiptPricingAllocationUiContractTests
 {
     [Fact]
+    public async Task Ordinary_bill_needs_no_program_and_mismatch_does_not_block_manual_goods_prices_or_approval()
+    {
+        await using var app = await GaoApp.Tests.Security.FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var seed = await PricingAllocationTestData.Seed(app, store);
+        var account = await app.AddAccountAsync(store, "*");
+        using var admin = await app.LoginAsync(account);
+        await using var db = app.Database.CreateTenantContext(store.StoreId);
+        var lines = await db.StockDocumentLines.AsNoTracking().Where(x => x.StockDocumentId == seed.ReceiptId).ToListAsync();
+        var root = GaoApp.Tests.Security.FullApplicationFixture.SourceRoot();
+        var evidence = Environment.GetEnvironmentVariable("GAOAPP_PRICING_EVIDENCE_ROOT")
+            ?? Path.Combine(Path.GetTempPath(), "GaoAppOptionalPricing_" + Guid.NewGuid().ToString("N"));
+        var start = new System.Diagnostics.ProcessStartInfo("node")
+        {
+            WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.Environment["NODE_PATH"] = Path.Combine(root, "Logs/pos-offline-browser-deps/node_modules");
+        start.ArgumentList.Add(Path.Combine(root, "GaoApp.Tests.Browser/receipt-pricing-optional.browser.cjs"));
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync(); var error = process.StandardError.ReadToEndAsync();
+        await process.StandardInput.WriteLineAsync(System.Text.Json.JsonSerializer.Serialize(new
+        {
+            baseUrl = $"http://{store.Host}:{app.Address.Port}", user = account.Name, password = account.Password,
+            terminalId = store.TerminalId, receiptId = seed.ReceiptId, evidenceRoot = evidence,
+            lines = lines.Select(x => new { id = x.Id, unitId = x.UnitId, factor = x.Factor, quantity = x.Quantity })
+        }));
+        process.StandardInput.Close();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch { if (!process.HasExited) process.Kill(true); throw; }
+        Assert.True(process.ExitCode == 0, await output + await error);
+
+        Assert.Empty(await db.PurchasePayables.ToListAsync());
+        var workspace = await PricingAllocationTestData.Get(admin, PricingAllocationTestData.Url(seed.ReceiptId));
+        Assert.True(workspace.IsStale); // Manual Goods correction supersedes the helper's applied price.
+        var receipt = await db.StockDocuments.AsNoTracking().Include(x => x.Lines).SingleAsync(x => x.Id == seed.ReceiptId);
+        var expectedTotal = lines.Sum(x => x.Quantity * (x.Factor == 4m ? 55m : x.Factor * 10m));
+        await admin.JsonAsync(HttpMethod.Post, $"/admin/api/stock-documents/{seed.ReceiptId}/approve-commercial", new
+        {
+            rowVersion = workspace.ReceiptRowVersion, supplierId = receipt.SupplierId, acceptPriceVariance = true,
+            lines = receipt.Lines.Select(x => new { stockDocumentLineId = x.Id, unitPriceBeforeVat = x.UnitPriceBeforeVat }).ToArray()
+        });
+        var confirmed = await db.StockDocuments.AsNoTracking().Include(x => x.Lines).SingleAsync(x => x.Id == seed.ReceiptId);
+        Assert.Equal(GaoApp.Domain.Enums.StockDocumentStatus.Confirmed, confirmed.Status);
+        Assert.Equal(expectedTotal, confirmed.SubtotalBeforeVat);
+        Assert.Equal(55m, confirmed.Lines.Single(x => x.Factor == 4m).UnitPriceBeforeVat);
+        Assert.Equal(expectedTotal, (await db.PurchasePayables.AsNoTracking().SingleAsync()).Amount);
+        Assert.Equal(expectedTotal, (await db.InventoryTransactions.AsNoTracking()
+            .Where(x => x.ReferenceId == seed.ReceiptId.ToString()).SumAsync(x => x.TotalCost)));
+    }
+
+    [Fact]
     public async Task Actual_browser_prices_discounts_and_same_sku_gifts_apply_without_posting()
     {
         await using var app = await GaoApp.Tests.Security.FullApplicationFixture.StartAsync(); var store = app.Stores[0];

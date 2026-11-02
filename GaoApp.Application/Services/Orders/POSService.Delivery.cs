@@ -146,6 +146,13 @@ public sealed partial class POSService
             await _orders.SaveChangesAsync(ct); await ApplyRewardForFinalizedOrderAsync(order, ct);
             ApplyPaymentsToShift(shift, order); // The unrelated CurrentOrderId remains untouched.
             await _orders.SaveChangesAsync(ct);
+            if (_invoiceNotifications is not null)
+            {
+                var notificationRewards = await GetSafeRewardSummaryAsync(order.Id, order.CustomerId, ct);
+                await _invoiceNotifications.CaptureFinalizedOrderAsync(order,
+                    notificationRewards is { IsPointEligible: true } ? notificationRewards.AvailablePoints : null, ct);
+                await _orders.SaveChangesAsync(ct);
+            }
             await WritePosAuditLogAsync("ORDER_FINALIZED", order.Id, $"Bàn giao sau giao hàng #{plan.DeliveryOrderId}",
                 new { plan.DeliveryOrderId, plan.SourceOrderId, plan.SourceWarehouseId, plan.SourceLegalEntityId, plan.ClientRequestId, order.GrandTotal }, ct);
             await WriteFinalizeOrderAuditLogAsync(order, OrderStatus.Draft.ToString(), PaymentStatus.Unpaid.ToString(), ct);

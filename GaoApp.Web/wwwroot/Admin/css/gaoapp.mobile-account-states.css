@@ -1,0 +1,166 @@
+/* UI-03c: only newly added labels/back/help are hidden outside the phone breakpoint. */
+.gao-mobile-account-back, .gao-mobile-account-label, .gao-mobile-state-help { display: none; }
+/* UI-03f: Shared/Error keeps its original content on desktop. */
+.gao-mobile-shared-error { display: none; }
+
+@media (max-width: 767.98px) {
+    body:is([data-mobile-shell-owner],[data-mobile-state-document="true"]) {
+        --gao-service-ink: #192c4a; --gao-service-muted: #6f7e94; --gao-service-primary: #3858df;
+        --gao-service-canvas: #f4f6fa; --gao-service-line: #e5eaf1; --gao-service-surface: #fff;
+    }
+    body[data-mobile-shell-owner] .gao-account-avatar {
+        border-radius: 14px; background: #edf1ff; color: var(--gao-service-primary); font-weight: 700;
+    }
+    body[data-mobile-shell-owner] .gao-account-trigger { border-radius: 15px; }
+    body[data-mobile-shell-owner] .gao-account-signed-in { background: #238065; border-color: #fff; }
+    body[data-mobile-shell-owner] .gao-account-trigger:focus-visible,
+    body[data-mobile-shell-owner] .gao-account-item:focus-visible,
+    body[data-mobile-shell-owner] #employeeAccountDrawer :is(button,a,input):focus-visible {
+        outline: 3px solid #b2c0ff; outline-offset: 2px;
+    }
+    body[data-mobile-shell-owner] #employeeAccountMenu {
+        box-sizing: border-box;
+        left: max(12px,env(safe-area-inset-left)) !important;
+        right: max(12px,env(safe-area-inset-right));
+        width: min(420px,calc(100vw - max(12px,env(safe-area-inset-left)) - max(12px,env(safe-area-inset-right))));
+        max-width: none; margin-inline: auto;
+        max-height: var(--gao-account-mobile-height,calc(100dvh - 96px));
+        padding: 8px; border: 1px solid var(--gao-service-line); border-radius: 22px;
+        color: var(--gao-service-ink); background: var(--gao-service-surface);
+        box-shadow: 0 18px 48px #192c4a24; animation: gao-service-enter .18s ease-out;
+    }
+    body[data-mobile-shell-owner] .gao-account-menu-heading { padding: 14px; border-radius: 15px; background: var(--gao-service-canvas); }
+    body[data-mobile-shell-owner] .gao-account-person { gap: 12px; }
+    body[data-mobile-shell-owner] .gao-account-person strong { color: var(--gao-service-ink); font-size: 16px; line-height: 1.45; }
+    body[data-mobile-shell-owner] .gao-account-person small { color: var(--gao-service-muted); font-size: 13px; }
+    body[data-mobile-shell-owner] .gao-account-store { margin-top: 12px; color: var(--gao-service-muted); font-size: 13px; line-height: 1.5; }
+    body[data-mobile-shell-owner] .gao-account-store > span { min-width: 0; }
+    body[data-mobile-shell-owner] .gao-account-menu-group { margin-top: 8px; padding: 4px 0; border-color: var(--gao-service-line); }
+    body[data-mobile-shell-owner] .gao-mobile-account-label { display: block; padding: 8px 12px 4px; color: var(--gao-service-muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; }
+    body[data-mobile-shell-owner] .gao-account-item { gap: 12px; min-height: 52px; padding: 10px 12px; border-radius: 13px; color: var(--gao-service-ink); font-size: 15px; line-height: 1.5; }
+    body[data-mobile-shell-owner] .gao-account-item > span { min-width: 0; overflow-wrap: anywhere; }
+    body[data-mobile-shell-owner] .gao-account-item > i:first-child { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; border-radius: 10px; color: var(--gao-service-primary); background: #edf1ff; }
+    body[data-mobile-shell-owner] .gao-account-item > i:last-child:not(:first-child) { color: var(--gao-service-muted); }
+    body[data-mobile-shell-owner] .gao-account-item:is(:hover,:focus-visible) { color: var(--gao-service-primary); background: #f1f4ff; }
+    body[data-mobile-shell-owner] .gao-account-logout { color: #ae3445; }
+    body[data-mobile-shell-owner] .gao-account-logout > i:first-child { color: #ae3445; background: #fff0f2; }
+
+    body[data-mobile-shell-owner] #employeeAccountDrawer {
+        --bs-offcanvas-width: 100%; color: var(--gao-service-ink); background: var(--gao-service-canvas); border: 0;
+    }
+    body[data-mobile-shell-owner] #employeeAccountDrawer .offcanvas-header {
+        gap: 12px; padding: max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left));
+        border-color: var(--gao-service-line); background: var(--gao-service-surface);
+    }
+    body[data-mobile-shell-owner] #employeeAccountDrawer .offcanvas-title { flex: 1; min-width: 0; color: var(--gao-service-ink); font-size: 19px; line-height: 1.4; font-weight: 700; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer .btn-close { box-sizing: border-box; flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; margin: 0; padding: 0; border-radius: 13px; background-color: var(--gao-service-canvas); background-position: center; background-size: 12px; opacity: 1; }
+    body[data-mobile-shell-owner] .gao-mobile-account-back:not([hidden]) { display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 1px solid var(--gao-service-line); border-radius: 13px; background: var(--gao-service-surface); color: var(--gao-service-ink); font-size: 21px; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer .offcanvas-body { padding: 16px max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+    body[data-mobile-shell-owner] .gao-account-profile-header { gap: 6px; margin-bottom: 16px; padding: 24px 16px; border: 1px solid var(--gao-service-line); border-radius: 22px; background: var(--gao-service-surface); }
+    body[data-mobile-shell-owner] .gao-account-avatar-large { border-radius: 21px; }
+    body[data-mobile-shell-owner] .gao-account-profile-header > strong { font-size: 20px; line-height: 1.4; color: var(--gao-service-ink); }
+    body[data-mobile-shell-owner] .gao-account-profile-header > span:last-child { color: var(--gao-service-muted); font-size: 14px; }
+    body[data-mobile-shell-owner] .gao-account-details { margin-bottom: 16px; padding: 0 16px; border: 1px solid var(--gao-service-line); border-radius: 18px; background: var(--gao-service-surface); }
+    body[data-mobile-shell-owner] .gao-account-details > div { grid-template-columns: minmax(0,1fr); gap: 5px; padding: 13px 0; border-color: var(--gao-service-line); }
+    body[data-mobile-shell-owner] .gao-account-details > div:last-child { border-bottom: 0; }
+    body[data-mobile-shell-owner] .gao-account-details dt { color: var(--gao-service-muted); font-size: 12px; }
+    body[data-mobile-shell-owner] .gao-account-details dd { color: var(--gao-service-ink); font-size: 15px; line-height: 1.5; }
+    body[data-mobile-shell-owner] .gao-account-note { margin-bottom: 18px; color: var(--gao-service-muted); font-size: 14px; line-height: 1.65; }
+    body[data-mobile-shell-owner] [data-account-section="password"] > .gao-account-note { padding: 16px; border: 1px solid #dce4ff; border-radius: 16px; color: #334d8d; background: #edf2ff; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer :is(.btn,[data-account-login]) { min-height: 48px; padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; font-weight: 600; white-space: normal; }
+    body[data-mobile-shell-owner] [data-account-section="profile"] > .btn { width: 100%; color: var(--gao-service-primary); border-color: #cbd5ff; background: var(--gao-service-surface); }
+    body[data-mobile-shell-owner] #employeeAccountDrawer .btn-primary { color: #fff; border-color: var(--gao-service-primary); background: var(--gao-service-primary); }
+    body[data-mobile-shell-owner] .gao-account-field { margin-bottom: 20px; }
+    body[data-mobile-shell-owner] .gao-account-field .form-label { color: var(--gao-service-ink); font-size: 14px; font-weight: 600; }
+    body[data-mobile-shell-owner] .gao-account-password-input input { min-height: 52px; padding-left: 14px; padding-right: 52px; border: 1px solid #d5ddea; border-radius: 14px; background: var(--gao-service-surface); color: var(--gao-service-ink); font-size: 16px; }
+    body[data-mobile-shell-owner] .gao-account-password-input input[aria-invalid="true"] { border-color: #be4555; }
+    body[data-mobile-shell-owner] .gao-account-password-input button { width: 48px; min-height: 48px; border-radius: 14px; color: var(--gao-service-muted); }
+    body[data-mobile-shell-owner] .gao-account-field > small { color: var(--gao-service-muted); font-size: 13px; line-height: 1.6; }
+    body[data-mobile-shell-owner] .gao-account-field-error { color: #a52e40; font-size: 13px; line-height: 1.6; }
+    body[data-mobile-shell-owner] .gao-account-status { padding: 14px 16px; border: 1px solid #f2cbd2; border-radius: 14px; color: #a52e40; background: #fff2f4; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+    body[data-mobile-shell-owner] .gao-account-status.is-success { border-color: #bde2d3; color: #176448; background: #eef9f3; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer [data-account-login] { display: block; color: var(--gao-service-primary); text-align: center; }
+    body[data-mobile-shell-owner] [data-account-password-form][aria-busy="true"] [data-account-save]::before { content: ""; display: inline-block; width: 14px; height: 14px; margin-right: 8px; vertical-align: -2px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: gao-account-busy .7s linear infinite; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer [data-account-section="help"] { padding: 20px 16px; border: 1px solid var(--gao-service-line); border-radius: 20px; background: var(--gao-service-surface); }
+    body[data-mobile-shell-owner] .gao-account-help-icon { border-radius: 14px; color: var(--gao-service-primary); background: #edf1ff; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer [data-account-section="help"] h3 { color: var(--gao-service-ink); font-size: 16px; line-height: 1.5; }
+    body[data-mobile-shell-owner] #employeeAccountDrawer [data-account-section="help"] p { color: var(--gao-service-muted); font-size: 14px; line-height: 1.7; }
+    body[data-mobile-shell-owner] .gao-account-help-context { border-color: var(--gao-service-line); color: var(--gao-service-muted); }
+    body[data-mobile-shell-owner] [data-mobile-utilities-slot] .gao-admin-utilities { gap: 8px; max-width: min(34vw,144px); overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+    body[data-mobile-shell-owner] [data-mobile-utilities-slot] :is(button,a) { flex: 0 0 auto; min-width: 44px; min-height: 44px; border-radius: 13px; }
+
+    /* Keep Toastr messages, escaping, dismissal and timers in their existing owner. */
+    body[data-mobile-shell-owner] #toast-container > .toast {
+        --gao-notice-color: #3858df; --gao-notice-soft: #edf1ff;
+        box-sizing: border-box; position: relative; margin: 0 0 10px;
+        padding: 16px 52px 16px 58px; border: 1px solid var(--gao-service-line); border-left: 4px solid var(--gao-notice-color);
+        border-radius: 17px; background: #fff !important; background-image: none !important; color: var(--gao-service-ink);
+        box-shadow: 0 8px 26px #192c4a1a; opacity: 1; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere;
+    }
+    body[data-mobile-shell-owner] #toast-container > .toast-success { --gao-notice-color: #176448; --gao-notice-soft: #eaf7ef; }
+    body[data-mobile-shell-owner] #toast-container > .toast-error { --gao-notice-color: #ad3346; --gao-notice-soft: #fff0f2; }
+    body[data-mobile-shell-owner] #toast-container > .toast-warning { --gao-notice-color: #8c5c12; --gao-notice-soft: #fff5e0; }
+    body[data-mobile-shell-owner] #toast-container > .toast::before { content: "i"; position: absolute; top: 16px; left: 12px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; color: var(--gao-notice-color); background: var(--gao-notice-soft); font-size: 18px; font-weight: 700; }
+    body[data-mobile-shell-owner] #toast-container > .toast-success::before { content: "✓"; }
+    body[data-mobile-shell-owner] #toast-container > .toast-error::before { content: "×"; }
+    body[data-mobile-shell-owner] #toast-container > .toast-warning::before { content: "!"; }
+    body[data-mobile-shell-owner] #toast-container .toast-title { margin-bottom: 4px; color: var(--gao-service-ink); font-size: 15px; }
+    body[data-mobile-shell-owner] #toast-container .toast-message { color: var(--gao-service-ink); }
+    body[data-mobile-shell-owner] #toast-container .toast-message a { color: var(--gao-service-primary); text-decoration: underline; }
+    body[data-mobile-shell-owner] #toast-container .toast-close-button { box-sizing: border-box; position: absolute; top: 5px; right: 4px; float: none; width: 44px; height: 44px; padding: 0; color: var(--gao-service-muted); opacity: 1; font-size: 25px; font-weight: 400; line-height: 1; text-shadow: none; }
+    body[data-mobile-shell-owner] #toast-container .toast-close-button:focus-visible { outline: 3px solid #b2c0ff; outline-offset: -3px; }
+    body[data-mobile-shell-owner] #toast-container .toast-progress { height: 3px; background: var(--gao-notice-color); opacity: .35; }
+
+    /* SweetAlert keeps its result, validation, focus and confirmation handlers. */
+    body[data-mobile-shell-owner] .swal2-container:has(.swal2-modal) {
+        top: var(--gao-mobile-visible-top,0px); bottom: auto; height: var(--gao-mobile-visible-height,100dvh);
+        padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+    }
+    body[data-mobile-shell-owner] .swal2-popup.swal2-modal { box-sizing: border-box; width: min(100%,440px); max-height: calc(var(--gao-mobile-visible-height,100dvh) - max(12px,env(safe-area-inset-top)) - max(12px,env(safe-area-inset-bottom))); padding: 20px 16px; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--gao-service-line); border-radius: 24px; color: var(--gao-service-ink); background: var(--gao-service-surface); }
+    body[data-mobile-shell-owner] .swal2-modal .swal2-title { padding: 0 8px; color: var(--gao-service-ink); font-size: 22px; line-height: 1.4; overflow-wrap: anywhere; }
+    body[data-mobile-shell-owner] .swal2-modal .swal2-html-container { margin: 14px 4px 0; color: var(--gao-service-muted); font-size: 15px; line-height: 1.65; overflow-wrap: anywhere; }
+    body[data-mobile-shell-owner] .swal2-modal .swal2-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; margin: 22px 0 0; }
+    body[data-mobile-shell-owner] .swal2-modal .swal2-actions button { box-sizing: border-box; width: 100%; min-height: 48px; margin: 0; padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; white-space: normal; }
+    body[data-mobile-shell-owner] .swal2-modal .swal2-close { min-width: 44px; min-height: 44px; }
+    body[data-mobile-shell-owner] .swal2-modal :is(.swal2-input,.swal2-textarea,.swal2-select) { min-height: 48px; font-size: 16px; border-radius: 12px; }
+
+    body[data-mobile-state-document="true"] { margin-bottom: 0; color: var(--gao-service-ink); background: var(--gao-service-canvas); font-family: system-ui,-apple-system,"Segoe UI",sans-serif; }
+    body[data-mobile-state-document="true"] > :is(header,footer) { display: none; }
+    body[data-mobile-state-document="true"] > .container { padding: 0 max(12px,env(safe-area-inset-right)) 0 max(12px,env(safe-area-inset-left)); }
+    body[data-mobile-state-document="true"] main { padding-bottom: 0 !important; }
+    [data-mobile-state-page] { display: flex; flex-direction: column; justify-content: center; min-height: 100vh; min-height: 100dvh; padding: max(24px,env(safe-area-inset-top)) 0 max(24px,env(safe-area-inset-bottom)) !important; }
+    [data-mobile-state-page="access-denied"] { padding-left: max(12px,env(safe-area-inset-left)) !important; padding-right: max(12px,env(safe-area-inset-right)) !important; }
+    [data-mobile-state-card] { box-sizing: border-box; min-width: 0; width: 100%; margin: 0 auto !important; border: 1px solid var(--gao-service-line) !important; border-radius: 24px; background: var(--gao-service-surface); box-shadow: 0 12px 40px #192c4a0a !important; overflow-wrap: anywhere; animation: gao-service-enter .2s ease-out; }
+    [data-mobile-state-page="access-denied"] [data-mobile-state-card], [data-mobile-state-body] { padding: 28px 20px !important; }
+    [data-mobile-state-symbol] { display: grid; place-items: center; width: 80px; height: 80px; margin: 0 auto 18px !important; border-radius: 25px; background: #fff5e0; }
+    [data-mobile-state-symbol] > i { color: #956317 !important; font-size: 46px !important; }
+    [data-mobile-state-code] { margin-bottom: 12px !important; color: var(--gao-service-ink); font-size: 42px !important; line-height: 1.2; letter-spacing: -.04em; }
+    [data-mobile-state-card] :is(h2,h3,h4) { color: var(--gao-service-ink); font-size: 24px; line-height: 1.35; font-weight: 700; letter-spacing: -.025em; }
+    [data-mobile-state-message] { margin-bottom: 20px !important; color: var(--gao-service-muted) !important; font-size: 15px; line-height: 1.7; }
+    [data-mobile-state-card] .badge { padding: 9px 12px; border-radius: 11px; color: #a52e40; background: #fff0f2 !important; font-size: 13px; }
+    [data-mobile-state-detail] { margin-bottom: 20px !important; padding: 14px; border: 1px solid var(--gao-service-line); border-radius: 14px; color: var(--gao-service-ink); background: var(--gao-service-canvas); text-align: left; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
+    [data-mobile-state-detail] :is(code,small) { color: inherit; font-size: inherit; white-space: normal; overflow-wrap: anywhere; }
+    [data-mobile-state-card] .gao-mobile-state-help { display: block; margin-bottom: 20px; color: var(--gao-service-muted); font-size: 13px; line-height: 1.65; }
+    [data-mobile-state-actions] { flex-direction: column; align-items: stretch; gap: 10px !important; }
+    [data-mobile-state-actions] .btn { min-height: 48px; padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; font-weight: 600; white-space: normal; }
+    [data-mobile-state-actions] .btn-primary { border-color: var(--gao-service-primary); background: var(--gao-service-primary); }
+    [data-mobile-state-actions] .btn:focus-visible { outline: 3px solid #b2c0ff; outline-offset: 2px; }
+
+    [data-mobile-shared-error-desktop] { display: none; }
+    .gao-mobile-shared-error { display: flex; width: 100%; max-width: 480px; margin-inline: auto; }
+    .gao-mobile-shared-error h1 { margin-bottom: 14px; color: var(--gao-service-ink); font-size: 27px; line-height: 1.35; font-weight: 700; letter-spacing: -.025em; }
+    .gao-mobile-shared-error [data-mobile-state-detail] strong { display: block; margin-bottom: 6px; }
+    .gao-mobile-shared-error [data-mobile-state-detail] code { display: block; }
+    body[data-mobile-shell-owner] [data-mobile-state-page="shared-error"] { min-height: 0; padding: 16px 0 !important; }
+
+    @keyframes gao-service-enter { from { opacity: .6; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    @keyframes gao-account-busy { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+        body[data-mobile-shell-owner] #employeeAccountMenu, [data-mobile-state-card],
+        body[data-mobile-shell-owner] [data-account-password-form][aria-busy="true"] [data-account-save]::before { animation: none; }
+    }
+    @media (forced-colors: active) {
+        body[data-mobile-shell-owner] :is(#employeeAccountMenu,#employeeAccountDrawer,.gao-account-status),
+        body[data-mobile-shell-owner] #toast-container > .toast, [data-mobile-state-card] { border: 1px solid CanvasText !important; }
+    }
+}

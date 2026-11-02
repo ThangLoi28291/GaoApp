@@ -240,6 +240,7 @@ public sealed class PurchaseOrderIndexReadRepository : IPurchaseOrderIndexReadRe
                 LineNo = line.LineNo,
                 ProductName = line.ProductNameSnapshot,
                 Sku = line.SkuSnapshot,
+                Note = line.Note,
                 Barcode = line.ProductUnitConversionId.HasValue
                     ? _db.ProductVariantUnitBarcodes
                         .Where(barcode =>

@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 
@@ -19,9 +19,9 @@
 	<ItemGroup>
 		<PackageReference Include="coverlet.collector" Version="6.0.0" />
 		<PackageReference Include="AwesomeAssertions" Version="8.0.2" />
-		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.29" />
-		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.13" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
 		<PackageReference Include="xunit" Version="2.9.3" />
 		<PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
 			<PrivateAssets>all</PrivateAssets>
@@ -38,6 +38,8 @@
     <ProjectReference Include="..\GaoApp.Infrastructure\GaoApp.Infrastructure.csproj" />
     <ProjectReference Include="..\GaoApp.Domain\GaoApp.Domain.csproj" />
     <ProjectReference Include="..\GaoApp.Web\GaoApp.Web.csproj" />
+    <ProjectReference Include="..\GaoApp.Storefront.Web\GaoApp.Storefront.Web.csproj" />
+    <ProjectReference Include="..\GaoApp.LabelPrintClient\GaoApp.LabelPrintClient.csproj" />
   </ItemGroup>
 
 </Project>

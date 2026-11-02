@@ -77,6 +77,8 @@ public sealed class OperatingExpenseService(AppDbContext db) : IOperatingExpense
     {
         var x = await db.OperatingExpenses.SingleOrDefaultAsync(x => x.StoreId == StoreId && !x.IsDeleted && x.Id == id, ct)
             ?? throw new KeyNotFoundException("Không tìm thấy khoản chi trong cửa hàng.");
+        if (await db.Set<GaoApp.Domain.Storefront.StorefrontCarrierWithholding>().AnyAsync(y => y.StoreId == StoreId && y.OperatingExpenseId == id, ct))
+            throw new ConflictAppException("Chi phí đã được quyết toán bằng khoản hãng giao giữ lại; không sửa hoặc hủy riêng nguồn chứng từ.");
         byte[] expected;
         try { expected = Convert.FromBase64String(version ?? ""); } catch (FormatException) { throw new ArgumentException("Phiên bản khoản chi không hợp lệ."); }
         if (expected.Length == 0 || !expected.SequenceEqual(x.RowVersion ?? [])) throw new ConflictAppException("Khoản chi đã được thay đổi bởi người khác. Tải lại để tiếp tục.");

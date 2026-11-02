@@ -65,6 +65,8 @@
             showError,
             formatMoney,
             openReceiptPrint,
+            prepareReceiptPrint,
+            discardReceiptPrint,
             openPaymentModal,
             requestScreenRefresh,
             loadScreen,
@@ -786,6 +788,9 @@
                 onConfirm: async () => {
                     const cashSummary = window.PosCheckoutFeedback?.cashSummary(posState?.business?.currentDraft || posState?.currentDraft);
                     const askBeforePrintingReceipt = (posState?.business?.currentDraft || posState?.currentDraft)?.askBeforePrintingReceipt === true;
+                    const orderId = Number((posState?.business?.currentDraft || posState?.currentDraft)?.orderId);
+                    let finalized = false;
+                    prepareReceiptPrint?.(orderId, askBeforePrintingReceipt);
                     await runPosAction(
                         posState,
                         'order:finalizeCurrentCart',
@@ -804,6 +809,7 @@
                             offlineDisplayMode: 'toast',
                             displayMode: 'toast',
                             onSuccess: async function (data) {
+                                finalized = Number(data?.orderId) > 0;
                                 await applyScreenSuccess({
                                     successMessage: data?.message || 'Đã chốt đơn',
                                     reason: 'order-finalize-current-cart',
@@ -820,6 +826,7 @@
                                 });
                             },
                             onFinally: function () {
+                                if (!finalized) discardReceiptPrint?.(orderId);
                                 refreshLocksSafe();
                             }
                         }
@@ -1578,7 +1585,7 @@
             });
             
             currentDraftBody?.addEventListener('click', function (e) {
-                const priceBtn = e.target.closest('.pos-line-price-btn');
+                const priceBtn = e.target.closest('.pos-line-price-btn, [data-price-line-id]');
                 if (priceBtn) {
                     e.preventDefault();
                     e.stopPropagation();

@@ -3,6 +3,7 @@ using GaoApp.Application.DTOs.Customers;
 using GaoApp.Application.Interfaces.Services.Customers;
 using GaoApp.Application.Interfaces.Services.Rewards;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Constants;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +22,10 @@ public sealed class CustomerProfileReader(AppDbContext db, ITenantContext tenant
         if(!await Exists(customerId,ct))return null;
         var result=new CustomerProfileSummaryDto {Customer=(await customers.GetQuickViewAsync(customerId,ct))!,CanViewOrders=canViewOrders};
         var settings=await db.RewardSettings.AsNoTracking().FirstOrDefaultAsync(x=>x.StoreId==Store,ct);
-        if(settings is {MoneyPerPoint:>0,PointsPerVoucher:>0}) {
+        if(CustomerPriceTiers.IsWholesale(result.Customer.PriceTier)) {
+            result.Rewards=await rewards.GetSummaryAsync(customerId,ct);
+            result.RewardNotice="Khách sỉ không áp dụng tích điểm và đổi điểm.";
+        } else if(settings is {MoneyPerPoint:>0,PointsPerVoucher:>0}) {
             result.Rewards=await rewards.GetSummaryAsync(customerId,ct);
             if(!settings.IsEnabled)result.RewardNotice="Chương trình đang tạm ngưng tích điểm mới. Số dư và lịch sử vẫn được giữ.";
         } else result.RewardNotice="Chưa có cấu hình quy đổi điểm hợp lệ. Lịch sử vẫn hiển thị giá trị tích lũy.";
@@ -38,12 +42,16 @@ public sealed class CustomerProfileReader(AppDbContext db, ITenantContext tenant
     }
     public async Task<CustomerProfilePageDto?> PageAsync(int customerId,CustomerProfileQuery q,bool canViewOrders,CancellationToken ct)
     {
-        if(!await Exists(customerId,ct))return null;
+        var customer=await db.Customers.AsNoTracking().Where(x=>x.StoreId==Store && x.Id==customerId && !x.IsDeleted)
+            .Select(x=>new {x.PriceTier}).FirstOrDefaultAsync(ct);
+        if(customer==null)return null;
+        var isWholesale=CustomerPriceTiers.IsWholesale(customer.PriceTier);
+        if(isWholesale && q.Tab=="points")return new CustomerProfilePageDto {Page=1,PageSize=q.PageSize==50?50:20};
         var settings=await db.RewardSettings.AsNoTracking().FirstOrDefaultAsync(x=>x.StoreId==Store,ct);
-        decimal? perPoint=settings?.MoneyPerPoint>0 ? settings.MoneyPerPoint:null;
+        decimal? perPoint=!isWholesale && settings?.MoneyPerPoint>0 ? settings.MoneyPerPoint:null;
         if(q.Tab=="overview") {
             var recent=new List<CustomerProfileRowDto>();
-            recent.AddRange(await LedgerRows(customerId,canViewOrders).OrderByDescending(x=>x.AtUtc).ThenByDescending(x=>x.Id).Take(20).ToListAsync(ct));
+            if(!isWholesale)recent.AddRange(await LedgerRows(customerId,canViewOrders).OrderByDescending(x=>x.AtUtc).ThenByDescending(x=>x.Id).Take(20).ToListAsync(ct));
             recent.AddRange(await VoucherRows(customerId,canViewOrders).OrderByDescending(x=>x.AtUtc).ThenByDescending(x=>x.Id).Take(20).ToListAsync(ct));
             // Voucher usage is an activity, never another deduction from the points ledger.
             recent.AddRange(await Vouchers(customerId).Where(x=>x.UsedAtUtc!=null).OrderByDescending(x=>x.UsedAtUtc).ThenByDescending(x=>x.Id).Take(20)

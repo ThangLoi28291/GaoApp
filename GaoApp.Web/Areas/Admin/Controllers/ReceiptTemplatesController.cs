@@ -9,7 +9,7 @@ using GaoApp.Application.Interfaces.Services.Security;
 namespace GaoApp.Web.Areas.Admin.Controllers;
 
 [Route("admin/receipt-templates")]
-[Authorize(Policy = PermissionCodes.Pos.Order.Reprint)]
+[Authorize]
 [AutoValidateAntiforgeryToken]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class ReceiptTemplatesController(ReceiptTemplateService templates, IPOSRuntimeContextAccessor runtime,
@@ -17,7 +17,7 @@ public sealed class ReceiptTemplatesController(ReceiptTemplateService templates,
 {
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        if ((context.ActionDescriptor.RouteValues["action"] == nameof(Index) || !HttpMethods.IsGet(Request.Method))
+        if (!HttpMethods.IsGet(Request.Method)
             && !await adminAccess.IsAdminAsync(HttpContext.RequestAborted))
         {
             context.Result = Forbid();
@@ -28,11 +28,14 @@ public sealed class ReceiptTemplatesController(ReceiptTemplateService templates,
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
+        if (!await adminAccess.IsAdminAsync(ct)) return Forbid();
         ViewBag.StoreId = CurrentStoreId;
         ViewBag.TerminalId = runtime.TerminalId;
-        ViewBag.CanManage = (await authorization.AuthorizeAsync(User, PermissionCodes.System.ReceiptTemplate.Manage)).Succeeded;
+        ViewBag.CanManage = await adminAccess.IsAdminAsync(ct)
+            && (await authorization.AuthorizeAsync(User, PermissionCodes.System.ReceiptTemplate.Manage)).Succeeded;
         ViewBag.StoreInfo = await templates.GetStoreInfoAsync(ct);
         ViewBag.ReceiptDefault = await templates.GetDefaultAsync(ct);
+        ViewBag.CanConfigurePrinter = (await authorization.AuthorizeAsync(User, PermissionCodes.Pos.Order.View)).Succeeded;
         return View(await templates.ListAsync(ct));
     }
     [HttpGet("data")]

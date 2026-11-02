@@ -1,0 +1,60 @@
+@model GaoApp.Application.Storefront.StorefrontProductPage
+@using GaoApp.Domain.Storefront
+@{ ViewData["Title"] = "Hàng website: " + Model.Name; }
+<div class="container-fluid py-3">
+    <a asp-action="Index">← Danh sách hàng website</a>
+    <h1 class="h3 mt-3">@Model.Name</h1>
+    <p>Giá bán lẻ đọc trực tiếp từ giá POS. Trọng lượng kg là trọng lượng giao của đúng một đơn vị bán.</p>
+    @if (!Model.IsSellable) { <div class="alert alert-warning">Nguồn hàng đang ngừng hoạt động hoặc ngừng bán. Website sẽ chặn lựa chọn này.</div> }
+    <div class="alert alert-info">@(Model.ShippingByWeight ? "Đang tính phí theo kg: mỗi đơn vị chọn đăng phải có kg dương." : "Đang dùng phí giao cố định; có thể chuẩn bị kg trước.") Bật biến thể rồi chọn riêng đơn vị gốc hoặc đơn vị quy đổi; có thể chỉ bán lốc/thùng.</div>
+    <div asp-validation-summary="All" class="text-danger" role="alert"></div>
+    <a asp-action="Edit" asp-route-id="@Model.ProductId" class="d-inline-block mb-3">Tải lại dữ liệu mới nhất</a>
+    <form asp-action="Save" asp-route-id="@Model.ProductId" method="post">
+        <input asp-for="Product.Version" type="hidden" />
+        <fieldset disabled="@(!Model.CanManage)">
+            <div class="card mb-3"><div class="card-body">
+                <h2 class="h5">Thông tin trên website</h2>
+                <div class="form-check mb-3"><input asp-for="Product.IsPublished" class="form-check-input" /><label asp-for="Product.IsPublished" class="form-check-label">Đăng sản phẩm website</label></div>
+                <label asp-for="Product.DisplayName" class="form-label">Tên hiển thị (để trống dùng tên gốc)</label><input asp-for="Product.DisplayName" maxlength="200" class="form-control mb-3" />
+                <label asp-for="Product.Description" class="form-label">Mô tả / nội dung dạng văn bản</label><textarea asp-for="Product.Description" maxlength="6000" rows="6" class="form-control mb-3"></textarea>
+                <div class="row g-3"><div class="col-md-8"><label asp-for="Product.DisplayGroup" class="form-label">Nhóm trưng bày</label><input asp-for="Product.DisplayGroup" maxlength="100" class="form-control" /></div><div class="col-md-4"><label asp-for="Product.SortOrder" class="form-label">Thứ tự</label><input asp-for="Product.SortOrder" type="number" class="form-control" /></div></div>
+            </div></div>
+            @for (var i = 0; i < Model.Product.Variants.Count; i++)
+            {
+                var variant = Model.Product.Variants[i]; var option = Model.VariantOptions.SingleOrDefault(x => x.VariantId == variant.VariantId);
+                if (option is null) { continue; }
+                <div class="card mb-3"><div class="card-body">
+                    <h2 class="h5">@option.Name · @option.Sku</h2>
+                    <input asp-for="Product.Variants[i].VariantId" type="hidden" />
+                    <div class="form-check mb-2"><input asp-for="Product.Variants[i].IsPublished" class="form-check-input" /><label asp-for="Product.Variants[i].IsPublished" class="form-check-label">Đăng biến thể @(option.IsActive ? "" : "(nguồn đang tắt)")</label></div>
+                    <div class="table-responsive"><table class="table"><thead><tr><th>Đăng đơn vị</th><th>Đơn vị bán</th><th>Quy đổi tồn</th><th>Giá lẻ</th><th>Kg / đơn vị bán</th></tr></thead><tbody>
+                        <tr><td><input asp-for="Product.Variants[i].BaseUnitIsPublished" aria-label="Đăng đơn vị gốc @option.Name" /></td><td>@option.BaseUnitName (gốc)</td><td>1</td><td>@option.BaseRetailPrice.ToString("N0") đ</td><td><input asp-for="Product.Variants[i].BaseUnitWeightKg" type="number" min="0.000001" step="0.000001" class="form-control" aria-label="Kg đơn vị gốc @option.Name" /></td></tr>
+                        @for (var j = 0; j < variant.Units.Count; j++)
+                        {
+                            var unit = variant.Units[j]; var unitOption = option.Units.SingleOrDefault(x => x.ConversionId == unit.ProductUnitConversionId);
+                            if (unitOption is null) { continue; }
+                            <tr><td><input asp-for="Product.Variants[i].Units[j].ProductUnitConversionId" type="hidden" /><input asp-for="Product.Variants[i].Units[j].IsPublished" aria-label="Đăng @unitOption.Name của @option.Name" /></td><td>@unitOption.Name @(!unitOption.IsActive ? "(nguồn đang tắt)" : "")</td><td>@unitOption.Factor</td><td>@unitOption.RetailPrice.ToString("N0") đ</td><td><input asp-for="Product.Variants[i].Units[j].WeightKg" type="number" min="0.000001" step="0.000001" class="form-control" aria-label="Kg @unitOption.Name của @option.Name" /></td></tr>
+                        }
+                    </tbody></table></div>
+                </div></div>
+            }
+            <div class="card mb-3"><div class="card-body">
+                <h2 class="h5">Ảnh và media đã lưu</h2>
+                <p>Chọn tối đa 20 tài sản của cửa hàng. Muốn bỏ liên kết, chọn “Không chọn”. <a asp-action="Media" target="_blank" rel="noopener">Tra cứu thư viện media và mã tài sản</a>.</p>
+                <div class="table-responsive"><table class="table"><thead><tr><th>Tài sản (mã)</th><th>Loại</th><th>Mô tả thay thế</th><th>Thứ tự</th></tr></thead><tbody>
+                @for (var i = 0; i < 20; i++)
+                {
+                    var media = i < Model.Product.Media.Count ? Model.Product.Media[i] : new GaoApp.Application.Storefront.StorefrontMediaRequest();
+                    <tr><td><input name="Product.Media[@i].MediaAssetId" value="@media.MediaAssetId" type="number" min="0" class="form-control" list="storefrontMedia" aria-label="Mã media @(i+1)" /></td>
+                    <td><select name="Product.Media[@i].Kind" class="form-select" aria-label="Loại media @(i+1)"><option value="Image" selected="@(media.Kind == StorefrontMediaKind.Image)">Ảnh</option><option value="Model3D" selected="@(media.Kind == StorefrontMediaKind.Model3D)">Mô hình 3D</option></select></td>
+                    <td><input name="Product.Media[@i].AltText" value="@media.AltText" maxlength="300" class="form-control" aria-label="Mô tả media @(i+1)" /></td>
+                    <td><input name="Product.Media[@i].SortOrder" value="@media.SortOrder" type="number" class="form-control" aria-label="Thứ tự media @(i+1)" /></td></tr>
+                }
+                </tbody></table></div>
+                <datalist id="storefrontMedia">@foreach (var media in Model.MediaOptions) { <option value="@media.Id">@media.Name</option> }</datalist>
+                <p class="small">Mã 0 = không chọn. Chỉ nhận media đã lưu, không tạm; không nhập URL bên ngoài.</p>
+            </div></div>
+            @if (Model.CanManage) { <button class="btn btn-primary mb-4" type="submit">Lưu hàng website</button> }
+        </fieldset>
+    </form>
+</div>

@@ -9,6 +9,9 @@ public class AuditLog
 {
     public long Id { get; set; }
 
+    /// <summary>Stable identity of an outbox event; null for existing/direct transactional evidence.</summary>
+    public Guid? EventId { get; set; }
+
     /// <summary>
     /// Store thực hiện hành động.
     /// GaoApp là multi-store nên audit log vận hành luôn phải gắn StoreId.

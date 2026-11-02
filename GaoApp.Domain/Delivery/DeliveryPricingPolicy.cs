@@ -1,7 +1,71 @@
+using System.Numerics;
+
 namespace GaoApp.Domain.Delivery;
 
 public static class DeliveryPricingPolicy
 {
+    public static IReadOnlyList<DeliveryApprovedPriceLine> ApprovePos(IReadOnlyList<DeliveryPosPriceLine> lines,
+        decimal subtotal, decimal orderDiscount, decimal comboDiscount, decimal voucherDiscount, decimal grandTotal)
+    {
+        DeliveryValues.Require(lines.Count > 0 && lines.All(x => x.LineId > 0) &&
+            lines.Select(x => x.LineId).Distinct().Count() == lines.Count, "LINES_INVALID", "Đơn cần dòng hàng có mã riêng.");
+        foreach (var amount in new[] { subtotal, orderDiscount, comboDiscount, voucherDiscount, grandTotal })
+            DeliveryValues.Money(amount, "Snapshot POS");
+        DeliveryValues.Require(grandTotal > 0, "ZERO_PRICE_UNSUPPORTED", "Tổng đơn giao phải lớn hơn 0 như thanh toán POS.");
+        var gross = new Dictionary<int, decimal>();
+        var discounts = new Dictionary<int, decimal>();
+        foreach (var line in lines)
+        {
+            DeliveryValues.Quantity(line.OrderedQuantity, "Lượng đặt");
+            DeliveryValues.Require(line.OrderedQuantity > 0, "QUANTITY_INVALID", "Lượng đặt phải lớn hơn 0.");
+            DeliveryValues.Money(line.UnitPrice, "Đơn giá", false);
+            DeliveryValues.Money(line.LineDiscount, "Giảm dòng POS", false);
+            DeliveryValues.Money(line.PromotionDiscount, "Khuyến mãi dòng POS", false);
+            DeliveryValues.Money(line.LineTotal, "Thành tiền dòng POS");
+            gross[line.LineId] = DeliveryValues.PricedAmount(line.OrderedQuantity, line.UnitPrice);
+            discounts[line.LineId] = gross[line.LineId] - line.LineTotal;
+            DeliveryValues.Require(line.LineDiscount + line.PromotionDiscount <= gross[line.LineId] &&
+                DeliveryValues.RoundMoney(gross[line.LineId] - line.LineDiscount - line.PromotionDiscount) == line.LineTotal,
+                "QUOTE_MISMATCH", "Giá dòng POS không khớp giảm giá đã áp dụng.");
+        }
+        var posSubtotal = DeliveryValues.RoundMoney(lines.Sum(x => x.RoundGrossInSubtotal
+            ? gross[x.LineId] : x.OrderedQuantity * x.UnitPrice));
+        DeliveryValues.Require(posSubtotal == subtotal, "QUOTE_MISMATCH", "Tạm tính POS không khớp các dòng nguồn.");
+        // POS rounds the aggregate gross; reconcile its bounded whole-dong difference once,
+        // deterministically, without changing the source prices or charging free gift lines.
+        var beforeHeader = subtotal - DeliveryValues.RoundMoney(lines.Sum(x => x.LineDiscount)) -
+            DeliveryValues.RoundMoney(lines.Sum(x => x.PromotionDiscount));
+        var rounding = beforeHeader - lines.Sum(x => x.LineTotal);
+        DeliveryValues.Require(beforeHeader >= 0 && Math.Abs(rounding) <= lines.Count + 1,
+            "QUOTE_MISMATCH", "Chênh lệch làm tròn POS không hợp lệ.");
+        var candidates = lines.Where(x => !x.IsGift && x.UnitPrice > 0 &&
+            (rounding > 0 ? x.LineTotal > 0 || x.PromotionDiscount == 0 : x.LineTotal > 0))
+            .OrderBy(x => x.LineId).ToArray();
+        for (var remaining = Math.Abs(rounding); remaining > 0; remaining--)
+        {
+            var candidate = candidates.FirstOrDefault(x => rounding > 0 || gross[x.LineId] > discounts[x.LineId]);
+            DeliveryValues.Require(candidate is not null, "QUOTE_MISMATCH", "Không thể phân bổ chênh lệch làm tròn POS.");
+            gross[candidate!.LineId] += rounding > 0 ? 1 : -1;
+        }
+        var total = gross.Values.Sum() - discounts.Values.Sum();
+        var headerDiscount = orderDiscount + comboDiscount + voucherDiscount;
+        DeliveryValues.Require(total - headerDiscount == grandTotal && headerDiscount <= total,
+            "QUOTE_MISMATCH", "Tổng giá/giảm giá POS không khớp; tải lại giỏ.");
+        var denominator = new BigInteger(total);
+        var shares = lines.Select(x =>
+        {
+            var numerator = new BigInteger(gross[x.LineId] - discounts[x.LineId]) * new BigInteger(headerDiscount);
+            var whole = BigInteger.DivRem(numerator, denominator, out var remainder);
+            return (x.LineId, Whole: (decimal)whole, Remainder: remainder);
+        }).ToArray();
+        var allocated = shares.ToDictionary(x => x.LineId, x => x.Whole);
+        var residual = (int)(headerDiscount - allocated.Values.Sum());
+        foreach (var share in shares.OrderByDescending(x => x.Remainder).ThenBy(x => x.LineId).Take(residual))
+            allocated[share.LineId]++;
+        return lines.Select(x => new DeliveryApprovedPriceLine(x.LineId, x.OrderedQuantity, gross[x.LineId],
+            discounts[x.LineId], allocated[x.LineId], gross[x.LineId] - discounts[x.LineId] - allocated[x.LineId])).ToArray();
+    }
+
     public static IReadOnlyList<DeliveryApprovedPriceLine> Approve(IReadOnlyList<DeliveryPriceLine> lines,
         decimal orderDiscount = 0m, bool hasConditionalPromotionOrVoucher = false,
         decimal additionalTaxOrFee = 0m, decimal advanceAmount = 0m)

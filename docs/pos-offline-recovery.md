@@ -1,6 +1,28 @@
 # Xử lý client POS offline không đồng bộ
 
-## Nguyên nhân đã xác định
+## HTTP 500 khi đồng bộ mã hàng có SKU dài — 09/10/2026
+
+Ảnh POS tại `chonthanh.gaomart.com.vn:8443` báo **Máy chủ trả lỗi HTTP 500 khi đồng bộ** và còn 31 thao tác. File `gao-pos-pending-1-1791522235248.json` có ngữ cảnh store `1`, terminal `1`, user `641758`, shift `800786`. Thao tác đầu là `c21a77dd-8ba1-4f92-84f7-6e1d06a84b02`, `POST /admin/pos/cart/current/scan`, barcode `8934988560459`, quantity `1`, giỏ server `1836550`.
+
+Sản phẩm variant `553265` có SKU `nuoc-giat-xa-power-huong-nuoc-hoa-phap-dam-me-tui-3kg`, dài **53 ký tự**. `ProductVariants.Sku` cho phép 60 ký tự, nhưng `OrderLines.Sku` trước sửa chỉ cho phép 50. POS sao chép nguyên SKU vào dòng hàng; SQL Server từ chối ghi với lỗi truncation (8152/2628), API trả HTTP 500. Client giữ nguyên thao tác chưa được xác nhận và gửi tuần tự, nên 30 thao tác sau tiếp tục chờ. Nhãn “Mất kết nối máy chủ” cũng được dùng khi server trả 5xx; ảnh này xác định server trả lỗi, không chứng minh mất Internet.
+
+File giữ bốn đơn đã hoàn tất cục bộ: `1836550` (230.000), `1500000186` (41.300), `1500000191` (29.100), `1500000196` (74.000). Các mã từ `1500000000` là mã tạm trên client. `state.conflict = null` vì nhánh 5xx giữ hàng đợi để tự thử lại; không có thao tác số lượng bất thường hay khoản thu bị cô lập trong file này. Tổng tiền mặt khách đưa có thể lớn hơn tổng đơn vì cần trả tiền thừa.
+
+Sửa trong source: `OrderLineConfiguration` và snapshot tăng SKU lên 60; migration **`20261009060000_WidenOrderLineSku`** chỉ mở rộng cột `OrderLines.Sku` từ `nvarchar(50)` thành `nvarchar(60) NULL`. Không cắt SKU, đổi mã sản phẩm hoặc xóa journal. Down từ chối thu hẹp nếu đã có SKU dài hơn 50 đơn vị UTF-16.
+
+Khôi phục tại cửa hàng:
+
+1. Giữ file JSON và dữ liệu trình duyệt. Không xóa IndexedDB, tạo lại bốn đơn hoặc bỏ thao tác quét đầu tiên: các khoản thu/chốt đơn sau phụ thuộc vào sản phẩm này.
+2. Chạy [SQL chỉ đọc](pos-sku-capacity-diagnostic.sql) trong database của host để xác nhận SKU/cột thực tế, ca/giỏ và receipt của thao tác. Nếu cần đối chiếu log, tìm `POST /admin/pos/cart/current/scan` quanh 11:49–12:08 ngày 09/10/2026 (UTC 04:49–05:08), dùng `traceId` trong phản hồi lỗi. File log mặc định là `App_Data/Logs/web-20261009*.log`; host có thể cấu hình vị trí khác.
+3. Triển khai Web/Migrator phù hợp và áp dụng migration SKU theo TH2 trong [runbook triển khai](development/GAOAPP-DEPLOYMENT-RUNBOOK-20260913.md). Kiểm tra history thực tế để biết các migration còn thiếu; không chạy toàn bộ migration khác chỉ để xử lý lỗi SKU. Chỉ đổi JavaScript hoặc tăng thời gian chờ sẽ không sửa lỗi ghi cột này.
+4. Mở đúng quầy/nhân viên/ca gốc, chỉ một tab POS, bấm **Thử đồng bộ**. Giữ mã thao tác cũ để server dùng receipt chống trùng. Chờ pending giảm từ 31 về 0; nếu phát sinh lỗi nghiệp vụ mới, lưu bản đối soát mới trước khi xử lý.
+5. Đối chiếu bốn đơn, tiền thu/tiền thừa và tồn kho trên server trước khi đóng ca. Không nhập lại khoản thu đã được server xác nhận.
+
+Đã tái hiện HTTP 500 trên Web/SQL thử nghiệm với chính SKU 53 ký tự và với SKU 60 ký tự trước sửa. Việc triển khai và kiểm tra database/log host phải được xác nhận riêng; file JSON không chứa exception SQL từ host.
+
+Xác minh sau sửa: Release build đạt, 0 warning/error; **17/17 test đạt, 0 skip**. Gồm SKU 53/60 ký tự qua API scan offline, gửi lại cùng operation ID không thêm trùng dòng, tái hiện SQL truncation trên cột cũ, nâng cột giữ dòng hàng cũ, chặn downgrade mất dữ liệu, hồi quy POS/QR/khoản thu và kiểm tra model/snapshot/manifest/nâng cấp database. Evidence: `Logs/pos-sku-20261009/tests-before/before-unsandboxed.trx` (2/2 tái hiện HTTP 500 trước sửa), `Logs/pos-sku-20261009/tests-after/after.trx` (12/12), `Logs/pos-sku-20261009/tests-schema/schema-regression.trx` (5/5). Chưa deploy, chạy migration trên host hoặc xác nhận 31 thao tác đã đồng bộ tại cửa hàng.
+
+## Trường hợp trước: hàng đợi có số lượng quá lớn
 
 File đối soát của client có hàng đợi 353 thao tác. Thao tác đầu tiên cập nhật dòng hàng với `qty=138935001002581`, vượt giới hạn an toàn của POS. Client cũ coi lỗi HTTP từ server như lỗi mất mạng, giữ nguyên thao tác đầu hàng đợi và lặp lại mãi nên các thao tác hợp lệ phía sau không thể chạy.
 

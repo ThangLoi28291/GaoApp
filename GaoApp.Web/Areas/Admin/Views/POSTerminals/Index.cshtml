@@ -55,7 +55,7 @@
                     {
                         <tr>
                             <td><strong>@(string.IsNullOrWhiteSpace(device.DeviceName) ? "Thiết bị chưa đặt tên" : device.DeviceName)</strong><div class="text-muted small">#@device.Id</div></td>
-                            <td class="text-nowrap">@device.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm")</td>
+                            <td class="text-nowrap">@device.CreatedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</td>
                             <td><span class="badge @(device.IsActive ? "bg-label-success" : "bg-label-secondary")">@(device.IsActive ? "Đang dùng" : "Đã thu hồi")</span></td>
                             <td>
                                 @if (device.IsActive)
@@ -76,3 +76,11 @@
 @section PageScripts {
     <script src="~/Admin/js/pos-terminals.js" asp-append-version="true"></script>
 }
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
+}
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="POSTerminals/Index"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

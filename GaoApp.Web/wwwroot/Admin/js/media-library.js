@@ -27,8 +27,8 @@
     const notice = sessionStorage.getItem('gao.media.notice');
     if (notice) { sessionStorage.removeItem('gao.media.notice'); show(notice); }
     root.querySelectorAll('time[data-local-time]').forEach(time => {
-        const date = new Date(time.dateTime.endsWith('Z') ? time.dateTime : time.dateTime + 'Z');
-        if (!Number.isNaN(date.getTime())) time.textContent = date.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' });
+        const date = new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(time.dateTime) ? time.dateTime : time.dateTime + 'Z');
+        if (!Number.isNaN(date.getTime())) time.textContent = date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', dateStyle: 'short', timeStyle: 'short' });
     });
     root.querySelectorAll('[data-media-image]').forEach(img => {
         const fail = () => { img.hidden = true; img.closest('.media-preview').querySelector('.media-missing').hidden = false; };

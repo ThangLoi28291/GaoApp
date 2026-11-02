@@ -2,9 +2,6 @@
     'use strict';
     const watched = new Map();
     const manualPending = new Set();
-    const checking = new Set();
-    const recording = new Set();
-    const retrying = new Set();
     const initialDelay = 30000;
     const retryDelay = 8000;
     let activeRun = null;
@@ -24,29 +21,9 @@
     function pause() {
         paused = true;
         clearDiscoveryNote();
-        renderCountdown();
-    }
-    function renderCountdown() {
-        const box = document.getElementById('acbPaymentCountdown');
-        if (!box) return;
-        const next = watched.get(focusedQrId);
-        box.hidden = next == null || !canPoll();
-        if (box.hidden) return;
-        const label = document.getElementById('acbPaymentCountdownLabel');
-        const value = document.getElementById('acbPaymentCountdownValue');
-        const seconds = Math.max(0, Math.ceil((next - Date.now()) / 1000));
-        const busy = checking.has(focusedQrId) || recording.has(focusedQrId);
-        box.dataset.phase = busy ? 'checking' : retrying.has(focusedQrId) ? 'retry' : 'waiting';
-        const text = recording.has(focusedQrId) ? 'Đang ghi nhận thanh toán…'
-            : checking.has(focusedQrId) ? 'Đang kiểm tra ACB…'
-            : seconds === 0 ? 'Đang chờ lượt kiểm tra…'
-            : retrying.has(focusedQrId) ? 'Thử kiểm tra lại sau' : 'Kiểm tra ACB tiếp theo sau';
-        if (label && label.textContent !== text) label.textContent = text;
-        if (value) value.textContent = busy ? '…' : `${Math.floor(seconds / 60).toString().padStart(2, '0')}:${(seconds % 60).toString().padStart(2, '0')}`;
     }
     function forget(id) {
-        watched.delete(id); manualPending.delete(id); retrying.delete(id);
-        renderCountdown();
+        watched.delete(id); manualPending.delete(id);
     }
     function note(message, orderId, qrId, kind = 'payment') {
         if (!banner) { banner = document.createElement('div'); banner.id = 'acbPaymentNotice'; banner.className = 'alert alert-info'; banner.setAttribute('role', 'status'); document.getElementById('paymentQrModal')?.before(banner); }
@@ -88,16 +65,12 @@
                 if (!canPoll()) { pause(); return; }
                 const manual = manualPending.delete(id);
                 const refresh = manual || Date.now() >= retrieveAfter;
-                if (refresh) checking.add(id);
-                renderCountdown();
                 try {
                     const result = await post(`/admin/acb/payments/${id}/status?refresh=${refresh}${manual ? '&manual=true' : ''}`);
                     if (!canPoll()) { pause(); return; }
-                    // The countdown and the next outbound lookup use the same deadline.
-                    // Local callback-state reads must not push that deadline back.
-                    if (refresh) { watched.set(id, Date.now() + retryDelay); retrying.delete(id); }
+                    // Local callback-state reads must not push the fallback lookup deadline back.
+                    if (refresh) watched.set(id, Date.now() + retryDelay);
                     if (result.status === 'Received' || result.status === 'Completed') {
-                        recording.add(id); renderCountdown();
                         note('ACB đã xác nhận khoản chuyển. Đang ghi nhận thanh toán…', result.orderId, id);
                         const completed = await post(`/admin/acb/payments/${id}/complete`);
                         // A manual request queued during completion must not recreate or print this payment again.
@@ -117,14 +90,14 @@
                         note(result.message || (result.status === 'Cancelled' ? 'QR đã hủy.' : 'Giao dịch cần kiểm tra, chưa chốt đơn.'), result.orderId, id);
                     } else if (refresh) {
                         const at = result.lastRetrievedAtUtc;
-                        const time = at ? new Date(at + (at.endsWith('Z') ? '' : 'Z')).toLocaleTimeString('vi-VN') : null;
+                        const time = at ? new Date(at + (/(Z|[+-]\d{2}:?\d{2})$/i.test(at) ? '' : 'Z')).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : null;
                         note(`ACB chưa xác nhận nhận đủ tiền.${time ? ' Kết quả tra cứu lúc ' + time + '.' : ''} Có thể bấm Kiểm tra ngay sau khi chuyển khoản.`, result.orderId, id);
                     }
                 } catch (error) {
-                    if (watched.has(id)) { watched.set(id, Date.now() + retryDelay); retrying.add(id); }
+                    if (watched.has(id)) watched.set(id, Date.now() + retryDelay);
                     if (canPoll()) note(error.message, null, id);
                     else pause();
-                } finally { checking.delete(id); recording.delete(id); renderCountdown(); }
+                }
             }
         } while (discoverPending || manualPending.size > 0);
     }
@@ -140,16 +113,14 @@
             focusedQrId = qr.id;
             if (qr.savedStatus === 'ReviewRequired') forget(qr.id);
             else if (!watched.has(qr.id)) watched.set(qr.id, Date.now() + initialDelay);
-            renderCountdown();
         },
-        blur() { focusedQrId = null; renderCountdown(); },
+        blur() { focusedQrId = null; },
         forget,
         async check(qrId = focusedQrId) {
             if (!Number.isInteger(qrId) || qrId <= 0) return;
             if (!canPoll()) { pause(); return; }
             focusedQrId = qrId;
             watched.set(qrId, 0); manualPending.add(qrId);
-            renderCountdown();
             const button = document.getElementById('btnCheckAcbPayment');
             if (button) button.disabled = true;
             note('Đang tra cứu giao dịch trực tiếp tại ACB…', null, qrId);
@@ -178,7 +149,6 @@
         nextDiscoveryAt = Date.now() + retryDelay;
         tick(true);
         setInterval(() => {
-            renderCountdown();
             if (activeRun) return;
             const discover = Date.now() >= nextDiscoveryAt;
             if (discover) nextDiscoveryAt = Date.now() + retryDelay;

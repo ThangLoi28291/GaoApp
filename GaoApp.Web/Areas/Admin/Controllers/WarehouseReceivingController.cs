@@ -5,6 +5,7 @@ using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Application.Interfaces.Services.Purchases;
 using GaoApp.Domain.Enums;
+using GaoApp.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -64,13 +65,28 @@ public class WarehouseReceivingController : Controller
             ? await _procurementCatalogService.GetQuickCreateOptionsAsync(ct)
             : new ProcurementQuickCreateOptionsDto();
 
+        var approvePolicy = model.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || model.PurchaseOrderId.HasValue
+            ? PermissionCodes.Purchase.Receipt.Approve : PermissionCodes.Inventory.StockDocument.Approve;
+        if (!(await _authorizationService.AuthorizeAsync(User, null, approvePolicy)).Succeeded &&
+            !(await _authorizationService.AuthorizeAsync(User, null, PermissionCodes.Purchase.Order.ViewCost)).Succeeded)
+            ReceiptCommercialRedaction.Apply(model);
+
         return View(model);
     }
 
     [HttpGet("receipts")]
     public async Task<IActionResult> GetReceipts(CancellationToken ct)
     {
-        var items = await _stockDocumentService.GetReceiptListAsync(ct);
+        List<StockDocumentListItemDto> items;
+        try
+        {
+            items = await _stockDocumentService.GetReceivingReceiptListAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested && HttpContext.RequestAborted.IsCancellationRequested)
+        {
+            // Navigating away cancels this read; it is not a server failure.
+            return StatusCode(499);
+        }
 
         var result = items
             .Where(x =>

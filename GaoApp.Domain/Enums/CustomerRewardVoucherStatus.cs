@@ -9,5 +9,6 @@ public enum CustomerRewardVoucherStatus
     Used = 2,
     Cancelled = 3,
     Expired = 4,
-    Locked = 5
+    Locked = 5,
+    ReservedForDelivery = 6
 }

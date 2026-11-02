@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const ui11 = require('./receipt-mobile-review.cjs'); // UI-11 review hook
 
 (async () => {
     const info = JSON.parse(await new Promise(resolve => {
@@ -10,6 +11,7 @@ const { chromium } = require('playwright');
     }));
     const browser = await chromium.launch({ channel: 'chrome', headless: true });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await ui11.protect(context, info.baseUrl); // UI-11 review hook
     const page = await context.newPage();
     await context.route('**/uploads/products/receipt-preview.png', route => route.fulfill({
         contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="white"/><path d="M100 40h100v220H100z" fill="#d8eddf"/><path d="M100 40l25-20h50l25 20" fill="#4b8661"/><text x="150" y="155" text-anchor="middle" font-size="32" fill="#245339">SỮA</text></svg>'
@@ -99,8 +101,7 @@ const { chromium } = require('playwright');
         assert.equal(await price.inputValue(), '12345');
         assert.equal(await page.locator('#commercialHasVat').isChecked(), true);
         assert.notEqual(await page.evaluate(() => window.stockDocumentPage.rowVersion), initialVersion);
-        await page.locator('[data-workbench-tab="xml"]').click();
-        await page.locator('.sd-optional-xml > summary').click();
+        await require('./browser-contract.cjs').reveal(page, '#btnOpenInputInvoicePicker');
         const candidates = page.waitForResponse(response => response.url().includes('/input-invoices/picker/candidates'));
         await page.locator('#btnOpenInputInvoicePicker').click();
         const libraryResponse = await candidates;
@@ -113,6 +114,7 @@ const { chromium } = require('playwright');
         await page.locator('#inputInvoicePickerSupplierContext').filter({ hasText: supplierName }).waitFor();
         await page.locator('.input-invoice-candidate').first().click();
         await page.locator('#inputInvoicePickerPreview').getByText('Hàng kiểm thử XML', { exact: false }).waitFor();
+        await ui11.dialog(page, '#inputInvoicePickerModal', 'supplier-xml-picker', ui11.output('supplier')); // UI-11 review hook
         const originalViewport = page.viewportSize();
         const output = path.resolve('TestResults/receipt-supplier'); fs.mkdirSync(output, { recursive: true });
         const assertPickerActions = async () => {
@@ -185,9 +187,7 @@ const { chromium } = require('playwright');
         assert.equal(await value(stale, 'commercialSupplierId'), String(info.supplierId));
         await stale.close();
         await choose(page, supplierName); await saved(page);
-        await page.locator('[data-workbench-tab="xml"]').click();
-        if (await page.locator('.sd-optional-xml').getAttribute('open') === null)
-            await page.locator('.sd-optional-xml > summary').click();
+        await require('./browser-contract.cjs').reveal(page, '#inputInvoicePickerSection');
         await page.locator('#inputInvoicePickerSection').screenshot({ path: path.join(output, 'supplier-saved-xml.png') });
         assert.deepEqual(errors, []);
         console.log('PASS: supplier persists before approval, XML picker works, prices/VAT survive, missing tax, failed save and stale tab handled.');

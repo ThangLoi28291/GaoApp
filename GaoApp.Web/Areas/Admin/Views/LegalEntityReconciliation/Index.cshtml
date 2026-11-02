@@ -95,7 +95,7 @@
         <strong>Multi LegalEntity: @(Model.IsMultiLegalEntityEnabled ? "Đang bật" : "Đang tắt")</strong>
         @if (Model.MultiLegalEntityActivatedAtUtc.HasValue)
         {
-            <span> · Kích hoạt từ @Model.MultiLegalEntityActivatedAtUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+            <span> · Kích hoạt từ @Model.MultiLegalEntityActivatedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</span>
         }
         <div class="small mt-1">Báo cáo chỉ đọc các order đã có allocation; dữ liệu legacy trước ngày kích hoạt không bị suy đoán lại.</div>
     </div>
@@ -210,7 +210,7 @@
                     {
                         <tr>
                             <td><a class="le-link" href="/admin/pos/order-detail/@item.OrderId">@(item.OrderNumber ?? $"#{item.OrderId}")</a><div class="le-note">@StatusText(item.Status)</div></td>
-                            <td>@item.CompletedAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                            <td>@item.CompletedAtUtc?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</td>
                             <td><strong>@item.LegalEntityCodes</strong><div class="le-note">@item.IssuedInvoiceCount/@item.InvoiceCount HĐ phát hành</div></td>
                             <td class="text-end">@item.UnifiedOrderTotal.ToString("N0")</td>
                             <td class="text-end">@item.AllocationGrossTotal.ToString("N0")</td>
@@ -246,3 +246,10 @@
         }
     </div>
 </div>
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/admin/css/legal-entities.mobile.css" asp-append-version="true" />
+}
+@section PageScripts {
+    <script src="~/admin/js/legal-entities.mobile.js" asp-append-version="true"></script>
+}

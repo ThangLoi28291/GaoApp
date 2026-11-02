@@ -7,15 +7,19 @@ namespace GaoApp.Web.Services.StoreMonitor;
 /// <summary>Read-only work identity, explicitly constrained to the authenticated store.</summary>
 public static class StoreActivityWorkContext
 {
-    public sealed record Work(string Key, string Document);
+    public sealed record Work(string Key, string Document, string? DocumentTitle = null);
     public static async Task<Work?> Page(AppDbContext db, int storeId, string controller, int? id, CancellationToken ct)
     {
         if (id is not > 0) return null;
         var found = id.Value;
+        if (controller is "WarehouseReceiving" or "PurchaseReceiving" or "StockDocumentManagement")
+        {
+            var receipt = await db.StockDocuments.AsNoTracking().Where(x => x.StoreId == storeId && x.Id == found)
+                .Select(x => new { x.DocumentTitle }).SingleOrDefaultAsync(ct);
+            return receipt is null ? null : new($"receipt:{found}", $"Phiếu nhập #{found}", receipt.DocumentTitle);
+        }
         var (kind, caption, exists) = controller switch
         {
-            "WarehouseReceiving" or "PurchaseReceiving" or "StockDocumentManagement" =>
-                ("receipt", "Phiếu nhập", await db.StockDocuments.AsNoTracking().AnyAsync(x => x.StoreId == storeId && x.Id == found, ct)),
             "StockCountPages" =>
                 ("count", "Kiểm kê", await db.StockCountDocuments.AsNoTracking().AnyAsync(x => x.StoreId == storeId && x.Id == found, ct)),
             "StockTransfer" =>

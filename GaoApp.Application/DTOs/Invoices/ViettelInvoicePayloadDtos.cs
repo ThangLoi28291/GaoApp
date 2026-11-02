@@ -136,6 +136,10 @@ public class ViettelInvoicePayloadDto
 
 public class ViettelGeneralInvoiceInfoDto
 {
+    [JsonPropertyName("adjustAmount20")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? AdjustAmount20 { get; set; }
+
     [JsonPropertyName("invoiceType")]
     public string InvoiceType { get; set; } = "1";
 

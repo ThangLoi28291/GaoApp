@@ -1,5 +1,6 @@
 ﻿using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using GaoApp.Application.DTOs.POSShiftDashboards;
 
 namespace GaoApp.Application.Interfaces.Repositories.Orders;
 
@@ -13,6 +14,9 @@ namespace GaoApp.Application.Interfaces.Repositories.Orders;
 /// </summary>
 public interface IPOSShiftRepository
 {
+    Task<Dictionary<int, POSShiftPaymentBreakdownDto>> GetPaymentBreakdownsAsync(int storeId,
+        IReadOnlyCollection<int> shiftIds, CancellationToken ct = default)
+        => Task.FromResult(new Dictionary<int, POSShiftPaymentBreakdownDto>());
     /// <summary>
     /// Legacy: lấy một ca đang mở bất kỳ.
     /// Không nên dùng cho code mới vì không an toàn trong môi trường nhiều terminal.

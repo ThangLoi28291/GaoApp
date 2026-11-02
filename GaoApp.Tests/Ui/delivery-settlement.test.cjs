@@ -276,3 +276,25 @@ test('Two order drafts survive switching/poll and one settlement; changed own ve
     await f.click('outcomeReload'); assert.equal(f.get('outcomeReason').value, 'Đơn hai'); assert.equal(f.get('outcomeConfirm').disabled, true);
     assert.equal(f.state.commands.length, 1);
 });
+
+test('Actual renderer uses server code and recipientAddress as escaped identifying text', async () => {
+    const f = await renderFixture(), order = f.state.model.trip.orders[0];
+    assert.ok(f.get('outcomeOrder-21').textContent.includes(order.code));
+    assert.ok(f.get('outcomeDetail').querySelector('header').textContent.includes(order.code));
+    assert.ok(f.get('outcomeDetail').textContent.includes(order.recipientAddress));
+    assert.equal('deliveryCode' in order, false); assert.equal('address' in order, false);
+    order.code = 'GH-<svg onload="alert(1)">&21';
+    order.recipientAddress = '12 <img src=x onerror="alert(2)"> & "Tổ 1"';
+    await f.poll();
+    assert.ok(f.get('outcomeOrder-21').textContent.includes(order.code));
+    const header = f.get('outcomeDetail').querySelector('header');
+    assert.ok(header.textContent.includes(order.code)); assert.ok(header.textContent.includes(order.recipientAddress));
+    for (const tag of ['svg', 'img', 'script']) assert.equal(f.root.querySelector(tag), null);
+    await f.click('outcomeOrder-22');
+    assert.ok(f.get('outcomeDetail').querySelector('header').textContent.includes('GH-22'));
+    assert.equal(f.get('outcomeDetail').textContent.includes(order.recipientAddress), false);
+    await f.click('outcomeOrder-21');
+    assert.ok(f.get('outcomeDetail').textContent.includes(order.code));
+    assert.ok(f.get('outcomeDetail').textContent.includes(order.recipientAddress));
+    assert.equal(f.state.commands.length, 0);
+});

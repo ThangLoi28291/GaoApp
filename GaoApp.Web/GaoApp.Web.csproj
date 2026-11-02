@@ -1,7 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>GaoApp-Web-Phase2-Development</UserSecretsId>
@@ -9,27 +9,30 @@
 
 	<ItemGroup>
 		<PackageReference Include="ClosedXML" Version="0.105.0" />
+        <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+        <!-- Keep the native SQLite security baseline explicit, independently of the ADO.NET provider. -->
+        <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
 		<PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
 
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.29">
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.13">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 
-		<PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="8.0.23" />
+		<PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="10.0.2" />
 
-		<PackageReference Include="NuGet.Packaging" Version="6.11.2">
+		<PackageReference Include="NuGet.Packaging" Version="7.9.0">
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
 
-		<PackageReference Include="NuGet.Protocol" Version="6.11.2">
+		<PackageReference Include="NuGet.Protocol" Version="7.9.0">
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
 
-		<PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+		<PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1" />
 		<PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0" />
-		<PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
+		<PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1" />
 		<PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
 		<PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
 	</ItemGroup>
@@ -54,5 +57,17 @@
     <!-- Runtime uploads use the external storage middleware. Exclude them from
          the SDK's separate static-web-assets publish pipeline as well. -->
     <Content Remove="wwwroot/uploads/**;App_Data/**" />
+    <Content Include="ClientPackages/*.zip" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Only the generated, blank-config client installer is an allowed download.
+       Other archives remain excluded by PublishSafety. Build the package before publishing Web. -->
+  <Target Name="GaoAppIncludeLabelClientPackage" AfterTargets="GaoAppSanitizePublish"
+          Condition="Exists('$(MSBuildProjectDirectory)/ClientPackages/GaoApp.LabelPrintClient-win-x64.zip')">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(MSBuildProjectDirectory)/ClientPackages/GaoApp.LabelPrintClient-win-x64.zip">
+        <RelativePath>ClientPackages/GaoApp.LabelPrintClient-win-x64.zip</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
 </Project>

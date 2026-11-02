@@ -30,7 +30,7 @@ internal static class InvoiceDetailFactory
             ProductVariantId = allocation.ProductVariantId,
             SourceType = InvoiceDetailSourceType.FromOrderLine,
             ItemName = line.ItemName,
-            UnitName = line.UnitName,
+            UnitName = allocation.InvoiceUnitName ?? line.UnitName,
             Quantity = allocation.Quantity,
             UnitPrice = effectiveUnitPrice,
             Amount = allocation.NetAmount,

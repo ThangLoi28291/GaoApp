@@ -23,6 +23,21 @@ using Serilog;
 using Serilog.Events;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+Console.InputEncoding = new System.Text.UTF8Encoding(false);
+Console.OutputEncoding = new System.Text.UTF8Encoding(false);
+
+if (args.Any(argument => argument.StartsWith("--channel-credentials", StringComparison.Ordinal)))
+{
+    if (args.Length != 1 || args[0] != "--channel-credentials") { Console.Error.WriteLine("Usage: GaoApp.Web --channel-credentials (JSON request on stdin)"); Environment.ExitCode = 2; }
+    else Environment.ExitCode = GaoApp.Web.Services.CustomerService.CustomerChannelCredentialMaintenance.Run(Console.In, Console.Out, Console.Error);
+    return;
+}
+if (args.Any(argument => argument.StartsWith("--assistant-storage", StringComparison.Ordinal)))
+{
+    if (args.Length != 1 || args[0] != "--assistant-storage") { Console.Error.WriteLine("Usage: GaoApp.Web --assistant-storage (JSON request on stdin)"); Environment.ExitCode = 2; }
+    else Environment.ExitCode = GaoApp.Web.Services.Assistant.AssistantStorageMaintenance.Run(Console.In, Console.Out, Console.Error);
+    return;
+}
 // =========================================================
 // Bootstrap logger:
 // Dùng để bắt log rất sớm khi app mới khởi động,
@@ -31,6 +46,8 @@ using System.Threading.RateLimiting;
 Log.Logger = new LoggerConfiguration()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
     .Enrich.FromLogContext()
+    .Enrich.With(new InvoiceLinkLogPrivacy())
+    .Filter.With(new InvoiceLinkLogPrivacy())
     .WriteTo.Console()
     .CreateBootstrapLogger();
 
@@ -65,6 +82,8 @@ try
 
     var builder = WebApplication.CreateBuilder(builderArgs);
     builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+    // CustomerChannelCredentialValidator validates the effective options after the
+    // administrator's encrypted connection overrides have been applied.
 
     // Custom validation environments run from the project output just like
     // Development, so they also need the generated static-web-assets manifest
@@ -84,6 +103,8 @@ try
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services)
             .Enrich.FromLogContext()
+            .Enrich.With(new InvoiceLinkLogPrivacy(services.GetRequiredService<IHttpContextAccessor>()))
+            .Filter.With(new InvoiceLinkLogPrivacy(services.GetRequiredService<IHttpContextAccessor>()))
             .WriteTo.Logger(callback => callback
                 .Filter.ByIncludingOnly(Serilog.Filters.Matching.FromSource<GaoApp.Web.Services.Acb.AcbCallbackDiagnostics>())
                 .WriteTo.File(new Serilog.Formatting.Json.JsonFormatter(),
@@ -114,9 +135,16 @@ try
     builder.Services.AddControllersWithViews(options =>
     {
         options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+        options.ModelBinderProviders.Insert(0, new GaoApp.Web.ModelBinding.PurchaseFormQuantityModelBinderProvider());
         options.Filters.Add(new Microsoft.AspNetCore.Mvc.AutoValidateAntiforgeryTokenAttribute());
         options.Filters.Add<GaoApp.Web.Services.StoreMonitor.StoreActivityFilter>();
+        options.Filters.AddService<GaoApp.Web.Security.ResourceProtectionFilter>();
     });
+    builder.Services.AddOptions<GaoApp.Web.Security.ResourceProtectionOptions>()
+        .Bind(builder.Configuration.GetSection(GaoApp.Web.Security.ResourceProtectionOptions.Section))
+        .Validate(options => options.IsValid(), "Invalid resource protection limits.").ValidateOnStart();
+    builder.Services.AddSingleton<GaoApp.Web.Security.ResourceAdmission>();
+    builder.Services.AddScoped<GaoApp.Web.Security.ResourceProtectionFilter>();
 
     // =========================================================
     // SignalR
@@ -128,22 +156,38 @@ try
     builder.Services.AddSingleton<GaoApp.Web.Services.StoreMonitor.StoreActivityRegistry>();
     builder.Services.AddSingleton<GaoApp.Web.Services.StoreMonitor.StoreActivityTicket>();
     builder.Services.AddScoped<GaoApp.Web.Services.StoreMonitor.StoreActivityFilter>();
+    builder.Services.AddScoped<GaoApp.Web.Services.StoreMonitor.StoreDeliveryMonitor>();
+    builder.Services.AddScoped<GaoApp.Web.Services.StoreMonitor.StoreCheckoutMonitor>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.StoreMonitor.StoreMonitorReadCache>();
     builder.Services.AddScoped<GaoApp.Web.Services.Offline.PosOperationFilter>();
     builder.Services.AddScoped<GaoApp.Web.Services.Printing.ReceiptTemplateService>();
     builder.Services.AddScoped<GaoApp.Web.Services.Delivery.DeliveryPosService>();
     builder.Services.AddScoped<GaoApp.Web.Services.CustomerDisplayService>();
     builder.Services.AddSingleton<GaoApp.Web.Services.CustomerDepositDisplayState>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.CustomerPaymentDisplayState>();
+    builder.Services.AddScoped<GaoApp.Web.Services.CustomerPaymentDisplayService>();
     builder.Services.AddScoped<GaoApp.Web.Services.Printing.ProductLabelService>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Printing.PromotionLabelService>();
     builder.Services.AddHttpClient<GaoApp.Web.Services.Acb.AcbProtocol>(client => client.Timeout = TimeSpan.FromSeconds(30))
         .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
     builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbPaymentService>();
+    builder.Services.AddScoped<GaoApp.Application.Storefront.IStorefrontBankRegistration,GaoApp.Infrastructure.Services.Storefront.StorefrontBankRegistration>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.BankNotificationBridgeService>();
+    builder.Services.AddSingleton<GaoApp.Web.Services.Acb.BankNotificationMonitor>();
     builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbCallbackInbox>();
     builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbReconciliationService>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbBankLookupService>();
+    builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbCallbackHealthService>();
     builder.Services.AddSingleton<GaoApp.Web.Services.Acb.AcbCallbackDiagnostics>();
     builder.Services.AddScoped<GaoApp.Web.Services.Acb.AcbSandboxCheck>();
     builder.Services.AddScoped<GaoApp.Web.Services.Acb.IAcbSandboxJournal, GaoApp.Web.Services.Acb.AcbSandboxFileJournal>();
     builder.Services.AddSingleton<GaoApp.Web.Services.Acb.AcbCallbackSignal>();
     builder.Services.AddHostedService<GaoApp.Web.Services.Acb.AcbCallbackWorker>();
+    builder.Services.AddScoped(sp=>sp.GetRequiredService<GaoApp.Web.Services.Acb.AcbProtocol>().Core);
+    builder.Services.AddScoped<GaoApp.Application.Storefront.IStorefrontBankProcessor,GaoApp.Infrastructure.Services.Storefront.StorefrontBankProcessor>();
+    builder.Services.AddHostedService<GaoApp.Web.Services.Acb.StorefrontBankWorker>();
+    builder.Services.AddHostedService<GaoApp.Web.Services.Acb.StorefrontInvoiceWorker>();
+    builder.Services.AddScoped<GaoApp.Application.Storefront.IStorefrontCodBankSourceService,GaoApp.Web.Services.Acb.StorefrontCodBankSourceService>();
     builder.Services.AddScoped<GaoApp.Web.Services.Acb.IAcbOrderLockProvider, GaoApp.Web.Services.Acb.SqlAcbOrderLockProvider>();
     builder.Services.AddScoped<GaoApp.Application.Interfaces.Services.Orders.IOrderFinalizeGuard, GaoApp.Web.Services.Acb.AcbFinalizeGuard>();
     // =========================================================
@@ -160,10 +204,13 @@ try
     // 4) APPLICATION + INFRASTRUCTURE
     // =========================================================
     builder.Services.AddApplication();
+    GaoApp.Web.Services.Assistant.AssistantIntegrationSetup.AddAssistantIntegration(builder.Services, builder.Configuration);
     builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
+    GaoApp.Web.Services.InvoiceNotifications.InvoiceNotificationSetup.AddInvoiceNotifications(builder.Services, builder.Configuration);
     builder.Services.AddSingleton<GaoApp.Web.Services.Media.MediaCleanupStatus>();
     builder.Services.AddHostedService<GaoApp.Web.Services.Media.MediaCleanupWorker>();
     builder.Services.AddHostedService<GaoApp.Web.Services.Delivery.DeliveryOutboxWorker>();
+    builder.Services.AddHostedService<GaoApp.Infrastructure.Services.Audit.AuditOutboxWorker>();
     builder.Services.AddAcbCallbackRouting(builder.Configuration);
 
     // =========================================================
@@ -200,7 +247,8 @@ try
                  var requestedWith = context.Request.Headers["X-Requested-With"].ToString();
 
                  var isApiRequest =
-    path.StartsWith("/admin/pos/", StringComparison.OrdinalIgnoreCase)||
+    (path.StartsWith("/admin/pos/", StringComparison.OrdinalIgnoreCase) &&
+        !(HttpMethods.IsGet(context.Request.Method) && path.TrimEnd('/').Equals("/admin/pos/printer-settings", StringComparison.OrdinalIgnoreCase)))||
       path.StartsWith("/admin/api", StringComparison.OrdinalIgnoreCase) ||
       (!string.IsNullOrWhiteSpace(accept) &&
        accept.Contains("application/json", StringComparison.OrdinalIgnoreCase)) ||
@@ -243,7 +291,8 @@ try
              {
                  var validator = context.HttpContext.RequestServices
                      .GetRequiredService<GaoApp.Web.Security.SessionPrincipalValidator>();
-                 if (!await validator.ValidateAsync(context.Principal, context.HttpContext.RequestAborted))
+                 if (!await validator.ValidateAsync(context.Principal, context.HttpContext.RequestAborted,
+                     context.HttpContext.Request.Cookies[GaoApp.Application.Common.Security.PosDeviceSession.CookieName]))
                  {
                      context.RejectPrincipal();
                      await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.SignOutAsync(
@@ -256,9 +305,12 @@ try
     builder.Services.AddScoped<GaoApp.Web.Security.SessionPrincipalValidator>();
     builder.Services.AddScoped<GaoApp.Web.Services.Accounts.EmployeeAccountService>();
     builder.Services.AddScoped<GaoApp.Web.Security.SelfPasswordRateLimitFilter>();
+    builder.Services.AddScoped<GaoApp.Web.Security.AdministrationConfirmationRateLimitFilter>();
+    builder.Services.AddScoped<GaoApp.Application.Interfaces.Services.Security.IAccountSessionRevoker, GaoApp.Web.Security.AccountSessionRevoker>();
     builder.Services.AddScoped<FluentValidation.IValidator<GaoApp.Web.Areas.Admin.ViewModels.Account.ChangeOwnPasswordVm>,
         GaoApp.Web.Areas.Admin.ViewModels.Account.ChangeOwnPasswordValidator>();
     builder.Services.AddAuthorization();
+    builder.Services.AddScoped<GaoApp.Web.Services.AdminNavigationProvider>();
 
     GaoApp.Web.Security.LoginRateLimiting.AddLoginRateLimiting(builder.Services, builder.Configuration);
     builder.Services.AddRateLimiter(options => options.AddPolicy("delivery-lookup", context =>
@@ -284,6 +336,7 @@ try
     // TenantResolutionMiddleware KHÔNG đăng ký scoped nếu đang là middleware chuẩn.
     // =========================================================
     builder.Services.AddScoped<TerminalResolutionMiddleware>();
+    GaoApp.Web.Services.SystemIntegrations.SystemIntegrationRegistration.AddSystemIntegrationControls(builder.Services);
 
     var app = builder.Build();
 
@@ -300,6 +353,8 @@ try
         try
         {
             using var scope = app.Services.CreateScope();
+            using var dataAccess = scope.ServiceProvider.GetRequiredService<TenantContext>()
+                .BeginSystemAccess(SystemDataAccessPurpose.Provisioning);
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             var connection = db.Database.GetDbConnection();
             var activeStoreCount = await db.Stores
@@ -344,6 +399,7 @@ try
     // Normal startup validates configuration only, in every environment.
     // Schema and provisioning are separate explicit Migrator operations.
     await app.ValidateStartupAsync();
+    GaoApp.Web.Services.Assistant.AssistantStorageSafety.Validate(app.Environment, app.Configuration);
 
     // Local Visual Studio development may point at the developer's current
     // GaoAppDb. Keep schema installation explicit outside Development, but
@@ -407,6 +463,13 @@ try
     // =========================================================
     // 14) STATIC FILES
     // =========================================================
+    app.Use(async (context, next) =>
+    {
+        if (GaoApp.Web.Services.CustomerService.CustomerChannelPublicFileGuard.Blocked(
+            context.Request.Path.Value, app.Environment, app.Configuration))
+        { context.Response.StatusCode = 404; return; }
+        await next();
+    });
     GaoApp.Web.Security.PublicUploadExtensions.UsePublicUploads(app, app.Environment,
         app.Services.GetRequiredService<GaoApp.Infrastructure.Storage.UploadPathResolver>());
 
@@ -428,6 +491,7 @@ try
     // 15) ROUTING
     // =========================================================
     app.UseRouting();
+    app.UseMiddleware<GaoApp.Web.Security.ResourceIngressMiddleware>();
     // Existing policies keep their pre-authentication placement. Delivery lookup needs the
     // validated Store/user principal to isolate quotas, so only that policy runs below auth.
     app.UseWhen(context => context.GetEndpoint()?.Metadata
@@ -516,6 +580,7 @@ try
 
     Log.Information("GaoApp.Web configured successfully");
 
+    DevelopmentChromeLauncher.Register(app);
     app.Run();
 }
 catch (Exception ex)

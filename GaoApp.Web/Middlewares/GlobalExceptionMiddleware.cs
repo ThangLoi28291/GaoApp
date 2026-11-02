@@ -44,7 +44,7 @@ public class GlobalExceptionMiddleware
             _logger.LogDebug(
                 "Request cancelled by client. TraceId={TraceId}; Path={Path}",
                 context.TraceIdentifier,
-                context.Request.Path);
+                GaoApp.Application.Common.Security.SensitiveRequestData.Redact(context.Request.Path));
             throw;
         }
         catch (Exception ex)
@@ -54,7 +54,7 @@ public class GlobalExceptionMiddleware
                 _logger.LogWarning(
                     "Cannot write error response because the response has already started. TraceId={TraceId}; Path={Path}; ExceptionType={ExceptionType}",
                     context.TraceIdentifier,
-                    context.Request.Path,
+                    GaoApp.Application.Common.Security.SensitiveRequestData.Redact(context.Request.Path),
                     ex.GetType().Name);
                 throw;
             }
@@ -90,7 +90,7 @@ public class GlobalExceptionMiddleware
                 mapped.ErrorCode,
                 mapped.ErrorType,
                 mapped.StatusCode,
-                context.Request.Path,
+                GaoApp.Application.Common.Security.SensitiveRequestData.Redact(context.Request.Path),
                 exception.GetType().Name);
         }
         else
@@ -101,7 +101,7 @@ public class GlobalExceptionMiddleware
                 traceId,
                 mapped.StatusCode,
                 context.Request.Method,
-                context.Request.Path,
+                GaoApp.Application.Common.Security.SensitiveRequestData.Redact(context.Request.Path),
                 diagnostic.ExceptionType,
                 diagnostic.HResult,
                 diagnostic.StackFrames,
@@ -148,6 +148,11 @@ public class GlobalExceptionMiddleware
     /// </summary>
     private static ErrorEnvelope MapException(Exception exception)
     {
+        if (exception is GaoApp.Infrastructure.Data.TenantDataScopeException)
+            return new ErrorEnvelope { StatusCode = StatusCodes.Status409Conflict,
+                Message = "Chưa xác định cửa hàng hợp lệ. Vui lòng đăng nhập lại đúng cửa hàng.",
+                ErrorCode = "TENANT_CONTEXT_REQUIRED", ErrorType = PosErrorTypes.Context,
+                ActionHint = "Mở đúng địa chỉ cửa hàng và đăng nhập lại trước khi tiếp tục." };
         // =========================================================
         // 1) POS EXCEPTION - Ưu tiên cao nhất cho module POS
         // =========================================================

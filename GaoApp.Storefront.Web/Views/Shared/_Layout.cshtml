@@ -1,0 +1,42 @@
+@{
+    var shop = Context.Items[typeof(StorefrontPageContext)] as StorefrontPageContext ?? new("Cửa hàng", null, "", "closed");
+    var path = Context.Request.Path.Value ?? "/shop";
+    var navSection = path.StartsWith("/shop/cart") || path.StartsWith("/shop/checkout") ? "cart" : path.StartsWith("/shop/orders") ? "orders" : path.StartsWith("/shop/products") ? "products" : "home";
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" /><meta name="robots" content="noindex,nofollow" />
+    <title>@ViewData["Title"] · @shop.DisplayName</title>
+    <link rel="preload" href="~/assets/fonts/InterVariable.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="~/assets/storefront.css" asp-append-version="true" />
+    <script src="~/assets/storefront.js" asp-append-version="true" defer></script>
+</head>
+<body data-cart-scope="@shop.CartScope" data-page="@(navSection)">
+    <a href="#main" class="skip-link">Đến nội dung chính</a>
+    @if (shop.RuntimeMode == "preview") { <div class="preview-bar">Chế độ xem thử · Không dùng để đặt hàng thật</div> }
+    <header class="site-header">
+        <div class="header-inner">
+            <a class="brand" href="/shop" aria-label="@shop.DisplayName — Trang chủ"><span class="brand-mark" aria-hidden="true">G</span><span>@shop.DisplayName<small>Chọn điều tiện ích mỗi ngày</small></span></a>
+            <a class="header-cart icon-button" href="/shop/cart" aria-label="Mở giỏ hàng"><partial name="_Icon" model='"cart"' /><span class="cart-badge" data-cart-count hidden>0</span></a>
+            <form class="header-search" action="/shop/products" method="get" role="search">
+                <label class="sr-only" for="site-search">Tìm sản phẩm</label><partial name="_Icon" model='"search"' /><input id="site-search" name="Search" placeholder="Bạn đang tìm món gì?" maxlength="200" value="@Context.Request.Query["Search"]" /><button type="submit" aria-label="Tìm kiếm"><partial name="_Icon" model='"arrow"' /></button>
+            </form>
+        </div>
+    </header>
+    <main id="main" tabindex="-1">@RenderBody()</main>
+    <footer class="site-footer"><strong>@shop.DisplayName</strong>@if (!string.IsNullOrWhiteSpace(shop.Description)) { <p>@shop.Description</p> }@if (!string.IsNullOrWhiteSpace(shop.ContactPhone)) { <p>Liên hệ: @shop.ContactPhone</p> }<p>Giá hiển thị theo đúng đơn vị bán. Phí giao được xác nhận trước khi đặt hàng.</p><button id="effects-toggle" class="effects-toggle" type="button" aria-pressed="false" aria-describedby="effects-status">Giảm hiệu ứng</button><span id="effects-status" class="sr-only" role="status"></span></footer>
+    <nav class="bottom-nav" aria-label="Điều hướng chính">
+        <a href="/shop" aria-current="@(navSection == "home" ? "page" : null)"><partial name="_Icon" model='"home"' /><span>Trang chủ</span></a>
+        <a href="/shop/products" aria-current="@(navSection == "products" ? "page" : null)"><partial name="_Icon" model='"grid"' /><span>Danh mục</span></a>
+        <a href="/shop/cart" aria-current="@(navSection == "cart" ? "page" : null)"><partial name="_Icon" model='"cart"' /><span>Giỏ hàng <span data-cart-count hidden>0</span></span></a>
+        <a href="/shop/orders" aria-current="@(navSection == "orders" ? "page" : null)"><partial name="_Icon" model='"orders"' /><span>Tra cứu đơn</span></a>
+    </nav>
+    <form id="cart-csrf" hidden>@Html.AntiForgeryToken()</form>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="page-loading" class="page-loading" aria-live="polite" hidden>Đang tải…</div>
+    <noscript><div class="noscript-note">Bạn vẫn xem và tìm sản phẩm được. Hãy bật JavaScript để chọn đơn vị và dùng giỏ hàng.</div></noscript>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

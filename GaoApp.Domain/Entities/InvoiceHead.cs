@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Common;
+using GaoApp.Domain.Common;
 using GaoApp.Domain.Constants;
 using GaoApp.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
@@ -9,6 +9,11 @@ namespace GaoApp.Domain.Entities;
     [Table("InvoiceHeads")]
 public class InvoiceHead : BaseStoreEntity
 {
+    public int? StorefrontServiceRevenueId { get; set; }
+    public InvoiceIssuanceRoute? NativeServiceInvoiceRoute { get; set; }
+    public DateTime? NativeServiceRecognizedAtUtc { get; set; }
+    public int? NativeServiceActorUserId { get; set; }
+    public bool NativeServiceCashOnly { get; set; }
     /// <summary>
     /// Hóa đơn tổng hợp do hàng đợi phát hành tự động tạo. Đây không phải draft POS
     /// mới và luôn có liên kết nguồn trong AutoInvoiceOperationSources.
@@ -49,7 +54,7 @@ public class InvoiceHead : BaseStoreEntity
     [StringLength(50)]
     public string? InvoiceNumber { get; set; }
 
-    public DateTime InvoiceDate { get; set; } = DateTime.Now;
+    public DateTime InvoiceDate { get; set; } = DateTime.SpecifyKind(DateTime.UtcNow.AddHours(7), DateTimeKind.Unspecified);
     /// <summary>
     /// Mốc thay đổi nghiệp vụ gần nhất có ảnh hưởng payload/số tiền phát hành.
     /// AutoInvoice MinimumAgeMinutes tính từ mốc này nếu có.
@@ -114,6 +119,11 @@ public class InvoiceHead : BaseStoreEntity
     public decimal VatAmount { get; set; }
 
     public decimal GrandTotal { get; set; }
+
+    // SInvoice generalInvoiceInfo.adjustAmount20: original direct VAT rate on revenue.
+    // Null means disabled; this is independent of commercial discounts and POS payments.
+    public int? RevenueTaxPercentage { get; set; }
+    public decimal RevenueTaxReductionAmount { get; set; }
 
     [StringLength(500)]
     public string? Note { get; set; }
@@ -216,6 +226,8 @@ public class InvoiceHead : BaseStoreEntity
     public DateTime? OfficialPdfDownloadedAtUtc { get; set; }
 
     public string? OfficialPdfFileName { get; set; }
+    public string? OfficialPdfSha256 { get; set; }
+    public long? OfficialPdfByteLength { get; set; }
 
     public InvoiceFileDownloadStatus OfficialZipXmlStatus { get; set; } =
         InvoiceFileDownloadStatus.None;
@@ -223,6 +235,8 @@ public class InvoiceHead : BaseStoreEntity
     public DateTime? OfficialZipXmlDownloadedAtUtc { get; set; }
 
     public string? OfficialZipXmlFileName { get; set; }
+    public string? OfficialZipXmlSha256 { get; set; }
+    public long? OfficialZipXmlByteLength { get; set; }
 
     // =========================================================
     // Viettel email status

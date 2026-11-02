@@ -1,26 +1,28 @@
 ﻿@{
     Layout = "_Layout";
+    ViewData["MobileStatePage"] = true;
     var statusCode = ViewBag.StatusCode ?? 500;
     var message = ViewBag.Message ?? "Đã xảy ra lỗi.";
     var traceId = ViewBag.TraceId ?? "";
 }
 
-<div class="container py-5">
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-5">
+<div class="container py-5" data-mobile-state-page="error">
+    <div class="card shadow-sm border-0" data-mobile-state-card>
+        <div class="card-body p-5" data-mobile-state-body>
             <div class="mb-3">
                 <span class="badge bg-danger">Lỗi @statusCode</span>
             </div>
 
             <h2 class="mb-3">Có lỗi xảy ra</h2>
-            <p class="text-muted mb-4">@message</p>
+            <p class="text-muted mb-4" data-mobile-state-message>@message</p>
 
-            <div class="mb-4">
+            <div class="mb-4" data-mobile-state-detail>
                 <small class="text-secondary">TraceId: @traceId</small>
             </div>
 
-            <div class="d-flex gap-2">
-                <a href="javascript:history.back()" class="btn btn-outline-secondary">Quay lại</a>
+            <p class="gao-mobile-state-help">Nếu lỗi vẫn còn, gửi mã TraceId ở trên cho người hỗ trợ để kiểm tra.</p>
+            <div class="d-flex gap-2" data-mobile-state-actions>
+                <a href="#" data-csp-action="back" class="btn btn-outline-secondary">Quay lại</a>
                 <a href="/" class="btn btn-primary">Về trang chủ</a>
             </div>
         </div>

@@ -51,6 +51,14 @@ function New-GaoSchemaProcessInfo([string]$MigratorPath) {
         $value = [Environment]::GetEnvironmentVariable($key, 'Process')
         if ($value) { $start.EnvironmentVariables[$key] = $value }
     }
+    # Infrastructure validates portable key protection before resolving a SQL
+    # operation. Pass only these reviewed host secrets, never a whole environment.
+    foreach ($key in @('DataProtection__KeysPath','DataProtection__CertificatePath','DataProtection__CertificatePassword')) {
+        $value = [Environment]::GetEnvironmentVariable($key, 'Process')
+        if ([string]::IsNullOrWhiteSpace($value)) { throw "Missing host setting for schema Migrator: $key" }
+        $start.EnvironmentVariables[$key] = $value
+    }
+    $start.EnvironmentVariables['DataProtection__RequirePortableKeys'] = 'true'
     $start.EnvironmentVariables['DOTNET_ENVIRONMENT'] = 'Production'
     $start.EnvironmentVariables['ASPNETCORE_ENVIRONMENT'] = 'Production'
     $start.EnvironmentVariables['ConnectionStrings__DefaultConnection'] = $connection

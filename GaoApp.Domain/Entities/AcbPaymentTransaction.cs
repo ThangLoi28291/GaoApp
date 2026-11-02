@@ -5,6 +5,7 @@ namespace GaoApp.Domain.Entities;
 
 public sealed class AcbPaymentTransaction : BaseStoreEntity
 {
+    public int? BankVerifiedReceiptId { get; set; }
     public int SessionId { get; set; }
     [MaxLength(100)] public string TransactionNumber { get; set; } = "";
     [MaxLength(50)] public string Status { get; set; } = "";

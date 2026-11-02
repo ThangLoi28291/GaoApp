@@ -118,6 +118,11 @@ var canShowRouteChange =
             color: #697a8d;
         }
 
+        .invoice-ac-main { min-width: 0; }
+        .invoice-ac-stock { margin-top: 6px; color: #24715b; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+        .invoice-selected-stock { padding: 10px 12px; border: 1px solid #cce5dc; border-radius: 9px; background: #f2faf6; color: #24715b; line-height: 1.7; overflow-wrap: anywhere; }
+        .invoice-selected-stock[data-kind="error"] { color: #9a3545; background: #fff5f6; border-color: #efcbd2; }
+
         .invoice-ac-price {
             min-width: 90px;
             text-align: right;
@@ -186,6 +191,36 @@ var canShowRouteChange =
             flex-wrap: wrap;
         }
 
+        .invoice-stock-heading,
+        .invoice-stock-cell {
+            min-width: 150px;
+        }
+
+        .invoice-stock-quantity {
+            font-size: 16px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .invoice-stock-cell small {
+            display: block;
+            font-size: 12px;
+        }
+
+        .invoice-stock-cell .text-success,
+        #invoiceStockStatus.text-success {
+            color: #157347 !important;
+        }
+
+        .invoice-stock-cell .text-danger,
+        #invoiceStockStatus.text-danger {
+            color: #b42318 !important;
+        }
+
+        .invoice-stock-shortage > td {
+            background-color: #fff5f5;
+        }
+
         @@media (max-width: 768px) {
             .invoice-detail-page .page-header {
                 gap: 12px;
@@ -213,7 +248,7 @@ var canShowRouteChange =
 <div class="container-fluid invoice-detail-page"
      id="invoiceDetailPage"
      data-invoice-head-id="@invoice.Id"
-     data-is-locked="@isHardLocked.ToString().ToLower()"
+     data-is-locked="@((!invoice.CanEditDetails).ToString().ToLower())"
      data-is-correction-invoice="@isCorrectionInvoice.ToString().ToLower()"
      data-is-adjustment-amount-invoice="@isAdjustmentAmountInvoice.ToString().ToLower()">
 
@@ -290,7 +325,7 @@ var canShowRouteChange =
 
                     <button type="submit"
                             class="btn btn-outline-primary"
-                            onclick="return confirm('Chuyển hóa đơn này sang phát hành thủ công?');">
+                            data-csp-confirm="Chuyển hóa đơn này sang phát hành thủ công?">
                         <i class="bx bx-user me-1"></i>
                         Chuyển sang thủ công
                     </button>
@@ -316,7 +351,7 @@ var canShowRouteChange =
 
                     <button type="submit"
                             class="btn btn-outline-secondary"
-                            onclick="return confirm('Chuyển hóa đơn này sang hàng đợi phát hành tự động?');">
+                            data-csp-confirm="Chuyển hóa đơn này sang hàng đợi phát hành tự động?">
                         <i class="bx bx-bot me-1"></i>
                         Chuyển sang tự động
                     </button>
@@ -336,14 +371,30 @@ var canShowRouteChange =
     <div id="invoiceSummaryBox">
         @await Html.PartialAsync("_InvoiceSummary", invoice)
     </div>
+    <div id="invoiceTaxBox">@await Html.PartialAsync("_InvoiceRevenueTax", invoice)</div>
 
     @await Html.PartialAsync(
     "~/Areas/Admin/Views/Invoice/_InvoiceBuyerViettelCards.cshtml",
     Model.Invoice)
 
-    @await Html.PartialAsync(
-        "~/Areas/Admin/Views/Invoice/_InvoiceAutoLinesTable.cshtml",
-        Model)
+    <div class="card shadow-sm invoice-card mb-3">
+        <div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <div id="invoiceStockStatus" class="fw-semibold" role="status" aria-live="polite">Đang kiểm tra tồn trước phát hành…</div>
+                <small class="text-muted">SL hiện tại là tồn có hóa đơn đầu vào có thể dùng để phát hành, sau khi trừ các hóa đơn đã xuất/đang giữ khác. Hiển thị theo ĐVT của dòng.</small>
+                <small id="invoiceStockCheckedAt" class="d-block text-muted"></small>
+            </div>
+            <button type="button" id="btnRefreshInvoiceStock" class="btn btn-sm btn-outline-primary flex-shrink-0">
+                <i class="bx bx-refresh me-1" aria-hidden="true"></i>Cập nhật tồn
+            </button>
+        </div>
+    </div>
+
+    <div id="autoLinesBox">
+        @await Html.PartialAsync(
+            "~/Areas/Admin/Views/Invoice/_InvoiceAutoLinesTable.cshtml",
+            Model)
+    </div>
 
     <div class="card shadow-sm invoice-card"
          id="manualLinesBox">
@@ -356,5 +407,13 @@ var canShowRouteChange =
     Model)
 
 @section Scripts {
+    <script src="~/Admin/js/invoice-tax-reduction.js" asp-append-version="true"></script>
     <script src="~/admin/js/invoice-detail.js" asp-append-version="true"></script>
+    <script src="~/admin/js/invoice-detail-stock.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/invoice-workspace.mobile.js" asp-append-version="true"></script>
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-tax-reduction.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/invoice-workspace.mobile.css" asp-append-version="true" />
 }

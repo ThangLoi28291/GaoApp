@@ -173,6 +173,22 @@ public sealed class LegalEntityManagementTests
     }
 
     [Fact]
+    public async Task Preflight_accepts_current_seller_tax_with_linked_former_Viettel_api_tax()
+    {
+        await using var context = CreateContext();
+        var data = await SeedTwoEntitiesAsync(context, completeConfiguration: true);
+        data.Primary.TaxCode = "070091008655";
+        data.PrimaryInvoiceSetting.SupplierTaxCode = "8341099579-001";
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).GetActivationPreflightAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.IsConfigurationReady.Should().BeTrue();
+        result.Value.Checks.Should().Contain(x => x.Code == $"LegalEntity.{data.Primary.Id}.InvoiceTaxCode" && x.IsPassed);
+    }
+
+    [Fact]
     public async Task Set_feature_should_reject_enable_when_preflight_has_blockers()
     {
         await using var context = CreateContext();
@@ -205,7 +221,7 @@ public sealed class LegalEntityManagementTests
     {
         var options = CreateOptions();
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         await using var context = new InMemoryAppDbContext(
             options,
             tenant,

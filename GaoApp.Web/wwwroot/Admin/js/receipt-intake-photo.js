@@ -2,7 +2,7 @@
     'use strict';
     const byId=id=>document.getElementById(id);
     let data=null,loading=false,error=false,request=0;
-    function reset(){request++;data=null;loading=false;error=false;byId('riPhoto').value='';byId('riPhotoPreview').hidden=true;byId('riPhotoPreview').removeAttribute('src');byId('riPhotoRemove').hidden=true;byId('riPhotoStatus').textContent='';}
+    function reset(){request++;data=null;loading=false;error=false;byId('riPhoto').value='';byId('riPhotoPreview').hidden=true;byId('riPhotoPreview').removeAttribute('src');byId('riPhotoRemove').hidden=true;byId('riPhotoStatus').textContent='';window.ReceivingDraftRecovery?.captureForms();}
     async function choose(){
         const file=byId('riPhoto').files[0];reset();if(!file)return;
         const turn=request;loading=true;byId('riPhotoStatus').textContent='Đang thu nhỏ ảnh…';
@@ -19,9 +19,15 @@
             data=jpeg;byId('riPhotoPreview').src=data;byId('riPhotoPreview').hidden=false;
             byId('riPhotoStatus').textContent='Ảnh sẽ được lưu cùng lần nhận hàng này.';
         }catch(ex){if(turn===request){error=true;byId('riPhotoStatus').textContent=ex.message||'Không đọc được ảnh. Chọn ảnh khác.';}}
-        finally{if(url)URL.revokeObjectURL(url);if(turn===request){loading=false;byId('riPhotoRemove').hidden=false;}}
+        finally{if(url)URL.revokeObjectURL(url);if(turn===request){loading=false;byId('riPhotoRemove').hidden=false;window.ReceivingDraftRecovery?.captureForms();}}
     }
-    window.ReceiptIntakePhoto={reset,current:()=>data,blocked:()=>loading||error};
+    function restore(value){
+        reset();if(!value)return;
+        if(typeof value!=='string'||value.length>349556||!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/.test(value))throw new Error('Ảnh nháp không hợp lệ.');
+        data=value;byId('riPhotoPreview').src=data;byId('riPhotoPreview').hidden=false;byId('riPhotoRemove').hidden=false;
+        byId('riPhotoStatus').textContent='Đã khôi phục ảnh bao bì đang nhập.';
+    }
+    window.ReceiptIntakePhoto={reset,restore,current:()=>data,blocked:()=>loading||error};
     function start(){byId('riPhoto')?.addEventListener('change',choose);byId('riPhotoRemove')?.addEventListener('click',reset);}
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

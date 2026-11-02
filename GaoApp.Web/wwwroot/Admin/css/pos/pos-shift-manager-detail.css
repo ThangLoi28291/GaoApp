@@ -1,0 +1,15 @@
+.manager-payment-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px}
+.manager-payment-card{display:flex;flex-direction:column;gap:6px;padding:16px;border:1px solid #dce5f1;border-radius:14px;background:#f8faff;text-align:left;color:#26344b;min-width:0}
+button.manager-payment-card:hover{background:#edf3ff;border-color:#5272da}
+.manager-payment-card span{font-size:.85rem;font-weight:700;color:#52637d}.manager-payment-card strong{font-size:1.25rem;font-variant-numeric:tabular-nums}.manager-payment-card small{font-size:.75rem;color:#667085}
+.manager-detail-warning,.manager-payment-card.is-warning{background:#fff8e8;border:1px solid #f0d290;color:#85510b}.manager-detail-warning{padding:12px;border-radius:12px;margin-top:12px;font-size:.88rem;line-height:1.6}
+.manager-cash-check{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}.manager-cash-check>div{background:#f4f7fc;border:1px solid #dee6f3;padding:18px;border-radius:14px}
+.manager-cash-check span,.manager-cash-check strong{display:block}.manager-cash-check span{font-size:.85rem;font-weight:700;color:#64748b}.manager-cash-check strong{font-size:1.6rem;color:#1e293b;margin-top:8px;font-variant-numeric:tabular-nums}
+.manager-cash-check .is-short{background:#fff1f0;border-color:#fecaca}.manager-cash-check .is-short strong{color:#b42318}.manager-cash-check .is-over{background:#fff8e8;border-color:#f0d290}.manager-cash-check .is-over strong{color:#85510b}.manager-cash-check .is-match strong{color:#15803d}
+.manager-detail-columns{display:grid;grid-template-columns:1fr 1fr;gap:16px}.manager-evidence-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px;margin-bottom:12px}
+.manager-evidence-tabs button{border:1px solid #dce5f1;border-radius:10px;padding:9px 12px;background:white;color:#52637d;font-weight:700}.manager-evidence-tabs button.active{color:#244dc9;background:#edf3ff;border-color:#abc2ff}
+.manager-evidence-filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}.manager-evidence-filters input{flex:1 1 220px}.manager-evidence-filters select{width:auto;max-width:100%}
+.manager-payment-row{border:1px solid #dce5f1;border-radius:12px;padding:16px;display:flex;justify-content:space-between;gap:16px;margin-bottom:10px}.manager-payment-row small{display:block;color:#667085;margin-top:5px;overflow-wrap:anywhere}.manager-payment-row strong{font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.manager-reconciliation [hidden]{display:none!important}.manager-employee-breakdown td{background:#f8faff}.manager-employee-name{background:none;border:0;padding:0;color:#244dc9;font-weight:800;text-align:left}
+#shiftDetailModal .modal-dialog{max-width:1140px}#shiftDetailModal .modal-body{padding:24px}
+@media(max-width:767px){.manager-payment-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manager-cash-check,.manager-detail-columns{grid-template-columns:1fr}.manager-payment-row{flex-direction:column}.manager-payment-row .text-end{text-align:left!important}#shiftDetailModal .modal-body{padding:14px}.manager-payment-card{padding:12px}.manager-payment-card strong{font-size:1.05rem}}

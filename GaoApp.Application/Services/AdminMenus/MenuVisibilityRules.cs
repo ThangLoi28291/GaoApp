@@ -5,8 +5,6 @@ namespace GaoApp.Application.Services.AdminMenus;
 
 public static class MenuVisibilityRules
 {
-    public const int PosTerminals = -1;
-    public const int Kiosks = -2;
     public static HashSet<int> Parse(string? json) => string.IsNullOrWhiteSpace(json) ? [] : JsonSerializer.Deserialize<HashSet<int>>(json) ?? [];
 
     // A hidden/ineligible ancestor hides its subtree. Empty containers disappear as well.

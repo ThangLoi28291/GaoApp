@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Diagnostics;
+using System.Text.Json;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Reports;
 using GaoApp.Domain.Entities;
@@ -61,7 +63,8 @@ public sealed class ManagementReportSqlServerTests
     public async Task Real_reports_and_expenses_enforce_permissions_versions_tenants_and_financial_totals()
     {
         await using var app=await FullApplicationFixture.StartAsync(); var store=app.Stores[0];
-        using var owner=await app.LoginAsync(await app.AddAccountAsync(store,"*"));
+        var ownerAccount = await app.AddAccountAsync(store,"*");
+        using var owner=await app.LoginAsync(ownerAccount);
         using var reader=await app.LoginAsync(await app.AddAccountAsync(store,PermissionCodes.Report.Profit.View));
         using var sales=await app.LoginAsync(await app.AddAccountAsync(store,PermissionCodes.Report.Sales.View));
         using var foreign=await app.LoginAsync(await app.AddAccountAsync(app.Stores[1],"*"));
@@ -88,6 +91,12 @@ public sealed class ManagementReportSqlServerTests
         Assert.Equal(30,report.Current.OperatingExpenses);Assert.Equal(0,report.Current.OperatingProfit);
         Assert.Equal(60,Assert.Single(report.Current.Products).Summary.NetSales.Value);
         Assert.Equal("RETAIL",Assert.Single(report.Current.CustomerGroups).Group);
+        var overview=(await owner.Http.GetFromJsonAsync<ManagementReportDto>("/admin/reports/management/data"+query+"&view=overview"))!;
+        Assert.Equal(JsonSerializer.Serialize(report.Current.Summary), JsonSerializer.Serialize(overview.Current.Summary));
+        Assert.Equal(report.Current.OperatingProfit, overview.Current.OperatingProfit);
+        Assert.Empty(overview.Current.Categories); Assert.Empty(overview.Current.Customers); // Guest remains in the group totals.
+        Assert.Equal(60, Assert.Single(overview.Current.CustomerGroups).Summary.NetSales.Value);
+        using(var denied=await sales.Http.GetAsync("/admin/reports/management/data"+query+"&view=overview")) Assert.Equal(HttpStatusCode.Forbidden,denied.StatusCode);
         Assert.Contains("SL đơn vị gốc",await owner.Http.GetStringAsync("/admin/reports/management/export"+query+"&dimension=products"));
         Assert.DoesNotContain("SL đơn vị gốc",await owner.Http.GetStringAsync("/admin/reports/management/export"+query+"&dimension=customers"));
         var scoped=(await owner.Http.GetFromJsonAsync<ManagementReportDto>("/admin/reports/management/data"+query+"&terminalId="+store.TerminalId))!;Assert.Null(scoped.Current.OperatingProfit);
@@ -111,5 +120,27 @@ public sealed class ManagementReportSqlServerTests
         var csv=await foreign.Http.GetStringAsync("/admin/reports/management/export"+query);Assert.Matches("\"-12(?:\\.0+)?\"",csv);Assert.DoesNotContain("\"'-12",csv);
         await Post($"/admin/reports/expenses/{expense.Id}/void",new{rowVersion=confirmed.RowVersion,reason="Ghi trùng chứng từ"});
         var after=(await owner.Http.GetFromJsonAsync<ManagementReportDto>("/admin/reports/management/data"+query))!;Assert.Equal(0,after.Current.OperatingExpenses);Assert.Equal(30,after.Current.OperatingProfit);
+        if (Environment.GetEnvironmentVariable("GAOAPP_RUN_REPORT_BROWSER") == "1")
+            await RunBrowser(app, ownerAccount, day);
+    }
+
+    private static async Task RunBrowser(FullApplicationFixture app, FullApplicationFixture.Account account, DateTime day)
+    {
+        var root = FullApplicationFixture.SourceRoot();
+        var start = new ProcessStartInfo("node") { WorkingDirectory = root, UseShellExecute = false, CreateNoWindow = true,
+            RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.Environment["NODE_PATH"] = Path.Combine(root, "Logs/pos-offline-browser-deps/node_modules");
+        start.ArgumentList.Add(Path.Combine(root, "GaoApp.Tests.Browser/management-report-loading.browser.cjs"));
+        using var process = Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
+        await process.StandardInput.WriteLineAsync(JsonSerializer.Serialize(new {
+            baseUrl = $"http://{account.Store.Host}:{app.Address.Port}", user = account.Name, password = account.Password,
+            terminalId = account.Store.TerminalId, day = day.ToString("yyyy-MM-dd"),
+            evidenceRoot = Path.Combine(root, "Logs/reports-server-load-20261009") }));
+        process.StandardInput.Close();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try { await process.WaitForExitAsync(timeout.Token); }
+        catch { if (!process.HasExited) process.Kill(true); throw; }
+        Assert.True(process.ExitCode == 0, await stdout + await stderr);
     }
 }

@@ -24,7 +24,7 @@ public sealed class LegalEntityFoundationTests
 
         await using (var hostContext = CreateContext(
                          options,
-                         tenant => tenant.SetHostAdmin()))
+                         tenant => tenant.SetHostAdminForTest()))
         {
             hostContext.LegalEntities.AddRange(
                 NewLegalEntity(1, "HKD-1", 1, isDefaultForPurchase: true),

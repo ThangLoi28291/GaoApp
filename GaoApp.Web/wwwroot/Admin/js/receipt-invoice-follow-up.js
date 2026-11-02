@@ -6,7 +6,8 @@
         Reviewed: ['Đã kiểm tra hóa đơn', 'success'],
         Unclassified: ['Chưa phân loại hóa đơn', 'secondary']
     };
-    let current = null, generation = 0;
+    let current = null, generation = 0, approvalReviewSnapshot = null;
+    const sameReview = (a, b) => a?.mapId === b?.mapId && a?.evidenceFingerprint === b?.evidenceFingerprint;
     const id = () => Number(window.stockDocumentPage?.documentId || 0);
     async function api(suffix = '', body) {
         const response = await fetch(`/admin/api/stock-documents/${id()}/invoice-follow-up${suffix}`, {
@@ -34,14 +35,20 @@
         if (details) {
             details.hidden = model.state !== 'Reviewed';
             details.textContent = model.state === 'Reviewed'
-                ? `${model.reviewedBy || 'Quản lý'} · ${new Date(model.reviewedAtUtc).toLocaleString('vi-VN')} · ${model.reviewReason || ''}` : '';
+                ? `${model.reviewedBy || 'Quản lý'} · ${new Date(typeof model.reviewedAtUtc === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(model.reviewedAtUtc) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(model.reviewedAtUtc) ? model.reviewedAtUtc + 'Z' : model.reviewedAtUtc).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })} · ${model.reviewReason || ''}` : '';
         }
         const choices = document.getElementById('approvalInvoiceChoices');
         const linked = document.getElementById('approvalInvoiceLinked');
         if (choices) choices.hidden = model.hasLinkedInvoice;
         if (linked) {
             linked.hidden = !model.hasLinkedInvoice;
-            linked.textContent = `Phiếu đã gắn XML · ${label}. XML chỉ hỗ trợ lưu và đối chiếu; tồn hóa đơn ghi theo các dòng nhập khi quản lý xác nhận.`;
+            document.getElementById('approvalInvoiceLinkedSummary').textContent = `Phiếu đã gắn XML · ${label}.`;
+            const acknowledgement = document.getElementById('approvalReviewInputInvoice');
+            acknowledgement.disabled = !model.hasLinkedInvoice || !model.mapId || !model.evidenceFingerprint;
+            if (!model.hasLinkedInvoice || approvalReviewSnapshot && !sameReview(approvalReviewSnapshot, model)) {
+                acknowledgement.checked = false;
+                approvalReviewSnapshot = null;
+            }
         }
     }
     async function refresh() {
@@ -60,8 +67,11 @@
         }
     }
     async function approvalChoice() {
+        const requestedReview = document.getElementById('approvalReviewInputInvoice')?.checked ? approvalReviewSnapshot : null;
         const model = await refresh();
         if (!model) throw new Error('Chưa kiểm tra được hóa đơn. Vui lòng thử duyệt lại.');
+        if (requestedReview && (!model.hasLinkedInvoice || !sameReview(requestedReview, model)))
+            throw new Error('Hóa đơn hoặc số liệu đối chiếu đã thay đổi. Vui lòng kiểm tra và tick xác nhận lại.');
         if (model.hasLinkedInvoice) return true;
         const selected = document.querySelector('input[name="approvalInvoiceExpectation"]:checked');
         if (!selected) throw new Error('Chọn chờ nhà cung cấp gửi hóa đơn hoặc hoàn tất không chờ hóa đơn.');
@@ -73,14 +83,30 @@
         const days = item.invoiceFollowUp === 'Waiting' ? ` · ${Math.max(0, Number(item.invoiceWaitingDays) || 0)} ngày` : '';
         return `<div class="mt-1"><span class="badge bg-label-${color}">${label}${days}</span></div>`;
     }
-    window.GaoReceiptInvoiceFollowUp = { refresh, approvalChoice, badgeHtml };
+    function approvalReview() {
+        if (!document.getElementById('approvalReviewInputInvoice')?.checked) return null;
+        if (!approvalReviewSnapshot || !sameReview(approvalReviewSnapshot, current))
+            throw new Error('Vui lòng tải lại và xác nhận kiểm tra hóa đơn trước khi duyệt.');
+        return { ...approvalReviewSnapshot };
+    }
+    window.GaoReceiptInvoiceFollowUp = { refresh, approvalChoice, approvalReview, badgeHtml };
     document.addEventListener('DOMContentLoaded', () => {
         refresh();
         document.getElementById('approvalInvoiceChoices')?.addEventListener('change', () => {
             const message = document.getElementById('approveMessage');
             if (message?.textContent.startsWith('Chọn chờ nhà cung cấp')) message.textContent = '';
         });
-        document.getElementById('approveModal')?.addEventListener('show.bs.modal', refresh);
+        document.getElementById('approveModal')?.addEventListener('show.bs.modal', () => {
+            approvalReviewSnapshot = null;
+            const acknowledgement = document.getElementById('approvalReviewInputInvoice');
+            if (acknowledgement) { acknowledgement.checked = false; acknowledgement.disabled = true; }
+            refresh();
+        });
+        document.getElementById('approvalReviewInputInvoice')?.addEventListener('change', function () {
+            approvalReviewSnapshot = this.checked && current?.hasLinkedInvoice && current.mapId && current.evidenceFingerprint
+                ? { mapId: current.mapId, evidenceFingerprint: current.evidenceFingerprint } : null;
+            if (!approvalReviewSnapshot) this.checked = false;
+        });
         const reviewModal = document.getElementById('reviewInvoiceModal');
         let reviewSnapshot = null;
         document.getElementById('btnReviewInvoice')?.addEventListener('click', () => {

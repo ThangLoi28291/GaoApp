@@ -8,6 +8,9 @@ public class PosPaymentQrRequestConfiguration : IEntityTypeConfiguration<PosPaym
 {
     public void Configure(EntityTypeBuilder<PosPaymentQrRequest> builder)
     {
+        builder.Property(x => x.AccountIdentitySnapshot).HasMaxLength(64);
+        builder.Property(x => x.AccountVersionSnapshot).HasMaxLength(16);
+        builder.ToTable(t => t.HasTrigger("TR_PosPaymentQrRequests_StorefrontIdentity"));
         builder.Property(x => x.Amount)
             .HasPrecision(18, 2);
 

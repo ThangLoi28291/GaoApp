@@ -69,6 +69,7 @@ public class StockDocumentDto
     public int? RevisionRequestedByUserId { get; set; }
     public DateTime? RevisionResolvedAtUtc { get; set; }
     public int? RevisionResolvedByUserId { get; set; }
+    public ReceiptRevisionReviewDto? RevisionReview { get; set; }
 
     public List<StockDocumentLineDto> Lines { get; set; } = new();
     public List<StockDocumentProvisionalItemDto> ProvisionalItems { get; set; } = new();

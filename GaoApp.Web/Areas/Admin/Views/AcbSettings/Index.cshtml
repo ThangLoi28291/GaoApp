@@ -14,7 +14,7 @@
         <div class="alert alert-info">Đang chạy local: có thể gọi API ACB để thử lấy token, tạo, tra cứu và hủy QR. Để ACB gửi callback về máy này, cần URL HTTPS công khai đã đăng ký với ACB và chuyển tiếp vào đúng cửa hàng.</div>
     }
     <div class="alert alert-info">
-        <div>Callback gần nhất: @(ViewBag.CallbackLastReceivedAt is DateTime receivedAt ? receivedAt.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss") : "Chưa nhận callback")</div>
+        <div>Callback gần nhất: @(ViewBag.CallbackLastReceivedAt is DateTime receivedAt ? receivedAt.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss") : "Chưa nhận callback")</div>
         <div>Đang chờ máy chủ xử lý: @ViewBag.CallbackPendingCount · Cần đối chiếu: @ViewBag.CallbackReviewCount</div>
     </div>
     <details class="mb-4">
@@ -27,7 +27,7 @@
                 <tbody>
                 @foreach (var receipt in (IReadOnlyList<GaoApp.Web.Services.Acb.AcbCallbackReceiptSummary>)ViewBag.CallbackReceipts)
                 {
-                    <tr><td>#@receipt.Id</td><td>@(receipt.RequestCode == "TRANSACTION_HISTORY" ? "Cuối ngày" : "Tức thời")</td><td>@receipt.CreatedAtUtc.AddHours(7).ToString("dd/MM/yyyy HH:mm:ss")</td><td>@receipt.Page / @receipt.TotalPages</td><td>@receipt.Attempts</td><td>@(receipt.NeedsReview ? "Cần đối chiếu QR" : receipt.ProcessedAtUtc.HasValue ? "Đã xử lý" : "Đang chờ / thử lại")</td><td><code>@(receipt.LastErrorCode ?? "—")</code></td></tr>
+                    <tr><td>#@receipt.Id</td><td>@(receipt.RequestCode == "TRANSACTION_HISTORY" ? "Cuối ngày" : "Tức thời")</td><td>@receipt.CreatedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")</td><td>@receipt.Page / @receipt.TotalPages</td><td>@receipt.Attempts</td><td>@(receipt.NeedsReview ? "Cần đối chiếu QR" : receipt.ProcessedAtUtc.HasValue ? "Đã xử lý" : "Đang chờ / thử lại")</td><td><code>@(receipt.LastErrorCode ?? "—")</code></td></tr>
                 }
                 </tbody>
             </table></div>
@@ -59,11 +59,11 @@
         </div>
         <fieldset class="border rounded-3 p-4 my-4 bg-light">
             <legend class="float-none w-auto px-2 fs-5 mb-1">Callback ACB · Xác nhận tự động</legend>
-            <p class="text-muted mb-3">ACB gửi thông báo thanh toán về địa chỉ này và dùng khóa bên dưới để xác thực cho cửa hàng.</p>
+            <p class="text-muted mb-3">ACB gửi thông báo tới URL đã đăng ký với ngân hàng và dùng khóa bên dưới để xác thực. URL của trang đang mở có thể khác URL đã đăng ký.</p>
             <div class="mb-3">
-                <label for="acbCallbackUrl" class="form-label">URL nhận callback của cửa hàng hiện tại</label>
+                <label for="acbCallbackUrl" class="form-label">URL callback trên ứng dụng hiện tại</label>
                 <input id="acbCallbackUrl" class="form-control" type="url" value="@ViewBag.CallbackUrl" readonly />
-                <div class="form-text">Đường dẫn cố định: <code>/Admin/api-callback</code>. Nếu đã cấu hình URL cũ bên dưới, ACB có thể tiếp tục gửi về URL cũ.</div>
+                <div class="form-text">Đường dẫn cố định: <code>/Admin/api-callback</code>. Nếu ACB đã đăng ký URL <code>www</code>, cần binding hoặc chuyển tiếp IIS từ URL đó tới ứng dụng hiện tại; lưu ở đây không tự tạo đường chuyển tiếp.</div>
                 @if (ViewBag.CallbackAliasUrls is string[] aliasUrls && aliasUrls.Length > 0)
                 {
                     <div class="alert alert-info mt-2 mb-0">
@@ -138,3 +138,6 @@
     </form>
     }
 </div></div>
+
+@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/bank-settings.mobile.css" asp-append-version="true" /> }
+@section PageScripts { <script src="~/Admin/js/bank-settings.mobile.js" asp-append-version="true"></script> }

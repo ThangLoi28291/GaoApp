@@ -26,15 +26,18 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
     private readonly IOrderInventoryIssueRepository _issueRepository;
     private readonly IOrderRepository _orderRepository;
     private readonly ILogger<OrderInventoryIssueService> _logger;
+    private readonly GaoApp.Application.Storefront.IStorefrontInventoryIssueAdapter? _storefront;
 
     public OrderInventoryIssueService(
         IOrderInventoryIssueRepository issueRepository,
         IOrderRepository orderRepository,
-        ILogger<OrderInventoryIssueService> logger)
+        ILogger<OrderInventoryIssueService> logger,
+        GaoApp.Application.Storefront.IStorefrontInventoryIssueAdapter? storefront = null)
     {
         _issueRepository = issueRepository;
         _orderRepository = orderRepository;
         _logger = logger;
+        _storefront = storefront;
     }
 
     public Task<OrderInventoryIssue?> GetDetailAsync(int issueId, CancellationToken ct = default)
@@ -137,6 +140,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
         int issueId,
         CancellationToken ct = default)
     {
+        if (_storefront is not null && await _storefront.TryValidateAsync(issueId, ct) is { } native) return native;
         var issue = await RequireIssueDetailAsync(issueId, ct);
 
         var result = new InventoryIssueApprovalCheckResultDto
@@ -807,6 +811,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
 
     public async Task RefreshResolutionStateAsync(int issueId, CancellationToken ct = default)
     {
+        if (_storefront is not null && await _storefront.TryRefreshAsync(issueId, ct)) return;
         var now = DateTime.UtcNow;
         var issue = await RequireIssueDetailAsync(issueId, ct);
 
@@ -832,6 +837,7 @@ public sealed class OrderInventoryIssueService : IOrderInventoryIssueService
 
     public async Task RefreshAutoResolutionAsync(int issueId, CancellationToken ct = default)
     {
+        if (_storefront is not null && await _storefront.TryRefreshAsync(issueId, ct)) return;
         var now = DateTime.UtcNow;
         var issue = await RequireIssueDetailAsync(issueId, ct);
 

@@ -373,7 +373,13 @@ public sealed class DatabaseBaselinePreflightTests
                 "20261007090000_AddMixedQuantityPromotions",
                 "20261007100000_AddDeliveryInventoryPosting",
                 "20261008100000_AddDeliveryTrips",
-                "20261008180000_AllowDeliveryOpeningCostSources"
+                "20261008120000_AddDeliveryProvisionalCosts",
+                "20261008180000_AllowDeliveryOpeningCostSources",
+                "20261009060000_WidenOrderLineSku",
+                "20261014010000_AddPurchaseLineNotes",
+                "20261014020000_AddReceiptGlobalDiscountAmount",
+                "20261014140000_AddBankNotificationBridge",
+                "20261022090000_AddDurableAuditOutbox"
             ]);
     }
 
@@ -520,7 +526,7 @@ public sealed class DatabaseBaselinePreflightTests
                 $"Server=127.0.0.1,1;Database={marker};User Id=synthetic;Password={marker};Encrypt=False;Connect Timeout=1")
             .Options;
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         await using var db = new AppDbContext(
             options,
             tenant,
@@ -1233,7 +1239,7 @@ internal sealed class PreflightAcceptanceDatabase : IAsyncDisposable
         }
 
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
 
         return new AppDbContext(
             optionsBuilder.Options,

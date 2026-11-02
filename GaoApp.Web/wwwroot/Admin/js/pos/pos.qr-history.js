@@ -39,7 +39,7 @@ window.PosQrHistory = (function () {
                 info.appendChild(element('span', 'pos-qr-history__code', item.requestCode));
                 const stamp = item.createdAtUtc;
                 const date = new Date(stamp + (/Z$|[+-]\d\d:\d\d$/.test(stamp) ? '' : 'Z'));
-                info.appendChild(element('small', '', `${item.bankName} · ${date.toLocaleString('vi-VN')}`));
+                info.appendChild(element('small', '', `${item.bankName} · ${date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`));
                 if (item.reviewReason) info.appendChild(element('small', 'pos-qr-history__reason', item.reviewReason));
                 const actions = element('div', 'pos-qr-history__actions');
                 const badge = element('span', 'pos-qr-history__badge', labels[item.status] || item.status);
@@ -80,8 +80,9 @@ window.PosQrHistory = (function () {
                 latest.hidden = !latestQrId;
                 showItems(data.items);
                 const recent = data.items.find(item => item.qrId === latestQrId);
-                note(recent ? `${recent.requestCode} · ${money(recent.amount)} · ${labels[recent.status] || recent.status}`
-                    : data.items.length ? 'Các QR trước đã kết thúc. Xem từng lần trong lịch sử.' : 'Đơn này chưa có QR đã tạo.');
+                const caption = recent ? `${recent.requestCode} · ${money(recent.amount)} · ${labels[recent.status] || recent.status}`
+                    : data.items.length ? 'Các QR trước đã kết thúc. Xem từng lần trong lịch sử.' : 'Đơn này chưa có QR đã tạo.';
+                note(data.cached ? `${data.message || 'Đang xem lịch sử QR đã lưu tại quầy.'} ${caption}` : caption, data.cached === true);
                 return data;
             } catch (error) {
                 if (current === revision) note(error.message, true);
@@ -98,6 +99,8 @@ window.PosQrHistory = (function () {
                 if (revision !== current || Number(getOrderId()) !== orderId) return false;
                 if (saved.qr?.id !== qrId || saved.qr?.orderId !== orderId)
                     throw new Error('QR trả về không khớp lần thanh toán đã chọn.');
+                if (typeof saved.qr.qrDataUrl !== 'string' || !saved.qr.qrDataUrl.trim())
+                    throw new Error('QR cũ chưa có ảnh mã. Mở lịch sử giao dịch để kiểm tra trước khi tạo QR mới.');
                 onOpen({ ...saved.qr, canCancel: saved.canCancel, readOnly: saved.readOnly, savedStatus: saved.status,
                     savedMessage: saved.message, pendingWarningMessage: warningMessage });
                 note(`Đã mở lại ${saved.qr.requestCode} · ${money(saved.qr.amount)}.`);

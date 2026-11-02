@@ -18,6 +18,111 @@ function harness() {
     return { api: window.PosPrinting, jobs, qz, printWindow, browserPrints, storage };
 }
 
+test('every receipt design stacks the struck original price above the promotion price and keeps saved totals', () => {
+    const receipt = { ...order, subtotal: 83000, discountTotal: 5000, grandTotal: 78000, paidTotal: 100000, changeDue: 22000,
+        lines: [{ itemName: '0.5Kg Bánh đậu nành', quantity: 1, sellingUnitName: 'Cái', unitPrice: 78000, lineTotal: 73000,
+            promotionDiscount: 5000, promotionName: 'Giảm 5k bánh' },
+        { itemName: '100g Túi làm sữa chua 6x12', quantity: 1, unitPrice: 5000, lineTotal: 5000 }] };
+    const before = structuredClone(receipt);
+    for (const option of templates.builtIns()) {
+        const { body } = templates.render(receipt, option.design);
+        const groups = [...body.matchAll(/<tbody class="item-group[^"]*">([\s\S]*?)<\/tbody>/g)];
+        assert.equal(groups.length, 2);
+        assert.match(groups[0][1], /0\.5Kg Bánh đậu nành/);
+        assert.match(groups[0][1], /<s class="original-price">78\.000<\/s><strong class="discounted-price">73\.000<\/strong>/);
+        assert.doesNotMatch(groups[0][1], /Khuyến mãi:|Giảm 5k bánh/);
+        assert.match(groups[0][1], /73\.000/);
+        assert.doesNotMatch(groups[1][1], /original-price|discounted-price/);
+        assert.match(body, /83\.000/);
+        assert.match(body, /78\.000/);
+        assert.match(body, /22\.000/);
+    }
+    assert.deepEqual(receipt, before);
+});
+
+test('manual discounts and missing promotion snapshots do not become promotion claims', () => {
+    for (const promotionDiscount of [undefined, null, 0, -5000, 'invalid', Infinity]) {
+        const receipt = { ...order, lines: [{ itemName: 'Giảm thủ công', quantity: 1, unitPrice: 78000,
+            lineTotal: 73000, lineDiscount: 5000, promotionDiscount, promotionName: 'Chương trình cũ' }] };
+        for (const option of templates.builtIns()) {
+            const { body } = templates.render(receipt, option.design);
+            assert.match(body, /Giảm 5\.000/);
+            assert.doesNotMatch(body, /original-price|discounted-price|Chương trình cũ/);
+        }
+    }
+});
+
+test('print output derives one unit price from the saved line discount and omits program descriptions', async () => {
+    const receipt = { ...order, lines: [{ itemName: 'Bánh đậu nành', quantity: 2, unitPrice: 78000, lineTotal: 146000,
+        promotionDiscount: 10000, comboAllocatedDiscount: 10000, promotionName: '<img src=x onerror=alert(1)>' }] };
+    for (const offline of [false, true]) {
+        const result = templates.render(receipt, { layout: 'itemwide' }, { offline });
+        assert.equal((result.body.match(/class="discount-price"/g) || []).length, 1);
+        assert.match(result.body, /<s class="original-price">78\.000<\/s><strong class="discounted-price">73\.000<\/strong>/);
+        assert.match(result.body, /146\.000/);
+        assert.doesNotMatch(result.body, /Khuyến mãi:|&lt;img|<img/);
+        const h = harness(), context = { storeId: 1, terminalId: 1 };
+        h.api.savePreferences(context, { mode: 'qz', printer: 'EPSON TM-T82' });
+        await h.api.send(result, context, h.printWindow);
+        assert.equal(/<body>([\s\S]*)<\/body>/.exec(h.jobs[0].data[0].data)[1], result.body);
+    }
+});
+
+test('promotion unit prices support fractional quantities and free items without subtracting manual discounts again', () => {
+    for (const [quantity, promotionDiscount, lineDiscount, discountedPrice] of [
+        [2.5, 12500, 0, '73.000'], [1, 78000, 0, '0'], [2, 10000, 5000, '73.000']
+    ]) {
+        const line = { itemName: 'Hàng khuyến mãi', quantity, unitPrice: 78000, promotionDiscount, lineDiscount,
+            lineTotal: 78000 * quantity - promotionDiscount - lineDiscount };
+        const { body } = templates.render({ ...order, lines: [line] });
+        assert.ok(body.includes(`<strong class="discounted-price">${discountedPrice}</strong>`));
+        assert.ok(body.includes(templates.money(line.lineTotal)));
+    }
+});
+
+test('customer current points appear on every preset, including zero, and respect customer visibility', () => {
+    const receipt = { ...order, customerId: 7, customerName: 'Khách tích điểm', customerCurrentPoints: 1234 };
+    for (const option of templates.builtIns()) {
+        assert.match(templates.render(receipt, option.design).body, /<td>Điểm hiện tại<\/td><td>1\.234<\/td>/);
+        assert.match(templates.render({ ...receipt, customerCurrentPoints: 0 }, option.design).body, /<td>Điểm hiện tại<\/td><td>0<\/td>/);
+        for (const design of [{ ...option.design, showCustomerPoints: false }, { ...option.design, showCustomer: false }])
+            assert.doesNotMatch(templates.render(receipt, design).body, /Điểm hiện tại/);
+        for (const customerCurrentPoints of [undefined, null, 'invalid', Infinity])
+            assert.doesNotMatch(templates.render({ ...receipt, customerCurrentPoints }, option.design).body, /Điểm hiện tại/);
+        assert.doesNotMatch(templates.render({ ...receipt, customerId: null }, option.design).body, /Điểm hiện tại/);
+    }
+    assert.equal(templates.normalize({ name: 'Mẫu đã lưu trước nâng cấp' }).showCustomerPoints, true);
+});
+
+test('offline receipts defer current points until synchronization instead of printing a cached balance', () => {
+    const receipt = { ...order, customerId: 7, customerCurrentPoints: 1234 };
+    const body = templates.render(receipt, {}, { offline: true }).body;
+    assert.match(body, /<td>Điểm hiện tại<\/td><td>Chờ đồng bộ<\/td>/);
+    assert.doesNotMatch(body, /1\.234/);
+    assert.doesNotMatch(templates.render(order, {}, { offline: true }).body, /Điểm hiện tại/);
+    assert.doesNotMatch(templates.render(receipt, { showCustomerPoints: false }, { offline: true }).body, /Điểm hiện tại/);
+});
+
+test('wholesale receipts hide points online and offline even when cached points or template options enable them', () => {
+    for (const option of templates.builtIns()) {
+        for (const customerPriceTier of ['WHOLESALE', ' wholesale ']) {
+            const receipt = { ...order, customerId: 7, customerName: 'Khách sỉ', customerPriceTier, customerCurrentPoints: 1234 };
+            for (const offline of [false, true]) {
+                const body = templates.render(receipt, option.design, { offline }).body;
+                assert.doesNotMatch(body, /Điểm hiện tại|1\.234/);
+                assert.match(body, /Khách sỉ/);
+            }
+        }
+    }
+});
+
+test('QZ print jobs carry the same customer current points as the receipt preview', async () => {
+    const h = harness(), context = { storeId: 1, terminalId: 1 };
+    h.api.savePreferences(context, { mode: 'qz', printer: 'EPSON TM-T82' });
+    await h.api.send(templates.render({ ...order, customerId: 7, customerCurrentPoints: 125 }), context, h.printWindow);
+    assert.match(h.jobs[0].data[0].data, /<td>Điểm hiện tại<\/td><td>125<\/td>/);
+});
+
 test('deposit receipts separate applied deposit from extra tender without discounting the order twice', () => {
     for (const option of templates.builtIns()) {
         const receipt = { ...order, grandTotal: 228000, subtotal: 228000, discountTotal: 0,

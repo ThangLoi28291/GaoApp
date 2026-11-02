@@ -1,7 +1,11 @@
-﻿@await Html.PartialAsync("Sections/_Variables")
+@inject GaoApp.Web.Services.AdminNavigationProvider Navigation
+@await Html.PartialAsync("Sections/_Variables")
 
 @{
     Layout = "_CommonMasterLayout";
+    ViewData["MobileShellOwner"] = "pos-prime";
+    ViewData["MobileDockOwner"] = "pos";
+    var navigation = await Navigation.GetAsync(ViewContext);
 
     ViewData["isNavbar"] = false;
     ViewData["isMenu"] = false;
@@ -14,7 +18,7 @@
 }
 
 <div class="pos-prime-layout"
-     data-pos-prime-layout>
+     data-pos-prime-layout data-mobile-app-shell="pos-prime" data-mobile-dock-owner="pos" data-gao-theme="commerce">
 
     <main class="pos-prime-layout__content">
         @RenderBody()
@@ -54,16 +58,14 @@
         </div>
     </div>
 
-    <div class="pos-prime-admin-drawer__footer">
-        <a asp-area="Admin"
-           asp-controller="Home"
-           asp-action="Index"
-           class="btn btn-outline-secondary w-100">
-            <i class="bx bx-arrow-back me-1"
-               aria-hidden="true"></i>
-            Về trang quản trị
-        </a>
-    </div>
+    @if (navigation.Home is { } home)
+    {
+        <div class="pos-prime-admin-drawer__footer">
+            <a href="@home.Href" class="btn btn-outline-secondary w-100" data-menu-id="@home.Id">
+                <i class="bx bx-arrow-back me-1" aria-hidden="true"></i>@home.Title
+            </a>
+        </div>
+    }
 </div>
 
 @section VendorStyles {

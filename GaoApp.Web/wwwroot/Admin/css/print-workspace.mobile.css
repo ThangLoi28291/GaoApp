@@ -1,0 +1,48 @@
+/* UI-22: phone controls only. Printable documents and printer contracts keep their native owners. */
+@media screen and (max-width: 767.98px) {
+    :is(#receiptStudio,#labelPrinting) { --ink:#173354; --muted:#52677f; --line:#d8e3f2; color:#173354; padding:0 0 calc(110px + env(safe-area-inset-bottom)); max-width:100%; min-width:0; }
+    :is(#receiptStudio,#labelPrinting) :is(h1,h2,h3,p,label,strong,small) { overflow-wrap:anywhere; }
+    :is(#receiptStudio,#labelPrinting) h1 { color:#173354; font-size:25px; line-height:1.3; }
+    :is(#receiptStudio,#labelPrinting) h2 { color:#173354; font-size:20px; }
+    :is(#receiptStudio,#labelPrinting) p { color:#52677f; line-height:1.6; }
+    :is(#receiptStudio,#labelPrinting) :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select,textarea) { font-size:16px; min-height:46px; min-width:0; max-width:100%; border-radius:12px; }
+    :is(#receiptStudio,#labelPrinting) textarea { min-height:92px; }
+    :is(#receiptStudio,#labelPrinting,[data-label-receipt]) :is(button,.btn) { min-height:44px; white-space:normal; border-radius:12px; line-height:1.4; }
+    :is(#receiptStudio,#labelPrinting) .btn-primary { color:#fff; background:#2563eb; border-color:#2563eb; }
+    :is(#receiptStudio,#labelPrinting) .btn-outline-primary { color:#2459c4; border-color:#bfd0ed; }
+    :is(#receiptStudio,#labelPrinting) :is(.studio-header,.label-heading) { display:flex; flex-wrap:wrap; align-items:start; gap:14px; margin-bottom:18px; padding:18px; background:linear-gradient(135deg,#fff,#edf3ff); border:1px solid #d8e3f2; border-radius:20px; }
+    :is(#receiptStudio,#labelPrinting) :is(.store-identity-panel,.studio-preview-panel,.printer-panel,.label-panel) { padding:18px; border-radius:18px; border-color:#d8e3f2; background:#fff; box-shadow:0 5px 20px #17335408; min-width:0; }
+    #receiptStudio :is(.studio-layout,.store-identity-fields) { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
+    #receiptStudio :is(.studio-library,.studio-preview-panel) { min-width:0; width:100%; }
+    #receiptStudio .template-gallery { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    #receiptStudio :is(.studio-actions,.studio-section-heading,.printer-connect,.printer-options) { flex-wrap:wrap; gap:10px; }
+    #receiptStudio :is(.paper-filters,.studio-actions) button { min-height:44px; }
+    #receiptStudio .editor-two { grid-template-columns:minmax(0,1fr); }
+    #receiptStudio .editor-checks { grid-template-columns:minmax(0,1fr); gap:8px; }
+    #receiptStudio .editor-checks label { display:flex; align-items:center; gap:10px; min-height:44px; padding:8px 12px; margin:0; border:1px solid #e0e8f3; border-radius:12px; }
+    #receiptStudio .preview-stage { height:min(65dvh,520px); max-height:none; overflow:auto; padding:12px; text-align:left; overscroll-behavior:contain; }
+    #receiptStudio .preview-stage iframe { margin:0; max-width:none; transform:none; transform-origin:top left; }
+    #labelPrinting :is(.label-studio,.label-fields) { display:grid; grid-template-columns:minmax(0,1fr); gap:14px; }
+    #labelPrinting :is(.label-wide,.label-studio > *) { min-width:0; grid-column:auto; }
+    #labelPrinting :is(.label-heading,.label-toolbar,.label-inline,.label-checks) { flex-wrap:wrap; gap:10px; }
+    #labelPrinting .label-checks label { min-height:44px; display:inline-flex; align-items:center; gap:8px; }
+    #labelPrinting .label-layout-gallery { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+    #labelPrinting :is(.label-layout-card,.label-print-choice) { min-width:0; }
+    #labelPrinting .label-preview-stage { display:block; overflow:auto; max-width:100%; max-height:70dvh; }
+    #labelPrinting .label-preview-stage > div { width:max-content; min-width:100%; }
+    #labelPrinting .label-table-scroll { overflow-x:auto; max-width:100%; }
+    #labelPrinting .label-tabs { display:flex; flex-wrap:nowrap; overflow-x:auto; max-width:100%; }
+    #labelPrinting .label-tabs button { flex:0 0 auto; }
+    #labelPrinting .label-tabs { background:#edf3ff; }
+    #labelPrinting .label-tabs button.active, #receiptStudio .paper-filters button.active { color:#fff; background:#2563eb; }
+    #labelPrinting .label-layout-card.active, #receiptStudio .template-card.selected { border-color:#2563eb; background:#f0f5ff; }
+    #labelPrinting .label-layout-selected { color:#2459c4; }
+    #labelPrinting #quickSearchForm { display:grid; grid-template-columns:minmax(0,1fr); }
+    #labelPrinting #quickSearch { width:100% !important; }
+    #labelPrinting .label-dialog, #labelDialog { max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow-y:auto; border-radius:20px; padding:18px; }
+    [data-label-receipt] { display:grid !important; grid-template-columns:minmax(0,1fr); padding:14px; border:1px solid #d8e3f2; border-radius:16px; background:#fff; }
+    .ui22-preview-tools { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 0; font:14px/1.5 system-ui,sans-serif; color:#173354; }
+    .ui22-preview-tools button { min-height:44px; padding:8px 12px; border:1px solid #bfd0ed; border-radius:12px; background:white; color:#2459c4; }
+    .ui22-preview-tools button[aria-pressed=true] { color:white; background:#2563eb; border-color:#2563eb; }
+    .ui22-preview-tools output { flex-basis:100%; color:#52677f; }
+}

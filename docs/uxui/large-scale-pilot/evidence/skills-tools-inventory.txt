@@ -1,0 +1,22 @@
+.agents/skills: False
+  ui-ux-pro-max: False
+  web-design-guidelines: False
+  frontend-design: False
+C:/Users/wind/.agents/skills: True
+  ui-ux-pro-max: False
+  web-design-guidelines: False
+  frontend-design: False
+C:/Users/wind/.codex/skills: True
+  ui-ux-pro-max: False
+  web-design-guidelines: False
+  frontend-design: False
+.codex/skills: False
+  ui-ux-pro-max: False
+  web-design-guidelines: False
+  frontend-design: False
+Session catalog: these three UX/UI skills not exposed.
+Session tools: no Playwright MCP tools exposed. Codex config scan did not find a Playwright server.
+Existing repo Playwright Node library: 1.63.0; not an MCP tool and not invoked in this pilot.
+OpenAI Docs used for local skill discovery guidance; does not count as a UX/UI skill run.
+Computer-use skill instructions inspected for inventory; no UI session activated.
+No skill, MCP, browser, third-party package or global runtime installed/upgraded.

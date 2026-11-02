@@ -17,12 +17,16 @@
           asp-append-version="true" />
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/customer-rewards.mobile.css" asp-append-version="true" />
+}
+
 <div class="reward-settings-page"
      data-reward-settings-page
      data-page-state="@pageState"
-     data-original-money-per-point="@Model.MoneyPerPoint"
-     data-original-points-per-voucher="@Model.PointsPerVoucher"
-     data-original-voucher-value="@Model.VoucherValue">
+     data-original-money-per-point="@Model.MoneyPerPoint.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+     data-original-points-per-voucher="@Model.PointsPerVoucher.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+     data-original-voucher-value="@Model.VoucherValue.ToString(System.Globalization.CultureInfo.InvariantCulture)">
 
     <div class="reward-settings-header">
 
@@ -430,4 +434,5 @@
 @section PageScripts {
     <script src="~/Admin/js/reward-settings.js"
             asp-append-version="true"></script>
+    <script src="~/Admin/js/customer-rewards.mobile.js" asp-append-version="true"></script>
 }

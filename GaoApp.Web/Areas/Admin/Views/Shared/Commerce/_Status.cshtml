@@ -1,0 +1,12 @@
+@model GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceStatus
+@{
+    var tone = Model.Tone switch
+    {
+        GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceTone.Success => "is-success",
+        GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceTone.Info => "is-info",
+        GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceTone.Warning => "is-warning",
+        GaoApp.Web.Areas.Admin.ViewModels.Commerce.CommerceTone.Danger => "is-danger",
+        _ => "is-neutral"
+    };
+}
+<span class="gds-status gds-status--dot @tone">@Model.Text</span>

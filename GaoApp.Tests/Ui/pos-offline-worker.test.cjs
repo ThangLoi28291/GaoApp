@@ -8,7 +8,9 @@ function worker(cached = new Map(), network = async () => new Response('from ser
     const listeners = new Map(), requests = [];
     vm.runInNewContext(source, {
         URL, Response, AbortController, setTimeout, clearTimeout,
-        self: { location: { origin: 'https://pos.local' }, addEventListener: (name, callback) => listeners.set(name, callback) },
+        self: { PosOfflinePrivacy: require('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.offline.privacy.js'),
+            location: { origin: 'https://pos.local' }, addEventListener: (name, callback) => listeners.set(name, callback) },
+        importScripts() {},
         caches: { open: async name => ({ match: async request => (generations?.get(name) || cached).get(request.url)?.clone() }) },
         fetch: async request => { requests.push(request.url); return network(request); },
         indexedDB: { open() { throw new Error('Asset loading must not touch pending POS transactions.'); } }

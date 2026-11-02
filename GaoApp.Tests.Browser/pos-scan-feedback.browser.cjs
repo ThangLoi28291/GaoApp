@@ -23,6 +23,7 @@ const { chromium } = require('playwright');
         assert.equal(await page.locator('#barcodeAutocomplete').isVisible(), false, 'Old autocomplete must close after every scan');
         assert.equal(await page.locator('.modal.show').count(), 0, 'No automatic success popup');
         assert.equal(await page.locator('#btnOpenPayment').isDisabled(), false, 'Payment must unlock immediately');
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     }
     async function latest(name, unit, before, after) {
         assert.equal(await page.locator('#posScanName').innerText(), name);
@@ -195,7 +196,9 @@ const { chromium } = require('playwright');
         await page.reload(); await page.waitForFunction(() => !!window.posApp?.state.business.currentDraft);
         await page.waitForFunction(() => document.querySelectorAll('#posScanHistoryList li').length === 2);
         await context.setOffline(false); await page.evaluate(() => PosOffline.sync());
-        await page.waitForFunction(() => !PosOffline.status().pending); await page.evaluate(() => posApp.loadScreen());
+        await page.waitForFunction(() => !PosOffline.status().pending && !PosOffline.status().syncing);
+        await page.evaluate(() => posApp.loadScreen());
+        await page.waitForFunction(id => posApp.state.business.currentDraft.orderId !== id, temporaryCart);
         assert.equal(await count(),2,'Offline order ID remapping preserves its own history');
         assert.notEqual((await state()).orderId,temporaryCart,'Server replaces the offline cart identifier');
         await page.emulateMedia({ reducedMotion:'reduce' }); await scan('2099900000001');

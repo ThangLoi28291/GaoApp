@@ -10,6 +10,7 @@
   const val=m=>m?.value??null,fmt=v=>v===null||v===undefined?'—':number.format(v),money=v=>v===null||v===undefined?'—':currency.format(v)+' ₫';
   const short=v=>v===null||v===undefined?'—':Math.abs(v)>=1e9?fmt(v/1e9)+' tỷ':Math.abs(v)>=1e6?fmt(v/1e6)+' tr':Math.abs(v)>=1e3?fmt(v/1e3)+' nghìn':fmt(v)+' ₫';
   const date=v=>v?new Intl.DateTimeFormat('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}).format(new Date(String(v).slice(0,10)+'T00:00:00Z')):'—';
+  const clock=v=>new Date(typeof v==='string'&&!/(Z|[+-]\d{2}:?\d{2})$/i.test(v)?v+'Z':v).toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'});
   const cat={rent:'Mặt bằng',salary:'Lương & nhân sự',utilities:'Điện, nước & dịch vụ',transport:'Vận chuyển',marketing:'Marketing',other:'Vật tư & chi phí khác'};
   const group=v=>v==='WHOLESALE'?'Khách sỉ':v==='RETAIL'?'Khách lẻ':'Chưa xác định';
   const badge=(text,warn=false)=>'<span class="mr-badge '+(warn?'warning':'')+'">'+esc(text)+'</span>';
@@ -17,6 +18,7 @@
   const state={data:null,expenses:null,page:1,search:'',group:'all',category:'all',sort:'net',expenseStatus:'all',expensePage:1};
   let sequence=0,controller,charts=[],mutating=false,actionRow=null,actionKind='';
   const query=new URL(location.href).searchParams;
+  let initialTerminalId=query.get('terminalId');
   function today(){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Ho_Chi_Minh',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());return ['year','month','day'].map(k=>parts.find(x=>x.type===k).value).join('-');}
   function addDays(v,n){const d=new Date(v+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);}
   function preset(mode){const t=today();let from=t,to=t;if(mode==='month')from=t.slice(0,8)+'01';if(mode==='week')from=addDays(t,-6);if(mode==='last-month'){to=addDays(t.slice(0,8)+'01',-1);from=to.slice(0,8)+'01';}field('fromDate').value=from;field('toDate').value=to;}
@@ -25,19 +27,37 @@
   if(query.has('fromDate')||query.has('toDate'))field('preset').value='custom';
   $$('[data-report-nav]').forEach(a=>{if(a.dataset.reportNav===section)a.setAttribute('aria-current','page');});
   if(section==='expenses'){field('terminalId').closest('label').hidden=true;field('customerState').closest('label').hidden=true;field('compare').closest('label').hidden=true;}
-  function params(){const q=new URLSearchParams();for(const k of ['fromDate','toDate','compare','terminalId','customerState'])if(field(k).value)q.set(k,field(k).value);return q;}
+  function params(){const q=new URLSearchParams();for(const k of ['fromDate','toDate','compare','terminalId','customerState']){const value=k==='terminalId'&&initialTerminalId!==null?initialTerminalId:field(k).value;if(value)q.set(k,value);}return q;}
   function navigation(){const q=params();history.replaceState(null,'',location.pathname+'?'+q);$$('[data-report-nav]').forEach(a=>{const u=new URL(a.href,location.origin);u.search=q.toString();a.href=u.href;});}
-  async function json(url,options={}){const response=await fetch(url,{credentials:'same-origin',...options});if(!response.ok){let message;try{message=(await response.json()).message;}catch(_){}throw new Error(message||({403:'Bạn chưa có quyền thực hiện thao tác này.',401:'Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.',429:'Báo cáo đang bận. Vui lòng thử lại.',503:'Báo cáo đang bận. Vui lòng thử lại.'}[response.status])||'Không tải được dữ liệu. Vui lòng thử lại.');}return response.json();}
+  async function json(url,options={}){
+    const response=await fetch(url,{credentials:'same-origin',...options,headers:{Accept:'application/json',...options.headers}});
+    if(!response.ok){let body;try{body=await response.json();}catch(_){}
+      const message=body?.message||({403:'Bạn chưa có quyền thực hiện thao tác này.',401:'Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.',429:'Báo cáo đang bận. Vui lòng thử lại.',503:'Báo cáo đang bận. Vui lòng thử lại.'}[response.status])||'Không tải được dữ liệu. Vui lòng thử lại.';
+      throw new Error(message+' (HTTP '+response.status+(body?.traceId?' · Mã tra cứu: '+body.traceId:'')+')');
+    }
+    if(!response.headers.get('content-type')?.includes('json')){
+      if(response.redirected)throw new Error('Phiên đăng nhập đã hết hạn. Đăng nhập lại để tiếp tục.');
+      throw new Error('Server không trả dữ liệu báo cáo hợp lệ (HTTP '+response.status+'). Vui lòng thử lại.');
+    }
+    try{return await response.json();}catch(error){if(error.name==='AbortError')throw error;throw new Error('Không đọc được dữ liệu báo cáo từ server (HTTP '+response.status+'). Vui lòng thử lại.');}
+  }
   function destroy(){charts.forEach(c=>{try{c.destroy();}catch(_){}});charts=[];}
   async function load(){const current=++sequence;controller?.abort();controller=new AbortController();destroy();
+    const requestController=controller,configuredTimeout=Number(root.dataset.requestTimeoutMs);
+    const timeoutMs=Number.isFinite(configuredTimeout)&&configuredTimeout>=1000&&configuredTimeout<=150000?configuredTimeout:45000;
+    let timedOut=false;
+    const timeout=setTimeout(()=>{timedOut=true;requestController.abort();},timeoutMs);
     $('[data-report-results]').hidden=true;$('[data-report-error]').hidden=true;$('[data-report-live]').hidden=false;root.setAttribute('aria-busy','true');
-    $('[data-report-live]').textContent='Đang tải báo cáo…';navigation();
-    try{const q=params();if(section==='expenses'){q.set('search',state.search);q.set('status',state.expenseStatus);q.set('page',state.expensePage);const data=await json('/admin/reports/expenses/data?'+q,{signal:controller.signal});if(current!==sequence)return;state.expenses=data;renderExpenses();}
-      else{const data=await json(root.dataset.url+'?'+q,{signal:controller.signal});if(current!==sequence)return;state.data=data;renderReport();}
+    $('[data-report-live]').textContent='Đang tải báo cáo…';
+    try{navigation();const q=params();if(section==='expenses'){q.set('search',state.search);q.set('status',state.expenseStatus);q.set('page',state.expensePage);const data=await json('/admin/reports/expenses/data?'+q,{signal:requestController.signal});if(current!==sequence)return;state.expenses=data;renderExpenses();}
+      else{if(section==='overview')q.set('view','overview');const data=await json(root.dataset.url+'?'+q,{signal:requestController.signal});if(current!==sequence)return;state.data=data;renderReport();}
       $('[data-report-results]').hidden=false;$('[data-report-live]').hidden=true;drawCharts();
-      $('[data-report-context]').textContent=section==='expenses'?date(field('fromDate').value)+' – '+date(field('toDate').value)+' · Chi phí toàn cửa hàng':date(state.data.period.fromDate)+' – '+date(state.data.period.toDate)+(state.data.comparisonPeriod?' · So với '+date(state.data.comparisonPeriod.fromDate)+' – '+date(state.data.comparisonPeriod.toDate):'')+' · Cập nhật '+new Date(state.data.generatedAtUtc).toLocaleTimeString('vi-VN');
-    }catch(error){if(current!==sequence||error.name==='AbortError')return;$('[data-report-error] span').textContent=error.message;$('[data-report-error]').hidden=false;$('[data-report-live]').hidden=true;}
-    finally{if(current===sequence)root.setAttribute('aria-busy','false');}
+      $('[data-report-context]').textContent=section==='expenses'?date(field('fromDate').value)+' – '+date(field('toDate').value)+' · Chi phí toàn cửa hàng':date(state.data.period.fromDate)+' – '+date(state.data.period.toDate)+(state.data.comparisonPeriod?' · So với '+date(state.data.comparisonPeriod.fromDate)+' – '+date(state.data.comparisonPeriod.toDate):'')+' · Cập nhật '+clock(state.data.generatedAtUtc);
+    }catch(error){if(current!==sequence||error.name==='AbortError'&&!timedOut)return;
+      $('[data-report-error] span').textContent=timedOut?'Server chưa trả báo cáo sau '+Math.ceil(timeoutMs/1000)+' giây. Vui lòng thử lại hoặc chọn khoảng ngày ngắn hơn.':error.message;
+      $('[data-report-error]').hidden=false;$('[data-report-live]').hidden=true;
+    }
+    finally{clearTimeout(timeout);if(current===sequence)root.setAttribute('aria-busy','false');}
   }
   function delta(current,previous,inverse=false){if(current===null||previous===null||previous===undefined||field('compare').value==='none')return 'Trong kỳ đã chọn';if(previous===0)return current===0?'Không thay đổi':'Phát sinh mới';const change=(current-previous)/Math.abs(previous)*100;return '<span class="'+((inverse?change<=0:change>=0)?'mr-up':'mr-down')+'">'+(change>0?'↗ +':change<0?'↘ ':'')+fmt(change)+'%</span> so với kỳ trước';}
   function kpi(label,value,previous,icon='bx-bar-chart-alt-2',suffix='',inverse=false){return '<article class="mr-kpi"><div class="mr-kpi-title"><i class="bx '+icon+'" aria-hidden="true"></i>'+esc(label)+'</div><strong title="'+esc(money(value))+'">'+esc(short(value))+'</strong><small>'+delta(value,previous,inverse)+(suffix?' · '+esc(suffix):'')+'</small></article>';}
@@ -55,7 +75,15 @@
   function chartPanel(title,type,caption,rows,wide=false){return panel(title,caption,'<div class="mr-chart" data-chart="'+type+'" role="img" aria-label="'+esc(title)+'"></div>'+equivalent('Xem bảng số liệu',rows),'',wide);}
   function rank(rows){const top=rows.filter(x=>val(x.summary.netSales)!==null).slice(0,6),max=Math.max(1,...top.map(x=>Math.abs(val(x.summary.netSales))));return top.length?'<div class="mr-rank-list">'+top.map(x=>'<div><div class="mr-rank-label"><span>'+esc(x.name)+'</span><strong title="'+esc(money(val(x.summary.netSales)))+'">'+esc(short(val(x.summary.netSales)))+'</strong></div><div class="mr-track"><span style="width:'+Math.abs(val(x.summary.netSales))/max*100+'%;'+(val(x.summary.netSales)<0?'background:var(--mr-amber)':'')+'"></span></div></div>').join('')+'</div>':empty();}
   function exportLink(dimension){return root.dataset.canExport==='true'?'<a class="mr-button" data-export href="/admin/reports/management/export?'+esc(params().toString())+'&amp;dimension='+dimension+'">Xuất CSV toàn kỳ</a>':'';}
+  function costDiagnostics(diagnostics){const el=$('[data-report-cost-diagnostics]');if(!el)return;el.hidden=!diagnostics?.totalIssues;if(el.hidden){el.innerHTML='';return;}
+    const q=params();q.set('compare','none');q.set('segment','issues');
+    const rows=diagnostics.issues.map(x=>'<tr><td>'+(root.dataset.canViewOrders==='true'?'<a href="/admin/pos/order-detail/'+Number(x.orderId)+'">'+esc(x.orderNumber)+'</a>':esc(x.orderNumber))+'</td><td>'+esc(x.itemName||'Toàn đơn')+'</td><td>'+esc(x.message)+'</td></tr>');
+    el.innerHTML='<details class="mr-panel mr-cost-diagnostics"><summary>'+esc(diagnostics.affectedOrders+' đơn · '+diagnostics.affectedLines+' dòng hàng cần kiểm tra giá vốn')+'</summary><p class="mr-caption">'+esc(diagnostics.unavailableOrders+' đơn thiếu dữ liệu nguồn · '+diagnostics.conflictingOrders+' đơn có dữ liệu không khớp')+'</p>'+table(['Đơn hàng','Sản phẩm','Nguyên nhân'],rows)+'<p class="mr-caption">'+esc('Hiển thị '+diagnostics.issues.length+'/'+diagnostics.totalIssues+' nguyên nhân')+'</p><a class="mr-button" href="/admin/reports/profit/detail?'+esc(q)+'">Xem các đơn cần kiểm tra</a></details>';
+  }
   function renderReport(){const d=state.data,c=d.current,p=d.comparison;const quality=[];
+    const terminal=field('terminalId'),selected=initialTerminalId??terminal.value;terminal.replaceChildren(new Option('Tất cả quầy',''));d.terminals.forEach(t=>terminal.add(new Option(t.name,String(t.id))));
+    if(selected&&![...terminal.options].some(option=>option.value===selected))throw new Error('Quầy được yêu cầu không nằm trong danh sách quầy của báo cáo. Vui lòng chọn lại bộ lọc.');
+    terminal.value=selected;initialTerminalId=null;
     if(!c.summary.grossProfit.available)quality.push(badge(c.summary.message||'Chưa đủ dữ liệu xác định giá vốn',true));
     else if(isProvisional(c.summary.cogs))quality.push(badge('Giá vốn tạm tính · '+(c.summary.affectedOrders??0)+' đơn',true));
     if(c.draftExpenses)quality.push(badge(c.draftExpenses+' khoản chi nháp chưa tính vào lợi nhuận',true));
@@ -63,8 +91,8 @@
     if(field('terminalId').value||field('customerState').value!=='all')quality.push(badge('Chi phí thuộc toàn cửa hàng; chưa phân bổ theo bộ lọc',true));
     quality.push(badge(c.salesOrders+' đơn bán · Biên LN gộp '+(val(c.summary.grossMargin)===null?'—':fmt(val(c.summary.grossMargin))+'%')));
     $('[data-report-quality]').innerHTML=quality.join('');
+    costDiagnostics(c.costDiagnostics);
     $('[data-report-kpis]').innerHTML=kpi('Doanh thu thuần',val(c.summary.netSales),val(p?.summary.netSales))+kpi('Lợi nhuận gộp',val(c.summary.grossProfit),val(p?.summary.grossProfit),'bx-layer',isProvisional(c.summary.grossProfit)?'Tạm tính':'')+kpi('Chi phí vận hành',c.operatingExpenses,p?.operatingExpenses,'bx-wallet','Toàn cửa hàng',true)+kpi('LN sau chi phí ghi nhận',c.operatingProfit,p?.operatingProfit,'bx-trending-up',isProvisional(c.summary.grossProfit)?'Tạm tính':'');
-    const terminal=field('terminalId'),selected=terminal.value;terminal.replaceChildren(new Option('Tất cả quầy',''));d.terminals.forEach(t=>terminal.add(new Option(t.name,String(t.id))));terminal.value=selected;
     const el=$('[data-report-panels]');
     if(section==='overview'){el.innerHTML='<div class="mr-grid">'+chartPanel('Xu hướng doanh thu','area','Kỳ hiện tại và kỳ trước',trendTable())+chartPanel('Doanh thu khách sỉ & lẻ','donut','Tỷ trọng doanh thu thuần',dimensionsTable(c.customerGroups,true))+panel('Sản phẩm đóng góp tốt','Xếp theo doanh thu thuần',rank(c.products),'<a class="mr-panel-link" href="/admin/reports/products?'+esc(params())+'">Tất cả →</a>')+chartPanel('Hình thành lợi nhuận','waterfall','Doanh thu, giá vốn và chi phí đã ghi nhận',financialTable())+panel('Khách hàng nổi bật','Theo doanh thu thuần trong kỳ',dimensionsTable(c.customers.filter(x=>x.id!==0).slice(0,5),true),'<a class="mr-panel-link" href="/admin/reports/customers?'+esc(params())+'">Tất cả →</a>')+chartPanel('Cơ cấu chi phí vận hành','treemap','Diện tích theo chi phí đã ghi nhận',expenseCategoryTable())+'</div>';
     }else if(section==='profit'){el.innerHTML='<div class="mr-grid">'+chartPanel('Doanh thu & lợi nhuận gộp','combo','Cột doanh thu và đường lợi nhuận dùng cùng trục tiền',trendTable())+chartPanel('Hình thành lợi nhuận','waterfall','Lợi nhuận sau các chi phí đã ghi nhận',financialTable())+panel('Kết quả kinh doanh','Đơn vị: VND · chi phí toàn cửa hàng',financialTable(),exportLink('profit'))+chartPanel('Cơ cấu chi phí vận hành','treemap','Khoản chi đã xác nhận theo kỳ ghi nhận',expenseCategoryTable())+'</div>'+panel('Đối chiếu giá vốn','Kiểm tra giá vốn tạm tính và hoạt động điều chỉnh', '<div class="mr-actions"><a class="mr-button" href="/admin/reports/profit/detail?'+esc(params())+'">Chi tiết theo đơn</a><a class="mr-button" href="/admin/reports/cost-adjustments?'+esc(params())+'">Điều chỉnh giá vốn</a></div>');
@@ -107,9 +135,10 @@
   async function write(url,body){return json(url,{method:'POST',headers:{'Content-Type':'application/json','RequestVerificationToken':$('input[name="__RequestVerificationToken"]').value},body:JSON.stringify(body)});}
   root.addEventListener('click',event=>{if(event.target.closest('[data-report-refresh],[data-report-retry]'))load();if(event.target.closest('[data-expense-new]'))openExpense();if(event.target.closest('[data-expense-close]')&&!mutating)$('[data-expense-dialog]').close();if(event.target.closest('[data-action-close]')&&!mutating)$('[data-expense-action-dialog]').close();const edit=event.target.closest('[data-expense-edit]'),confirm=event.target.closest('[data-expense-confirm]'),voidButton=event.target.closest('[data-expense-void]');if(edit)openExpense(state.expenses.items.find(x=>x.id===Number(edit.dataset.expenseEdit)));if(confirm)openAction(state.expenses.items.find(x=>x.id===Number(confirm.dataset.expenseConfirm)),'confirm');if(voidButton)openAction(state.expenses.items.find(x=>x.id===Number(voidButton.dataset.expenseVoid)),'void');const page=event.target.closest('[data-dimension-page]');if(page){state.page+=Number(page.dataset.dimensionPage);destroy();renderReport();drawCharts();}const expensePage=event.target.closest('[data-expense-page]');if(expensePage){state.expensePage+=Number(expensePage.dataset.expensePage);load();}});
   root.addEventListener('submit',async event=>{if(event.target===form){event.preventDefault();state.page=1;state.expensePage=1;load();}if(event.target.matches('[data-dimension-filter]')){event.preventDefault();const f=event.target;state.search=f.elements.search.value.trim();state.sort=f.elements.sort.value;state.group=f.elements.group?.value||'all';state.category=f.elements.category?.value||'all';state.page=1;destroy();renderReport();drawCharts();}if(event.target.matches('[data-expense-filter]')){event.preventDefault();state.search=event.target.elements.search.value.trim();state.expenseStatus=event.target.elements.status.value;state.expensePage=1;load();}if(event.target.matches('[data-expense-form],[data-expense-action-form]')){event.preventDefault();if(mutating)return;mutating=true;const f=event.target,submit=f.querySelector('[type=submit]'),isNew=f.matches('[data-expense-form]'),error=isNew?$('[data-expense-error]'):$('[data-expense-action-error]');submit.disabled=true;error.hidden=true;try{if(isNew){const v=new FormData(f),payload=Object.fromEntries(v.entries()),id=payload.id;delete payload.id;payload.amount=Number(payload.amount);payload.isPaid=payload.isPaid==='true';await write('/admin/reports/expenses'+(id?'/'+Number(id)+'/edit':''),payload);$('[data-expense-dialog]').close();}else{await write('/admin/reports/expenses/'+actionRow.id+'/'+actionKind,{rowVersion:actionRow.rowVersion,reason:f.elements.reason.value});$('[data-expense-action-dialog]').close();}await load();}catch(e){error.textContent=e.message;error.hidden=false;}finally{mutating=false;submit.disabled=false;}}});
+  field('terminalId').addEventListener('change',()=>{initialTerminalId=null;});
   field('preset').addEventListener('change',()=>{if(field('preset').value!=='custom')preset(field('preset').value);});['fromDate','toDate'].forEach(k=>field(k).addEventListener('change',()=>field('preset').value='custom'));
   $$('dialog').forEach(d=>d.addEventListener('cancel',event=>{if(mutating)event.preventDefault();}));
-  new ResizeObserver(()=>waterfall()).observe(root);
-  new MutationObserver(()=>{if(state.data&&!$('[data-report-results]').hidden){destroy();drawCharts();}}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+  if(window.ResizeObserver)new ResizeObserver(()=>waterfall()).observe(root);
+  if(window.MutationObserver)new MutationObserver(()=>{if(state.data&&!$('[data-report-results]').hidden){destroy();drawCharts();}}).observe(document.documentElement,{attributes:true,attributeFilter:['class']});
   load();
 })();

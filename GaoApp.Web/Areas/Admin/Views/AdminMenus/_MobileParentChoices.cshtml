@@ -1,0 +1,7 @@
+@model IEnumerable<GaoApp.Application.DTOs.AdminMenus.AdminMenuItemDto>
+@using System.Text.Json
+@{
+    var options = GaoApp.Web.Areas.Admin.ViewModels.Commerce.AdminMenuMobileEntry.Flatten(Model)
+        .Where(entry => entry.Depth > 1).Select(entry => new { id = entry.Item.Id, title = entry.ParentTitle + " / " + entry.Item.Title });
+}
+<script type="application/json" data-mobile-parent-options>@Html.Raw(JsonSerializer.Serialize(options))</script>

@@ -117,6 +117,30 @@ public sealed class StoreActivityTests
         foreach (var lease in leases) lease!.Dispose();
     }
     [Fact]
+    public void Receipt_titles_are_preserved_separately_from_document_ids_and_bounded()
+    {
+        var registry = new StoreActivityRegistry(new Clock());
+        var title = new string('ấ', 255);
+        registry.Presence(1, 7, Guid.NewGuid(), "Lan", "receipt", null, "editing", "receipt:42", "Phiếu nhập #42", title);
+        registry.Record(1, 7, "Lan", "receipt", "vừa thêm hàng", "Phiếu nhập #42", null, workKey:"receipt:42", documentTitle:title + "overflow");
+        Assert.Equal(title, Assert.Single(registry.Snapshot(1).People).DocumentTitle);
+        var saved = Assert.Single(registry.Snapshot(1).Events);
+        Assert.Equal(title, saved.DocumentTitle); Assert.Equal("Phiếu nhập #42", saved.Document);
+        Assert.Empty(registry.Snapshot(2).People); Assert.Empty(registry.Snapshot(2).Events);
+    }
+    [Fact]
+    public void Signed_tickets_accept_a_full_Vietnamese_receipt_title_within_the_request_limit()
+    {
+        var tickets = new StoreActivityTicket(new EphemeralDataProtectionProvider(), new Clock());
+        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, "7")], "test"));
+        var title = new string('ấ', 255);
+        var signed = tickets.Issue(1, 7, "receipt", "receipt:42", "Phiếu nhập #42", title);
+        Assert.InRange(signed.Length, 2049, StoreActivityTicket.MaxLength);
+        Assert.Equal(title, tickets.Read(signed, 1, user)!.DocumentTitle);
+        Assert.Null(tickets.Read(signed, 2, user));
+        Assert.Null(tickets.Read(new string('X', StoreActivityTicket.MaxLength + 1), 1, user));
+    }
+    [Fact]
     public void Tickets_cannot_change_actor_store_module_or_outlive_the_authorized_page()
     {
         var clock = new Clock(); var tickets = new StoreActivityTicket(new EphemeralDataProtectionProvider(), clock);

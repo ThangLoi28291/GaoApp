@@ -27,6 +27,11 @@ public interface IStockTransferRepository
 
     Task<StockTransferLine?> GetLineByIdAsync(int lineId, CancellationToken ct = default);
 
+    Task<int?> GetDocumentIdForLineAsync(int lineId, CancellationToken ct = default);
+
+    // Must run inside the transaction, before loading/checking mutable document state.
+    Task LockDocumentForUpdateAsync(int documentId, CancellationToken ct = default);
+
     Task RemoveLineAsync(StockTransferLine line, CancellationToken ct = default);
 
     Task<int> GetNextLineNoAsync(int documentId, CancellationToken ct = default);

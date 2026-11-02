@@ -7,7 +7,7 @@ namespace GaoApp.Web.Services.StoreMonitor;
 public static class StoreActivityDetails
 {
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
-    public sealed record Description(string? Document, string? Detail, string? WorkKey = null, string? Text = null);
+    public sealed record Description(string? Document, string? Detail, string? WorkKey = null, string? Text = null, string? DocumentTitle = null);
 
     public static Description Describe(string controller, string action, IDictionary<string, object?> arguments, object? payload)
     {

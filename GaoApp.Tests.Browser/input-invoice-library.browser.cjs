@@ -1,8 +1,10 @@
 const assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path'), { chromium } = require('playwright');
+const ui11 = require('./receipt-mobile-review.cjs'); // UI-11 review hook
 (async () => {
  const info = JSON.parse(await new Promise(r => {let s=''; process.stdin.on('data', x=>s+=x); process.stdin.on('end',()=>r(s));}));
  const browser = await chromium.launch({channel:'chrome',headless:true});
  const page = await browser.newPage({viewport:{width:1440,height:900}}), errors=[];
+ await ui11.protect(page.context(),info.baseUrl); // UI-11 review hook
  page.on('pageerror', e=>errors.push(e.message));
  const out = path.resolve('TestResults/input-invoice-library'); fs.mkdirSync(out,{recursive:true});
  try {
@@ -11,10 +13,12 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
   await Promise.all([page.waitForURL(u=>!u.pathname.endsWith('/login')),page.locator('button[type=submit]').click()]);
   await page.goto(info.baseUrl+'/admin/input-invoices'); await page.waitForFunction(()=>document.getElementById('ilTotal')?.textContent==='8');
   assert.equal(await page.locator('#ilRows [data-open]').count(),8);
+  await ui11.review(page,'invoice-library-list',ui11.output('invoice-library')); // UI-11 review hook
   assert.match(await page.locator('#ilRows').innerText(),/MST khác thư mục nguồn/);
   await page.screenshot({path:path.join(out,'desktop.png'),fullPage:true});
   await page.locator('#ilRows [data-open]').first().click(); await page.waitForFunction(()=>document.querySelector('#ilPreviewContent article'));
   assert.match(await page.locator('#ilDetailMeta').innerText(),/MST thư mục nguồn/);
+  await ui11.dialog(page,'#ilDetail','invoice-xml-detail',ui11.output('invoice-library')); // UI-11 review hook
   await page.locator('#ilReviewStatus').selectOption('3'); await page.locator('#ilSave').click(); assert.match(await page.locator('#ilDetailMessage').innerText(),/ghi lý do/);
   await page.locator('#ilReviewNote').fill('Cần đối chiếu với nhà cung cấp, cửa hàng chưa nhận hàng.');
   await page.locator('#ilSave').click(); await page.waitForFunction(()=>document.getElementById('ilDetailMessage').textContent==='Đã lưu xác nhận.');
@@ -31,6 +35,7 @@ const assert = require('node:assert/strict'), fs = require('node:fs'), path = re
   await page.reload(); await page.waitForFunction(()=>document.getElementById('ilTotal').textContent==='8');
   await page.locator('[name=kind]').selectOption('1'); await page.locator('#ilFilters button[type=submit]').click(); await page.waitForFunction(()=>document.getElementById('ilTotal').textContent==='1');
   await page.locator('#ilUpload').click(); assert.ok(await page.locator('#ilUploadForm input[name=xml]').isVisible()); await page.locator('#ilUploadDialog [data-close]').first().click();
+  if(ui11.enabled()){await page.locator('#ilUpload').click();await ui11.dialog(page,'#ilUploadDialog','invoice-upload',ui11.output('invoice-library'));await page.locator('#ilUploadDialog [data-close]').first().click();} // UI-11 review hook
   assert.deepEqual(errors,[]); console.log('PASS: real SQL catalog, filters, XML preview, required reason, save/reload audit history, fixed footer at 1366x600/1024x600/390x700.');
  } catch(e) { console.error((await page.locator('body').innerText()).slice(-2400)); await page.screenshot({path:path.join(out,'failure.png'),fullPage:true}); throw e; }
  finally {await browser.close();}

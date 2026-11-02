@@ -85,16 +85,16 @@ function stockTransferEscapeHtml(value) {
 
 function stockTransferFormatDateTime(value) {
     if (!value) return '---';
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '---';
-    return d.toLocaleString('vi-VN', { hour12: false });
+    return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour12: false });
 }
 
 function stockTransferFormatDate(value) {
     if (!value) return '---';
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '---';
-    return d.toLocaleDateString('vi-VN');
+    return d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function stockTransferFormatNumber(value) {
@@ -142,10 +142,11 @@ function stockTransferCanApprove(status) {
 
 function transferToLocalDateTime(value) {
     if (!value) return '';
-    const d = new Date(value);
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 16);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '';
 
-    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    return new Date(d.getTime() + 7 * 3600000)
         .toISOString()
         .slice(0, 16);
 }
@@ -1159,7 +1160,7 @@ async function openStockTransferQuickDetailLegacy(id) {
 
             <div class="st-quick-detail-row">
                 <div class="st-quick-detail-label">Ngày phiếu</div>
-                <div class="st-quick-detail-value">${stockTransferFormatDateTime(d.documentDate)}</div>
+                <div class="st-quick-detail-value">${stockTransferFormatDate(d.documentDate)}</div>
             </div>
 
             <div class="st-quick-detail-row">
@@ -1255,7 +1256,7 @@ function resetCreateStockTransferForm() {
 
     if (dateInput) {
         const now = new Date();
-        dateInput.value = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+        dateInput.value = new Date(now.getTime() + 7 * 3600000)
             .toISOString()
             .slice(0, 16);
     }
@@ -1298,7 +1299,7 @@ async function createStockTransferDocument() {
                 documentName,
                 fromWarehouseId: Number(fromWarehouseId),
                 toWarehouseId: Number(toWarehouseId),
-                documentDate: documentDate ? new Date(documentDate).toISOString() : null,
+                documentDate: documentDate || null,
                 note
             })
         });
@@ -1542,7 +1543,7 @@ async function saveStockTransferHeader(showToast) {
         body: JSON.stringify({
             fromWarehouseId,
             toWarehouseId,
-            documentDate: documentDate ? new Date(documentDate).toISOString() : null,
+            documentDate: documentDate || null,
             note
         })
     });
@@ -2068,7 +2069,7 @@ function renderStockTransferProductImage(imageUrl) {
         <img src="${stockTransferEscapeHtml(imageUrl)}"
              class="st-product-img"
              loading="lazy"
-             onerror="this.outerHTML='<div class=&quot;st-product-img-placeholder&quot;><i class=&quot;bx bx-package&quot;></i></div>';" />
+             data-csp-image="stock-transfer" />
     `;
 }
 

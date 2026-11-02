@@ -1,0 +1,120 @@
+/* UI-19: presentation for the phone editor only; customer-display playback is unchanged. */
+@media screen and (max-width: 767.98px) {
+  .dp-heading, .display-promotion-page, #promotionModal {
+    --dp-ink: #172d4d; --dp-muted: #62758e; --dp-green: #2463eb; --dp-line: #dce5f0;
+    color: #172d4d; color-scheme: light; overflow-wrap: anywhere;
+  }
+  .dp-heading *, .display-promotion-page *, #promotionModal * { box-sizing: border-box; }
+  .display-promotion-page [hidden], #promotionModal [hidden], #promotionModal .d-none { display: none !important; }
+  .dp-heading {
+    flex-direction: column; align-items: stretch; gap: 15px; padding: 18px; margin: 0 0 14px;
+    border: 1px solid #dce5f0; border-radius: 20px; background: linear-gradient(135deg, #fff 30%, #edf3ff);
+    box-shadow: 0 7px 22px #172d4d06;
+  }
+  .dp-heading h1 { margin: 4px 0 9px; font-size: 25px; line-height: 1.25; letter-spacing: -.6px; }
+  .dp-eyebrow { color: #2463eb; font-size: 10px; letter-spacing: 1.5px; margin-bottom: 0; }
+  .dp-heading p { color: #62758e; font-size: 13px; line-height: 1.55; }
+  .dp-heading .btn, .display-promotion-page .btn, #promotionModal .btn {
+    min-height: 44px; padding: 10px 13px; border-radius: 12px; font-size: 13px; line-height: 1.35;
+    font-weight: 650; white-space: normal; touch-action: manipulation; box-shadow: none;
+  }
+  .dp-heading .btn-outline-primary, .display-promotion-page .btn-outline-primary { color: #2459be; border-color: #c9daf8; background: #f4f8ff; }
+  .display-promotion-page .btn-primary, #promotionModal .btn-primary { background: #2463eb; border-color: #2463eb; color: #fff; }
+  .display-promotion-page .btn-primary:hover, #promotionModal .btn-primary:hover { background: #1c51ca; border-color: #1c51ca; color: #fff; }
+  .display-promotion-page { padding: 0 0 18px; gap: 14px; min-width: 0; }
+  .display-promotion-page .dp-content-card { order: 0; }
+  .display-promotion-page .dp-wifi-card { order: 1; grid-template-columns: minmax(0,1fr); }
+  .dp-wifi-card, .dp-content-card { border-radius: 18px; border-color: #dce5f0; box-shadow: 0 5px 16px #172d4d04; }
+  .display-promotion-page h2 { font-size: 18px; color: #172d4d; line-height: 1.4; }
+  .dp-collection-heading { display: flex; flex-direction: column; align-items: stretch; gap: 14px; padding: 17px; }
+  .dp-collection-heading p, .dp-section-heading p { color: #62758e; font-size: 12px; }
+  .dp-collection-heading .btn { margin: 0; width: 100%; }
+  .dp-count { background: #eaf1ff; color: #2459be; }
+  .dp-list-summary { flex-wrap: wrap; gap: 9px 17px; padding: 12px 17px; background: #f6f9fe; color: #62758e; }
+  .dp-list-summary .dp-list-hint { flex-basis: 100%; margin: 0; display: flex !important; color: #62758e; }
+  .dp-table-wrap { padding: 0 12px 12px; }
+  .dp-table, .dp-table tbody { display: block; width: 100%; }
+  .dp-table thead { display: table-header-group; position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .dp-table tbody tr {
+    display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 13px 10px; align-items: center;
+    padding: 15px; margin-top: 12px; border: 1px solid #dce5f0; border-radius: 15px; background: #fff;
+  }
+  .dp-table tbody tr:last-child { border-bottom: 1px solid #dce5f0; }
+  .dp-table td, .dp-table td:first-child, .dp-table td:last-child { padding: 0; border: 0; min-width: 0; }
+  .dp-content-cell { grid-column: 1 / -1; }
+  .dp-content-item { gap: 12px; align-items: flex-start; }
+  .dp-table .dp-thumbnail { width: 76px; height: 66px; border-radius: 11px; background: #eaf1ff; border-color: #dce5f0; }
+  .dp-text-thumbnail { color: #476ba1; }
+  .dp-content-copy h3 { font-size: 14px; line-height: 1.5; color: #172d4d; margin-bottom: 5px; }
+  .dp-content-copy p { color: #62758e; font-size: 12px; line-height: 1.5; -webkit-line-clamp: 3; }
+  .dp-content-note { color: #965b0a; }
+  .dp-kind { color: #2459be; background: #eaf1ff; border-color: #d7e4ff; font-size: 11px; }
+  .dp-duration, .dp-order-cell::before { color: #62758e; font-size: 11px; }
+  .dp-order-cell { display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+  .dp-order { color: #345375; background: #f3f6fb; border-color: #dce5f0; width: 32px; height: 32px; }
+  .dp-state-cell { grid-column: 1; }
+  .dp-state-control { min-height: 44px; gap: 7px; }
+  .dp-state-control .form-check-input { width: 36px; height: 22px; }
+  .dp-state-control .form-check-input::after { width: 16px; height: 16px; }
+  .dp-state-control .form-check-input:checked { background-color: #2463eb; }
+  .dp-state-control .form-check-input:checked::after { transform: translateX(14px); }
+  .dp-state-text { font-size: 11px; color: #2459be; }
+  .is-inactive .dp-state-text { color: #62758e; }
+  .dp-row-actions { justify-content: flex-end; gap: 7px; }
+  .display-promotion-page .dp-edit, .display-promotion-page .dp-delete { min-width: 44px; min-height: 44px; padding: 9px; border: 1px solid #dce5f0; color: #345375; background: #f8faff; }
+  .display-promotion-page .dp-delete { color: #ae3939; border-color: #f0dada; background: #fff7f7; }
+  .display-promotion-page .btn:disabled, .dp-state-control input:disabled { opacity: .5; }
+  .dp-empty { padding: 30px 17px; }
+  .dp-empty h3 { font-size: 18px; color: #172d4d; }
+  .dp-empty p { color: #62758e; font-size: 13px; }
+  .dp-wifi-editor { padding: 17px; }
+  .dp-section-heading { display: grid; grid-template-columns: 42px minmax(0,1fr); gap: 8px 11px; margin-bottom: 18px; }
+  .dp-section-heading .dp-section-icon { grid-column: 1; grid-row: 1 / 3; width: 42px; height: 42px; color: #2463eb; background: #eaf1ff; border-color: #dce5f0; }
+  .dp-section-heading > div { grid-column: 2; }
+  #wifiSavedBadge { grid-column: 2; justify-self: start; margin: 0; }
+  .dp-wifi-fields { grid-template-columns: minmax(0,1fr); gap: 14px; }
+  .dp-wifi-fields label { color: #62758e; font-size: 12px; }
+  .dp-input-wrap .form-control { height: auto; min-height: 46px; padding: 10px 12px 10px 39px; font-size: 16px; color: #172d4d; background: #fff; border-color: #d2ddea; border-radius: 11px; }
+  .dp-input-wrap .form-control::placeholder { font-size: 13px; }
+  .dp-input-wrap .form-control[readonly] { background: #f3f6fb; }
+  .dp-wifi-footer { align-items: stretch; flex-direction: column; gap: 13px; }
+  .dp-wifi-footer p { color: #62758e; font-size: 12px; }
+  .dp-wifi-footer .btn { margin: 0; width: 100%; }
+  .dp-wifi-preview { padding: 19px; background: #172d4d; display: grid; grid-template-columns: 34px minmax(0,1fr); column-gap: 12px; }
+  .dp-preview-caption { grid-column: 1 / -1; margin-bottom: 15px; color: #c7d8f2; font-size: 9px; }
+  .dp-preview-wifi-icon { grid-column: 1; grid-row: 2 / 4; margin: 0; align-self: center; font-size: 30px; color: #a9ccff; }
+  .dp-preview-label, #wifiPreviewName, .dp-preview-password { grid-column: 2; }
+  .dp-preview-label, .dp-preview-password > span { color: #c7d8f2; }
+  #wifiPreviewName { font-size: 17px; margin: 4px 0 12px; color: #fff; }
+  #wifiPreviewPassword { color: #eef4ff; }
+  #promotionModal { padding: max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left)) !important; }
+  #promotionModal .modal-dialog { margin: 0 auto; width: 100%; max-width: 100%; min-height: 100%; align-items: center; }
+  #promotionModal .modal-content { max-height: calc(var(--gao-mobile-visible-height,100dvh) - max(8px,env(safe-area-inset-top)) - max(8px,env(safe-area-inset-bottom))); display: flex; flex-direction: column; border-color: #dce5f0; border-radius: 20px; }
+  #promotionModal .modal-header { flex: 0 0 auto; padding: 16px; border-color: #dce5f0; background: #f5f8ff; gap: 12px; }
+  #promotionModal .modal-title { font-size: 19px; line-height: 1.4; color: #172d4d; }
+  #promotionModal .modal-header .text-muted { font-size: 12px; line-height: 1.5; color: #62758e !important; }
+  #promotionModal .modal-header .btn-close { position: static; transform: none; width: 44px; height: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; flex: 0 0 44px; align-self: flex-start; }
+  #promotionModal .modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding: 16px; }
+  #promotionModal .modal-body > .row { --bs-gutter-x: 16px; --bs-gutter-y: 16px; }
+  #promotionModal .modal-body .row { --bs-gutter-x: 12px; --bs-gutter-y: 12px; }
+  #promotionModal .form-label { font-size: 12px; color: #62758e; margin-bottom: 7px; }
+  #promotionModal .form-control, #promotionModal .form-select { width: 100%; min-width: 0; min-height: 46px; padding: 10px 11px; font-size: 16px; border-color: #d2ddea; border-radius: 11px; color: #172d4d; background-color: #fff; }
+  #promotionModal .form-control[type=file] { font-size: 16px; padding: 9px; }
+  #promotionModal textarea { resize: vertical; }
+  #promotionModal .form-text, #promotionModal .form-check-label { color: #62758e; font-size: 12px; line-height: 1.55; }
+  #promotionModal .form-switch { min-height: 44px; display: flex; align-items: center; gap: 10px; }
+  #promotionModal .form-switch .form-check-input { flex-shrink: 0; margin-top: 0; }
+  #promotionModal .form-check-input:checked { background-color: #2463eb; border-color: #2463eb; }
+  #promotionModal .dpm-section-title { color: #172d4d; font-size: 15px; font-weight: 750; margin: 24px 0 13px; padding-top: 20px; border-top: 1px solid #e5ecf5; }
+  #promotionModal .dpm-section-title:first-child { border: 0; margin-top: 0; padding-top: 0; }
+  #promotionModal .display-preview-box { aspect-ratio: 16 / 9; min-height: 0; max-width: 100%; padding: 14px; border-width: 5px; border-bottom-width: 12px; border-color: #345375; border-radius: 13px; }
+  #promotionModal .display-preview-text { font-size: 23px; line-height: 1.4; }
+  #promotionModal .display-preview-media { max-height: 260px; object-fit: contain; }
+  #promotionModal .dpm-preview-note { color: #62758e; font-size: 12px; line-height: 1.55; margin: 10px 0 0; }
+  #promotionModal .modal-footer { flex: 0 0 auto; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.5fr); gap: 9px; padding: 12px 16px; background: #fff; border-color: #dce5f0; }
+  #promotionModal .modal-footer > * { margin: 0; }
+  .dp-heading a:focus-visible, .display-promotion-page :is(button,a,input,summary):focus-visible, #promotionModal :is(button,input,select,textarea):focus-visible { outline: 3px solid #87adff; outline-offset: 3px; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  .dp-table tbody tr, .dp-state-control .form-check-input::after, #promotionModal.fade .modal-dialog { transition: none; animation: none; }
+}

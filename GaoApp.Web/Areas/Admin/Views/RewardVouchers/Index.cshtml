@@ -51,6 +51,10 @@
     <link rel="stylesheet" href="~/Admin/css/reward-voucher-index.css" asp-append-version="true" />
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/customer-rewards.mobile.css" asp-append-version="true" />
+}
+
 <div class="reward-voucher-index-page gds-page"
      data-gao-ui="modern"
      data-reward-voucher-index
@@ -119,6 +123,7 @@
                             <option value="cancelled">Đã hủy</option>
                             <option value="expired">Hết hạn</option>
                             <option value="locked">Đã khóa</option>
+                            <option value="reservedfordelivery">Đang giữ cho đơn giao</option>
                         </select>
                     </div>
                     <div><label for="rewardVoucherFromDate" class="form-label">Từ ngày</label><input type="date" id="rewardVoucherFromDate" class="form-control" /></div>
@@ -160,7 +165,7 @@
         <div class="offcanvas-header"><div><h5 class="offcanvas-title" id="rewardVoucherMobileFilterTitle">Bộ lọc phiếu</h5><small class="text-muted">Thu hẹp danh sách trên thiết bị di động.</small></div><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div>
         <div class="offcanvas-body">
             <div class="row g-3">
-                <div class="col-12"><label for="rewardVoucherMobileStatus" class="form-label">Trạng thái</label><select id="rewardVoucherMobileStatus" class="form-select"><option value="all">Tất cả trạng thái</option><option value="available">Khả dụng</option><option value="used">Đã sử dụng</option><option value="cancelled">Đã hủy</option><option value="expired">Hết hạn</option><option value="locked">Đã khóa</option></select></div>
+                <div class="col-12"><label for="rewardVoucherMobileStatus" class="form-label">Trạng thái</label><select id="rewardVoucherMobileStatus" class="form-select"><option value="all">Tất cả trạng thái</option><option value="available">Khả dụng</option><option value="used">Đã sử dụng</option><option value="cancelled">Đã hủy</option><option value="expired">Hết hạn</option><option value="locked">Đã khóa</option><option value="reservedfordelivery">Đang giữ cho đơn giao</option></select></div>
                 <div class="col-6"><label for="rewardVoucherMobileFromDate" class="form-label">Từ ngày</label><input type="date" id="rewardVoucherMobileFromDate" class="form-control" /></div>
                 <div class="col-6"><label for="rewardVoucherMobileToDate" class="form-label">Đến ngày</label><input type="date" id="rewardVoucherMobileToDate" class="form-control" /></div>
                 <div class="col-12"><label for="rewardVoucherMobilePageSize" class="form-label">Số dòng / trang</label><select id="rewardVoucherMobilePageSize" class="form-select"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select></div>
@@ -212,4 +217,5 @@
 @section PageScripts {
     <script src="~/Admin/js/printing/print.lifecycle.js" asp-append-version="true"></script>
     <script src="~/Admin/js/reward-vouchers.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/customer-rewards.mobile.js" asp-append-version="true"></script>
 }

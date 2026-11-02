@@ -26,6 +26,7 @@ public class StoreBankAccountRepository : IStoreBankAccountRepository
         await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         try
         {
+            await GaoApp.Infrastructure.Services.Banking.GlobalBankReceiptLedger.LockAsync(_db,$"GaoApp:Storefront:Configuration:{storeId}",ct);
             var resource = $"gaoapp:bank-account:{storeId}";
             await _db.Database.ExecuteSqlInterpolatedAsync($"""
                 DECLARE @result int;
@@ -43,6 +44,8 @@ public class StoreBankAccountRepository : IStoreBankAccountRepository
         { throw new ConflictAppException("Tài khoản ngân hàng đã thay đổi. Vui lòng tải lại và thử lại."); }
         catch (DbUpdateException ex) when (ex.InnerException is SqlException { Number: 2601 or 2627 })
         { throw new ConflictAppException("Số tài khoản hoặc ngân hàng mặc định đã tồn tại. Vui lòng tải lại."); }
+        catch(DbUpdateException ex)when(ex.InnerException is SqlException {Number:51150})
+        {throw new ConflictAppException("Tài khoản đang có QR website hoặc bằng chứng tiền chưa đối soát. Hãy xử lý trước khi đổi thông tin nhận tiền.");}
     }
 
     public async Task<List<StoreBankAccount>> GetListAsync(CancellationToken ct = default)

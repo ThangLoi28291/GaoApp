@@ -119,7 +119,14 @@ public sealed partial class OrderRepository : IOrderRepository
       .AsNoTracking()
       .Where(o => o.StoreId == storeId && !o.IsDeleted);
 
+        // Deduplicate before count/filter/paging, keeping the financial sale as
+        // the canonical row. The original cart remains directly readable.
+        var deliverySales = DeliverySaleLinks(storeId);
+        q = q.Where(o => !deliverySales.Any(link => link.SourceOrderId == o.Id));
+
         q = ApplyListFilters(q, storeId, filters);
+        var hasProductFilter = !string.IsNullOrWhiteSpace(filters?.Product);
+        q = await ApplyProductFilterAsync(q, storeId, filters?.Product, ct);
 
         // 1) Lọc theo trạng thái
         if (status.HasValue)
@@ -167,13 +174,18 @@ public sealed partial class OrderRepository : IOrderRepository
             );
         }
 
-        // 3) Keyword: OrderNumber / Note
+        // 3) The delivery QR/code and original order number also find its sale.
         if (!string.IsNullOrWhiteSpace(keyword))
         {
             var k = keyword.Trim();
             q = q.Where(o =>
                 (o.OrderNumber != null && o.OrderNumber.Contains(k)) ||
-                (o.Note != null && o.Note.Contains(k)));
+                (o.Note != null && o.Note.Contains(k)) ||
+                _db.DeliveryOrders.Any(d => d.StoreId == storeId && !d.IsDeleted &&
+                    d.SourceCartId == o.Id && (d.Code.Contains(k) || ("#" + d.SourceCartId).Contains(k))) ||
+                deliverySales.Any(link => link.SaleOrderId == o.Id &&
+                    (link.Code.Contains(k) || ("#" + link.SourceOrderId).Contains(k) ||
+                     (link.SourceOrderNumber != null && link.SourceOrderNumber.Contains(k)))));
         }
 
         // Count the two disjoint groups separately in one SQL statement. Checking
@@ -184,7 +196,9 @@ public sealed partial class OrderRepository : IOrderRepository
              || o.Lines.Any(l => l.StoreId == storeId && !l.IsDeleted)
              || o.Payments.Any(p => p.StoreId == storeId && !p.IsDeleted)));
         var visibleNonDrafts = q.Where(o => o.Status != OrderStatus.Draft);
-        var countQuery = status == OrderStatus.Draft
+        // A product match already proves that a draft has a non-deleted line.
+        // Count this set once instead of scanning the product matches twice.
+        var countQuery = hasProductFilter ? q.Select(o => o.Id) : status == OrderStatus.Draft
             ? visibleDrafts.Select(o => o.Id)
             : status.HasValue
                 ? visibleNonDrafts.Select(o => o.Id)
@@ -194,7 +208,7 @@ public sealed partial class OrderRepository : IOrderRepository
 
         // Keep timeline paging as a single ordered index scan. Empty drafts are
         // still hidden, and related rows must belong to the current store.
-        q = status == OrderStatus.Draft ? visibleDrafts : status.HasValue ? visibleNonDrafts
+        q = hasProductFilter ? q : status == OrderStatus.Draft ? visibleDrafts : status.HasValue ? visibleNonDrafts
             : q.Where(o => o.Status != OrderStatus.Draft
                 || o.GrandTotal > 0 || o.PaidTotal > 0 || !string.IsNullOrWhiteSpace(o.Note)
                 || o.Lines.Any(l => l.StoreId == storeId && !l.IsDeleted)
@@ -335,15 +349,42 @@ public sealed partial class OrderRepository : IOrderRepository
             .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
     }
+    public async Task<Order?> GetForReceiptAsync(int orderId, CancellationToken ct = default)
+    {
+        // Keep the normal order/store filters. Joining a soft-deleted required terminal
+        // would otherwise make an existing historical order disappear from the receipt.
+        var order = await _db.Orders.AsNoTracking()
+            .Include(x => x.Customer).Include(x => x.InventoryIssue)
+            .Include(x => x.POSShift).Include(x => x.Store)
+            .Include(x => x.Lines.Where(l => !l.IsDeleted))
+                .ThenInclude(l => l.Variant!).ThenInclude(v => v.UnitConversions.Where(c => !c.IsDeleted && c.IsActive))
+                    .ThenInclude(c => c.Unit)
+            .Include(x => x.Payments.Where(p => !p.IsDeleted))
+            .Include(x => x.RewardVouchers).ThenInclude(x => x.Voucher)
+            .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == orderId && !x.IsDeleted, ct);
+        if (order?.POSShift is not null)
+            order.POSShift.Terminal = (await _db.POSTerminals.IgnoreQueryFilters().AsNoTracking()
+                .Where(t => t.StoreId == order.StoreId && t.Id == order.POSShift.TerminalId)
+                .Select(t => new POSTerminal { Id = t.Id, StoreId = t.StoreId, Name = t.Name, Code = t.Code })
+                .SingleOrDefaultAsync(ct))!;
+        return order;
+    }
+
     public async Task<OrderDeliveryInfoDto?> GetDeliveryInfoAsync(int orderId, CancellationToken ct = default)
     {
         if (_db.CurrentStoreId is not > 0) return null;
         var storeId = _db.CurrentStoreId.Value;
+        var saleLink = await DeliverySaleLinks(storeId)
+            .SingleOrDefaultAsync(link => link.SourceOrderId == orderId || link.SaleOrderId == orderId, ct);
+        if (saleLink is not null) return DeliverySaleInfo(saleLink, orderId);
         var delivery = await _db.DeliveryOrders.AsNoTracking()
             .Where(d => d.StoreId == storeId && !d.IsDeleted && d.SourceCartId == orderId &&
                 _db.Orders.Any(o => o.StoreId == storeId && !o.IsDeleted && o.Id == orderId))
-            .Select(d => new { d.Id, d.Code, d.State }).SingleOrDefaultAsync(ct);
-        return delivery is null ? null : DeliveryInfo(delivery.Id, delivery.Code, delivery.State);
+            .Select(d => new { d.Id, d.Code, d.State, d.SourceCartId }).SingleOrDefaultAsync(ct);
+        if (delivery is null) return null;
+        var info = DeliveryInfo(delivery.Id, delivery.Code, delivery.State);
+        info.SourceOrderId = delivery.SourceCartId ?? throw new InvalidOperationException("POS delivery source is missing.");
+        return info;
     }
     private static OrderDeliveryInfoDto DeliveryInfo(int id, string code, DeliveryState state) => new()
     {
@@ -408,10 +449,7 @@ public sealed partial class OrderRepository : IOrderRepository
         return await _db.Orders
             .AsNoTracking()
             .Include(x => x.Customer)
-            .Include(x => x.InventoryIssue)
             .Include(x => x.Lines.Where(l => !l.IsDeleted))
-                .ThenInclude(l => l.Variant)
-            .Include(x => x.Payments.Where(p => !p.IsDeleted))
             .Include(x => x.POSShift)
                 .ThenInclude(s => s.Terminal)
             .AsSplitQuery()

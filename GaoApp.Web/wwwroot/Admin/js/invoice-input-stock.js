@@ -4,8 +4,9 @@
     const $ = id => document.getElementById(id);
     const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const num = value => Number(value || 0).toLocaleString('vi-VN', { maximumFractionDigits: 4 });
-    const date = value => { const d = new Date(value); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }); };
+    const date = value => { const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value); return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }); };
     const labels = { increase: 'Nhập sau xác nhận', decrease: 'Đã phát hành', hold: 'Đang giữ' };
+    const xmlReference = row => [row.xmlSeries, row.xmlNumber].filter(Boolean).join(' · ');
     const params = new URLSearchParams(location.search);
     let view = params.get('view') === 'ledger' ? 'ledger' : 'balance', page = Math.max(1, Number(params.get('page')) || 1), totalPages = 1, rows = [], controller, sequence = 0, returnFocus;
     let productId = Number(params.get('productVariantId')) || null;
@@ -46,9 +47,36 @@
                     + cell('Biến động', `<strong>${row.kind === 'hold' ? 'Giữ ' + num(row.held) : (row.change > 0 ? '+' : '') + num(row.change)}</strong><small class="xs-sub">${badge(row)}</small>`, row.kind === 'hold' ? 'xs-warn' : row.change > 0 ? 'xs-good' : 'xs-bad')
                     + cell('Giá vốn', row.unitCost == null ? '—' : `${num(row.unitCost)} đ/${esc(row.baseUnit || 'đơn vị')}${row.isProvisionalCost ? '<small class="xs-sub">Tạm tính</small>' : ''}`, 'num')
                     + cell('Tồn trước → sau', `${num(row.before)} <span aria-hidden="true">→</span> <strong class="${row.after < 0 ? 'xs-bad' : ''}">${num(row.after)}</strong>`, 'num')
-                    + cell('Nguồn / chứng từ', `${esc(row.sourceCode)}${row.xmlNumber ? `<small class="xs-sub">XML: ${esc(row.xmlNumber)}</small>` : ''}`);
+                    + cell('Nguồn / chứng từ', `${esc(row.sourceCode)}${xmlReference(row) ? `<small class="xs-sub">XML: ${esc(xmlReference(row))}</small>` : ''}`);
             return `<tr data-index="${index}">${content}${action}</tr>`;
         }).join('') : `<tr><td colspan="${view === 'balance' ? 8 : 8}" class="xs-empty"><i class="bx bx-file-find" aria-hidden="true"></i>Chưa có dữ liệu phù hợp.<small class="xs-sub">Các dòng nhập đã được quản lý xác nhận sẽ ghi tăng theo đơn vị gốc; XML chỉ hỗ trợ đối chiếu.</small></td></tr>`;
+    }
+    function setPaginationBusy(busy) {
+        $('xsPrevious').disabled = busy || page <= 1;
+        $('xsNext').disabled = busy || page >= totalPages;
+        $('xsPages').querySelectorAll('button').forEach(button => button.disabled = busy);
+        $('xsPageNumber').disabled = busy;
+        $('xsPageJump').querySelector('button').disabled = busy;
+    }
+    function renderPagination() {
+        // Show nine nearby pages so page 7/8 is directly reachable from page 1.
+        // First/last pages and the jump field also work with very long histories.
+        const start = Math.max(1, Math.min(page - 4, totalPages - 8));
+        const end = Math.min(totalPages, start + 8);
+        const buttons = [];
+        const add = value => buttons.push(`<button type="button" class="btn btn-sm xs-page-button ${value === page ? 'btn-primary' : 'btn-label-secondary'}" data-page="${value}" aria-label="Trang ${value}"${value === page ? ' aria-current="page"' : ''}>${value}</button>`);
+        if (start > 1) { add(1); if (start > 2) buttons.push('<span class="xs-page-gap" aria-hidden="true">…</span>'); }
+        for (let value = start; value <= end; value++) add(value);
+        if (end < totalPages) { if (end < totalPages - 1) buttons.push('<span class="xs-page-gap" aria-hidden="true">…</span>'); add(totalPages); }
+        $('xsPages').innerHTML = buttons.join('');
+        $('xsPageNumber').max = String(totalPages);
+        $('xsPageNumber').value = String(page);
+        $('xsPageNumber').setCustomValidity('');
+        setPaginationBusy(false);
+    }
+    function goToPage(value) {
+        if (!Number.isInteger(value) || value < 1 || value > totalPages || value === page) return;
+        page = value; load();
     }
     async function load(reset = false) {
         if (view === 'ledger' && $('xsFrom').value && $('xsTo').value && $('xsFrom').value > $('xsTo').value) { $('xsDateError').hidden = false; return; }
@@ -60,7 +88,7 @@
         if (view === 'ledger') [['fromDate', 'xsFrom'], ['toDate', 'xsTo']].forEach(([key, id]) => { if ($(id).value) query.set(key, $(id).value); });
         if (productId) query.set('productVariantId', String(productId));
         $('xsClearProduct').hidden = !productId; $('xsResults').setAttribute('aria-busy', 'true');
-        $('xsPrevious').disabled = true; $('xsNext').disabled = true;
+        setPaginationBusy(true);
         rows = []; $('xsBody').innerHTML = `<tr><td colspan="${view === 'balance' ? 8 : 8}" class="xs-empty">Đang tải dữ liệu…</td></tr>`;
         const timeout = setTimeout(() => active.abort(), 20000);
         try {
@@ -77,7 +105,7 @@
             $('xsWarehouse').value = selectedWarehouse;
             $('xsNegative').hidden = !data.negativeCount;
             $('xsNegative').textContent = `${num(data.negativeCount)} sản phẩm / kho có khả dụng âm. Kiểm tra lại nguồn XML đã map và các hóa đơn đã phát hành.`;
-            $('xsPrevious').disabled = page <= 1; $('xsNext').disabled = page >= totalPages;
+            renderPagination();
             query.set('page', String(page)); history.replaceState(null, '', location.pathname + '?' + query);
             render();
         } catch (error) {
@@ -99,7 +127,7 @@
                     ['Số hóa đơn (GaoStore)', row.legacyInvoiceNumber || 'Không có'],
                     ['Ký hiệu hóa đơn (GaoStore)', row.legacyInvoiceSymbol || 'Không có'],
                     ['Khóa nguồn đối chiếu', row.legacySourceKey]);
-            } else pairs.push(['Hóa đơn XML', row.xmlNumber || '—']);
+            } else pairs.push(['Hóa đơn XML', xmlReference(row) || '—']);
         }
         $('xsDialogBody').innerHTML = '<div class="xs-detail-grid">' + pairs.map(([label, value]) => `<div><small>${esc(label)}</small><strong>${esc(value)}</strong></div>`).join('') + '</div>' + (row.note ? `<p class="xs-note">${esc(row.note)}</p>` : '');
         $('xsDialogActions').replaceChildren();
@@ -120,7 +148,19 @@
     window.addEventListener('invoice-stock-updated', () => load());
     $('xsReset').onclick = () => { $('xsFilters').reset(); productId = null; setView(view); load(true); };
     $('xsClearProduct').onclick = () => { productId = null; load(true); };
-    $('xsPrevious').onclick = () => { if (page > 1) { page--; load(); } }; $('xsNext').onclick = () => { if (page < totalPages) { page++; load(); } };
+    $('xsPrevious').onclick = () => goToPage(page - 1); $('xsNext').onclick = () => goToPage(page + 1);
+    $('xsPages').onclick = event => { const button = event.target.closest('[data-page]'); if (button && !button.disabled) goToPage(Number(button.dataset.page)); };
+    $('xsPageNumber').oninput = () => $('xsPageNumber').setCustomValidity('');
+    $('xsPageJump').onsubmit = event => {
+        event.preventDefault();
+        if ($('xsPageNumber').disabled) return;
+        const value = Number($('xsPageNumber').value);
+        if (!Number.isInteger(value) || value < 1 || value > totalPages) {
+            $('xsPageNumber').setCustomValidity(`Nhập số trang từ 1 đến ${totalPages}.`);
+            $('xsPageNumber').reportValidity(); return;
+        }
+        goToPage(value);
+    };
     document.querySelectorAll('[data-view]').forEach(button => button.onclick = () => { setView(button.dataset.view); load(true); });
     document.querySelectorAll('[data-metric]').forEach(button => button.onclick = () => { const kind = button.dataset.metric; setView(kind === 'balance' ? 'balance' : 'ledger', kind === 'balance' ? '' : kind); load(true); });
     setView(view, params.get('kind') || ''); load();

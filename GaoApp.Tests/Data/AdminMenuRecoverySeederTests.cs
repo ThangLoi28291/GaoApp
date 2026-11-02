@@ -367,7 +367,7 @@ public sealed class AdminMenuRecoverySeederTests
             .UseInMemoryDatabase($"menu-recovery-{Guid.NewGuid():N}")
             .Options;
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         return new InMemoryAppDbContext(options, tenant, new TestCurrentUser());
     }
 

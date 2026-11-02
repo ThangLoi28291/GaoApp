@@ -11,7 +11,7 @@
         const row = (name, value) => `<div class="row"><span>${name}</span><strong>${escape(value)}</strong></div>`;
         const css = 'html,body{margin:0;background:#fff;color:#000;font-family:Arial,sans-serif}.receipt{width:80mm;box-sizing:border-box;padding:4mm;font-size:12px;line-height:1.45;overflow-wrap:anywhere}.center{text-align:center}h1{font-size:17px;margin:6px 0}.row{display:flex;justify-content:space-between;gap:8px;margin:3px 0}.row strong{text-align:right}.rule{border-top:1px dashed #000;margin:10px 0}.amount{font-size:22px;font-weight:bold;text-align:center}.note{white-space:pre-wrap}.signatures{display:flex;justify-content:space-around;text-align:center;margin-top:16px;padding-bottom:30px}@page{size:80mm auto;margin:0}';
         const body = `<main class="receipt"><div class="center"><strong>${escape(context.storeName || 'GaoApp')}</strong><h1>${title}</h1><div>${escape(code)}</div></div><div class="rule"></div>` +
-            row('Thời gian', new Date(transaction.createdAtUtc).toLocaleString('vi-VN')) +
+            row('Thời gian', new Date(typeof transaction.createdAtUtc === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(transaction.createdAtUtc) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(transaction.createdAtUtc) ? transaction.createdAtUtc + 'Z' : transaction.createdAtUtc).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })) +
             row('Ca / Quầy', `${transaction.posShiftId} / ${context.terminalName || context.terminalId || ''}`) +
             row('Người in', context.userName || '') +
             `<div class="rule"></div><div class="amount">${escape(transaction.amount.toLocaleString('vi-VN'))} đ</div><div class="rule"></div>` +

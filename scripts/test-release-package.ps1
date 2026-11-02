@@ -5,36 +5,89 @@ param(
     [switch]$WebOnly
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot '../eng/deployment/RuntimeSupport.ps1')
 $releaseRoot = (Resolve-Path -LiteralPath $ReleasePath).Path
-$forbidden = '(?i)(^|[/\\])(App_Data|Logs|uploads|Properties)([/\\]|$)|(^|[/\\])appsettings\.[^/\\]+\.json$|(^|[/\\])\.env[^/\\]*$|(^|[/\\])secrets[^/\\]*\.json$|\.(pfx|p12|pem|key|bak|mdf|ldf|db|sqlite|zip|log|pdb|user)$'
+$forbidden = '(?i)(^|[/\\])(ChannelCredentials|App_Data|Logs|uploads|Properties)([/\\]|$)|(^|[/\\])appsettings\.[^/\\]+\.json$|(^|[/\\])\.env[^/\\]*$|(^|[/\\])secrets[^/\\]*\.json$|\.(pfx|p12|pem|key|bak|mdf|ldf|db|sqlite|zip|log|pdb|user)$'
+function Assert-BlankLabelClientPackage([string]$Path) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($Path)
+    try {
+        $seen = @{}
+        foreach ($entry in $archive.Entries) {
+            $name = $entry.FullName.Replace('\', '/')
+            if ($name -match '(^/|:|(^|/)\.\.(/|$))' -or $seen.ContainsKey($name) -or
+                $name -match $forbidden -or
+                ($name -match '(?i)(^|/)appsettings[^/]*\.json$' -and $name -cne 'appsettings.json')) {
+                throw 'Label client package contains an unsafe or duplicate path.'
+            }
+            $seen[$name] = $true
+        }
+        foreach ($name in @('GaoApp.LabelPrintClient.exe', 'GaoApp.LabelPrintClient.dll',
+                'GaoApp.LabelPrintClient.deps.json', 'GaoApp.LabelPrintClient.runtimeconfig.json')) {
+            if (!$seen.ContainsKey($name)) { throw 'Incomplete label client package.' }
+        }
+        $runtimeEntry = $archive.GetEntry('GaoApp.LabelPrintClient.runtimeconfig.json')
+        if ($runtimeEntry.Length -gt 65536) { throw 'Oversized label client runtime configuration.' }
+        $reader = [IO.StreamReader]::new($runtimeEntry.Open())
+        try { Assert-GaoAppRuntimeConfiguration ($reader.ReadToEnd() | ConvertFrom-Json) }
+        finally { $reader.Dispose() }
+        $config = $archive.GetEntry('appsettings.json')
+        if ($null -eq $config -or $config.Length -gt 65536) { throw 'Missing or oversized label client configuration.' }
+        $reader = [IO.StreamReader]::new($config.Open())
+        try { $settings = $reader.ReadToEnd() | ConvertFrom-Json }
+        finally { $reader.Dispose() }
+        if ($null -eq $settings.LabelClient -or $settings.LabelClient.PairingToken -or
+            @($settings.LabelClient.AllowedOrigins).Count -ne 0 -or
+            @($settings.PSObject.Properties.Name | Where-Object { $_ -notin @('LabelClient', 'Logging', 'AllowedHosts') }).Count -gt 0 -or
+            @($settings.LabelClient.PSObject.Properties.Name | Where-Object { $_ -notin @('Port', 'AllowedOrigins', 'PairingToken') }).Count -gt 0) {
+            throw 'Label client package must contain only blank pairing configuration.'
+        }
+    }
+    finally { $archive.Dispose() }
+}
 foreach ($entry in Get-ChildItem -LiteralPath $releaseRoot -Force) {
-    if ($entry.Name -notin @('web', 'migrator', 'release-manifest.json') -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    if ($entry.Name -notin @('web', 'migrator', 'autoinvoiceworker', 'labelprintserver', 'release-manifest.json') -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
         throw 'Unexpected release-root content or link.'
     }
 }
-$components = if ($WebOnly) { @('web') } else { @('web', 'migrator') }
-if ($WebOnly -and (Test-Path -LiteralPath (Join-Path $releaseRoot 'migrator'))) { throw 'Web-only package must not include Migrator.' }
+$components = @(if ($WebOnly) { 'web' } else { 'web'; 'migrator' })
+foreach ($optional in @('autoinvoiceworker', 'labelprintserver')) {
+    if (Test-Path -LiteralPath (Join-Path $releaseRoot $optional)) { $components += $optional }
+}
+if ($WebOnly -and ((Test-Path -LiteralPath (Join-Path $releaseRoot 'migrator')) -or $components.Count -ne 1)) { throw 'Web-only package must not include other services.' }
 foreach ($component in $components) {
     $componentRoot = Join-Path $releaseRoot $component
     if (!(Test-Path -LiteralPath $componentRoot -PathType Container)) { throw "Missing component: $component" }
     foreach ($entry in Get-ChildItem -LiteralPath $componentRoot -Recurse -Force) {
         if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Release contains a link/reparse point.' }
         $relative = $entry.FullName.Substring($componentRoot.Length + 1)
+        if ($component -eq 'web' -and !$entry.PSIsContainer -and
+            $relative.Replace('\', '/') -ceq 'ClientPackages/GaoApp.LabelPrintClient-win-x64.zip') {
+            Assert-BlankLabelClientPackage $entry.FullName
+            continue
+        }
         if ($relative -match $forbidden) { throw "Forbidden publish path: $component/$relative" }
     }
     $settings = Get-Content -LiteralPath (Join-Path $componentRoot 'appsettings.json') -Raw | ConvertFrom-Json
-    if ($settings.ConnectionStrings.DefaultConnection -or $settings.DataProtection.CertificatePassword -or
-        $settings.DataProtection.CertificatePath -or $settings.DataProtection.KeysPath -or
-        !$settings.DataProtection.RequirePortableKeys -or $settings.SeedData.EnableDemoSeed -or
-        $settings.SeedData.EnableDefaultAdminSeed -or $settings.ProductionBootstrap.Enabled) {
+    if((Get-GaoProperty $settings 'CustomerChannels.CredentialDirectory') -or @(Get-GaoProperty $settings 'CustomerChannels.Connections').Where({$null -ne $_}).Count){throw 'Channel connections/credential paths must be supplied outside the release package.'}
+    if ((Get-GaoProperty $settings 'ConnectionStrings.DefaultConnection') -or (Get-GaoProperty $settings 'DataProtection.CertificatePassword') -or
+        (Get-GaoProperty $settings 'DataProtection.CertificatePath') -or (Get-GaoProperty $settings 'DataProtection.KeysPath') -or
+        ($component -in @('web', 'migrator') -and !(Get-GaoProperty $settings 'DataProtection.RequirePortableKeys')) -or (Get-GaoProperty $settings 'SeedData.EnableDemoSeed') -or
+        (Get-GaoProperty $settings 'SeedData.EnableDefaultAdminSeed') -or (Get-GaoProperty $settings 'ProductionBootstrap.Enabled')) {
         throw "Unsafe release defaults in $component. Supply host secrets outside the release."
     }
-    $assembly = if ($component -eq 'web') { 'GaoApp.Web' } else { 'GaoApp.Migrator' }
+    if ($component -eq 'labelprintserver' -and (Get-GaoProperty $settings 'LabelPrinting.StoreId') -ne 0) { throw 'Label server package must have a blank store configuration.' }
+    $assembly = @{
+        web='GaoApp.Web'; migrator='GaoApp.Migrator';
+        autoinvoiceworker='GaoApp.AutoInvoiceWorker'; labelprintserver='GaoApp.LabelPrintServer'
+    }[$component]
     foreach ($suffix in @('.dll', '.deps.json', '.runtimeconfig.json')) {
         if (!(Test-Path -LiteralPath (Join-Path $componentRoot ($assembly + $suffix)) -PathType Leaf)) {
             throw "Incomplete $component publish output."
         }
     }
+    Assert-GaoAppRuntimeConfiguration (Get-Content -LiteralPath (Join-Path $componentRoot "$assembly.runtimeconfig.json") -Raw | ConvertFrom-Json)
+    if ($component -in @('autoinvoiceworker', 'labelprintserver') -and !(Test-Path -LiteralPath (Join-Path $componentRoot "$assembly.exe") -PathType Leaf)) { throw 'Windows service package is missing its executable.' }
 }
 [xml]$iisConfig = Get-Content -LiteralPath (Join-Path $releaseRoot 'web/web.config') -Raw
 $webServer = $iisConfig.configuration.location.'system.webServer'
@@ -49,11 +102,14 @@ foreach ($extension in @('.pfx', '.p12', '.pem', '.key', '.bak', '.mdf', '.ldf')
         $_.fileExtension -eq $extension -and $_.allowed -eq 'false'
     }).Count) { throw "IIS must block sensitive extension: $extension" }
 }
+if(!@($webServer.security.requestFiltering.hiddenSegments.add | Where-Object segment -eq 'ChannelCredentials').Count){throw 'IIS must block the reserved ChannelCredentials directory.'}
 if (!$WebOnly) {
 foreach ($assembly in @('GaoApp.Domain.dll', 'GaoApp.Application.dll', 'GaoApp.Infrastructure.dll')) {
     $webHash = (Get-FileHash -LiteralPath (Join-Path $releaseRoot "web/$assembly") -Algorithm SHA256).Hash
-    $migratorHash = (Get-FileHash -LiteralPath (Join-Path $releaseRoot "migrator/$assembly") -Algorithm SHA256).Hash
-    if ($webHash -ne $migratorHash) { throw "Web/Migrator version mismatch: $assembly" }
+    foreach ($component in $components | Where-Object { $_ -ne 'web' }) {
+        $pairedHash = (Get-FileHash -LiteralPath (Join-Path $releaseRoot "$component/$assembly") -Algorithm SHA256).Hash
+        if ($webHash -ne $pairedHash) { throw "Web/$component version mismatch: $assembly" }
+    }
 }
 }
 if (!$SkipManifest) {

@@ -94,7 +94,7 @@ public sealed class ReceiptPriceDraftSqlServerTests
         await admin.JsonAsync(HttpMethod.Post, $"/admin/api/stock-documents/{seed.ReceiptId}/approve-commercial", new
         {
             rowVersion = Convert.ToBase64String(latest.RowVersion), supplierId = latest.SupplierId,
-            isMerchandisePaid = true, acceptPriceVariance = true,
+            isMerchandisePaid = false, acceptPriceVariance = true,
             lines = latest.Lines.Select(x => new { stockDocumentLineId = x.Id, unitPriceBeforeVat = x.UnitPriceBeforeVat }).ToArray()
         });
         db.ChangeTracker.Clear();

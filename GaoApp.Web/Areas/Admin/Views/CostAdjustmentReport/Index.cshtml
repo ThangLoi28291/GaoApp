@@ -9,6 +9,7 @@
 }
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/reports/profit-report.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/report-detail.mobile.css" asp-append-version="true" />
 }
 <div class="profit-report" data-profit-report data-mode="activity" data-can-sales="@canSales.ToString().ToLowerInvariant()"
      data-url="/admin/reports/cost-adjustments/data" aria-busy="true">
@@ -67,4 +68,5 @@
 </div>
 @section PageScripts {
     <script src="~/Admin/js/reports/profit-report.page.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/report-detail.mobile.js" asp-append-version="true"></script>
 }

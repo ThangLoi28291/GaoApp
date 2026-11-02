@@ -1,6 +1,6 @@
 (function () {
     'use strict';
-    let records = [], requestVersion = 0, timer;
+    let records = [], requestVersion = 0, timer, unavailable = false;
     const summary = document.getElementById('priceReviewCounts');
     if (!summary) return;
     const checked = id => document.getElementById(id)?.checked === true;
@@ -31,7 +31,15 @@
             const previous = Number(row?.querySelector('.commercial-last-price')?.dataset.value || 0);
             const moved = previous > 0 ? number(row.querySelector('.commercial-unit-price')) !== previous : placeholders[0]?.dataset.priceMoved === 'true';
             const attention = !reviewed && (record.needsAttention || differentCost || moved);
-            const belowCost = record.belowCost && !differentCost;
+            const comparisonCost = local ? cost : record.currentBaseCost;
+            const losses = Number.isFinite(comparisonCost) && comparisonCost > 0 ? (record.units || []).flatMap(unit => {
+                const unitCost = comparisonCost * unit.factor;
+                const channels = [];
+                if (unit.price < unitCost) channels.push('lẻ');
+                if ((unit.wholesalePrice ?? unit.price) < unitCost) channels.push('sỉ');
+                return channels.length ? [`${unit.unitName}: giá ${channels.join(' và ')} dưới vốn`] : [];
+            }) : [];
+            const belowCost = record.units?.length && Number.isFinite(comparisonCost) && comparisonCost > 0 ? losses.length > 0 : record.belowCost && !differentCost;
             if (attention || belowCost) needs++;
             if (record.hasChanges) changed++;
             if (reviewed) reviewedCount++; else if (!attention && !belowCost) pending++;
@@ -42,13 +50,17 @@
                 placeholder.replaceChildren();
                 if (record.hasChanges) badge(placeholder, 'Đã cập nhật giá', 'success');
                 if (belowCost) badge(placeholder, 'Có giá bán dưới vốn', 'danger');
+                if (losses.length) {
+                    const detail = document.createElement('small'); detail.className = 'd-block text-danger sd-price-loss-detail';
+                    detail.textContent = losses.join(' · '); placeholder.append(detail);
+                }
                 if (attention) badge(placeholder, 'Cần xem lại giá', 'warning');
                 else if (reviewed) badge(placeholder, record.hasChanges ? 'Đã đánh giá' : 'Đã kiểm tra, giữ giá', 'success');
                 else badge(placeholder, 'Chưa đánh giá', 'secondary');
                 if (record.reviewedAtUtc) {
                     const stamp = document.createElement('small'); stamp.className = 'd-block text-muted';
-                    const utc = record.reviewedAtUtc.endsWith('Z') ? record.reviewedAtUtc : record.reviewedAtUtc + 'Z';
-                    stamp.textContent = `${record.reviewedBy || 'Hệ thống'} · ${new Date(utc).toLocaleString('vi-VN')}`;
+                    const utc = /(Z|[+-]\d{2}:?\d{2})$/i.test(record.reviewedAtUtc) ? record.reviewedAtUtc : record.reviewedAtUtc + 'Z';
+                    stamp.textContent = `${record.reviewedBy || 'Hệ thống'} · ${new Date(utc).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`;
                     placeholder.append(stamp);
                 }
             }
@@ -58,6 +70,7 @@
         badge(summary, `Đã cập nhật giá: ${changed}`, 'success');
         badge(summary, `Đã đánh giá: ${reviewedCount}`, 'primary');
         badge(summary, `Chưa đánh giá: ${pending}`, 'secondary');
+        document.dispatchEvent(new Event('receipt-price-reviews-changed'));
     }
     async function refresh() {
         const version = ++requestVersion;
@@ -67,7 +80,7 @@
             const data = json?.data ?? json;
             if (!response.ok || !Array.isArray(data.lines)) throw new Error('Không tải được đánh giá giá bán. Bấm Tải lại đánh giá.');
             if (version !== requestVersion) return;
-            records = data.lines; render();
+            unavailable = false; records = data.lines; render();
         } catch (error) {
             if (version !== requestVersion) return;
             summary.textContent = 'Chưa xác minh được đánh giá mới nhất. Bấm Tải lại đánh giá.';
@@ -76,9 +89,11 @@
                 x.closest('tr')?.classList.remove('sd-price-attention', 'sd-price-loss', 'sd-price-reviewed');
             });
             records = [];
+            unavailable = true;
+            document.dispatchEvent(new Event('receipt-price-reviews-changed'));
         }
     }
-    window.GaoReceiptPriceReviews = { refresh };
+    window.GaoReceiptPriceReviews = { refresh, getState: () => ({ unavailable }) };
     document.getElementById('refreshPriceReviews')?.addEventListener('click', refresh);
     document.addEventListener('receipt-pricing-inputs-changed', () => { if (records.length) render(); });
     new MutationObserver(changes => {

@@ -357,7 +357,12 @@
                     throw new Error(data.message || data.detail || data.title || 'Không thể xử lý tiền cọc.');
                 }
                 sessionStorage.removeItem(key);
-                location.reload();
+                if (action === 'receive') {
+                    const url = new URL('/admin/customer-deposit', location.origin);
+                    url.searchParams.set('customerId', root.dataset.customerId);
+                    url.searchParams.set('received', data.depositId);
+                    location.assign(url.href);
+                } else location.reload();
             } catch (error) {
                 message.textContent = error.message;
             } finally {

@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Common;
+using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -14,7 +14,7 @@ namespace GaoApp.Domain.Entities;
 /// - Khi Confirmed, hệ thống sẽ sinh InventoryTransaction chênh lệch ở phase sau
 /// </summary>
 [Table("StockCountDocument")]
-public class StockCountDocument : BaseStoreEntity
+public class StockCountDocument : BaseStoreEntity, IAuditTrackedEntity
 {
     /// <summary>
     /// Kho được kiểm kê.
@@ -39,7 +39,7 @@ public class StockCountDocument : BaseStoreEntity
     /// Ngày kiểm kê trên chứng từ.
     /// Có thể là ngày người dùng chọn, không bắt buộc phải trùng CreatedAtUtc.
     /// </summary>
-    public DateTime DocumentDate { get; set; } = DateTime.Now;
+    public DateTime DocumentDate { get; set; } = DateTime.UtcNow;
 
     /// <summary>
     /// Trạng thái phiếu.

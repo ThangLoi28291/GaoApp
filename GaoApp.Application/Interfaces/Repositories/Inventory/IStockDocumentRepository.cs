@@ -80,6 +80,7 @@ public interface IStockDocumentRepository
    
 
     Task<List<StockDocumentListItemDto>> GetReceiptListAsync(CancellationToken ct = default);
+    Task<List<StockDocumentListItemDto>> GetReceivingReceiptListAsync(CancellationToken ct = default);
 
     Task RemoveLineAsync(StockDocumentLine line, CancellationToken ct = default);
 

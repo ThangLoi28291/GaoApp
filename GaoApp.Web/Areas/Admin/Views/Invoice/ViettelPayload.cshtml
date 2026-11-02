@@ -1,4 +1,4 @@
-﻿@model GaoApp.Application.DTOs.Invoices.ViettelInvoicePayloadResultDto
+@model GaoApp.Application.DTOs.Invoices.ViettelInvoicePayloadResultDto
 @using GaoApp.Domain.Enums
 
 <a href="/admin/invoice-input-stock" class="btn btn-label-primary mb-3">Tra cứu tồn hàng có hóa đơn XML</a>
@@ -53,6 +53,11 @@ Model.HasOfficialPdf;
         _ => string.Empty
     };
     var correctionHistory = ViewBag.CorrectionHistory as GaoApp.Application.DTOs.Invoices.InvoiceCorrectionHistoryDto;
+}
+
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/invoice-tax-reduction.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/invoice-integration.mobile.css" asp-append-version="true" />
 }
 
 <style>
@@ -281,6 +286,10 @@ Model.HasOfficialPdf;
 
        
     </div>
+    @if (ViewBag.RevenueTaxInvoice is GaoApp.Application.DTOs.Invoices.InvoiceHeadDto revenueTaxInvoice)
+    {
+        @await Html.PartialAsync("_InvoiceRevenueTax", revenueTaxInvoice)
+    }
     @await Html.PartialAsync(
     "~/Areas/Admin/Views/Invoice/_ViettelActionToolbar.cshtml",
     Model)
@@ -468,9 +477,9 @@ Model.HasOfficialPdf;
                         @if (Model.IssuedAtUtc.HasValue)
                         {
                             <div class="payload-meta-row">
-                                <span class="payload-meta-label">Ngày phát hành UTC</span>
+                                <span class="payload-meta-label">Ngày phát hành</span>
                                 <span class="payload-meta-value">
-                                    @Model.IssuedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                    @Model.IssuedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")
                                 </span>
                             </div>
                         }
@@ -478,9 +487,9 @@ Model.HasOfficialPdf;
                         @if (Model.LastSyncedAtUtc.HasValue)
                         {
                             <div class="payload-meta-row">
-                                <span class="payload-meta-label">Đồng bộ gần nhất UTC</span>
+                                <span class="payload-meta-label">Đồng bộ gần nhất</span>
                                 <span class="payload-meta-value">
-                                    @Model.LastSyncedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                    @Model.LastSyncedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")
                                 </span>
                             </div>
                         }
@@ -580,8 +589,8 @@ Model.HasOfficialPdf;
                             @if (Model.OfficialPdfDownloadedAtUtc.HasValue)
                             {
                                 <div class="small text-muted mt-1">
-                                    Tải PDF lúc UTC:
-                                    @Model.OfficialPdfDownloadedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                    Tải PDF lúc:
+                                    @Model.OfficialPdfDownloadedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")
                                 </div>
                             }
 
@@ -622,8 +631,8 @@ Model.HasOfficialPdf;
                             @if (Model.OfficialZipXmlDownloadedAtUtc.HasValue)
                             {
                                 <div class="small text-muted mt-1">
-                                    Tải ZIP/XML lúc UTC:
-                                    @Model.OfficialZipXmlDownloadedAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                    Tải ZIP/XML lúc:
+                                    @Model.OfficialZipXmlDownloadedAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")
                                 </div>
                             }
 
@@ -664,8 +673,8 @@ Model.HasOfficialPdf;
                             @if (Model.EmailSentAtUtc.HasValue)
                             {
                                 <div class="small text-muted mt-1">
-                                    Gửi lúc UTC:
-                                    @Model.EmailSentAtUtc.Value.ToString("dd/MM/yyyy HH:mm:ss")
+                                    Gửi lúc:
+                                    @Model.EmailSentAtUtc.Value.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")
                                 </div>
                             }
 
@@ -724,7 +733,7 @@ Model.HasOfficialPdf;
                                     </div>
 
                                     <div class="small text-muted">
-                                        Bắt đầu UTC: @log.StartedAtUtc.ToString("dd/MM/yyyy HH:mm:ss")
+                                        Bắt đầu: @log.StartedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm:ss")
                                     </div>
 
                                     <div class="small text-muted">
@@ -797,7 +806,7 @@ Model.HasOfficialPdf;
 
                             <button type="button"
                                     class="btn btn-success"
-                                    onclick="loadPreviewPdf()">
+                                    data-csp-action="invoice-preview">
                                 <i class="bx bx-file"></i>
                                 Tải PDF nháp
                             </button>
@@ -926,7 +935,7 @@ Model.HasOfficialPdf;
 
                         <button type="submit"
                                 class="btn btn-success"
-                                onclick="return confirm('Xác nhận gửi email hóa đơn cho khách?');">
+                                data-csp-confirm="Xác nhận gửi email hóa đơn cho khách?">
                             <i class="bx bx-envelope"></i>
                             Gửi email
                         </button>
@@ -937,6 +946,7 @@ Model.HasOfficialPdf;
     </div>
 }
 @section Scripts {
+    <script src="~/Admin/js/invoice-tax-reduction.js" asp-append-version="true"></script>
     <script>
         function copyPayloadJson() {
             const el = document.getElementById('payloadJson');
@@ -972,4 +982,8 @@ Model.HasOfficialPdf;
             frame.src = src + '?_=' + new Date().getTime();
         }
     </script>
+}
+
+@section PageScripts {
+    <script src="~/Admin/js/invoice-integration.mobile.js" asp-append-version="true"></script>
 }

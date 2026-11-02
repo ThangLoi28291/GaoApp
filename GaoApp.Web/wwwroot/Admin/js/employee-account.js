@@ -7,6 +7,8 @@
     const menu = document.getElementById('employeeAccountMenu');
     const drawer = document.getElementById('employeeAccountDrawer');
     const title = document.getElementById('employeeAccountTitle');
+    const back = root.querySelector('[data-account-back]');
+    const phone = matchMedia('(max-width: 767.98px)');
     const form = root.querySelector('[data-account-password-form]');
     const save = root.querySelector('[data-account-save]');
     const status = root.querySelector('[data-account-status]');
@@ -35,6 +37,17 @@
         const rect = trigger.getBoundingClientRect();
         const width = document.documentElement.clientWidth;
         const height = window.innerHeight;
+        if (phone.matches && (!window.visualViewport || Math.abs(window.visualViewport.scale - 1) < 0.02)) {
+            const visibleTop = window.visualViewport?.offsetTop || 0;
+            const visibleBottom = visibleTop + (window.visualViewport?.height || height);
+            if (rect.bottom <= visibleTop || rect.top >= visibleBottom) { closeMenu(false); return; }
+            const anchorBottom = trigger.closest('header')?.getBoundingClientRect().bottom ?? rect.bottom;
+            const top = Math.max(visibleTop + 12, Math.min(anchorBottom + 8, visibleBottom - 56));
+            menu.style.top = top + 'px';
+            menu.style.setProperty('--gao-account-mobile-height', Math.max(0, visibleBottom - top - 12) + 'px');
+            return;
+        }
+        menu.style.removeProperty('--gao-account-mobile-height');
         if (rect.bottom <= 0 || rect.top >= height) { closeMenu(false); return; }
         menu.style.left = Math.max(12, Math.min(rect.right - menu.offsetWidth, width - menu.offsetWidth - 12)) + 'px';
         const anchorBottom = trigger.closest('header')?.getBoundingClientRect().bottom ?? rect.bottom;
@@ -83,6 +96,9 @@
     });
     window.addEventListener('resize', positionMenu);
     window.addEventListener('scroll', positionMenu, true);
+    phone.addEventListener('change', positionMenu);
+    window.visualViewport?.addEventListener('resize', () => { if (phone.matches) positionMenu(); }, { passive: true });
+    window.visualViewport?.addEventListener('scroll', () => { if (phone.matches) positionMenu(); }, { passive: true });
 
     function clearPasswordForm() {
         form.reset();
@@ -102,6 +118,7 @@
         if (submitting || signedOut) return;
         closeMenu(false);
         activePanel = name;
+        if (back) back.hidden = name === 'profile';
         const labels = { profile: 'Hồ sơ của tôi', password: 'Đổi mật khẩu', help: 'Trợ giúp' };
         title.textContent = labels[name];
         root.querySelectorAll('[data-account-section]').forEach(section => { section.hidden = section.dataset.accountSection !== name; });

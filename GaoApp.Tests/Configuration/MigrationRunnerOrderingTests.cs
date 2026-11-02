@@ -103,7 +103,27 @@ public sealed class MigrationRunnerOrderingTests
     {
         var harness = CreateHarness(new(), new(), Environments.Production);
         harness.DatabaseState = DatabaseCompatibilityState.ExistingEmpty;
-        await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => harness.Runner.RunAsync(MigratorMode.SchemaOnly));
+        var error = await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => harness.Runner.RunAsync(MigratorMode.SchemaOnly));
+        Assert.True(error.MigrationWasAttempted);
+        Assert.Equal("CurrentSchemaRequired", error.Result.SafeReasonCode);
+        Assert.DoesNotContain("No schema or data changes were applied", error.Message);
+        harness.Events.Should().Equal("Preflight", "Migrate", "Preflight");
+        harness.MandatorySeedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Post_migration_verification_preserves_the_actual_failure_reason_and_committed_history_counts()
+    {
+        var harness = CreateHarness(new(), new(), Environments.Production);
+        harness.VerificationResult = new(DatabaseCompatibilityState.PartialOrCorruptBaseline, false,
+            "StructuralSchemaMismatch", 75, 75, 180, SchemaMismatchCategoryCount: 1,
+            SchemaMismatches: new(0, 0, 0, 0, 0, 1, 0));
+        var error = await Assert.ThrowsAsync<DatabaseCompatibilityException>(() => harness.Runner.RunAsync(MigratorMode.SchemaOnly));
+        Assert.True(error.MigrationWasAttempted);
+        Assert.Equal("StructuralSchemaMismatch", error.Result.SafeReasonCode);
+        Assert.Contains("SourceMigrations=75; AppliedMigrations=75", error.Message);
+        Assert.Contains("SchemaMismatchChecks=1", error.Message);
+        Assert.DoesNotContain("No schema or data changes were applied", error.Message);
         harness.Events.Should().Equal("Preflight", "Migrate", "Preflight");
         harness.MandatorySeedCount.Should().Be(0);
     }
@@ -190,6 +210,7 @@ public sealed class MigrationRunnerOrderingTests
         }
 
         public DatabaseCompatibilityState DatabaseState { get => _preflight.State; set => _preflight.State = value; }
+        public DatabaseCompatibilityResult? VerificationResult { set => _preflight.VerificationResult = value; }
         public MigrationExecutionPipeline Runner { get; }
         public List<string> Events { get; }
         public int DatabaseAccessCount => _preflight.Count;
@@ -212,6 +233,7 @@ public sealed class MigrationRunnerOrderingTests
         }
 
         public DatabaseCompatibilityState State { get; set; } = DatabaseCompatibilityState.CurrentBaseline;
+        public DatabaseCompatibilityResult? VerificationResult { get; set; }
         public int Count { get; private set; }
 
         public Task<DatabaseCompatibilityResult> InspectAsync(
@@ -219,6 +241,7 @@ public sealed class MigrationRunnerOrderingTests
         {
             Count++;
             _events.Add("Preflight");
+            if (Count > 1 && VerificationResult is not null) return Task.FromResult(VerificationResult);
             return Task.FromResult(new DatabaseCompatibilityResult(
                 _allowed
                     ? State

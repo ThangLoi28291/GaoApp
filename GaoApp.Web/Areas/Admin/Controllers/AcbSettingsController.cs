@@ -116,6 +116,8 @@ public sealed class AcbSettingsController(AppDbContext db, AcbProtocol protocol,
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Index(AcbSettingsForm form, CancellationToken ct)
     {
+        await using var configTx=await db.Database.BeginTransactionAsync(ct);
+        await GaoApp.Infrastructure.Services.Banking.GlobalBankReceiptLedger.LockAsync(db,"GaoApp:Storefront:Configuration:"+CurrentStoreId,ct);
         var entity = await db.Set<StoreAcbSettings>().SingleOrDefaultAsync(x => x.StoreId == CurrentStoreId, ct);
         try
         {
@@ -136,6 +138,8 @@ public sealed class AcbSettingsController(AppDbContext db, AcbProtocol protocol,
             if (changesConnection && await db.Set<AcbQrSession>().AnyAsync(x => x.StoreId == CurrentStoreId &&
                 x.Status != AcbSessionStatus.Completed && x.Status != AcbSessionStatus.Cancelled, ct))
                 throw new InvalidOperationException("Cần xử lý các QR đang chờ hoặc cần kiểm tra trước khi đổi cấu hình ACB. Bạn vẫn có thể nhập lại Client secret hoặc khóa callback nếu giữ nguyên tài khoản và các thông số khác.");
+            if(changesConnection&&await db.Set<GaoApp.Domain.Storefront.StorefrontPaymentIntent>().AnyAsync(x=>x.StoreId==CurrentStoreId&&x.IsActive,ct))
+                throw new InvalidOperationException("Cần đối soát các QR website còn hiệu lực trước khi đổi tài khoản hoặc thông tin kết nối. Có thể nhập lại khóa bí mật khi giữ nguyên các thông số khác.");
             if (form.Enabled && (string.IsNullOrWhiteSpace(form.ClientId) || string.IsNullOrWhiteSpace(form.MerchantId) ||
                 string.IsNullOrWhiteSpace(form.XProviderId) || string.IsNullOrWhiteSpace(form.XOwnerNumber) ||
                 string.IsNullOrWhiteSpace(form.XService) || string.IsNullOrWhiteSpace(form.XOwnerType) ||
@@ -150,6 +154,7 @@ public sealed class AcbSettingsController(AppDbContext db, AcbProtocol protocol,
             if (!string.IsNullOrWhiteSpace(form.ClientSecret)) entity.ClientSecretProtected = protocol.Protect(CurrentStoreId, form.ClientSecret);
             if (!string.IsNullOrWhiteSpace(form.CallbackApiKey)) entity.CallbackApiKeyProtected = protocol.Protect(CurrentStoreId, form.CallbackApiKey);
             await db.SaveChangesAsync(ct);
+            await configTx.CommitAsync(ct);
             ToastSuccess("Đã lưu cấu hình ACB của cửa hàng.");
             return RedirectToSettings();
         }

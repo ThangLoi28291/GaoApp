@@ -15,6 +15,7 @@ public sealed class OrderListQueryDto
 
     [StringLength(320)] public string? Employee { get; set; }
     [StringLength(200)] public string? Customer { get; set; }
+    [StringLength(320)] public string? Product { get; set; }
     [StringLength(320)] public string? Terminal { get; set; }
     [Range(1, int.MaxValue)] public int? EmployeeId { get; set; }
     [Range(1, int.MaxValue)] public int? TerminalId { get; set; }

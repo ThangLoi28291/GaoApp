@@ -1,0 +1,36 @@
+@model GaoApp.Application.Interfaces.Services.Orders.DepositPageDto
+@{
+    var list = Model.List;
+    string PageUrl(int page) => Url.Action("Index", "CustomerDeposit", new { area = "Admin", customerId = Model.CustomerId, search = list.Search, status = list.Status, page, tab = "list" })!;
+}
+<div class="deposit-panel__heading"><div><span class="deposit-step"><i class="bx bx-list-ul"></i></span><div><h3>@(Model.CustomerId.HasValue ? "Tất cả phiếu cọc của khách" : "Danh sách tất cả phiếu cọc")</h3><p>Bao gồm phiếu còn dư và phiếu đã dùng / hoàn hết. Tổng quan tính theo bộ lọc hiện tại.</p></div></div></div>
+<form method="get" action="/admin/customer-deposit" class="deposit-list-filters">
+    @if (Model.CustomerId.HasValue) { <input type="hidden" name="customerId" value="@Model.CustomerId" /> }
+    <input type="hidden" name="tab" value="list" />
+    <label class="deposit-field"><span>Tìm phiếu cọc</span><input type="search" name="search" value="@list.Search" maxlength="200" placeholder="Mã phiếu, tên khách, điện thoại, nội dung..." /></label>
+    <label class="deposit-field"><span>Trạng thái</span><select name="status"><option value="">Tất cả phiếu</option><option value="active" selected="@(list.Status == "active")">Còn số dư</option><option value="closed" selected="@(list.Status == "closed")">Đã hết số dư</option></select></label>
+    <button type="submit" class="deposit-secondary-action"><i class="bx bx-filter-alt"></i> Lọc phiếu</button>
+    <a href="@Url.Action("Index", "CustomerDeposit", new { area = "Admin", customerId = Model.CustomerId, tab = "list" })" class="btn btn-link">Xóa lọc</a>
+</form>
+<div class="deposit-table-wrap"><table class="deposit-table deposit-list-table">
+    <thead><tr><th>Phiếu / ngày nhận</th><th>Khách hàng</th><th>Nội dung / hẹn giao</th><th class="is-number">Đã nhận (đ)</th><th class="is-number">Đã dùng / hoàn (đ)</th><th class="is-number">Còn lại (đ)</th><th>Trạng thái / thao tác</th></tr></thead>
+    <tbody>
+    @foreach (var d in list.Rows)
+    {
+        <tr data-deposit-id="@d.Id">
+            <td><strong>PCOC-@d.Id.ToString("D6")</strong><small>@d.At.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</small></td>
+            <td><a href="/admin/customer-deposit?customerId=@d.CustomerId" class="deposit-list-customer">@d.CustomerName</a><small>@(d.Phone ?? "Chưa có số điện thoại")</small></td>
+            <td><strong>@d.Purpose</strong><small>Hẹn giao: @(d.ExpectedDeliveryDate?.ToString("dd/MM/yyyy") ?? "Chưa hẹn")</small></td>
+            <td class="is-number">@d.Received.ToString("N0")</td>
+            <td class="is-number">@d.Used.ToString("N0") / @d.Refunded.ToString("N0")</td>
+            <td class="is-number is-positive">@d.Balance.ToString("N0")</td>
+            <td><span class="deposit-kind @(d.Balance > 0 ? "deposit-kind--receive" : "")">@(d.Balance > 0 ? "Còn số dư" : "Đã hết số dư")</span><a href="/admin/customer-deposit/@d.Id/print" target="_blank" rel="noopener" class="deposit-list-print"><i class="bx bx-printer"></i> In phiếu cọc</a></td>
+        </tr>
+    }
+    @if (list.Rows.Count == 0) { <tr><td colspan="7"><div class="deposit-empty deposit-empty--small"><i class="bx bx-receipt"></i><span>@(list.Search != null || list.Status != null ? "Không có phiếu cọc khớp bộ lọc." : "Chưa có phiếu cọc. Chọn khách hàng để lập phiếu mới.")</span></div></td></tr> }
+    </tbody>
+</table></div>
+<nav class="deposit-list-pagination" aria-label="Phân trang phiếu cọc">
+    <span>@list.TotalCount phiếu · Trang @list.Page / @list.TotalPages</span>
+    <div>@if(list.Page > 1){<a href="@PageUrl(list.Page - 1)" class="deposit-secondary-action">Trang trước</a>}@if(list.Page < list.TotalPages){<a href="@PageUrl(list.Page + 1)" class="deposit-secondary-action">Trang sau</a>}</div>
+</nav>

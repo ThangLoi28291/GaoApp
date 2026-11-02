@@ -1,0 +1,160 @@
+/* UI-04a: phone presentation only. Existing orders CSS and all desktop rules remain in their owner. */
+@media (max-width: 767.98px) {
+    .pos-orders-page[data-mobile-orders] {
+        --po-ink: #192c4a; --po-body: #33465f; --po-muted: #647188; --po-line: #e5eaf1;
+        --po-surface: #fff; --po-soft: #f4f6fa; --po-accent: #3858df; --po-accent-dark: #2945c3;
+        --po-accent-soft: #edf1ff; --po-accent-line: #ccd6ff;
+        width: 100%; min-width: 0; padding-bottom: 8px; color: var(--po-ink);
+        font-family: var(--commerce-font,system-ui,sans-serif); overflow-wrap: anywhere;
+    }
+    .pos-orders-page[data-mobile-orders] .po-header { height: 0; min-height: 0; margin: 0; gap: 0; }
+    .pos-orders-page[data-mobile-orders] .po-heading { min-width: 0; }
+    .pos-orders-page[data-mobile-orders] .po-heading > div { min-width: 0; }
+    .pos-orders-page[data-mobile-orders] .po-heading-icon,
+    .pos-orders-page[data-mobile-orders] .po-header .po-eyebrow,
+    .pos-orders-page[data-mobile-orders] .po-header-actions { display: none; }
+    .pos-orders-page[data-mobile-orders] h1 { margin-bottom: 6px; font-size: 24px; line-height: 1.3; letter-spacing: -.7px; }
+    .pos-orders-page[data-mobile-orders] .po-header h1 { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); clip-path: inset(50%); white-space: nowrap; }
+    .pos-orders-page[data-mobile-orders] .po-subtitle { display: none; }
+    .pos-orders-page[data-mobile-orders] .po-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-bottom: 16px; }
+    .pos-orders-page[data-mobile-orders] .po-metric { padding: 14px 12px; border-radius: 17px; box-shadow: none; }
+    .pos-orders-page[data-mobile-orders] .po-metric-label { align-items: start; font-size: 12px; line-height: 1.5; }
+    .pos-orders-page[data-mobile-orders] .po-metric-label i { flex: 0 0 18px; font-size: 18px; }
+    .pos-orders-page[data-mobile-orders] .po-metric-value { margin: 8px 0 6px; font-size: 22px; line-height: 1.35; letter-spacing: -.5px; }
+    .pos-orders-page[data-mobile-orders] .po-metric-value small { font-size: 12px; }
+    .pos-orders-page[data-mobile-orders] .po-metric-note { font-size: 11px; line-height: 1.5; }
+    .pos-orders-page[data-mobile-orders] .po-metric-count { background: #192c4a; border-color: #192c4a; }
+    .pos-orders-page[data-mobile-orders] .po-metric-count :is(.po-metric-label,.po-metric-value,.po-metric-label i) { color: #fff; }
+    .pos-orders-page[data-mobile-orders] .po-metric-count .po-metric-note { color: #cbd6e8; }
+    .pos-orders-page[data-mobile-orders] .po-workspace { border: 0; border-radius: 0; box-shadow: none; background: transparent; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters { padding: 16px 12px; border: 1px solid var(--po-line); border-radius: 20px; background: var(--po-surface); }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-filter-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 10px; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search { grid-column: 1 / -1; grid-row: 1; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search + .po-field { grid-column: 1; grid-row: 3; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search + .po-field + .po-field { grid-column: 2; grid-row: 3; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search ~ .po-field:last-of-type { grid-column: 1 / -1; grid-row: 4; }
+    .pos-orders-page[data-mobile-orders] #btnSearch { grid-column: 1; grid-row: 2; }
+    .pos-orders-page[data-mobile-orders] #btnToggleFilters { display: inline-flex; grid-column: 2; grid-row: 2; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-filter-details { grid-template-columns: minmax(0,1fr); gap: 16px; margin-top: 16px; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters:not(.po-filters-expanded) .po-field:not(.po-field-search),
+    .pos-orders-page[data-mobile-orders] #ordersFilters:not(.po-filters-expanded) .po-filter-details,
+    .pos-orders-page[data-mobile-orders] #ordersFilters:not(.po-filters-expanded) .po-delivery-filter,
+    .pos-orders-page[data-mobile-orders] #ordersFilters:not(.po-filters-expanded) #btnResetFilters { display: none; }
+    .pos-orders-page[data-mobile-orders] .po-field label { font-size: 13px; line-height: 1.5; }
+    .pos-orders-page[data-mobile-orders] :is(input,select) { height: 50px; padding: 12px; border-radius: 13px; font-size: 16px; }
+    .pos-orders-page[data-mobile-orders] .po-search-input input { padding-left: 40px; }
+    .pos-orders-page[data-mobile-orders] .po-search-input i { top: 15px; }
+    .pos-orders-page[data-mobile-orders] .po-button { min-height: 48px; padding: 12px; border-radius: 13px; font-size: 14px; line-height: 1.5; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] #ordersFilters .po-filter-bottom { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px; margin-top: 12px; }
+    .pos-orders-page[data-mobile-orders] .po-periods { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); grid-column: 1 / -1; gap: 4px; }
+    .pos-orders-page[data-mobile-orders] .po-period-label { display: none; }
+    .pos-orders-page[data-mobile-orders] .po-chip { min-height: 44px; padding: 8px 2px; border: 1px solid var(--po-line); border-radius: 11px; font-size: 12px; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] .po-chip[aria-pressed="true"] { border-color: var(--po-accent-line); }
+    .pos-orders-page[data-mobile-orders] .po-delivery-filter { min-height: 44px; font-size: 13px; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] .po-delivery-filter input { width: 20px; height: 20px; padding: 0; flex: 0 0 20px; accent-color: var(--po-accent); }
+    .pos-orders-page[data-mobile-orders] .po-reset { min-height: 44px; padding: 8px 0 8px 8px; font-size: 13px; }
+    .pos-orders-page[data-mobile-orders] .po-lookup-panel { border-radius: 14px; max-width: 100%; }
+    .pos-orders-page[data-mobile-orders] .po-lookup-panel [role=listbox] { max-height: min(220px,40dvh); overscroll-behavior: contain; }
+    .pos-orders-page[data-mobile-orders] .po-lookup-panel [role=option] { min-height: 48px; padding: 12px; font-size: 15px; }
+    .pos-orders-page[data-mobile-orders] .po-list-heading { display: grid; grid-template-columns: minmax(0,1fr) 134px; padding: 20px 0 12px; align-items: start; gap: 8px; }
+    .pos-orders-page[data-mobile-orders] .po-list-heading h2 { font-size: 16px; line-height: 1.5; }
+    .pos-orders-page[data-mobile-orders] #filterSummary { font-size: 12px; line-height: 1.6; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] .po-list-controls { width: auto; gap: 6px; }
+    .pos-orders-page[data-mobile-orders] .po-list-controls > label { display: none; }
+    .pos-orders-page[data-mobile-orders] #pageSize { height: 44px; width: 84px; min-width: 84px; padding: 8px; font-size: 14px; }
+    .pos-orders-page[data-mobile-orders] #btnRefresh { margin-left: 0; }
+    .pos-orders-page[data-mobile-orders] .po-icon-button { min-width: 44px; min-height: 44px; border-radius: 13px; }
+    .pos-orders-page[data-mobile-orders] .po-inline-notice { margin: 0 0 12px; padding: 12px; border-radius: 13px; font-size: 13px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-table-wrap { padding: 0; border: 0; background: transparent; }
+    .pos-orders-page[data-mobile-orders] .po-table,
+    .pos-orders-page[data-mobile-orders] #ordersBody { display: block; width: 100%; min-width: 0; }
+    .pos-orders-page[data-mobile-orders] .po-table thead { display: none; }
+    .pos-orders-page[data-mobile-orders-mode="cards"] #ordersBody > .po-order-row { display: block; padding: 0; margin: 0 0 12px; border: 0; border-radius: 0; background: transparent; }
+    .pos-orders-page[data-mobile-orders-mode="cards"] #ordersBody .po-mobile-order-cell { display: block; width: 100%; padding: 0 !important; border: 0; }
+    .pos-orders-page[data-mobile-orders-mode="cards"] #ordersBody .po-mobile-order-unused { display: none !important; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-card { min-width: 0; padding: 16px; border: 1px solid var(--po-line); border-radius: 20px; background: var(--po-surface); box-shadow: 0 4px 18px #192c4a05; animation: po-mobile-card-enter .18s ease-out; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-heading { display: flex; align-items: flex-start; gap: 10px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-heading .po-order-link { flex: 1; min-width: 0; min-height: 44px; padding: 8px 0; font-size: 15px; line-height: 1.5; text-align: left; }
+    .pos-orders-page[data-mobile-orders] .po-order-number { white-space: normal; overflow-wrap: anywhere; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-heading .po-actions { flex: 0 0 auto; gap: 2px; }
+    .pos-orders-page[data-mobile-orders] .po-actions .po-icon-button { width: 44px; height: 44px; padding: 0; font-size: 20px; background: var(--po-soft); border: 1px solid var(--po-line); }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-identity { display: grid; gap: 5px; margin: 6px 0 12px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-brief { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); align-items: start; gap: 10px; margin: 10px 0 12px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-brief .po-mobile-order-identity { margin: 0; }
+    .pos-orders-page[data-mobile-orders] .po-order-meta { min-width: 0; margin: 0; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+    .pos-orders-page[data-mobile-orders] .po-order-meta i { flex-shrink: 0; }
+    .pos-orders-page[data-mobile-orders] .po-customer { color: var(--po-ink); font-size: 15px; font-weight: 650; }
+    .pos-orders-page[data-mobile-orders] .po-statuses { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; }
+    .pos-orders-page[data-mobile-orders] .po-payment-label { display: inline; margin: 0; }
+    .pos-orders-page[data-mobile-orders] .po-badge { max-width: 100%; padding: 6px 8px; border-radius: 9px; font-size: 12px; line-height: 1.5; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-amount { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--po-line); }
+    .pos-orders-page[data-mobile-orders] .po-mobile-label { display: block; margin-bottom: 3px; font-size: 12px; color: var(--po-muted); }
+    .pos-orders-page[data-mobile-orders] .po-amount { font-size: 24px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+    .pos-orders-page[data-mobile-orders] .po-amount small { font-size: 12px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-brief .po-mobile-order-amount { margin: 0; padding: 0; border: 0; text-align: right; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-brief .po-amount { font-size: 22px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-payments { display: grid; gap: 5px; margin-top: 8px; }
+    .pos-orders-page[data-mobile-orders] :is(.po-paid-line,.po-due-line) { justify-content: space-between; gap: 12px; margin: 0; font-size: 13px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] :is(.po-paid-line,.po-due-line) strong { min-width: 0; white-space: normal; text-align: right; overflow-wrap: anywhere; }
+    .pos-orders-page[data-mobile-orders] :is(.po-paid-line,.po-due-line) > span { font-size: 13px; }
+    .pos-orders-page[data-mobile-orders] .po-settled { justify-content: flex-start; font-size: 12px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-source-caption { font-size: 12px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-details { margin-top: 14px; border-top: 1px solid var(--po-line); }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-summary { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 10px 0; list-style: none; color: var(--po-accent); font-size: 13px; font-weight: 650; cursor: pointer; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-summary::-webkit-details-marker { display: none; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-summary::after { content: "+"; margin-left: auto; font-size: 21px; line-height: 1; }
+    .pos-orders-page[data-mobile-orders] details[open] > .po-mobile-order-summary::after { content: "−"; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-summary:focus-visible { outline: 3px solid var(--po-accent); outline-offset: 2px; border-radius: 8px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-secondary { display: grid; gap: 14px; padding: 4px 0 8px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-group { display: grid; gap: 6px; min-width: 0; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-group-label { margin: 0; color: var(--po-muted); font-size: 11px; font-weight: 650; }
+    .pos-orders-page[data-mobile-orders] .po-extra { max-width: 100%; padding: 6px 8px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+    .pos-orders-page[data-mobile-orders] .po-settlement-tags { justify-content: flex-start; gap: 6px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-group .po-extras:has(.po-none) { display: flex; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-group .po-payment-unknown { font-size: 13px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-overview { margin-bottom: 12px; padding: 0 12px; border: 1px solid var(--po-line); border-radius: 15px; background: var(--po-surface); }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-overview .po-metrics { margin-bottom: 12px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-shortcuts { margin-bottom: 16px; padding: 0 12px; border: 1px solid var(--po-line); border-radius: 15px; background: var(--po-surface); }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-shortcuts .pos-top-nav { margin: 0; padding: 0 0 12px; border: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px; }
+    .pos-orders-page[data-mobile-orders] .po-mobile-order-shortcuts :is(.pos-nav-link,.pos-nav-button) { width: 100%; min-height: 44px; font-size: 13px; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] #ordersBody > tr:not(.po-order-row) { display: block; margin-bottom: 12px; border: 1px solid var(--po-line); border-radius: 20px; background: var(--po-surface); }
+    .pos-orders-page[data-mobile-orders] #ordersBody > tr:not(.po-order-row) > td { display: block; width: 100%; min-width: 0; padding: 16px; border: 0; }
+    .pos-orders-page[data-mobile-orders] #ordersBody .po-skeleton-row td:nth-child(n+3) { display: none; }
+    .pos-orders-page[data-mobile-orders] .po-state { min-height: 220px; padding: 24px 4px; font-size: 14px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-pagination { flex-direction: column; align-items: stretch; gap: 12px; padding: 8px 0 16px; border: 0; font-size: 13px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-pagination nav { justify-content: space-between; gap: 8px; min-width: 0; }
+    .pos-orders-page[data-mobile-orders] .po-pagination #pageIndicator { text-align: center; }
+    .pos-orders-page[data-mobile-orders] .po-action-popover { left: max(12px,env(safe-area-inset-left)) !important; right: max(12px,env(safe-area-inset-right)); top: auto !important; bottom: calc(var(--gao-mobile-visible-bottom,0px) + max(12px,env(safe-area-inset-bottom))); width: auto; max-height: min(65dvh,calc(var(--gao-mobile-visible-height,100dvh) - 24px)); padding: 8px; overflow-y: auto; overscroll-behavior: contain; border-radius: 22px; }
+    .pos-orders-page[data-mobile-orders] .po-action-popover :is(a,button) { min-height: 48px; padding: 12px; border-radius: 13px; font-size: 15px; line-height: 1.5; white-space: normal; }
+    .pos-orders-page[data-mobile-orders] .po-drawer { inset: auto 0 var(--gao-mobile-visible-bottom,0px); width: 100%; max-width: 100%; height: min(88dvh,var(--gao-mobile-visible-height,100dvh)); max-height: calc(var(--gao-mobile-visible-height,100dvh) - 12px); border: 1px solid var(--po-line); border-bottom: 0; border-radius: 24px 24px 0 0; }
+    .pos-orders-page[data-mobile-orders] .po-drawer[open] { animation: po-mobile-sheet-enter .22s ease-out; }
+    .pos-orders-page[data-mobile-orders] .po-drawer-header { padding: 16px; gap: 12px; }
+    .pos-orders-page[data-mobile-orders] .po-drawer-header > div { min-width: 0; }
+    .pos-orders-page[data-mobile-orders] .po-drawer-header h2 { font-size: 19px; line-height: 1.4; }
+    .pos-orders-page[data-mobile-orders] .po-drawer-body { padding: 16px; }
+    .pos-orders-page[data-mobile-orders] .po-drawer-footer { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2fr); gap: 8px; padding: 12px max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); }
+    .pos-orders-page[data-mobile-orders] .po-drawer-footer .po-button { min-width: 0; font-size: 13px; }
+    .pos-orders-page[data-mobile-orders] .po-preview-meta { gap: 16px 12px; }
+    .pos-orders-page[data-mobile-orders] .po-preview-meta :is(dt,dd) { font-size: 13px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-preview-lines li { grid-template-columns: minmax(0,1fr); gap: 10px; }
+    .pos-orders-page[data-mobile-orders] .po-preview-lines .po-amount { justify-self: end; font-size: 19px; }
+    .pos-orders-page[data-mobile-orders] .po-preview-section h3 { flex-wrap: wrap; font-size: 14px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-preview-totals > div { gap: 10px; font-size: 14px; line-height: 1.6; }
+    .pos-orders-page[data-mobile-orders] .po-preview-totals dd { min-width: 0; max-width: 62%; white-space: normal; text-align: right; overflow-wrap: anywhere; }
+    .pos-orders-page[data-mobile-orders] .po-preview-totals .po-preview-grand { font-size: 22px; }
+    .pos-orders-page[data-mobile-orders] .po-preview-note { font-size: 14px; }
+    @keyframes po-mobile-card-enter { from { opacity: .6; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    @keyframes po-mobile-sheet-enter { from { opacity: .6; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+    @media (max-width: 359.98px) {
+        .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search + .po-field { grid-column: 1 / -1; grid-row: 3; }
+        .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search + .po-field + .po-field { grid-column: 1 / -1; grid-row: 4; }
+        .pos-orders-page[data-mobile-orders] #ordersFilters .po-field-search ~ .po-field:last-of-type { grid-row: 5; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .pos-orders-page[data-mobile-orders] *, .pos-orders-page[data-mobile-orders] *::before, .pos-orders-page[data-mobile-orders] *::after { animation: none !important; transition: none !important; }
+    }
+    @media (forced-colors: active) {
+        .pos-orders-page[data-mobile-orders] :is(.po-mobile-order-card,.po-metric,#ordersFilters,.po-badge,.po-action-popover,.po-drawer,.po-mobile-order-shortcuts,.po-mobile-order-overview) { border: 1px solid CanvasText; }
+        .pos-orders-page[data-mobile-orders] .po-metric-count :is(.po-metric-label,.po-metric-value,.po-metric-note,.po-metric-label i) { color: CanvasText; }
+    }
+}

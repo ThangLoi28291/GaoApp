@@ -34,7 +34,9 @@ public class InvoiceDetailConfiguration : IEntityTypeConfiguration<InvoiceDetail
             .HasMaxLength(100);
 
         b.Property(x => x.Quantity)
-            .HasPrecision(18, 3);
+            .HasPrecision(19, 4);
+        b.HasOne<GaoApp.Domain.Storefront.StorefrontServiceRevenue>().WithMany().HasForeignKey(x => new { x.StoreId, x.StorefrontServiceRevenueId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
 
         b.Property(x => x.UnitPrice)
             .HasPrecision(18, 2);

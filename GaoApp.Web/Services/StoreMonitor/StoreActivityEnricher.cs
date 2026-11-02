@@ -15,7 +15,7 @@ public static class StoreActivityEnricher
 {
     public sealed record Item(string Name, decimal Quantity, string? Unit, decimal? DifferenceBase = null, decimal? SavedCost = null);
     public sealed record Snapshot(int Parent, string? Number, string? Location, Item? Line, int LineCount = 0, string? Goods = null, DateTime? Date = null, decimal? Freight = null,
-        int? WarehouseId = null, int? ToWarehouseId = null, StockDocumentProvisionalItemStatus? IntakeStatus = null);
+        int? WarehouseId = null, int? ToWarehouseId = null, StockDocumentProvisionalItemStatus? IntakeStatus = null, string? DocumentTitle = null);
     internal sealed record SavedLine(int Parent, Item Item, int? UnitId = null, bool Deleted = false);
     public static bool NeedsSavedLine(string controller, string action) =>
         controller is "StockDocuments" or "StockCounts" or "StockTransfers" &&
@@ -31,7 +31,7 @@ public static class StoreActivityEnricher
         private readonly int store;
         private readonly bool includeBefore;
         private readonly int actor;
-        private sealed record SavedHeader(int Parent, int Warehouse, int? ToWarehouse, DateTime Date, decimal? Freight);
+        private sealed record SavedHeader(int Parent, int Warehouse, int? ToWarehouse, DateTime Date, decimal? Freight, string? DocumentTitle = null);
         private sealed record SavedProvisional(SavedLine Line, StockDocumentProvisionalItemStatus Status, int? ResolvedLine);
         private sealed record SavedJournal(int Parent, int ItemId, Guid Command, int Actor, PurchaseReceivingActionType Type);
         private sealed record PendingLine(object Entity, SavedLine? Before, SavedHeader? HeaderBefore, SavedProvisional? ProvisionalBefore, bool Added);
@@ -67,7 +67,8 @@ public static class StoreActivityEnricher
             return entry.Entity switch
             {
                 StockDocument document => new(document.Id, values.GetValue<int>(nameof(StockDocument.WarehouseId)), null,
-                    values.GetValue<DateTime>(nameof(StockDocument.DocumentDate)), values.GetValue<decimal>(nameof(StockDocument.FreightTotal))),
+                    values.GetValue<DateTime>(nameof(StockDocument.DocumentDate)), values.GetValue<decimal>(nameof(StockDocument.FreightTotal)),
+                    values.GetValue<string?>(nameof(StockDocument.DocumentTitle))),
                 StockCountDocument document => new(document.Id, values.GetValue<int>(nameof(StockCountDocument.WarehouseId)), null,
                     values.GetValue<DateTime>(nameof(StockCountDocument.DocumentDate)), null),
                 StockTransferDocument document => new(document.Id, values.GetValue<int>(nameof(StockTransferDocument.FromWarehouseId)),
@@ -207,7 +208,7 @@ public static class StoreActivityEnricher
             var location = await db.Warehouses.AsNoTracking().Where(x => x.StoreId == store && x.Id == header.Warehouse).Select(x => x.Name).SingleOrDefaultAsync(ct);
             if (header.ToWarehouse is { } to)
                 location += " → " + await db.Warehouses.AsNoTracking().Where(x => x.StoreId == store && x.Id == to).Select(x => x.Name).SingleOrDefaultAsync(ct);
-            return snapshot with { Location=location, Date=header.Date, Freight=header.Freight, WarehouseId=header.Warehouse, ToWarehouseId=header.ToWarehouse };
+            return snapshot with { Location=location, Date=header.Date, Freight=header.Freight, WarehouseId=header.Warehouse, ToWarehouseId=header.ToWarehouse, DocumentTitle=header.DocumentTitle };
         }
         internal SavedLine? Read(string controller, int id, int? parent) =>
             lines.TryGetValue((controller, id), out var line) && (!parent.HasValue || line.Parent == parent) ? line : null;
@@ -293,7 +294,7 @@ public static class StoreActivityEnricher
         if (controller is "StockDocuments" or "StockDocumentManagement" or "WarehouseReceiving" or "ReceiptIntake")
         {
             var header = await db.StockDocuments.AsNoTracking().Where(x => x.Id == documentId && x.StoreId == store)
-                .Select(x => new { x.DocumentNo, x.DocumentDate, x.FreightTotal, Location = x.Warehouse.StoreId == store ? x.Warehouse.Name : null }).SingleOrDefaultAsync(ct);
+                .Select(x => new { x.DocumentNo, x.DocumentTitle, x.DocumentDate, x.FreightTotal, Location = x.Warehouse.StoreId == store ? x.Warehouse.Name : null }).SingleOrDefaultAsync(ct);
             if (header is null) return null;
             var lines = db.StockDocumentLines.AsNoTracking().Where(x => x.StockDocumentId == documentId && x.StockDocument.StoreId == store);
             if (action == "SavePriceDraft" && payload is ReceiptPriceDraftResult prices)
@@ -302,7 +303,7 @@ public static class StoreActivityEnricher
                 lines = lines.Where(x => savedIds.Contains(x.Id));
             }
             var snapshot = new Snapshot(documentId, header.DocumentNo, header.Location, item, await lines.CountAsync(ct), Goods(await lines.OrderBy(x => x.LineNo).Select(x => x.ProductNameSnapshot).Take(2).ToArrayAsync(ct)), header.DocumentDate, header.FreightTotal,
-                IntakeStatus:operation?.IntakeStatus(action, args));
+                IntakeStatus:operation?.IntakeStatus(action, args), DocumentTitle:header.DocumentTitle);
             return operation is not null && action is "UpdateHeader" or "UpdateFreight" ? await operation.ApplyHeader(controller, snapshot, ct) : snapshot;
         }
         if (controller == "StockCounts")
@@ -395,7 +396,7 @@ public static class StoreActivityEnricher
         }
         if (!string.IsNullOrWhiteSpace(after.Location)) parts.Add(after.Location);
         if (!string.IsNullOrWhiteSpace(after.Number)) parts.Add(after.Number);
-        return new($"{caption} #{after.Parent}", string.Join(" · ", parts), $"{kind}:{after.Parent}", text);
+        return new($"{caption} #{after.Parent}", string.Join(" · ", parts), $"{kind}:{after.Parent}", text, after.DocumentTitle);
     }
 
     public static async Task<StoreActivityDetails.Description?> Label(AppDbContext db, int store, string action, IDictionary<string, object?> args, object? payload, CancellationToken ct)

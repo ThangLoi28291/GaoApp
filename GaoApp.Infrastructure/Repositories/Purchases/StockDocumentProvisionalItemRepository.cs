@@ -1,8 +1,10 @@
 using GaoApp.Application.Interfaces.Repositories.Purchases;
+using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.DTOs.Purchases;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Repositories.Inventory;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Infrastructure.Repositories.Purchases;
@@ -11,8 +13,14 @@ public sealed class StockDocumentProvisionalItemRepository
     : IStockDocumentProvisionalItemRepository
 {
     private readonly AppDbContext _db;
+    private readonly IStockDocumentRepository _stockDocuments;
 
-    public StockDocumentProvisionalItemRepository(AppDbContext db) => _db = db;
+    public StockDocumentProvisionalItemRepository(
+        AppDbContext db, IStockDocumentRepository? stockDocuments = null)
+    {
+        _db = db;
+        _stockDocuments = stockDocuments ?? new StockDocumentRepository(db);
+    }
 
     public async Task<StockDocument?> LockAndGetDocumentAsync(
         int storeId, int stockDocumentId, CancellationToken ct = default)
@@ -159,7 +167,16 @@ public sealed class StockDocumentProvisionalItemRepository
     public Task AddAuditAsync(PurchaseReceiptAuditEvent auditEvent, CancellationToken ct = default)
         => _db.PurchaseReceiptAuditEvents.AddAsync(auditEvent, ct).AsTask();
 
-    public Task SaveChangesAsync(CancellationToken ct = default) => _db.SaveChangesAsync(ct);
+    public Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        _db.ChangeTracker.DetectChanges();
+        // Resolving intake can create or accumulate a real receipt line. Route that
+        // save through receipt evidence while retaining provisional-only audit shape.
+        return _db.ChangeTracker.Entries<StockDocumentLine>().Any(entry =>
+                entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            ? _stockDocuments.SaveChangesAsync(ct)
+            : _db.SaveChangesAsync(ct);
+    }
 
     private IQueryable<StockDocument> DocumentQuery(bool tracking)
     {

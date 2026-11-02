@@ -1,0 +1,96 @@
+/* UI-12: phone presentation. Desktop, permissions and native command owners remain unchanged. */
+@media (max-width: 767.98px) {
+    body[data-inventory-phone] { --inventory-ink: #172d4d; --inventory-blue: #2463eb; --inventory-line: #dce5f0; background: #f3f6fb; }
+    body[data-inventory-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    [data-inventory-phone-root] { min-width: 0; max-width: 100%; margin: 0; padding: 0 0 20px; color: var(--inventory-ink); }
+    [data-inventory-phone-root] :is(.row > *, .card-body, .case-main-info, .stats-grid, .st-product-cell, .st-product-cell > *) { min-width: 0; max-width: 100%; }
+    [data-inventory-phone-root] :is(h1,h2,h3,h4,h5,h6,p,small,strong,label,a,.badge,.value,.mini-value,.st-doc-name,.st-product-name,.st-note,.st-index-note) { overflow-wrap: anywhere; white-space: normal; }
+    [data-inventory-phone-root] :is(h3,h4), body[data-inventory-phone] .gao-admin-page-heading-content h3 { font-size: 22px; line-height: 1.35; color: var(--inventory-ink); }
+    [data-inventory-phone-root] :is(.card,.st-toolbar) { border: 1px solid var(--inventory-line) !important; border-radius: 18px !important; box-shadow: 0 3px 14px #172d4d05 !important; }
+    [data-inventory-phone-root] :is(.card-header,.card-body) { padding: 16px !important; }
+    [data-inventory-phone-root] :is(.st-page-subtitle,.gds-page-header__subtitle,.hero-subtitle,.banner-subtitle,.hero-note-text) { font-size: 13px; line-height: 1.6; }
+    body[data-inventory-phone] .gao-admin-page-heading-content .gds-page-header { flex-direction: column; align-items: stretch; gap: 12px; }
+    body[data-inventory-phone] .gao-admin-page-heading-content .gds-page-header__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    body[data-inventory-phone] :is([data-inventory-phone-root],.gao-admin-page-heading-content,.modal,.offcanvas) :is(.btn,.gds-action-button,.page-link,summary) { min-height: 44px; min-width: 44px; border-radius: 12px; white-space: normal; }
+    body[data-inventory-phone] :is([data-inventory-phone-root],.gao-admin-page-heading-content,.modal,.offcanvas) .btn-primary { background: var(--inventory-blue); border-color: var(--inventory-blue); box-shadow: none; }
+    body[data-inventory-phone] :is([data-inventory-phone-root],.modal,.offcanvas) :is(.form-control,.form-select) { min-height: 48px; font-size: 16px !important; border-radius: 12px; }
+    body[data-inventory-phone] :is([data-inventory-phone-root],.modal,.offcanvas) textarea.form-control { min-height: 96px; }
+    body[data-inventory-phone] :is([data-inventory-phone-root],.modal,.offcanvas) .form-label { font-size: 13px; font-weight: 600; color: #405572; }
+    body[data-inventory-phone] :is(button,a,input,select,textarea,summary):focus-visible { outline: 3px solid #2463eb70; outline-offset: 3px; }
+    [data-inventory-phone-root] :is(.st-card,.issue-lines-table,.issue-sidebar) { scroll-margin-top: 12px; }
+    .inventory-phone-sections { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; scrollbar-width: thin; }
+    .inventory-phone-sections button { flex: 0 0 auto; min-height: 44px; border: 1px solid var(--inventory-line); border-radius: 999px; background: #fff; color: var(--inventory-blue); font-size: 13px; font-weight: 600; padding: 10px 14px; }
+    /* Original mobile index renderers retain their filters and route/state owners. */
+    [data-stock-transfer-index] .gds-kpi-card { min-height: 96px; padding: 14px; text-align: left; position: relative; }
+    [data-stock-transfer-index] .gds-kpi-card__icon { position: absolute; width: 28px; height: 28px; top: 10px; right: 10px; font-size: 16px; border-radius: 8px; }
+    [data-stock-transfer-index] .gds-kpi-card__label { font-size: 12px; padding-right: 26px; white-space: normal; }
+    [data-stock-transfer-index] .gds-kpi-card__value { font-size: 26px; line-height: 1.3; }
+    [data-stock-transfer-index] .gds-kpi-card__body { display: grid; gap: 5px; min-width: 0; }
+    [data-stock-transfer-index] :is(.st-index-mobile-card,.gds-row-card) { padding: 16px; border: 1px solid var(--inventory-line); border-radius: 16px; box-shadow: none; }
+    [data-stock-transfer-index] :is(.st-index-mobile-list,.st-index-filter-bar,.st-index-search-wrap,.gds-filter-bar__search) { min-width: 0; max-width: 100%; }
+    [data-stock-transfer-index] :is(.st-index-mobile-facts,.gds-row-card__facts) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    [data-stock-transfer-index] :is(.st-index-mobile-facts,.gds-row-card__facts) > * { min-width: 0; }
+    [data-stock-transfer-index] :is(.st-index-route,.st-index-quick-route,.st-index-quick-metrics,.st-index-quick-timeline) { min-width: 0; flex-wrap: wrap; grid-template-columns: minmax(0, 1fr); }
+    [data-stock-transfer-index] :is(.st-index-quick-product,.st-index-quick-unit,.st-index-quick-quantity) { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+    [data-stock-transfer-index] .st-index-quick-line { min-width: 0; grid-template-columns: 48px minmax(0, 1fr); align-items: start; gap: 12px; }
+    [data-stock-transfer-index] .st-index-quick-line > .st-index-line-image { grid-column: 1; grid-row: 1; width: 48px; height: 48px; }
+    [data-stock-transfer-index] .st-index-quick-product { grid-column: 2; grid-row: 1; overflow-wrap: anywhere; }
+    [data-stock-transfer-index] :is(.st-index-quick-unit,.st-index-quick-quantity) { grid-column: 2; }
+    [data-stock-transfer-index] .st-index-quick-timeline:not(:has(> div)) { display: none; }
+    [data-stock-transfer-index] .st-index-list-footer { flex-wrap: wrap; gap: 12px; }
+    [data-stock-transfer-index] .st-index-mobile-list .gds-row-card__actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    [data-inventory-phone-root].st-page > .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [data-inventory-phone-root].st-page > .row > * { width: auto; }
+    [data-inventory-phone-root] .st-summary-box { padding: 12px; background: #fff; border-color: var(--inventory-line); border-radius: 14px; }
+    [data-inventory-phone-root] .st-summary-value { font-size: 22px; overflow-wrap: anywhere; }
+    [data-inventory-phone-root] :is(#sumTransferFromWarehouse,#sumTransferToWarehouse,.st-note) { max-width: 100%; white-space: normal; }
+    /* Only physical transfer/issue rows become cards; original values and controls remain. */
+    [data-inventory-phone-table] { display: block; width: 100%; min-width: 0 !important; }
+    [data-inventory-phone-table] > thead { display: block; position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    [data-inventory-phone-table] > tbody { display: grid; gap: 12px; padding: 0; }
+    [data-inventory-phone-table] > tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; border: 1px solid var(--inventory-line); border-radius: 14px; background: #fff; }
+    [data-inventory-phone-table] > tbody > tr > td { display: flex; flex-direction: column; justify-content: flex-start; position: static; min-width: 0; width: auto !important; padding: 0 !important; border: 0; gap: 6px; text-align: left !important; white-space: normal; overflow-wrap: anywhere; }
+    [data-inventory-phone-table] > tbody > tr > td::before { content: attr(data-inventory-phone-label); display: block; flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #5c6f87; }
+    [data-inventory-phone-table] td[data-inventory-phone-wide] { grid-column: 1 / -1; }
+    [data-inventory-phone-table] :is(.btn-group,.st-product-cell) { flex-wrap: wrap; gap: 8px; }
+    [data-inventory-phone-table] td.st-mobile-hide:not(.d-none):not([hidden]) { display: flex !important; }
+    [data-inventory-phone-table].d-none,[data-inventory-phone-table][hidden],[data-inventory-phone-table] [hidden] { display: none !important; }
+    /* Server-rendered negative-stock cases keep original sources, evidence and policy gates. */
+    [data-inventory-phone-root] :is(.stats-grid,.case-main-info,.hero-note-box) { min-width: 0; max-width: 100%; }
+    [data-inventory-phone-root] .stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    [data-inventory-phone-root] .stats-grid > * { width: auto; }
+    [data-inventory-phone-root] :is(.summary-card,.stat-card,.mini-info,.info-box,.metric-box,.simple-status-card) { min-width: 0; padding: 12px; border-radius: 14px; }
+    [data-inventory-phone-root] :is(.summary-card .value,.stat-card .value,.metric-value,.mini-value.big) { font-size: 23px; }
+    [data-inventory-phone-root] :is(.case-card:hover,.issue-sidebar) { position: static !important; transform: none; }
+    [data-inventory-phone-root] :is(.line-state-dot,.line-state-icon) { flex-shrink: 0; }
+    [data-inventory-phone-root] :is(.cost-chip,.quick-unresolved-item,.action-box,.timeline-item,.timeline-content) { min-width: 0; max-width: 100%; }
+    [data-inventory-phone-root] .cost-chip { width: 100%; }
+    [data-inventory-phone-root] .issue-lines-table > tbody > tr > td:nth-child(4) { grid-column: 1 / -1; }
+    [data-inventory-phone-root] .timeline-preview-text { overflow-wrap: anywhere; white-space: normal; }
+    [data-inventory-phone-root] .issue-sidebar .card-body { padding: 16px !important; }
+    /* Select2 appends an outer span to BODY; even its zero-height width must fit. */
+    body[data-inventory-phone] .select2-container { max-width: 100%; min-width: 0; }
+    body[data-inventory-phone] > .select2-container--open { max-width: calc(100vw - 64px); }
+    body[data-inventory-phone] .select2-dropdown { min-width: 0 !important; max-width: calc(100vw - 64px); }
+    body[data-inventory-phone] .select2-selection { min-height: 48px; border-radius: 12px; }
+    body[data-inventory-phone] .select2-selection__rendered { font-size: 16px; line-height: 46px !important; white-space: normal; }
+    body[data-inventory-phone] .select2-search__field { min-height: 44px; font-size: 16px !important; }
+    body[data-inventory-phone] .select2-results__option { min-height: 44px; padding: 12px; overflow-wrap: anywhere; }
+    /* Native dialogs/filter sheets retain their own buttons and single body scroller. */
+    body[data-inventory-phone] .modal .modal-dialog:not(.modal-fullscreen) { display: flex; width: auto; max-width: none; height: var(--gao-mobile-visible-height, 100dvh); min-height: 0; margin: 0; padding: max(12px, env(safe-area-inset-top)) 8px 0; box-sizing: border-box; align-items: flex-end; }
+    body[data-inventory-phone] .modal .modal-content { min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); border-radius: 22px 22px 0 0 !important; overflow: hidden; }
+    body[data-inventory-phone] .modal-content > form { display: flex; flex-direction: column; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); }
+    body[data-inventory-phone] :is(.modal-header,.modal-footer,.offcanvas-header,.offcanvas-footer) { flex-shrink: 0; padding: 16px !important; }
+    body[data-inventory-phone] :is(.modal-body,.offcanvas-body) { min-height: 0; overflow-y: auto; padding: 16px !important; overscroll-behavior: contain; }
+    body[data-inventory-phone] :is(.modal-footer,.offcanvas-footer) { gap: 8px; padding-bottom: max(16px, env(safe-area-inset-bottom)) !important; }
+    body[data-inventory-phone] .modal-footer { flex-wrap: wrap; }
+    body[data-inventory-phone] .modal-footer > .btn { flex: 1 1 130px; margin: 0; }
+    body[data-inventory-phone] :is(.modal,.offcanvas) :is(.modal-header,.offcanvas-header) .btn-close { position: static; inset: auto; transform: none !important; flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; padding: 0; background-size: 12px; margin: 0 0 0 auto !important; }
+    body[data-inventory-phone] :is(.modal-header,.offcanvas-header) > :first-child:not(.btn-close) { flex: 1; min-width: 0; }
+    body[data-inventory-phone] .offcanvas-bottom { height: min(88dvh, 720px); max-height: calc(100dvh - 16px); border-radius: 22px 22px 0 0; }
+    body[data-inventory-phone] .modal.fade .modal-dialog { transform: translateY(20px); transition: transform .18s ease-out; }
+    body[data-inventory-phone] .modal.show .modal-dialog { transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+        body[data-inventory-phone] :is([data-inventory-phone-root] *,.modal-dialog) { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+    }
+}

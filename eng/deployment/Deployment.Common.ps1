@@ -1,7 +1,9 @@
 #requires -Version 5.1
-# Shared implementation for the two deployment entry points. No SQL operation here.
+# Shared implementation for the two deployment entry points. No SQL Server operation here.
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'AssistantStorage.ps1')
+. (Join-Path $PSScriptRoot 'ChannelCredentials.ps1')
 
 function Test-GaoOverlap([string]$First, [string]$Second) {
     $a = [IO.Path]::GetFullPath($First).TrimEnd('\')
@@ -14,7 +16,7 @@ function Assert-GaoNoLinks([string]$Path) {
     $item = Get-Item -LiteralPath $Path -Force
     while ($null -ne $item) {
         if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Link/reparse path rejected.' }
-        $item = $item.Parent
+        $item = if ($item -is [IO.FileInfo]) { $item.Directory } else { $item.Parent }
     }
     foreach ($entry in Get-ChildItem -LiteralPath $Path -Recurse -Force) {
         if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Link/reparse content rejected.' }
@@ -97,7 +99,15 @@ function Get-GaoDeploymentContext([string]$ReleasePath, [string]$BackupRoot, [ur
         $path = [IO.Path]::GetFullPath($envMap[$key])
         if (!$path.StartsWith('C:\GaoAppData\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Persistent GaoApp storage/keys/certificate must remain under C:\GaoAppData.' }
     }
-    return [pscustomobject]@{ OldWeb=$oldWeb; NewWeb=$newWeb; BackupRoot=$backup; SmokeUrl=$SmokeUrl; Mart=(Get-GaoMartState); PoolConnection=$envMap['ConnectionStrings__DefaultConnection']; AfterSchema=$false }
+    $persistent = Get-GaoAssistantStorage $envMap @($oldWeb,$newWeb,$backup,$martWeb) $envMap['Storage__UploadRoot'] $envMap['DataProtection__KeysPath'] $envMap['DataProtection__CertificatePath']
+    foreach($entry in [Environment]::GetEnvironmentVariables('Machine').GetEnumerator()) {
+        if($entry.Key -match '(?i)^CustomerChannels(__|:)' -and !$envMap.ContainsKey($entry.Key)){throw 'Configure every machine-level channel setting explicitly in GaoAppPool before activation.'}
+    }
+    $publicRoots=@($oldWeb,$newWeb,$backup,$martWeb,$envMap['Storage__UploadRoot'],$envMap['DataProtection__KeysPath'],$envMap['DataProtection__CertificatePath'],$persistent.SettingsDirectory,$persistent.DatabasePath)
+    if(@($envMap.Keys | Where-Object {$_.Replace(':','__') -match '(?i)^CustomerChannels__Connections__\d+__(AccessTokenFile|AppSecretFile|VerifyTokenFile)$' -and $envMap[$_]}).Count){$publicRoots+=@(Get-GaoIisPublicRoots)}
+    [void](Invoke-GaoChannelCredentialCheck $newWeb $envMap $publicRoots -CheckAcl)
+    [void](Invoke-GaoAssistantStorage $newWeb (New-GaoAssistantRequest $persistent 'check'))
+    return [pscustomobject]@{ OldWeb=$oldWeb; NewWeb=$newWeb; BackupRoot=$backup; SmokeUrl=$SmokeUrl; Mart=(Get-GaoMartState); PoolConnection=$envMap['ConnectionStrings__DefaultConnection']; AfterSchema=$false;AssistantStorage=$persistent }
 }
 function Invoke-GaoSmoke([uri]$Url) {
     # Readiness probes only; never invoke a business endpoint to make smoke pass.
@@ -111,31 +121,51 @@ function Invoke-GaoSmoke([uri]$Url) {
     }
     throw 'GaoApp readiness smoke failed.'
 }
+function Get-GaoPoolWorkerCount {
+    if (!('Microsoft.Web.Administration.ServerManager' -as [type])) {
+        Add-Type -Path (Join-Path $env:windir 'System32/inetsrv/Microsoft.Web.Administration.dll')
+    }
+    $manager = New-Object Microsoft.Web.Administration.ServerManager
+    try { return @($manager.WorkerProcesses | Where-Object { $_.AppPoolName -eq 'GaoAppPool' }).Count }
+    finally { $manager.Dispose() }
+}
 function Wait-GaoPoolStopped {
     for ($attempt=0; $attempt -lt 30; $attempt++) {
-        if ((Get-WebAppPoolState -Name 'GaoAppPool').Value -eq 'Stopped') { return }
+        if ((Get-WebAppPoolState -Name 'GaoAppPool').Value -eq 'Stopped' -and (Get-GaoPoolWorkerCount) -eq 0) { return }
         Start-Sleep -Seconds 1
     }
-    throw 'GaoAppPool did not stop within 30 seconds.'
+    throw 'GaoAppPool or its IIS workers did not stop within 30 seconds. Storage writers are not quiesced.'
 }
 function Invoke-GaoWebSwitch($Context) {
     $backup = Join-Path $Context.BackupRoot ('GaoApp-Web-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss-fff') + '-' + [Guid]::NewGuid().ToString('N'))
-    $before = @(Get-GaoTree $Context.OldWeb)
-    New-Item -ItemType Directory -Path $backup -ErrorAction Stop | Out-Null
-    foreach ($entry in Get-ChildItem -LiteralPath $Context.OldWeb -Force) { Copy-Item -LiteralPath $entry.FullName -Destination $backup -Recurse -ErrorAction Stop }
-    Assert-GaoTreeEqual $before @(Get-GaoTree $backup)
-    Assert-GaoTreeEqual $before @(Get-GaoTree $Context.OldWeb)
     $newBytes = @(Get-GaoTree $Context.NewWeb)
+    $snapshotReady = $false
     try {
         Stop-Website -Name 'GaoApp'
         Stop-WebAppPool -Name 'GaoAppPool'
         Wait-GaoPoolStopped
+        New-Item -ItemType Directory -Path $backup -ErrorAction Stop | Out-Null
+        try { Enter-GaoAssistantHold $Context.AssistantStorage }
+        finally { [IO.File]::WriteAllText((Join-Path $backup 'assistant-hold.json'), ($Context.AssistantStorage | ConvertTo-Json -Depth 4)) }
+        $webBackup = Join-Path $backup 'web'
+        New-Item -ItemType Directory -Path $webBackup -ErrorAction Stop | Out-Null
+        $before = @(Get-GaoTree $Context.OldWeb)
+        foreach ($entry in Get-ChildItem -LiteralPath $Context.OldWeb -Force) { Copy-Item -LiteralPath $entry.FullName -Destination $webBackup -Recurse -ErrorAction Stop }
+        Assert-GaoTreeEqual $before @(Get-GaoTree $webBackup)
+        Assert-GaoTreeEqual $before @(Get-GaoTree $Context.OldWeb)
+        $Context.AssistantStorage.SnapshotDirectory = Join-Path $backup 'assistant-storage'
+        [IO.File]::WriteAllText((Join-Path $backup 'assistant-hold.json'), ($Context.AssistantStorage | ConvertTo-Json -Depth 4))
+        [void](Invoke-GaoAssistantStorage $Context.NewWeb (New-GaoAssistantRequest $Context.AssistantStorage 'snapshot'))
+        $snapshotReady = $true
+        Assert-GaoAssistantContinuity $Context
         Set-ItemProperty -LiteralPath 'IIS:\Sites\GaoApp' -Name physicalPath -Value $Context.NewWeb
         Assert-GaoTreeEqual $newBytes @(Get-GaoTree $Context.NewWeb)
         Start-WebAppPool -Name 'GaoAppPool'
         Start-Website -Name 'GaoApp'
         Invoke-GaoSmoke $Context.SmokeUrl
+        Assert-GaoAssistantContinuity $Context
         Assert-GaoMartUnchanged $Context.Mart
+        Exit-GaoAssistantHold $Context.AssistantStorage
         Write-Output "Web deployed; backup=$backup. Human practical validation is required."
     }
     catch {
@@ -143,10 +173,12 @@ function Invoke-GaoWebSwitch($Context) {
         Stop-Website -Name 'GaoApp' -ErrorAction SilentlyContinue
         Stop-WebAppPool -Name 'GaoAppPool' -ErrorAction SilentlyContinue
         Wait-GaoPoolStopped
-        if ($Context.AfterSchema) {
-            throw 'Web activation after schema change failed. GaoApp remains stopped; human must decide DB restore plus previous Web. No automatic Down or old-Web restart.'
+        if ($Context.AfterSchema -or !$snapshotReady) {
+            throw 'Deployment/storage verification failed. GaoApp remains stopped; assistant hold is retained. Review backup and continuity before recovery. No automatic DB restore, Down or old-Web restart.'
         }
+        Assert-GaoAssistantContinuity $Context
         Set-ItemProperty -LiteralPath 'IIS:\Sites\GaoApp' -Name physicalPath -Value $Context.OldWeb
+        Exit-GaoAssistantHold $Context.AssistantStorage
         Start-WebAppPool -Name 'GaoAppPool'
         Start-Website -Name 'GaoApp'
         Assert-GaoMartUnchanged $Context.Mart

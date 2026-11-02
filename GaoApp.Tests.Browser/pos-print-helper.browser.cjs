@@ -14,23 +14,29 @@ const receipt = {orderId:123,orderNumber:'TEST-HELPER-123',storeName:'CỬA HÀN
     lines:[{itemName:'Gạo thơm đặc biệt — tiếng Việt đầy đủ',quantity:1.25,sellingUnitName:'Kg',unitPrice:40000,lineTotal:50000}],payments:[{method:'Cash',amount:50000}]};
 let printReceipt=receipt;
 let pending, behavior='hold', health=true;
-const posts=[],errors=[],preflights=[];
+const posts=[],drawers=[],errors=[],preflights=[];
 const server=http.createServer((req,res)=>{
     if(req.headers.origin!==origin){res.writeHead(403);res.end();return;}
     res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');
     if(req.method==='OPTIONS'){preflights.push(req.url);res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type');res.setHeader('Access-Control-Allow-Private-Network','true');res.writeHead(204);res.end();return;}
     res.setHeader('Content-Type','application/json');
-    if(req.url==='/health'){res.end(JSON.stringify({ok:health,protocol:'gao-raster-v1',width:576}));return;}
+    if(req.url==='/health'){res.end(JSON.stringify({ok:health,protocol:'gao-raster-v1',width:576,cashDrawerOnly:true}));return;}
+    if(req.url==='/drawer'){let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{drawers.push(JSON.parse(body));res.end(JSON.stringify({ok:true,protocol:'gao-raster-v1',drawerOpened:true}));});return;}
     assert.equal(req.url,'/print');assert.equal(req.method,'POST');
     let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{
         const payload=JSON.parse(body);posts.push(payload);
-        const finish=()=>{res.statusCode=behavior==='fail'?503:200;res.end(JSON.stringify({ok:behavior!=='fail',protocol:'gao-raster-v1',printed:true,copies:payload.copies}));};
+        const finish=()=>{
+            res.statusCode=behavior==='fail'?503:200;
+            const acknowledgement={ok:behavior!=='fail',protocol:'gao-raster-v1',printed:true,copies:payload.copies};
+            if(behavior==='bad-ack')delete acknowledgement.copies;
+            res.end(JSON.stringify(acknowledgement));
+        };
         if(behavior==='hold')pending=finish;else finish();
     });
 });
 (async()=>{
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(17880,'127.0.0.1',resolve)});
-    const browser=await chromium.launch({channel:'chrome',headless:true});
+    const browser=await chromium.launch({...(process.env.GAO_PLAYWRIGHT_CHROME ? {executablePath:process.env.GAO_PLAYWRIGHT_CHROME} : {channel:'chrome'}),headless:true});
     try{
         const context=await browser.newContext({deviceScaleFactor:576/(80*96/25.4)});
         // Ordinary site permission, not a disabled browser security flag.
@@ -42,6 +48,12 @@ const server=http.createServer((req,res)=>{
         });
         const routeSource=async route=>{
             const url=new URL(route.request().url());
+            // Use the same nonce-only script restriction as the real Razor app.
+            // Only this trusted synthetic test document is annotated here.
+            const nonce=require('node:crypto').randomBytes(24).toString('base64');
+            const replyHtml=body=>route.fulfill({contentType:'text/html',headers:{'Content-Security-Policy':
+                `default-src 'self'; script-src 'nonce-${nonce}'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http://127.0.0.1:17880; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'`},
+                body:body.replace(/<script\b/g,`<script nonce="${nonce}"`)});
             if(url.pathname.startsWith('/Admin/')){
                 const source=fs.readFileSync(path.join(web,'wwwroot',url.pathname),'utf8');
                 await route.fulfill({contentType:'text/javascript',body:source});return;
@@ -55,7 +67,7 @@ const server=http.createServer((req,res)=>{
                 const body='<!doctype html><meta charset="utf-8">'+raw.slice(raw.indexOf('<main'))
                     .replace('@Html.Raw(JsonSerializer.Serialize(setup, ReceiptTemplateService.Json))',JSON.stringify(studioSetup))
                     .replaceAll('src="~/','src="/').replaceAll('disabled="@(!setup.canManage)"','').replaceAll('hidden="@(!setup.canManage)"','');
-                await route.fulfill({contentType:'text/html',body});return;
+                await replyHtml(body);return;
             }
             const scripts=['pos/qrcodegen','printing/receipt.templates','printing/print.lifecycle','printing/pos.printing']
                 .map(name=>`<script src="/Admin/js/${name}.js"></script>`).join('');
@@ -64,8 +76,8 @@ const server=http.createServer((req,res)=>{
                 .replace('@Model.Receipt.OrderNumber',receipt.orderNumber)
                 .replace('@Html.Raw(JsonSerializer.Serialize(Model, ReceiptTemplateService.Json))',JSON.stringify(setup))
                 .replaceAll('src="~/','src="/')
-                .replace('<script src="/Admin/js/printing/receipt.print-page.js"', '<script>GaoPrintLifecycle.close=()=>window.__closed++; const gate=new Promise(resolve=>window.__allowPrint=resolve), originalSend=PosPrinting.send; PosPrinting.send=async(...args)=>{await gate;return originalSend(...args)};</script><script src="/Admin/js/printing/receipt.print-page.js"');
-            await route.fulfill({contentType:'text/html',headers:{'Content-Security-Policy':"frame-ancestors 'self'; object-src 'none'; base-uri 'self'"},body:url.pathname==='/parent'?body:'<!doctype'+body});
+                .replace('<script src="/Admin/js/printing/receipt.print-page.js"', '<script>GaoPrintLifecycle.close=()=>window.__closed++; const gate=new Promise(resolve=>window.__allowPrint=resolve), originalSend=PosPrinting.sendReceipt; PosPrinting.sendReceipt=async(...args)=>{await gate;return originalSend(...args)};</script><script src="/Admin/js/printing/receipt.print-page.js"');
+            await replyHtml(url.pathname==='/parent'?body:'<!doctype'+body);
         };
         async function navigate(page,url){
             await page.goto('about:blank'); // Exercise a fresh receipt document, including hash-only handoff changes.
@@ -124,11 +136,23 @@ const server=http.createServer((req,res)=>{
         await page.locator('#printFeedback').filter({hasText:'Kiểm tra giấy đã ra'}).waitFor();
         assert.equal(posts.length,2);assert.equal(await page.evaluate(()=>__closed),0);
         assert.equal(await page.evaluate(()=>__browserPrints),0);
+        assert.equal(await page.locator('#useBrowserPrint').isHidden(),true,'Never offer a second transport after a print POST');
         assert.equal(await page.locator('#printReceipt').isEnabled(),true);
         behavior='ok';await page.locator('#printReceipt').click();await page.waitForFunction(()=>__closed===1);assert.equal(posts.length,3);
         // Helper stopped/incompatible: no print request at all.
         health=false;await navigate(page,'/receipt');await paper.waitFor();await page.locator('#printReceipt').click();
-        await page.locator('#printFeedback').filter({hasText:'Không kết nối được Print Helper'}).waitFor();assert.equal(posts.length,3);health=true;
+        await page.locator('#printFeedback').filter({hasText:'Không kết nối được Print Helper'}).waitFor();assert.equal(posts.length,3);
+        assert.equal(await page.locator('#useBrowserPrint').isVisible(),true);
+        assert.equal(await page.evaluate(()=>__browserPrints),0,'A failed health check cannot automatically switch printers');
+        await page.locator('#useBrowserPrint').click();
+        await page.waitForFunction(()=>document.querySelector('#receiptPaper').contentWindow.__browserPrints===1);
+        assert.equal(posts.length,3);
+        assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('gao-pos-print-v1:123:456')).mode),'browser');
+        assert.equal(await page.locator('#useBrowserPrint').isHidden(),true);
+        assert.equal(await page.evaluate(()=>__closed),0,'Keep the Chrome dialog until printing finishes');
+        await page.locator('#receiptPaper').evaluate(frame=>frame.contentWindow.dispatchEvent(new Event('afterprint')));
+        await page.waitForFunction(()=>__closed===1);
+        await page.evaluate(()=>PosPrinting.savePreferences({storeId:123,terminalId:456},{mode:'helper',copies:1}));health=true;
         // Offline/template-test popup: a manual click cancels the pending autoPrint timer.
         const parent=await context.newPage();await navigate(parent,'/parent');
         behavior='hold';const ready=context.waitForEvent('page');
@@ -158,7 +182,7 @@ const server=http.createServer((req,res)=>{
         assert.equal(await studio.evaluate(()=>JSON.parse(localStorage.getItem('gao-pos-print-v1:123:456')).mode),'browser');
         assert.equal(await studio.locator('#printCopySettings').isHidden(),true);assert.equal(posts.length,4);
         // Cash-drawer policy runs against finalized numeric receipt state; no bill text is inspected.
-        const drawerResults=[];
+        const drawerResults=[],directDrawerResults=[];
         const transfer={method:'BankTransfer',amount:50000},cash={method:'Cash',amount:50000};
         const scenarios=[
             ['cash only',[cash],0,true,true],
@@ -167,49 +191,93 @@ const server=http.createServer((req,res)=>{
             ['QR exact',[{...transfer,reference:'QR-TEST'}],0,true,false],
             ['transfer overpay',[{...transfer,amount:60000}],10000,true,true],
             ['QR overpay',[{...transfer,amount:60000,reference:'QR-TEST'}],10000,true,true],
+            ['cash overpay',[{...cash,amount:60000}],10000,true,true],
+            ['zero cash and transfer overpay',[{...cash,amount:0},{...transfer,amount:60000}],10000,true,true],
+            ['card',[{method:'Card',amount:60000}],10000,true,false],
+            ['wallet',[{method:'Wallet',amount:60000}],10000,true,false],
+            ['other',[{method:'Other',amount:60000}],10000,true,false],
+            ['credit or deposit',[],0,true,false],
             ['cash reprint',[cash],0,false,false],
             ['overpaid transfer reprint',[{...transfer,amount:60000}],10000,false,false]
         ];
         behavior='ok';
         await parent.evaluate(()=>PosPrinting.savePreferences({storeId:123,terminalId:456},{mode:'helper',copies:1}));
         const ticket=async(auto=true)=>parent.evaluate(auto=>PosPrinting.postPaymentUrl('/admin/pos/receipt/123?auto='+(auto?'1':'0'),123),auto);
+        // Device output alone is not a valid acknowledgement. Preserve the
+        // warning and provide an exact, payload-free diagnostic for the helper.
+        behavior='bad-ack';
+        const beforeBadAck=posts.length;
+        await navigate(page,'/receipt?auto=1');
+        await page.locator('#printFeedback').filter({hasText:'Helper xác nhận số bản: thiếu'}).waitFor();
+        assert.equal(posts.length,beforeBadAck+1);assert.equal(await page.evaluate(()=>__closed),0);
+        const downloadReady=page.waitForEvent('download');
+        await page.locator('#downloadPrintDiagnostic').click();
+        const diagnosticDownload=await downloadReady;
+        const diagnosticPath=path.resolve(__dirname,'../.artifacts/pos-recovery-drawer/helper-ack-browser-report.json');
+        fs.mkdirSync(path.dirname(diagnosticPath),{recursive:true});
+        await diagnosticDownload.saveAs(diagnosticPath);
+        const diagnostic=JSON.parse(fs.readFileSync(diagnosticPath,'utf8'));
+        assert.equal(diagnostic.transport.stage,'copies-ack');assert.equal(diagnostic.transport.httpStatus,200);
+        assert.equal(diagnostic.transport.received.printed,true);assert.equal(diagnostic.transport.expected.copies,1);
+        assert.equal(JSON.stringify(diagnostic).includes('rasterBase64'),false);
+        behavior='ok';
         for(const [name,payments,changeDue,immediate,expected] of scenarios){
             printReceipt={...receipt,payments,changeDue,paidTotal:payments.reduce((total,p)=>total+p.amount,0)};
-            const before=posts.length;
+            const before=posts.length,beforeDrawers=drawers.length;
             await navigate(page,immediate?await ticket():'/receipt?auto=1');
             await page.waitForFunction(()=>__closed===1);
-            assert.equal(posts.length,before+1);assert.equal(posts.at(-1).cashDrawer,expected,name);
+            assert.equal(posts.length,before+1);assert.equal(posts.at(-1).cashDrawer,expected,name);assert.equal(drawers.length,beforeDrawers,name);
             assert.equal(typeof posts.at(-1).cashDrawer,'boolean');
             assert.equal(new URL(page.url()).hash,'');drawerResults.push({name,cashDrawer:expected});
+        }
+        // The current checkout owner sends directly from POS. Check the actual
+        // wire flag here as well as the older receipt-page handoff above.
+        for(const [name,payments,changeDue,immediate,expected] of scenarios){
+            const before=posts.length,beforeDrawers=drawers.length;
+            await parent.evaluate(({receipt,payments,changeDue,immediate})=>{
+                window.__localClosed=0;
+                const frame=document.createElement('iframe');frame.id='cashPolicyPaper';
+                frame.style.cssText='position:fixed;left:-10000px;top:0;width:850px;height:850px;border:0';
+                document.body.appendChild(frame);
+                PosPrinting.openLocal({...receipt,payments,changeDue,paidTotal:payments.reduce((sum,p)=>sum+p.amount,0)},
+                    {storeId:123,terminalId:456},[],false,immediate,frame.contentWindow);
+            },{receipt,payments,changeDue,immediate});
+            await parent.waitForFunction(()=>__localClosed===1);
+            assert.equal(posts.length,before+1);assert.equal(posts.at(-1).cashDrawer,expected,'Direct POS: '+name);assert.equal(drawers.length,beforeDrawers,'No second drawer request: '+name);
+            assert.equal(typeof posts.at(-1).cashDrawer,'boolean');
+            directDrawerResults.push({name,cashDrawer:expected});
+            await parent.locator('#cashPolicyPaper').evaluate(frame=>frame.remove());
         }
         printReceipt=receipt;
         // Preview consumes even a handed-off ticket without opening the drawer on manual print.
         await navigate(page,await ticket(false));await paper.waitFor();await page.locator('#printReceipt').click();
         await page.waitForFunction(()=>__closed===1);assert.equal(posts.at(-1).cashDrawer,false);
-        // A failed first print can be retried manually, but cannot re-open the drawer.
-        behavior='fail';await navigate(page,await ticket());
+        // A failed checkout closes its dedicated tab. Deliberate history reprint
+        // opens a fresh page without the consumed checkout/drawer ticket.
+        behavior='fail';const beforeFailedDrawer=drawers.length;await navigate(page,await ticket());
         await page.locator('#printFeedback').filter({hasText:'Kiểm tra giấy đã ra'}).waitFor();
-        assert.equal(posts.at(-1).cashDrawer,true);
-        behavior='ok';await page.locator('#printReceipt').click();await page.waitForFunction(()=>__closed===1);
+        assert.equal(posts.at(-1).cashDrawer,true);assert.equal(drawers.length,beforeFailedDrawer);
+        behavior='ok';await navigate(page,'/receipt?auto=0');await paper.waitFor();
+        await page.locator('#printReceipt').click();await page.waitForFunction(()=>__closed===1);
         assert.equal(posts.at(-1).cashDrawer,false);
         // Preserve the real noopener popup path. Reopening its URL must be a reprint.
-        const popupUrl=await ticket(),popupReady=context.waitForEvent('page');
+        const beforePopupDrawer=drawers.length,popupUrl=await ticket(),popupReady=context.waitForEvent('page');
         await context.route(origin+'/**',routeSource);
         await parent.evaluate(url=>{window.open(url,'_blank','noopener,noreferrer');},popupUrl);
         const cashPopup=await popupReady;await cashPopup.waitForLoadState('load');
         await context.unroute(origin+'/**',routeSource);await cashPopup.evaluate(()=>__allowPrint());
         await cashPopup.waitForFunction(()=>__closed===1);
-        assert.equal(posts.at(-1).cashDrawer,true);assert.equal(await cashPopup.evaluate(()=>opener),null);
+        assert.equal(posts.at(-1).cashDrawer,true);assert.equal(drawers.length,beforePopupDrawer);assert.equal(await cashPopup.evaluate(()=>opener),null);
         await navigate(cashPopup,popupUrl);await cashPopup.waitForFunction(()=>__closed===1);
-        assert.equal(posts.at(-1).cashDrawer,false);await cashPopup.close();
+        assert.equal(posts.at(-1).cashDrawer,false);assert.equal(drawers.length,beforePopupDrawer);await cashPopup.close();
         // Real QR-style iframe gets the same one-use handoff.
-        const frameUrl=await parent.evaluate(()=>PosPrinting.postPaymentUrl('/admin/pos/orders/123/print?auto=1',123));
+        const beforeFrameDrawer=drawers.length,frameUrl=await parent.evaluate(()=>PosPrinting.postPaymentUrl('/admin/pos/orders/123/print?auto=1',123));
         await context.route(origin+'/**',routeSource);
         await parent.evaluate(url=>{const frame=document.createElement('iframe');frame.id='qrReceipt';frame.src=url;document.body.appendChild(frame);},frameUrl);
         const receiptFrame=await (await parent.locator('#qrReceipt').elementHandle()).contentFrame();
         await receiptFrame.waitForLoadState('load');await context.unroute(origin+'/**',routeSource);
         await receiptFrame.evaluate(()=>__allowPrint());await receiptFrame.waitForFunction(()=>__closed===1);
-        assert.equal(posts.at(-1).cashDrawer,true);
+        assert.equal(posts.at(-1).cashDrawer,true);assert.equal(drawers.length,beforeFrameDrawer);
         await parent.locator('#qrReceipt').evaluate(frame=>frame.remove());
         // Concurrent copies request the same live POS intent; exactly one can open the drawer.
         for(let attempt=0;attempt<5;attempt++){
@@ -217,29 +285,33 @@ const server=http.createServer((req,res)=>{
             await context.route(origin+'/**',routeSource);
             await Promise.all(twins.map(tab=>tab.goto(origin+sharedUrl)));
             await context.unroute(origin+'/**',routeSource);
-            const beforeTwins=posts.length;
+            const beforeTwins=posts.length,beforeTwinDrawers=drawers.length;
             await Promise.all(twins.map(tab=>tab.evaluate(()=>__allowPrint())));
             await Promise.all(twins.map(tab=>tab.waitForFunction(()=>__closed===1)));
-            assert.deepEqual(posts.slice(beforeTwins).map(p=>p.cashDrawer).sort(),[false,true]);
+            assert.deepEqual(posts.slice(beforeTwins).map(p=>p.cashDrawer).sort(),[false,true]);assert.equal(drawers.length,beforeTwinDrawers);
             await Promise.all(twins.map(tab=>tab.close()));
         }
         // Offline uses the already-finalized state; template/test calls keep the default false.
         for(const immediate of [true,false]){
-            const ready=context.waitForEvent('page');
+            const beforeLocalDrawer=drawers.length;
+            const ready=immediate?null:context.waitForEvent('page');
+            if(immediate)await parent.evaluate(()=>{window.__originalOpen=window.open;window.open=()=>null;});
             await parent.evaluate(({receipt,immediate})=>{
                 window.__localClosed=0;
                 PosPrinting.openLocal({...receipt,status:2},{storeId:123,terminalId:456},[],true,immediate);
             },{receipt,immediate});
-            const local=await ready;await parent.waitForFunction(()=>__localClosed===1);
-            assert.equal(posts.at(-1).cashDrawer,immediate);await local.close();
+            const local=ready?await ready:null;await parent.waitForFunction(()=>__localClosed===1);
+            assert.equal(posts.at(-1).cashDrawer,immediate);assert.equal(drawers.length,beforeLocalDrawer);
+            if(local)await local.close();else await parent.locator('iframe[data-pos-local-print]').evaluate(frame=>frame.remove());
+            if(immediate)await parent.evaluate(()=>{window.open=window.__originalOpen;});
         }
         const abandonedUrl=await ticket();await navigate(parent,'/parent');
         await navigate(page,abandonedUrl);await page.waitForFunction(()=>__closed===1);
         assert.equal(posts.at(-1).cashDrawer,false,'Reloaded POS has no surviving drawer intent');
         assert.deepEqual(errors,[]);
         console.log(JSON.stringify({status:'PASS',browser:browser.version(),httpsOrigin:origin,realLoopbackCors:true,
-            permission:'local-network-access granted for synthetic test origin',posts:posts.length,
-            nativeRasterDifference:comparison.differences/comparison.pixels,qrIncluded:true,drawerResults,
+            permission:'local-network-access granted for synthetic test origin',posts:posts.length,drawerPosts:drawers.length,
+            nativeRasterDifference:comparison.differences/comparison.pixels,qrIncluded:true,drawerResults,directDrawerResults,
             scenarios:'canonical itemwide/QR, ACK lifecycle, failure/retry, studio, drawer policy matrix, preview/reprint, noopener popup, QR iframe, five concurrent-claim pairs, offline immediate/history, POS reload'}));
     }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;server.close();});

@@ -44,8 +44,8 @@ async function loadAuditLogs() {
     const entityId = document.getElementById('entityId')?.value;
     const keyword = document.getElementById('keyword')?.value;
 
-    if (fromUtc) query.append('fromUtc', new Date(fromUtc).toISOString());
-    if (toUtc) query.append('toUtc', new Date(toUtc).toISOString());
+    if (fromUtc) query.append('fromUtc', new Date(fromUtc + '+07:00').toISOString());
+    if (toUtc) query.append('toUtc', new Date(toUtc + '+07:00').toISOString());
     if (actorUserId) query.append('actorUserId', actorUserId);
     if (entityName) query.append('entityName', entityName);
     if (entityId) query.append('entityId', entityId);
@@ -74,7 +74,7 @@ function renderAuditTable(items) {
         const tr = document.createElement('tr');
 
         tr.innerHTML = `
-            <td>${escapeHtml(item.createdAtUtc || '')}</td>
+            <td>${escapeHtml(auditVietnamTime(item.createdAtUtc))}</td>
             <td>${escapeHtml(item.actorUserName || '')}</td>
             <td>${escapeHtml(item.module || '')}</td>
             <td>${escapeHtml(item.actionType || '')}</td>
@@ -102,7 +102,7 @@ async function loadAuditDetail(id) {
 
     const item = await response.json();
 
-    setText('detailCreatedAt', item.createdAtUtc || '');
+    setText('detailCreatedAt', auditVietnamTime(item.createdAtUtc));
     setText('detailUser', item.actorUserName || '');
     setText('detailModule', item.module || '');
     setText('detailAction', item.actionType || '');
@@ -117,6 +117,12 @@ async function loadAuditDetail(id) {
     setPre('detailError', item.errorMessage || '');
 
     auditDetailModal?.show();
+}
+
+function auditVietnamTime(value) {
+    if (!value) return '';
+    const date = new Date(typeof value === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
+    return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function setText(id, value) {

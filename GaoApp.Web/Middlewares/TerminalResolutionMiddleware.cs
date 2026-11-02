@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Interfaces;
 using GaoApp.Application.Interfaces.Repositories.POSTerminals;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -95,7 +95,7 @@ public class TerminalResolutionMiddleware : IMiddleware
             _logger.LogWarning(
                 "Terminal resolution failed; continuing without terminal context. TraceId={TraceId}; Path={Path}; ExceptionType={ExceptionType}",
                 context.TraceIdentifier,
-                context.Request.Path,
+                GaoApp.Application.Common.Security.SensitiveRequestData.Redact(context.Request.Path),
                 ex.GetType().Name);
         }
 

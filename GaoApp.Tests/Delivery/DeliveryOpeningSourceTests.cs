@@ -6,6 +6,7 @@ using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Data.Migrations;
 using GaoApp.Tests.Inventory;
+using GaoApp.Tests.Configuration;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -118,9 +119,9 @@ public sealed class DeliveryOpeningSourceTests(DeliveryD02Fixture fixture)
             var ids = await SeedOpeningAsync(c); await c.ReadyAsync("2");
             await using var db = c.Picking.Source.Context();
             var migrations = db.Database.GetMigrations().ToArray();
-            Assert.Equal(openingMigration, migrations[^1]);
-            var previous = migrations[^2]; var before = await c.SnapshotAsync();
-            await db.GetService<IMigrator>().MigrateAsync(previous);
+            Assert.Equal(openingMigration, migrations[74]);
+            var previous = migrations[73]; var before = await c.SnapshotAsync();
+            await MigrationTestSupport.MigrateHistoricalPrefixAsync(isolated.Web.Database, previous);
             await AssertOpeningLayerManifestAsync(db, previous); Assert.Equal(before, await c.SnapshotAsync());
             await db.GetService<IMigrator>().MigrateAsync(openingMigration);
             await AssertOpeningLayerManifestAsync(db, openingMigration); Assert.Equal(before, await c.SnapshotAsync());
@@ -135,7 +136,9 @@ public sealed class DeliveryOpeningSourceTests(DeliveryD02Fixture fixture)
                 finally { await transaction.RollbackAsync(); }
             }
             Assert.Equal(before, await c.SnapshotAsync()); await AssertOpeningLayerManifestAsync(db, openingMigration);
+            await db.Database.MigrateAsync();
             await c.DispatchAsync(); var posted = await c.SnapshotAsync();
+            await MigrationTestSupport.MigrateHistoricalPrefixAsync(isolated.Web.Database, openingMigration);
             var refused = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(previous));
             Assert.Equal(51042, refused.Number);
             Assert.Equal(posted, await c.SnapshotAsync()); await AssertOpeningLayerManifestAsync(db, openingMigration);

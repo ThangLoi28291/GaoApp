@@ -14,8 +14,8 @@ public sealed record DeliveryInventoryLineDto(int LineId, int VariantId, string 
     string? AcceptedReturnedCostText);
 
 public sealed record DeliveryInventoryCostFragmentDto(int FragmentId, int LineId, int JournalEntryId,
-    int InventoryTransactionId, int InventoryValuationEntryId, int InventoryCostLayerId,
-    int InventoryCostLayerAllocationId, int InventoryCostBudgetDebitId, string BaseQuantityText,
+    int InventoryTransactionId, int InventoryValuationEntryId, int? InventoryCostLayerId,
+    int InventoryCostLayerAllocationId, int? InventoryCostBudgetDebitId, string BaseQuantityText,
     string UnitCostText, string CostAmountText, string AcceptedReturnedBaseQuantityText,
     string AcceptedReturnedCostText, string CostQuality);
 

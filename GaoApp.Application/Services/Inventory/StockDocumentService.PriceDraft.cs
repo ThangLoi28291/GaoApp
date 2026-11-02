@@ -17,6 +17,7 @@ public partial class StockDocumentService
             if (document.Type != StockDocumentType.Receipt || document.Status != StockDocumentStatus.PendingApproval)
                 throw new BusinessRuleException("Chỉ lưu nháp giá cho phiếu nhập đang chờ duyệt. Vui lòng tải lại để kiểm tra trạng thái phiếu.");
             EnsureRowVersion(document.RowVersion, request.RowVersion);
+            EnsureReceiptSourceConsistent(document);
             if (request.Lines is null || request.Lines.Count is < 1 or > 500 ||
                 request.Lines.Select(x => x.StockDocumentLineId).Distinct().Count() != request.Lines.Count)
                 throw new BusinessRuleException("Danh sách giá nháp không hợp lệ.");
@@ -51,8 +52,8 @@ public partial class StockDocumentService
             EnsureStoredMoney(document.SubtotalBeforeVat, "Tổng trước VAT nháp");
             // Force the receipt concurrency token to change even when totals are unchanged.
             document.UpdatedAtUtc = DateTime.UtcNow;
-            await InvalidateReconciliationAsync(document, "Giá nhập nháp đã thay đổi; cần đối chiếu lại trước khi duyệt.", ct);
             await _stockDocumentRepository.SaveChangesAsync(ct);
+            await InvalidateReconciliationAsync(document, "Giá nhập nháp đã thay đổi; cần đối chiếu lại trước khi duyệt.", ct);
             await _stockDocumentRepository.CommitTransactionAsync(ct);
             return new(Convert.ToBase64String(document.RowVersion), document.UpdatedAtUtc ?? DateTime.UtcNow,
                 request.Lines.ToDictionary(x => x.StockDocumentLineId, x => Convert.ToBase64String(lines[x.StockDocumentLineId].RowVersion)),

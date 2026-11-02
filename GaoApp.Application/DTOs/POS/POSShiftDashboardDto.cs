@@ -6,6 +6,7 @@ public sealed class POSShiftDashboardDto
 
     public string? ShiftCode { get; set; }
 
+    // UTC instant for client-side Vietnam formatting; retain the existing API property name.
     public DateTime OpenedAt { get; set; }
 
     public decimal CashSales { get; set; }

@@ -6,7 +6,7 @@
     const isSettings = root.dataset.page === 'settings';
     const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const money = value => new Intl.NumberFormat('vi-VN').format(value || 0);
-    const date = value => value ? new Date(value.endsWith('Z') ? value : value + 'Z').toLocaleString('vi-VN') : '—';
+    const date = value => value ? new Date(/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
     const defaults = () => ({ name: 'Tem sản phẩm 35 × 22', widthMm: 35, heightMm: 22, columns: 2, columnGapMm: 2, rowGapMm: 2,
         leftMarginMm: 1, rightMarginMm: 1, quantityMode: 'received', printerId: null, showPrintButton: true, barcodeFormat: 'AUTO', layout: 'standard', fontSize: 8, showName: true, showBarcode: true, showBarcodeText: true, showUnit: true, showPrice: true });
     const layouts = [...root.querySelectorAll('[data-layout]')];

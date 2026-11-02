@@ -88,7 +88,7 @@
                                     </td>
                                     <td>
                                         <div class="gds-table__secondary">
-                                            @(activityAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa có")
+                                            @(activityAt?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa có")
                                         </div>
                                         <div class="text-muted small">Bởi: @(activityBy?.ToString() ?? "Hệ thống")</div>
                                     </td>
@@ -173,7 +173,7 @@
                             </span>
                             <span>
                                 <i class="bx bx-history me-1" aria-hidden="true"></i>
-                                Cập nhật: @(activityAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa có")
+                                Cập nhật: @(activityAt?.ToVietnamTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa có")
                             </span>
                         </div>
 

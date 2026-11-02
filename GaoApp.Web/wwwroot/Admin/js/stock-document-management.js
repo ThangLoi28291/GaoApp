@@ -65,6 +65,22 @@ window.stockDocumentRowVersion = {
         return true;
     }
 };
+// Use the versions that rendered the user's inputs. Never GET a fresh version
+// immediately before a write: doing so would turn a stale edit into an overwrite.
+function stockDocumentLineTokens(lineId) {
+    const row = [...document.querySelectorAll('tr[data-line-id]')]
+        .find(node => String(node.dataset.lineId) === String(lineId));
+    return {
+        rowVersion: window.stockDocumentRowVersion?.current?.() || window.stockDocumentPage?.rowVersion || '',
+        lineRowVersion: row?.querySelector('.commercial-unit-price')?.dataset.lineVersion || row?.dataset.rowVersion || ''
+    };
+}
+window.stockDocumentLineTokens = stockDocumentLineTokens;
+function stockDocumentLineWriteError(api, fallback) {
+    return api.status === 409
+        ? 'Phiếu hoặc dòng hàng đã được thay đổi ở nơi khác. Nội dung đang nhập được giữ lại; sao chép nếu cần, tải lại phiếu rồi đối chiếu trước khi lưu.'
+        : api.data?.message || fallback;
+}
 let inputInvoiceReconciliationRenderGeneration = 0;
 
 function beginInputInvoiceReconciliationRenderRequest() {
@@ -168,17 +184,17 @@ window.activateStockDocumentWorkbenchTab = activateStockDocumentWorkbenchTab;
 
 function initStockDocumentWorkbenchTabs() {
     const workbench = document.getElementById('commercialApprovalWorkbench');
-    if (!workbench) return;
-    const storageKey = `stockDocumentWorkbenchTab:${window.stockDocumentPage?.documentId || 0}`;
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
-    activateStockDocumentWorkbenchTab(requestedTab || sessionStorage.getItem(storageKey) || 'goods', false);
     if (requestedTab === 'xml') {
-        const invoiceSection = document.querySelector('.sd-optional-xml');
+        const invoiceSection = document.getElementById('inputInvoicePickerSection')?.closest('details.sd-optional-xml');
         if (invoiceSection) {
             invoiceSection.open = true;
             requestAnimationFrame(() => invoiceSection.scrollIntoView({ block: 'start' }));
         }
     }
+    if (!workbench) return;
+    const storageKey = `stockDocumentWorkbenchTab:${window.stockDocumentPage?.documentId || 0}`;
+    activateStockDocumentWorkbenchTab(requestedTab || sessionStorage.getItem(storageKey) || 'goods', false);
 
     workbench.addEventListener('click', event => {
         const button = event.target.closest?.('[data-workbench-tab]');
@@ -269,19 +285,58 @@ function initLegacyCatalogReview() {
             bootstrap.Modal.getOrCreateInstance(modal);
     }
 
+    function updateMissingPriceFilter() {
+        if (typeof window !== 'undefined' && document.querySelector?.('.sd-review-workspace') && window.GaoReceiptApprovalWorkspace) return;
+        let missingCount = 0;
+        document.querySelectorAll('.commercial-line').forEach(row => {
+            const input = row.querySelector?.('.commercial-unit-price');
+            if (input) row.dataset.priceMissing = String(input.value.trim() === '');
+            if (row.dataset.priceMissing === 'true') missingCount += 1;
+        });
+        const count = document.querySelector?.('[data-commercial-filter="price"] [data-commercial-filter-count]');
+        if (count) count.textContent = String(missingCount);
+    }
+
+    // Keep the price count current without moving the row being edited.
+    // Filtering is reapplied only when the reviewer chooses a filter.
+    updateMissingPriceFilter();
+    document.addEventListener('input', event => {
+        if (event.target.matches?.('.commercial-unit-price')) updateMissingPriceFilter();
+    });
+    document.addEventListener('receipt-pricing-inputs-changed', updateMissingPriceFilter);
+
     document.addEventListener('click', async function (event) {
         const filter = event.target.closest?.('[data-commercial-filter]');
         if (filter) {
             const value = filter.dataset.commercialFilter || 'all';
-            document.querySelectorAll('[data-commercial-filter]').forEach(button =>
-                button.classList.toggle('active', button === filter));
+            if (typeof window !== 'undefined' && document.querySelector?.('.sd-review-workspace') && window.GaoReceiptApprovalWorkspace) {
+                window.GaoReceiptApprovalWorkspace.setFilter(value, !!filter.closest('#commercialFilterEmpty'));
+                return;
+            }
+            updateMissingPriceFilter();
+            document.querySelectorAll('.sd-filter-chips [data-commercial-filter]').forEach(button => {
+                const selected = button.dataset.commercialFilter === value;
+                button.classList.toggle('active', selected);
+                button.setAttribute?.('aria-pressed', String(selected));
+            });
+            let visibleCount = 0;
             document.querySelectorAll('.commercial-line').forEach(row => {
                 const visible = value === 'all' ||
+                    (value === 'revision' && row.dataset.revisionChanged === 'true') ||
                     (value === 'catalog' && row.dataset.catalogReview === 'true') ||
                     (value === 'price' && row.dataset.priceMissing === 'true') ||
                     (value === 'exception' && row.dataset.exception === 'true');
                 row.classList.toggle('d-none', !visible);
+                if (visible) visibleCount += 1;
             });
+            const empty = document.getElementById('commercialFilterEmpty');
+            if (empty) empty.hidden = visibleCount > 0;
+            const message = document.getElementById('commercialFilterEmptyMessage');
+            if (message) message.textContent = value === 'price'
+                ? 'Không còn dòng hàng để trống giá nhập.'
+                : value === 'revision'
+                    ? 'Không có dòng hàng chỉnh sửa hoặc bổ sung trong lần gửi duyệt này.'
+                    : 'Không có dòng hàng phù hợp với bộ lọc này.';
             return;
         }
 
@@ -456,25 +511,25 @@ function escapeHtml(value) {
 function formatDate(value) {
     if (!value) return '';
 
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '';
 
-    return d.toLocaleString('vi-VN');
+    return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function formatDateTime(value) {
     if (!value) return '-';
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN');
+    const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
+    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 }
 
 function formatLinkedInputInvoiceDate(value) {
     if (!value) return '';
 
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '';
 
-    return d.toLocaleDateString('vi-VN', {
+    return d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
         day: '2-digit',
         month: '2-digit',
         year: 'numeric'
@@ -877,7 +932,7 @@ function openStockDocumentInfoModal(item) {
 
     setText('sdInfoTotalLines', formatNumber(item.totalLines || 0));
     setText('sdInfoTotalProducts', formatNumber(item.totalProductTypes || 0));
-    setText('sdInfoTotalAmount', formatNumber(item.totalAmount || 0));
+    setText('sdInfoTotalAmount', item.canViewCost === false ? 'Ẩn giá' : formatNumber(item.totalAmount || 0));
 
     const detailLink = document.getElementById('sdInfoOpenDetail');
     if (detailLink) {
@@ -953,7 +1008,7 @@ function renderStockDocumentIndexRows(items) {
                     ${hasRevisionRequest ? `<div class="sd-index-revision-note" title="${escapeHtml(x.revisionRequestNote || 'Có yêu cầu sửa')}">Có yêu cầu sửa</div>` : ''}
                 </td>
                 <td class="text-end fw-semibold">${formatNumber(x.totalProductTypes || 0)}</td>
-                <td class="text-end sd-index-amount">${formatNumber(x.totalAmount || 0)} ₫</td>
+                <td class="text-end sd-index-amount">${x.canViewCost === false ? 'Ẩn giá' : formatNumber(x.totalAmount || 0) + ' ₫'}</td>
                 <td>${renderIndexDate(x.updatedAtUtc || x.createdAtUtc || x.documentDate)}</td>
                 <td class="text-end">
                     <div class="sd-index-actions">
@@ -1004,7 +1059,7 @@ function renderStockDocumentIndexMobileCards(items) {
                     <div><span>Nhân viên tạo phiếu</span><strong>${escapeHtml(x.createdByName || 'Chưa ghi nhận')}</strong></div>
                     <div><span>Quầy nhập</span><strong>${escapeHtml([x.entryTerminalName, x.entryTerminalCode].filter(Boolean).join(' · ') || 'Chưa ghi nhận')}</strong></div>
                     <div><span>Loại sản phẩm</span><strong>${formatNumber(x.totalProductTypes || 0)}</strong></div>
-                    <div><span>Tổng tiền</span><strong class="text-primary">${formatNumber(x.totalAmount || 0)} ₫</strong></div>
+                    <div><span>Tổng tiền</span><strong class="text-primary">${x.canViewCost === false ? 'Ẩn giá' : formatNumber(x.totalAmount || 0) + ' ₫'}</strong></div>
                     <div><span>Cập nhật</span><strong>${formatDate(x.updatedAtUtc || x.createdAtUtc || x.documentDate) || '-'}</strong></div>
                 </div>
                 <div class="gds-row-card__actions">
@@ -1138,13 +1193,13 @@ function focusCreateDocumentTitle() {
 function renderIndexDate(value) {
     if (!value) return '-';
 
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '-';
 
     return `
         <div class="sd-index-date">
-            <span class="time">${d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
-            <span class="date">${d.toLocaleDateString('vi-VN')}</span>
+            <span class="time">${d.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })}</span>
+            <span class="date">${d.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}</span>
         </div>`;
 }
 
@@ -1172,7 +1227,7 @@ function resetCreateReceiptModal() {
 
     if (documentDate) {
         const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        now.setTime(now.getTime() + 7 * 3600000);
         documentDate.value = now.toISOString().slice(0, 16);
     }
 }
@@ -1411,7 +1466,7 @@ function bindCreateReceiptModal() {
                     note: note,
                     hasVat: false,
                     directReceiptReason: directReceiptReason,
-                    documentDate: documentDateRaw ? new Date(documentDateRaw).toISOString() : null
+                    documentDate: documentDateRaw ? new Date(documentDateRaw + '+07:00').toISOString() : null
                 })
             });
 
@@ -1729,27 +1784,36 @@ function bindReject() {
     if (!btn) return;
 
     btn.onclick = async function () {
+        if (btn.disabled) return;
         const note = document.getElementById('rejectNote')?.value || '';
         const msg = document.getElementById('rejectMessage');
         const documentId = window.stockDocumentPage.documentId;
-
-        const response = await fetch(`/admin/api/stock-documents/${documentId}/reject`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ note: note, rowVersion: window.stockDocumentPage.rowVersion })
-        });
-
-        const api = await readApiResponse(response);
-
-        if (!api.ok) {
-            if (msg) msg.textContent = api.data?.message || 'Không thể trả phiếu về chỉnh sửa.';
-            return;
+        let releaseDrafts;
+        btn.disabled = true;
+        if (msg) msg.textContent = '';
+        try {
+            // Finish the reviewer's pending price edits before the receipt is
+            // unlocked for staff; saving also supplies the latest RowVersion.
+            releaseDrafts = await window.GaoReceiptPriceDrafts?.hold();
+            const response = await fetch(`/admin/api/stock-documents/${documentId}/reject`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: note, rowVersion: window.stockDocumentPage.rowVersion })
+            });
+            const api = await readApiResponse(response);
+            if (!api.ok) throw new Error(api.data?.message || 'Không thể trả phiếu về chỉnh sửa.');
+            if (window.GaoReceiptApprovalWorkspace) window.GaoReceiptApprovalWorkspace.leaving = true;
+            if (rejectModalInstance) rejectModalInstance.hide();
+            alert(api.data?.message || 'Đã trả phiếu về chỉnh sửa.');
+            window.location.href = api.data?.redirectUrl || '/admin/stock-documents';
+        } catch (error) {
+            if (msg) msg.textContent = error instanceof TypeError
+                ? 'Không kết nối được máy chủ. Giữ nguyên phiếu và thử lại.'
+                : error.message || 'Không thể trả phiếu về chỉnh sửa.';
+        } finally {
+            releaseDrafts?.();
+            btn.disabled = false;
         }
-
-        if (rejectModalInstance) rejectModalInstance.hide();
-
-        alert(api.data?.message || 'Đã trả phiếu về chỉnh sửa.');
-        window.location.href = api.data?.redirectUrl || '/admin/stock-documents';
     };
 }
 
@@ -1767,6 +1831,7 @@ function bindDeleteLine() {
             const productName = this.dataset.productName || '-';
 
             document.getElementById('deleteLineId').value = lineId;
+            document.getElementById('deleteLineId').lineTokens = stockDocumentLineTokens(lineId);
             setText('deleteLineProductName', productName);
 
             deleteLineModalInstance?.show();
@@ -1790,13 +1855,15 @@ function bindConfirmDeleteLine() {
             btn.textContent = 'Đang xóa...';
 
             const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
-                method: 'DELETE'
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(document.getElementById('deleteLineId').lineTokens || stockDocumentLineTokens(lineId))
             });
 
             const api = await readApiResponse(response);
 
             if (!api.ok) {
-                alert(api.data?.message || 'Xóa dòng thất bại.');
+                alert(stockDocumentLineWriteError(api, 'Xóa dòng thất bại.'));
                 return;
             }
 
@@ -1839,6 +1906,7 @@ function bindOpenEditLineModal() {
 
             // Chỉ lưu thông tin của đúng dòng đang sửa.
             document.getElementById('quickEditLineId').value = lineId;
+            document.getElementById('quickEditLineId').lineTokens = stockDocumentLineTokens(lineId);
             document.getElementById('quickEditUnitId').value = unitId;
             document.getElementById('quickEditUnitCost').value = unitCost;
             document.getElementById('quickEditNote').value = note;
@@ -1987,6 +2055,7 @@ async function saveQuickEditLine() {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                ...(document.getElementById('quickEditLineId').lineTokens || stockDocumentLineTokens(lineId)),
                 unitId: unitId,
                 quantity: quantity,
                 // Giá mua chỉ được xác nhận trong workbench duyệt thương mại.
@@ -1998,7 +2067,7 @@ async function saveQuickEditLine() {
         const api = await readApiResponse(response);
 
         if (!api.ok) {
-            if (msg) msg.textContent = api.data?.message || 'Cập nhật dòng thất bại.';
+            if (msg) msg.textContent = stockDocumentLineWriteError(api, 'Cập nhật dòng thất bại.');
             return;
         }
 
@@ -2048,6 +2117,7 @@ function bindSaveEditLine() {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                ...(document.getElementById('editLineId').lineTokens || stockDocumentLineTokens(lineId)),
                 unitId: unitId,
                 quantity: quantity,
                 unitCost: null,
@@ -2058,7 +2128,7 @@ function bindSaveEditLine() {
         const api = await readApiResponse(response);
 
         if (!api.ok) {
-            if (msg) msg.textContent = api.data?.message || 'Cập nhật dòng thất bại.';
+            if (msg) msg.textContent = stockDocumentLineWriteError(api, 'Cập nhật dòng thất bại.');
             return;
         }
 
@@ -2190,6 +2260,7 @@ async function saveInlineLineUnitCost(input) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+            ...stockDocumentLineTokens(lineId),
             unitId: unitId,
             quantity: quantity,
             unitCost: unitCost,
@@ -2200,7 +2271,7 @@ async function saveInlineLineUnitCost(input) {
     const api = await readApiResponse(response);
 
     if (!api.ok) {
-        alert(api.data?.message || 'Cập nhật đơn giá thất bại.');
+        alert(stockDocumentLineWriteError(api, 'Cập nhật đơn giá thất bại.'));
         return;
     }
 
@@ -2276,6 +2347,7 @@ async function saveInlineLineQuantity(input) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+            ...stockDocumentLineTokens(lineId),
             unitId: unitId,
             quantity: quantity,
             unitCost: null,
@@ -2286,7 +2358,7 @@ async function saveInlineLineQuantity(input) {
     const api = await readApiResponse(response);
 
     if (!api.ok) {
-        alert(api.data?.message || 'Cập nhật số lượng thất bại.');
+        alert(stockDocumentLineWriteError(api, 'Cập nhật số lượng thất bại.'));
         return false;
     }
 
@@ -3027,7 +3099,14 @@ async function loadInputInvoiceAssociation() {
     if (generation !== inputInvoiceAssociationGeneration) return;
     if (!api.ok) {
         cachedInputInvoiceAssociation = null;
-        state.textContent = api.data?.message || 'Không tải được trạng thái liên kết XML.';
+        const message = api.data?.message || 'Không tải được trạng thái liên kết XML.';
+        const normalizeMessage = value => String(value || '').replace(/\s+/g, ' ').trim();
+        const alreadyShown = ['inputInvoiceSupplierMissing', 'inputInvoiceSupplierTaxMissing']
+            .map(id => document.getElementById(id))
+            .some(warning => warning && !warning.hidden &&
+                [warning.textContent, ...Array.from(warning.children || []).map(child => child.textContent)]
+                    .some(text => normalizeMessage(text) === normalizeMessage(message)));
+        state.textContent = alreadyShown ? '' : message;
         state.className = 'small mt-2 text-danger';
         return;
     }
@@ -3915,7 +3994,7 @@ function inputInvoiceProductQuantityResultHtml(product) {
 
 function inputInvoiceProductPriceResultHtml(product) {
     const unit = escapeHtml(product.baseUnitDisplayName || 'đơn vị gốc');
-    const difference = Math.abs(Number(product.baseUnitPriceDifference || 0));
+    const difference = Math.abs(Number(product.baseUnitPriceAfterVatDifference ?? product.baseUnitPriceDifference ?? 0));
     if (product.priceStatus === 'Matched')
         return '<span class="text-success">Giá khớp</span>';
     if (product.priceStatus === 'XmlHigher')
@@ -3926,10 +4005,12 @@ function inputInvoiceProductPriceResultHtml(product) {
 }
 
 function inputInvoiceProductVatLabel(status) {
+    if (status === 'IncludedInPrice') return 'VAT đã tính trong giá XML';
     return status === 'Matched' ? 'VAT khớp' : 'VAT cần xem xét';
 }
 
 function inputInvoiceProductVatResultText(status) {
+    if (status === 'IncludedInPrice') return 'Đã tính trong giá XML';
     return status === 'Matched' ? 'Khớp' : 'Cần xem xét';
 }
 
@@ -3977,8 +4058,8 @@ function inputInvoiceProductSummaryHtml(model) {
               `${formatNumber(product.xmlBaseQuantity)} ${unit}</div>
             <div class="col-md-5">${inputInvoiceProductQuantityResultHtml(product)}</div>
             <div class="col-md-7"><span class="text-muted me-2">Giá</span>` +
-              `${formatWholeVnd(product.receiptBaseUnitPriceBeforeVat)} ↔ ` +
-              `${formatWholeVnd(product.xmlBaseUnitPriceBeforeVat)} đ/${unit}</div>
+              `${formatWholeVnd(product.receiptBaseUnitPriceAfterVat ?? product.receiptBaseUnitPriceBeforeVat)} ↔ ` +
+              `${formatWholeVnd(product.xmlBaseUnitPriceAfterVat ?? product.xmlBaseUnitPriceBeforeVat)} đ/${unit}${product.xmlBaseUnitPriceAfterVat != null ? ' · đã gồm VAT' : ''}</div>
             <div class="col-md-5">${inputInvoiceProductPriceResultHtml(product)}</div>
             <div class="col-md-7"><span class="text-muted me-2">VAT</span></div>
             <div class="col-md-5">${escapeHtml(inputInvoiceProductVatLabel(product.vatStatus))}</div>
@@ -4028,8 +4109,8 @@ function inputInvoiceRecognizedDetailEvidenceHtml(detail, product) {
         `${formatNumber(product.xmlBaseQuantity)} ${unit} · ` +
         `${inputInvoiceProductQuantityResultHtml(product)}</div>
       <div><span class="text-muted">Giá BQ:</span> ` +
-        `${formatWholeVnd(product.receiptBaseUnitPriceBeforeVat)} ↔ ` +
-        `${formatWholeVnd(product.xmlBaseUnitPriceBeforeVat)} đ/${unit} · ` +
+        `${formatWholeVnd(product.receiptBaseUnitPriceAfterVat ?? product.receiptBaseUnitPriceBeforeVat)} ↔ ` +
+        `${formatWholeVnd(product.xmlBaseUnitPriceAfterVat ?? product.xmlBaseUnitPriceBeforeVat)} đ/${unit}${product.xmlBaseUnitPriceAfterVat != null ? ' · đã gồm VAT' : ''} · ` +
         `${inputInvoiceProductPriceResultHtml(product)}</div>
       <div><span class="text-muted">VAT:</span> ` +
         `${escapeHtml(inputInvoiceProductVatResultText(product.vatStatus))}</div>
@@ -4065,14 +4146,15 @@ function buildInputInvoiceReconciliationAcceptanceSnapshot(model) {
     const quantityCount = details.filter(detail =>
         Math.abs(Number(detail.quantityDifference || 0)) > quantityTolerance).length;
     const moneyVatCount = details.filter(detail =>
-        Math.abs(Number(detail.baseUnitPriceDifference ??
+        Math.abs(Number(detail.baseUnitPriceAfterVatDifference ?? detail.baseUnitPriceDifference ??
             detail.amountDifference ?? 0)) > moneyTolerance ||
-        Math.abs(Number(detail.vatAmountDifference || 0)) > moneyTolerance ||
+        (detail.vatBreakdownComparable !== false && Math.abs(Number(detail.vatAmountDifference || 0)) > moneyTolerance) ||
         detail.stateName === 'NeedsReview').length;
     const header = model?.header;
     const headerCount = header && (
-        Math.abs(Number(header.subtotalDifference || 0)) > moneyTolerance ||
-        Math.abs(Number(header.vatDifference || 0)) > moneyTolerance ||
+        (header.vatBreakdownComparable !== false && (
+            Math.abs(Number(header.subtotalDifference || 0)) > moneyTolerance ||
+            Math.abs(Number(header.vatDifference || 0)) > moneyTolerance)) ||
         Math.abs(Number(header.paymentDifference || 0)) > moneyTolerance ||
         header.needsReview) ? 1 : 0;
     const unresolvedCount = details.filter(detail =>
@@ -4138,10 +4220,11 @@ function renderInputInvoiceReconciliation(model) {
         <div class="table-responsive"><table class="table table-sm align-middle mb-0">
         <thead><tr><th>Tiêu chí</th><th class="text-end">Phiếu nhập</th><th class="text-end">XML</th><th class="text-end">Lệch</th></tr></thead>
         <tbody>
-        <tr><td>Trước VAT</td><td class="text-end">${formatNumber(header.receiptSubtotalBeforeVat)}</td><td class="text-end">${formatNumber(header.xmlTotalBeforeTax)}</td><td class="text-end">${formatNumber(header.subtotalDifference)}</td></tr>
-        <tr><td>VAT</td><td class="text-end">${formatNumber(header.receiptVatAmount)}</td><td class="text-end">${formatNumber(header.xmlTaxAmount)}</td><td class="text-end">${formatNumber(header.vatDifference)}</td></tr>
+        <tr><td>Trước VAT</td><td class="text-end">${header.vatBreakdownComparable === false ? '—' : formatNumber(header.receiptSubtotalBeforeVat)}</td><td class="text-end">${formatNumber(header.xmlTotalBeforeTax)}</td><td class="text-end">${header.vatBreakdownComparable === false ? '—' : formatNumber(header.subtotalDifference)}</td></tr>
+        <tr><td>VAT</td><td class="text-end">${header.vatBreakdownComparable === false ? 'Đã gồm trong giá' : formatNumber(header.receiptVatAmount)}</td><td class="text-end">${formatNumber(header.xmlTaxAmount)}</td><td class="text-end">${header.vatBreakdownComparable === false ? '—' : formatNumber(header.vatDifference)}</td></tr>
         <tr><td>Tổng hàng sau VAT</td><td class="text-end">${formatNumber(header.receiptGoodsTotal)}</td><td class="text-end">${formatNumber(header.xmlPaymentAmount)}</td><td class="text-end">${formatNumber(header.paymentDifference)}</td></tr>
         </tbody></table></div>
+        <div class="small text-muted mt-2">Đối chiếu giá sản phẩm và tổng tiền sau VAT; XML tính VAT riêng theo từng dòng.${header.vatBreakdownComparable === false ? ' Phiếu không tách VAT riêng nên không so lệch cột trước VAT và tiền thuế.' : ''}</div>
         ${header.needsReview ? `<div class="alert alert-warning py-2 mt-2 mb-0">${escapeHtml(header.reason || 'Header XML cần xem xét.')}</div>` : ''}` : '';
 
     const confirmed = preview || model.isConfirmedReadOnly === true ||
@@ -4426,7 +4509,7 @@ function bindPopupQuickQtySelectAll() {
         });
     });
 }
-function showStockDocumentToast(type, title, message, redirectUrl) {
+function showStockDocumentToast(type, title, message, redirectUrl, redirectDelayMs = 1400) {
     let toast = document.getElementById('stockDocumentProToast');
 
     if (!toast) {
@@ -4458,9 +4541,23 @@ function showStockDocumentToast(type, title, message, redirectUrl) {
         if (redirectUrl) {
             window.location.href = redirectUrl;
         }
-    }, 1400);
+    }, redirectDelayMs);
 }
 function bindRevisionRequestActions() {
+    let returnToEdit = true;
+    const openResolution = shouldReturn => {
+        returnToEdit = shouldReturn;
+        const note = document.getElementById('returnToEditNote');
+        if (note) { note.value = ''; note.required = !shouldReturn; }
+        setText('returnToEditMessage', '');
+        setText('returnToEditModalTitle', shouldReturn ? 'Trả phiếu về cho nhân viên sửa' : 'Từ chối yêu cầu xin sửa');
+        setText('returnToEditHint', shouldReturn
+            ? 'Các giá bán đã áp dụng vẫn có hiệu lực; trả phiếu không tự hoàn tác giá bán.'
+            : 'Ghi rõ lý do để nhân viên biết kết quả. Phiếu tiếp tục chờ duyệt và lý do được lưu vào nhật ký.');
+        setText('returnToEditNoteLabel', shouldReturn ? 'Ghi chú cho nhân viên' : 'Lý do từ chối (bắt buộc)');
+        setText('btnConfirmReturnToEdit', shouldReturn ? 'Trả về sửa' : 'Xác nhận từ chối yêu cầu');
+        returnToEditModalInstance?.show();
+    };
 
     const btnReturn =
         document.getElementById('btnReturnToEdit');
@@ -4469,19 +4566,7 @@ function bindRevisionRequestActions() {
         document.getElementById('btnIgnoreRevisionRequest');
 
     if (btnReturn) {
-        btnReturn.onclick = function () {
-
-            const note =
-                document.getElementById('returnToEditNote');
-
-            const msg =
-                document.getElementById('returnToEditMessage');
-
-            if (note) note.value = '';
-            if (msg) msg.textContent = '';
-
-            returnToEditModalInstance?.show();
-        };
+        btnReturn.onclick = () => openResolution(true);
     }
 
     const btnConfirm =
@@ -4490,72 +4575,49 @@ function bindRevisionRequestActions() {
     if (btnConfirm) {
 
         btnConfirm.onclick = async function () {
-
+            if (btnConfirm.disabled) return;
             const documentId =
                 window.stockDocumentPage.documentId;
-
             const note =
                 document.getElementById('returnToEditNote')?.value || '';
-
-            const response = await fetch(
-                `/admin/api/stock-documents/${documentId}/resolve-revision-request`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        returnToEdit: true,
-                        note: note,
-                        rowVersion: window.stockDocumentPage.rowVersion
-                    })
-                });
-
-            const api = await readApiResponse(response);
-
-            if (!api.ok) {
-                document.getElementById(
-                    'returnToEditMessage'
-                ).textContent =
-                    api.data?.message || 'Thao tác thất bại';
-
+            const msg = document.getElementById('returnToEditMessage');
+            if (!returnToEdit && !note.trim()) {
+                if (msg) msg.textContent = 'Nhập lý do từ chối yêu cầu xin sửa.';
+                document.getElementById('returnToEditNote')?.focus();
                 return;
             }
-
-            location.reload();
+            let releaseDrafts;
+            btnConfirm.disabled = true;
+            if (msg) msg.textContent = '';
+            try {
+                releaseDrafts = await window.GaoReceiptPriceDrafts?.hold();
+                const response = await fetch(
+                    `/admin/api/stock-documents/${documentId}/resolve-revision-request`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            returnToEdit: returnToEdit,
+                            note: note,
+                            rowVersion: window.stockDocumentPage.rowVersion
+                        })
+                    });
+                const api = await readApiResponse(response);
+                if (!api.ok) throw new Error(api.data?.message || 'Thao tác thất bại');
+                if (window.GaoReceiptApprovalWorkspace) window.GaoReceiptApprovalWorkspace.leaving = true;
+                location.reload();
+            } catch (error) {
+                if (msg) msg.textContent = error instanceof TypeError
+                    ? 'Không kết nối được máy chủ. Giữ nguyên phiếu và thử lại.'
+                    : error.message || 'Thao tác thất bại';
+            } finally {
+                releaseDrafts?.();
+                btnConfirm.disabled = false;
+            }
         };
     }
 
     if (btnIgnore) {
-
-        btnIgnore.onclick = async function () {
-
-            const documentId =
-                window.stockDocumentPage.documentId;
-
-            const response = await fetch(
-                `/admin/api/stock-documents/${documentId}/resolve-revision-request`,
-                {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        returnToEdit: false,
-                        rowVersion: window.stockDocumentPage.rowVersion
-                    })
-                });
-
-            const api = await readApiResponse(response);
-
-            if (!api.ok) {
-                alert(
-                    api.data?.message ||
-                    'Thao tác thất bại');
-                return;
-            }
-
-            location.reload();
-        };
+        btnIgnore.onclick = () => openResolution(false);
     }
 }

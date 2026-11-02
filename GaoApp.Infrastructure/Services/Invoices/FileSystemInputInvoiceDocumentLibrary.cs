@@ -37,27 +37,31 @@ public sealed partial class FileSystemInputInvoiceDocumentLibrary
 
         foreach (var partition in partitions)
         {
-            ct.ThrowIfCancellationRequested();
-            if (remaining <= 0) break;
-            var folder = ResolvePartition(partition.Year, taxCode, partition.Month);
-            if (!Directory.Exists(folder)) continue;
-            EnsureSafeExistingPath(folder, expectDirectory: true);
-
-            var maximumFiles = Math.Max(remaining * 4, 4);
-            var files = Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
-                .Where(IsSupportedFile)
-                .Take(maximumFiles)
-                .ToList();
-            foreach (var group in files.GroupBy(GroupStem, StringComparer.OrdinalIgnoreCase)
-                         .OrderByDescending(x => x.Key, StringComparer.OrdinalIgnoreCase)
-                         .Take(remaining))
+            foreach (var supplierFolder in SupplierFolderNames(taxCode))
             {
-                var candidate = await BuildCandidateAsync(
-                    partition.Year, partition.Month, taxCode, group.Key, group, ct);
-                if (MatchesFilters(candidate.Dto, request))
-                    physical.Add(candidate);
+                ct.ThrowIfCancellationRequested();
+                if (remaining <= 0) break;
+                var folder = ResolvePartition(partition.Year, supplierFolder, partition.Month);
+                if (!Directory.Exists(folder)) continue;
+                EnsureSafeExistingPath(folder, expectDirectory: true);
+
+                var maximumFiles = Math.Max(remaining * 4, 4);
+                var files = Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
+                    .Where(IsSupportedFile)
+                    .Take(maximumFiles)
+                    .ToList();
+                foreach (var group in files.GroupBy(GroupStem, StringComparer.OrdinalIgnoreCase)
+                             .OrderByDescending(x => x.Key, StringComparer.OrdinalIgnoreCase)
+                             .Take(remaining))
+                {
+                    var candidate = await BuildCandidateAsync(
+                        partition.Year, partition.Month, supplierFolder, group.Key, group, ct);
+                    if (MatchesFilters(candidate.Dto, request))
+                        physical.Add(candidate);
+                }
+                remaining = EffectiveMaximumCandidates() - physical.Count;
             }
-            remaining = EffectiveMaximumCandidates() - physical.Count;
+            if (remaining <= 0) break;
         }
 
         return physical
@@ -115,19 +119,28 @@ public sealed partial class FileSystemInputInvoiceDocumentLibrary
     {
         EnsureEnabled();
         var taxCode = ValidateTaxCode(normalizedSupplierTaxCode);
-        var (year, month, stem) = ParseDocumentKey(documentKey);
-        var folder = ResolvePartition(year, taxCode, month);
-        if (!Directory.Exists(folder))
-            throw new BusinessRuleException("Không tìm thấy hóa đơn trong thư viện.");
-        EnsureSafeExistingPath(folder, expectDirectory: true);
-        var files = Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
-            .Where(IsSupportedFile)
-            .Where(path => string.Equals(GroupStem(path), stem, StringComparison.OrdinalIgnoreCase))
-            .Take(8)
-            .ToList();
-        if (files.Count == 0)
-            throw new BusinessRuleException("Không tìm thấy hóa đơn trong thư viện.");
-        return await BuildCandidateAsync(year, month, taxCode, stem, files, ct);
+        var (year, month, sourceFolder, stem) = ParseDocumentKey(documentKey);
+        if (sourceFolder is not null &&
+            (!IsSupplierFolderName(sourceFolder) || ValidateTaxCode(sourceFolder) != taxCode))
+            throw new BusinessRuleException("Mã tài liệu không thuộc thư mục nhà cung cấp của phiếu nhập.");
+
+        // Qualified keys keep previews tied to the actual source when both spellings exist.
+        // Legacy keys prefer the canonical folder, then fall back to the branch spelling.
+        foreach (var supplierFolder in sourceFolder is null ? SupplierFolderNames(taxCode) : [sourceFolder])
+        {
+            ct.ThrowIfCancellationRequested();
+            var folder = ResolvePartition(year, supplierFolder, month);
+            if (!Directory.Exists(folder)) continue;
+            EnsureSafeExistingPath(folder, expectDirectory: true);
+            var files = Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
+                .Where(IsSupportedFile)
+                .Where(path => string.Equals(GroupStem(path), stem, StringComparison.OrdinalIgnoreCase))
+                .Take(8)
+                .ToList();
+            if (files.Count > 0)
+                return await BuildCandidateAsync(year, month, supplierFolder, stem, files, ct);
+        }
+        throw new BusinessRuleException("Không tìm thấy hóa đơn trong thư viện.");
     }
 
     private async Task<PhysicalCandidate> BuildCandidateAsync(
@@ -159,7 +172,7 @@ public sealed partial class FileSystemInputInvoiceDocumentLibrary
         var invoice = selected?.Invoice;
         var folderMatches = invoice is null || string.Equals(
             TaxCodeIdentityNormalizer.Normalize(invoice.SellerTaxCode),
-            taxCode,
+            ValidateTaxCode(taxCode),
             StringComparison.Ordinal);
         var xmlValid = invoice is not null && !conflict;
         var allowed = xmlValid && folderMatches;
@@ -179,7 +192,9 @@ public sealed partial class FileSystemInputInvoiceDocumentLibrary
             HasOriginalXml = original.Invoice is not null,
             Dto = new InputInvoicePickerCandidateDto
             {
-                DocumentKey = $"{year:0000}:{month:00}:{stem}",
+                DocumentKey = taxCode == ValidateTaxCode(taxCode)
+                    ? $"{year:0000}:{month:00}:{stem}"
+                    : $"{year:0000}:{month:00}:{taxCode}:{stem}",
                 SourceSupplierTaxCode = taxCode,
                 InvoiceDate = invoice?.InvoiceDate,
                 InvoiceTemplateCode = invoice?.InvoiceTemplateCode,
@@ -292,19 +307,29 @@ public sealed partial class FileSystemInputInvoiceDocumentLibrary
             throw new BusinessRuleException("Đường dẫn thư viện hóa đơn không hợp lệ.");
     }
 
-    private static (int Year, int Month, string Stem) ParseDocumentKey(string key)
+    private static (int Year, int Month, string? SourceFolder, string Stem) ParseDocumentKey(string key)
     {
         if (string.IsNullOrWhiteSpace(key) || Path.IsPathRooted(key) ||
             key.Contains('/') || key.Contains('\\') || key.Contains("..", StringComparison.Ordinal))
             throw new BusinessRuleException("Mã tài liệu hóa đơn không hợp lệ.");
         var parts = key.Split(':', StringSplitOptions.None);
-        if (parts.Length != 3 || !int.TryParse(parts[0], out var year) ||
+        if (parts.Length is not (3 or 4) || !int.TryParse(parts[0], out var year) ||
             !int.TryParse(parts[1], out var month) || year is < 2000 or > 9999 ||
-            month is < 1 or > 12 || string.IsNullOrWhiteSpace(parts[2]) ||
-            parts[2].IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            month is < 1 or > 12 || string.IsNullOrWhiteSpace(parts[^1]) ||
+            parts[^1].IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
             throw new BusinessRuleException("Mã tài liệu hóa đơn không hợp lệ.");
-        return (year, month, parts[2]);
+        return (year, month, parts.Length == 4 ? parts[2] : null, parts[^1]);
     }
+
+    private static IReadOnlyList<string> SupplierFolderNames(string normalizedTaxCode) =>
+        normalizedTaxCode.Length == 13 && normalizedTaxCode.All(char.IsAsciiDigit)
+            ? [normalizedTaxCode, normalizedTaxCode.Insert(10, "-")]
+            : [normalizedTaxCode];
+
+    private static bool IsSupplierFolderName(string value) =>
+        value.Length > 0 && ((value.All(char.IsLetterOrDigit) && value == TaxCodeIdentityNormalizer.Normalize(value)) ||
+            (value.Length == 14 && value[10] == '-' &&
+             value.Where((_, index) => index != 10).All(char.IsAsciiDigit)));
 
     private static string ValidateTaxCode(string value)
     {

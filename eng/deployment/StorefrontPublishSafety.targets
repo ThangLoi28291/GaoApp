@@ -1,0 +1,24 @@
+<Project>
+  <!-- Separate public host only. These rules prepare a future package; WEB09
+       never invokes Publish. Local build/run configuration is not rewritten. -->
+  <ItemGroup>
+    <Content Remove="App_Data/**;Logs/**;uploads/**;ChannelCredentials/**;Properties/**;wwwroot/uploads/**;wwwroot/**/appsettings*.json;wwwroot/**/secrets*.json;wwwroot/**/.env*;wwwroot/**/*.pfx;wwwroot/**/*.p12;wwwroot/**/*.pem;wwwroot/**/*.key;wwwroot/**/*.xml;wwwroot/**/*.bak;wwwroot/**/*.db;wwwroot/**/*.mdf;wwwroot/**/*.ldf;wwwroot/**/*.sqlite;wwwroot/**/*.zip;wwwroot/**/*.log" />
+  </ItemGroup>
+  <Target Name="GaoStorefrontPreparePublishSafety" BeforeTargets="PrepareForPublish;ComputeStaticWebAssetsForCurrentProject">
+    <Error Condition="'$(MSBuildProjectName)' != 'GaoApp.Storefront.Web'" Text="Storefront publish safety belongs to the separate public project only." />
+    <Error Condition="!Exists('$(MSBuildThisFileDirectory)storefront.appsettings.json')" Text="The reviewed closed public configuration template is missing." />
+  </Target>
+  <Target Name="GaoStorefrontSanitizePublish" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.RelativePath)', '(?i)(^|[/\\])(App_Data|Logs|uploads|ChannelCredentials|Properties|keys|keyring)([/\\]|$)|(^|[/\\])appsettings[^/\\]*\.json$|(^|[/\\])\.env[^/\\]*$|(^|[/\\])secrets[^/\\]*\.json$|\.(pfx|p12|pem|key|xml|bak|mdf|ldf|db|sqlite|zip|log|pdb|user)$'))" />
+      <ResolvedFileToPublish Include="$(MSBuildThisFileDirectory)storefront.appsettings.json">
+        <RelativePath>appsettings.json</RelativePath><CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+    <ItemGroup>
+      <_StorefrontOtherEntry Include="@(ResolvedFileToPublish)" Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('%(ResolvedFileToPublish.RelativePath)', '(?i)(^|[/\\])GaoApp\.(Web|Tests|LabelServer|LabelPrintClient|Migrator|InvoiceWorker)\.(dll|exe)$'))" />
+    </ItemGroup>
+    <Error Condition="'@(_StorefrontOtherEntry)' != ''" Text="A non-public entry application cannot be included in the storefront package." />
+  </Target>
+</Project>

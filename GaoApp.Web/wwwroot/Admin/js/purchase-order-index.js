@@ -447,7 +447,7 @@
             : '';
         return `<div class="po-index-quick-line">
             ${image}
-            <div class="po-index-line-identity"><strong>${escapeHtml(line.productName || 'Sản phẩm')}</strong><span>${traceability(line)}</span><span>${line.isResolved ? 'Đã xử lý đủ dòng' : 'Còn số lượng chờ xử lý'}</span></div>
+            <div class="po-index-line-identity"><strong>${escapeHtml(line.productName || 'Sản phẩm')}</strong><span>${traceability(line)}</span>${line.note ? `<span class="po-index-line-note">Ghi chú sản phẩm: ${escapeHtml(line.note)}</span>` : ''}<span>${line.isResolved ? 'Đã xử lý đủ dòng' : 'Còn số lượng chờ xử lý'}</span></div>
             <div class="po-index-line-quantities"><span><small>Đặt hàng</small><strong>${formatNumber(line.orderedQuantity)} ${unit}</strong></span><span><small>Đã nhận</small><strong>${formatNumber(line.receivedQuantity)} ${unit}</strong></span><span><small>Đóng thiếu</small><strong>${formatNumber(line.shortClosedQuantity)} ${unit}</strong></span><span><small>Còn lại</small><strong>${formatNumber(line.remainingQuantity)} ${unit}</strong></span></div>${cost}
         </div>`;
     }
@@ -614,8 +614,8 @@
         if (![1, 2, 3, 5, 6, 7].includes(Number(status))) return false;
         const isoDate = String(value || '').slice(0, 10);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return false;
-        const now = new Date();
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const now = new Date(Date.now() + 7 * 3600000);
+        const today = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
         return isoDate < today;
     }
 
@@ -637,8 +637,8 @@
         if (!value) return '—';
         const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
         if (match) return `${match[3]}/${match[2]}/${match[1]}`;
-        const date = new Date(value);
-        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN');
+        const date = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
+        return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function formatNumber(value) {

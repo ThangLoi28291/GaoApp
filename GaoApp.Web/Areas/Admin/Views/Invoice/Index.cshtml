@@ -69,6 +69,7 @@
 
 @section PageStyles {
     <link rel="stylesheet" href="~/Admin/css/invoice-index.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/invoice-workspace.mobile.css" asp-append-version="true" />
 }
 
 @section header {
@@ -78,7 +79,12 @@
                 <h1 class="gds-page-header__title">Hóa đơn bán ra</h1>
                 <div class="gds-page-header__meta">Tra cứu hóa đơn, người mua và tình trạng phát hành.</div>
             </div>
-            <span class="gds-status is-primary">@Model.TotalItems.ToString("N0", vi) hóa đơn</span>
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <span class="gds-status is-primary">@Model.TotalItems.ToString("N0", vi) hóa đơn</span>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#invoiceOrderDraftModal">
+                    <i class="bx bx-plus me-1" aria-hidden="true"></i>Tạo từ đơn POS
+                </button>
+            </div>
         </div>
     </div>
 }
@@ -345,3 +351,10 @@
     </section>
   </div>
 </div>
+
+@await Html.PartialAsync("_CreateOrderDraftModal")
+
+@section Scripts {
+    <script src="~/Admin/js/invoice-order-draft.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/invoice-workspace.mobile.js" asp-append-version="true"></script>
+}

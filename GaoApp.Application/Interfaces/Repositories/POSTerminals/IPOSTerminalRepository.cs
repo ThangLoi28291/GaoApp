@@ -14,6 +14,8 @@ public interface IPOSTerminalRepository
     // Mới: tìm terminal bằng DeviceKey trong cookie.
     Task<POSTerminal?> GetByDeviceKeyAsync(int storeId, string deviceKey, CancellationToken ct = default);
 
+    Task<POSTerminalDevice?> GetActiveDeviceByKeyAsync(int storeId, string deviceKey, CancellationToken ct = default);
+
     // Mới: ghép thiết bị hiện tại vào terminal.
     Task<POSTerminalDevice> AttachDeviceAsync(
         int storeId,

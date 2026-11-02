@@ -39,8 +39,9 @@ public sealed partial class AcbPaymentTests
     public async Task Gift_without_input_invoice_prevents_automatic_QR()
     {
         await using var f = await Fixture.Create();
-        var gift = new ProductVariant { StoreId = 1, Sku = "TEST", HasInputInvoice = false };
-        f.Order.Lines.Add(new OrderLine { StoreId = 1, OrderId = 100, Variant = gift, Quantity = 1, IsPromotionGift = true });
+        var product = f.Order.Lines.Single().Variant!.Product;
+        var gift = new ProductVariant { StoreId = 1, ProductId = product.Id, Product = product, Sku = "TEST", HasInputInvoice = false };
+        f.Order.Lines.Add(new OrderLine { StoreId = 1, OrderId = 100, ProductId = product.Id, Variant = gift, Quantity = 1, IsPromotionGift = true });
         await f.Db.SaveChangesAsync();
         Assert.Null(await f.Service.TryCreateAsync(100, default));
         Assert.Empty(f.Bank.Orders);
@@ -253,18 +254,25 @@ public sealed partial class AcbPaymentTests
         {
             var f = new Fixture(); f.Tenant.SetStore(1, "store1");
             f.Diagnostics = new AcbCallbackDiagnostics(f.CallbackLogs);
-            var options = new DbContextOptionsBuilder<TestContext>().UseInMemoryDatabase(Guid.NewGuid().ToString())
+            // Concurrent contexts must share the same test store even when EF
+            // creates a different internal provider after adding interceptors.
+            var options = new DbContextOptionsBuilder<TestContext>().UseInMemoryDatabase(Guid.NewGuid().ToString(), new Microsoft.EntityFrameworkCore.Storage.InMemoryDatabaseRoot())
                 .ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning)).Options;
             f.Db = new TestContext(options, f.Tenant);
+            f.Db.Stores.Add(new Store { Id = 1, Name = "Test", SubDomain = "store1", SubDomainNormalized = "STORE1" });
+            var product = new Product { Id = 1, StoreId = 1, Name = "Test", Alias = "test",
+                BaseUnit = new Unit { Id = 1, StoreId = 1, Code = "UNIT", Name = "Unit", IsBase = true },
+                Category = new Category { Id = 1, StoreId = 1, Code = "TEST", Name = "Test" },
+                Supplier = new Supplier { Id = 1, StoreId = 1, Code = "TEST", Name = "Test" } };
             var protocol = f.Protocol = new AcbProtocol(new HttpClient(f.Bank), new EphemeralDataProtectionProvider());
             f.Db.StoreBankAccounts.Add(new StoreBankAccount { Id = 1, StoreId = 1, BankCode = "ACB", BankName = "ACB", AccountNumber = "TEST", AccountName = "Test", IsActive = true });
             f.Db.Add(new StoreAcbSettings { StoreId = 1, Enabled = true, BankAccountId = 1, ClientId = "test-client",
                 ClientSecretProtected = protocol.Protect(1, "test-secret"), CallbackApiKeyProtected = protocol.Protect(1, "test-key"),
                 XProviderId = "TEST", XOwnerNumber = "TEST", MerchantId = "TEST", VirtualAccountPrefix = "TEST", BeneficiaryName = "TEST" });
             f.Order = new Order { Id = 100, StoreId = 1, GrandTotal = 100000, POSShiftId = 10,
-                POSShift = new POSShift { Id = 10, StoreId = 1, TerminalId = 3, Status = POSShiftStatus.Open } };
-            f.Order.Lines.Add(new OrderLine { StoreId = 1, Quantity = 1, UnitPrice = 100000, LineTotal = 100000,
-                Variant = new ProductVariant { StoreId = 1, Sku = "TEST", HasInputInvoice = true } });
+                POSShift = new POSShift { Id = 10, StoreId = 1, TerminalId = 3, OpenedByUserId = 7, Status = POSShiftStatus.Open } };
+            f.Order.Lines.Add(new OrderLine { StoreId = 1, ProductId = product.Id, Quantity = 1, UnitPrice = 100000, LineTotal = 100000,
+                Variant = new ProductVariant { StoreId = 1, ProductId = product.Id, Product = product, Sku = "TEST", HasInputInvoice = true } });
             f.Order.Payments.Add(new OrderPayment { StoreId = 1, Method = PaymentMethod.Cash, Amount = 30000 });
             f.Db.Add(f.Order); await f.Db.SaveChangesAsync();
             var pos = DispatchProxy.Create<IPOSService, StubProxy>();
@@ -331,9 +339,11 @@ public sealed partial class AcbPaymentTests
     private sealed class BankRecord
     {
         public string Trace = ""; public decimal Amount; public decimal? Received; public decimal? SecondReceived; public bool Cancelled;
+        public int TransferOrdinal;
     }
     private sealed class BankHandler : HttpMessageHandler
     {
+        private int nextTransferOrdinal;
         public Dictionary<string, BankRecord> Orders = [];
         public int CancelCalls;
         public int TokenCalls;
@@ -350,6 +360,11 @@ public sealed partial class AcbPaymentTests
         public bool MissingRetrieveOrders;
         public bool MalformedRetrieve;
         public void Pay(string id, decimal amount) => Orders[id].Received = amount;
+        public void RegisterOrder(string id, BankRecord record)
+        {
+            record.TransferOrdinal = Interlocked.Increment(ref nextTransferOrdinal) - 1;
+            Orders.Add(id, record);
+        }
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             object body;
@@ -370,7 +385,7 @@ public sealed partial class AcbPaymentTests
                     using var json = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(ct));
                     var p = json.RootElement.GetProperty("requestParameters");
                     var id = AcbProtocol.Text(p, "orderId");
-                    Orders.Add(id, new BankRecord { Trace = AcbProtocol.Text(p, "traceNumber"), Amount = AcbProtocol.Money(p, "amount") });
+                    RegisterOrder(id, new BankRecord { Trace = AcbProtocol.Text(p, "traceNumber"), Amount = AcbProtocol.Money(p, "amount") });
                     if (DropInitiateResponse) throw new HttpRequestException("Simulated lost response after bank accepted QR.");
                     body = new { responseStatus = new { responseCode = "00000000" }, responseBody = new { traceNumber = Orders[id].Trace, virtualAccount = "TESTVA", qrDataUrl = "data:image/png;base64,dGVzdA==" } };
                 }
@@ -403,7 +418,7 @@ public sealed partial class AcbPaymentTests
                     {
                         pagination = new { totalPages = 1 }, orders = new[] { new { orderId = id, traceNumber = o.Trace, amount = o.Amount,
                             status = o.Received.HasValue ? "COMPLETED" : o.Cancelled ? "CANCELLED" : "INIT",
-                            transactionDetail = new[] { o.Received, o.SecondReceived }.Where(x => x.HasValue).Select((x, i) => new { transactionNumber = 123 + i, transactionAmount = x!.Value, transactionStatus = "COMPLETED", transactionContent = "Test payment", origPostDate = "2026-09-08" }).ToArray() } }
+                            transactionDetail = new[] { o.Received, o.SecondReceived }.Where(x => x.HasValue).Select((x, i) => new { transactionNumber = 123 + 1000 * o.TransferOrdinal + i, transactionAmount = x!.Value, transactionStatus = "COMPLETED", transactionContent = "Test payment", origPostDate = "2026-09-08" }).ToArray() } }
                     }};
                 }
             }

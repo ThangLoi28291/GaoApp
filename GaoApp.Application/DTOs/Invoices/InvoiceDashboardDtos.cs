@@ -1,10 +1,18 @@
-﻿namespace GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common;
+namespace GaoApp.Application.DTOs.Invoices;
 
 public class InvoiceDashboardQueryDto
 {
-    public DateTime FromDate { get; set; } = DateTime.Today;
+    public DateTime FromDate { get; set; } = VietnamTime.Today;
 
-    public DateTime ToDate { get; set; } = DateTime.Today;
+    public DateTime ToDate { get; set; } = VietnamTime.Today;
+
+    public void NormalizeAndValidate()
+    {
+        InvoiceReadLimits.ValidateDates(FromDate, ToDate);
+        FromDate = FromDate.Date;
+        ToDate = ToDate.Date;
+    }
 }
 
 public class InvoiceDashboardDto

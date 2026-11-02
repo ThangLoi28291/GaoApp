@@ -5,10 +5,10 @@ const vm = require('node:vm');
 const source = fs.readFileSync(require.resolve('../../GaoApp.Web/wwwroot/Admin/js/pos/pos.barcode.js'), 'utf8');
 const deferred = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(search = async () => [], post = async () => ({ orderId: 1, lines: [] })) {
-    const listeners = {}, requests = [], timers = new Set(), state = {};
+    const listeners = {}, requests = [], guards = [], timers = new Set(), state = {};
     const element = () => ({ value: '', dataset: {}, style: {}, innerHTML: '',
         addEventListener(type, fn) { listeners[type] = fn; },
-        querySelectorAll() { return [{ classList: { add() {}, remove() {} }, setAttribute() {}, scrollIntoView() {} }]; },
+        querySelectorAll() { return Array.from({ length: state.flatItems?.length || 1 }, () => ({ classList: { add() {}, remove() {} }, setAttribute() {}, scrollIntoView() {} })); },
         querySelector() { return state.flatItems?.length ? { getAttribute: () => state.flatItems[Math.max(0, state.activeIndex || 0)].key } : null; } });
     const input = element(), popup = element(); popup.addEventListener = () => {};
     const badge = { style: {} };
@@ -17,7 +17,9 @@ function fixture(search = async () => [], post = async () => ({ orderId: 1, line
             debounce(fn) { let work; const run = value => { run.cancel(); work = () => fn(value); timers.add(work); }; run.cancel = () => timers.delete(work); return run; },
             createTtlCache() { const values = new Map(); return { get: key => values.get(key), set: (key, value) => values.set(key, value) }; },
             createActionLocker: () => ({ lock: () => true, unlock() {} }), isAbortError: e => e.name === 'AbortError', registerUiLock() {}, isPosOnline: () => true
-        }, PosRender: { buildVariantDisplayName: (name, variant) => variant || name, renderBarcodeAutocompleteLoading() {}, renderBarcodeAutocompleteEmpty() {} }
+        }, PosRender: { buildVariantDisplayName: (name, variant) => variant || name,
+            renderBarcodeAutocompleteLoading(el) { el.style.display = ''; }, renderBarcodeAutocompleteEmpty(el) { el.style.display = ''; } },
+        PosScanGuard: { isOpen: () => false, show: (code, message) => guards.push({ code, message }) }
     }, document: { getElementById: () => badge, addEventListener() {} } };
     vm.runInNewContext(source, context);
     const api = context.window.PosBarcode.create({ posState: { business: { currentOrderId: 1 } }, barcodeSearchState: state,
@@ -32,7 +34,7 @@ function fixture(search = async () => [], post = async () => ({ orderId: 1, line
             applyDraftActionSuccess: options => options.afterSync?.()
         } });
     api.bindEvents();
-    return { api, input, popup, state, requests, timers,
+    return { api, input, popup, state, requests, guards, timers,
         type(value) { input.value = value; listeners.input(); },
         enter() { return listeners.keydown({ key: 'Enter', preventDefault() {} }); },
         flush() { for (const work of [...timers]) { timers.delete(work); work(); } }
@@ -93,8 +95,9 @@ test('scanner Enter cancels the pending autocomplete instead of showing the old 
 
 test('a late search reply cannot reopen suggestions after scanning', async () => {
     const late = deferred(), f = fixture(() => late.promise);
-    f.input.value = '111111';
-    const searching = f.api.searchBarcodeAutocomplete('111111');
+    f.input.value = 'Bia';
+    const searching = f.api.searchBarcodeAutocomplete('Bia');
+    f.type('111111');
     await f.enter(); late.resolve([product]); await searching;
     assert.equal(f.popup.style.display, 'none');
     assert.equal(f.state.flatItems.length, 0);
@@ -109,11 +112,52 @@ test('scanning a second barcode while old suggestions exist adds the new barcode
     assert.equal(f.requests[0].body.barcode, '222222');
 });
 
-test('an exact numeric scan never accepts a fuzzy autocomplete match', async () => {
+test('Enter selects the highlighted suggestion for a partial numeric barcode', async () => {
     const f = fixture(async () => [product]);
-    f.input.value = '222222'; await f.api.searchBarcodeAutocomplete('222222');
+    f.type('430'); await f.api.searchBarcodeAutocomplete('430');
     await f.enter();
-    assert.equal(f.requests[0].body.barcode, '222222');
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].url, '/admin/pos/1/items?variantId=11&qty=1');
+    assert.equal(f.guards.length, 0);
+});
+
+test('a partial numeric search respects the selected row and quantity prefix', async () => {
+    const f = fixture(async () => [product, { ...product, variantId: 12 }]);
+    f.type('4+'); f.type('430'); await f.api.searchBarcodeAutocomplete('430');
+    f.api.setAutocompleteActive(1); await f.enter();
+    assert.equal(f.requests[0].url, '/admin/pos/1/items?variantId=12&qty=4');
+    assert.equal(f.guards.length, 0);
+});
+
+test('Enter finishes a loading numeric search without submitting a partial barcode', async () => {
+    const pending = deferred(), f = fixture(() => pending.promise);
+    f.type('430'); const searching = f.api.searchBarcodeAutocomplete('430');
+    const entering = f.enter(); await f.enter();
+    assert.equal(f.requests.length, 0);
+    pending.resolve([product]); await Promise.all([searching, entering]);
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].url, '/admin/pos/1/items?variantId=11&qty=1');
+});
+
+test('a visible numeric search with no results remains editable without a scan warning', async () => {
+    const f = fixture();
+    f.type('430'); await f.api.searchBarcodeAutocomplete('430'); await f.enter(); await f.enter();
+    assert.equal(f.requests.length, 0);
+    assert.equal(f.guards.length, 0);
+    assert.equal(f.input.value, '430');
+    assert.equal(f.popup.style.display, '');
+});
+
+test('a missing scanner code still opens the scan warning and never accepts a fuzzy match', async () => {
+    const f = fixture(async () => [product], async () => { throw new Error('Không tìm thấy sản phẩm theo barcode.'); });
+    f.input.value = 'Bia'; await f.api.searchBarcodeAutocomplete('Bia');
+    f.type('999999'); await f.enter(); f.flush();
+    assert.equal(f.requests.length, 1);
+    assert.equal(f.requests[0].url, '/admin/pos/cart/current/scan');
+    assert.equal(f.requests[0].body.barcode, '999999');
+    assert.equal(f.guards.length, 1);
+    assert.equal(f.guards[0].code, '999999');
+    assert.equal(f.input.value, '');
 });
 
 test('typing a product name still selects its current suggestion and quantity prefix', async () => {

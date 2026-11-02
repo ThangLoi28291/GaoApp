@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Common;
+using GaoApp.Domain.Common;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -14,7 +14,7 @@ namespace GaoApp.Domain.Entities;
 /// - DifferenceQtyBase = CountedQtyBase - SystemQtyBase
 /// </summary>
 [Table("StockCountLine")]
-public class StockCountLine : BaseStoreEntity
+public class StockCountLine : BaseStoreEntity, IAuditTrackedEntity
 {
     /// <summary>
     /// Phiếu kiểm kê cha.

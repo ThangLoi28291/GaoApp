@@ -1,0 +1,99 @@
+/* UI-23. Public customer documents only; original tablet/desktop styles stay authoritative. */
+.gp-phone { display: none; }
+@media screen and (max-width: 767.98px) {
+    :is([data-public-page], .cs-public, [data-invoice-expires], .gp-unavailable) {
+        --gp-ink: #192c4a; --gp-muted: #607088; --gp-primary: #3858df;
+        --gp-canvas: #f4f6fa; --gp-line: #e1e7f0; --gp-surface: #fff;
+        color: var(--gp-ink); background: var(--gp-canvas); font: 15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif;
+        margin: 0; overflow-wrap: anywhere; -webkit-text-size-adjust: 100%;
+    }
+    :is([data-public-page], .cs-public, [data-invoice-expires], .gp-unavailable) *,
+    :is([data-public-page], .cs-public, [data-invoice-expires], .gp-unavailable) *::before,
+    :is([data-public-page], .cs-public, [data-invoice-expires], .gp-unavailable) *::after { box-sizing: border-box; }
+    .gp-phone { display: block; }
+    .gp-desktop, [data-public-page] > header:not(.gp-phone), [data-public-page] > footer:not(.gp-phone) { display: none; }
+    [data-public-page] { min-height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+    [data-public-page] > .container { width: 100%; max-width: 640px; padding: 20px max(16px,env(safe-area-inset-right)) 24px max(16px,env(safe-area-inset-left)); }
+    .gp-header { padding: max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left)); border-bottom: 1px solid var(--gp-line); background: #fff; }
+    .gp-header > div { max-width: 608px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .gp-brand { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 18px; font-weight: 750; color: var(--gp-ink); text-decoration: none; }
+    .gp-mark { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 13px; background: var(--gp-primary); color: #fff; font-size: 21px; font-weight: 750; }
+    .gp-header form { margin: 0; }
+    .gp-text-button { min-height: 44px; border: 0; background: transparent; color: var(--gp-muted); font: inherit; font-size: 13px; padding: 8px; cursor: pointer; }
+    .gp-card { padding: 22px 20px; border: 1px solid var(--gp-line); border-radius: 22px; background: #fff; box-shadow: 0 8px 30px #192c4a05; }
+    .gp-eyebrow { display: inline-block; padding: 5px 10px; border-radius: 8px; background: #edf1ff; color: var(--gp-primary); font-size: 11px; font-weight: 700; letter-spacing: .04em; margin: 0 0 18px; }
+    .gp-card h1 { color: var(--gp-ink); font-size: 28px; font-weight: 750; line-height: 1.25; letter-spacing: -.7px; margin: 0 0 14px; }
+    .gp-card h2 { font-size: 17px; font-weight: 700; margin: 24px 0 8px; }
+    .gp-card p { color: var(--gp-muted); margin: 0 0 16px; }
+    .gp-action { display: flex; align-items: center; justify-content: center; min-height: 50px; width: 100%; padding: 12px 16px; margin-top: 20px; border: 1px solid var(--gp-primary); border-radius: 14px; background: var(--gp-primary); color: #fff; font: inherit; font-weight: 650; text-decoration: none; }
+    .gp-action:hover { color: #fff; }
+    .gp-secondary { background: #fff; color: var(--gp-primary); border-color: var(--gp-line); }
+    .gp-secondary:hover { color: var(--gp-primary); }
+    .gp-footer { padding: 0 20px 24px; text-align: center; font-size: 12px; color: var(--gp-muted); }
+    :is([data-public-page], .cs-public, [data-invoice-expires], .gp-unavailable) :is(input,textarea,select) { font-size: 16px; }
+    :is([data-public-page], .cs-public, [data-invoice-expires], .gp-unavailable) :is(a,button,input,textarea,select,summary):focus-visible { outline: 3px solid #a9b9ff; outline-offset: 3px; }
+
+    /* Keep the original invoice form, server notices and browser expiry cleanup. */
+    [data-invoice-expires] .page { padding: max(20px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(28px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left)); }
+    [data-invoice-expires] .card { padding: 22px 18px; border-color: var(--gp-line); border-radius: 22px; box-shadow: 0 8px 30px #192c4a05; }
+    [data-invoice-expires] h1 { font-size: 25px; line-height: 1.3; letter-spacing: -.5px; }
+    [data-invoice-expires] .muted, [data-invoice-expires] .footer-note { color: var(--gp-muted); }
+    [data-invoice-expires] .summary { padding: 14px; gap: 12px; background: var(--gp-canvas); border: 1px solid var(--gp-line); border-radius: 14px; font-size: 13px; }
+    [data-invoice-expires] .summary-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.25fr); gap: 12px; }
+    [data-invoice-expires] .summary-row strong { min-width: 0; }
+    [data-invoice-expires] .notice { border-radius: 14px; font-size: 14px; }
+    [data-invoice-expires] .field { margin-bottom: 18px; }
+    [data-invoice-expires] .field input { min-height: 50px; border-radius: 12px; border-color: #ccd6e3; color: var(--gp-ink); background: #fff; }
+    [data-invoice-expires] .type-option label { min-height: 50px; border-radius: 12px; border-color: var(--gp-line); }
+    [data-invoice-expires] .type-option input:checked + label { border-color: var(--gp-primary); color: var(--gp-primary); background: #edf1ff; }
+    [data-invoice-expires] .type-option input:focus-visible + label { outline: 3px solid #a9b9ff; outline-offset: 3px; }
+    [data-invoice-expires] .button { min-height: 52px; border-radius: 14px; background: var(--gp-primary); }
+    .gp-unavailable > main, [data-invoice-expires] > main, [data-invoice-expires] > p { max-width: 608px; margin: max(24px,env(safe-area-inset-top)) 16px; padding: 24px 20px; border: 1px solid var(--gp-line); border-radius: 22px; background: #fff; }
+    .gp-unavailable h1, [data-invoice-expires] > main h1 { font-size: 25px; line-height: 1.3; margin: 0 0 16px; }
+    .gp-unavailable p, [data-invoice-expires] > main p { color: var(--gp-muted); margin: 0; }
+
+    /* Customer chat retains its single native composer and private verification form. */
+    .cs-public { --cs-ink: var(--gp-ink); --cs-green: var(--gp-primary); --cs-muted: var(--gp-muted); --cs-line: var(--gp-line); }
+    .cs-shell { max-width: 640px; margin: 0 auto; padding: max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); }
+    .cs-header { padding: 0 4px 14px; gap: 10px; border: 0; }
+    .cs-mark { width: 40px; height: 40px; border-radius: 13px; background: var(--gp-primary); font-size: 22px; flex-shrink: 0; }
+    .cs-header > div:nth-child(2) { flex: 1; min-width: 0; }
+    .cs-eyebrow { font-size: 9px; letter-spacing: 1px; }
+    .cs-header h1 { font-size: 16px; }
+    .cs-status { margin-left: 50px; padding: 4px 10px; background: #eaf0ff; color: #314fbf; font-size: 11px; }
+    .cs-welcome { margin: 8px 0 16px; padding: 24px 20px; background: #fff; border: 1px solid var(--gp-line); border-radius: 22px; }
+    .cs-welcome h2 { font-size: 32px; line-height: 1.15; letter-spacing: -.9px; margin: 14px 0 16px; }
+    .cs-kicker { color: var(--gp-primary); font-size: 10px; letter-spacing: 1px; }
+    .cs-public :is(input,select,textarea) { border-radius: 12px; }
+    .cs-public :is(input:not([type=checkbox]),select) { min-height: 48px; }
+    .cs-public button { min-height: 44px; border-radius: 12px; }
+    .cs-consent { line-height: 1.6; margin: 8px 0; }
+    .cs-welcome .cs-primary { min-height: 52px; margin-top: 8px; }
+    .cs-chat { display: flex; flex-direction: column; height: max(360px,calc(var(--gp-viewport-height,100dvh) - 160px)); margin-top: 0; border-radius: 20px; border-color: var(--gp-line); }
+    .cs-toolbar { display: grid; grid-template-columns: minmax(0,1fr) auto auto; padding: 10px; gap: 6px; flex-shrink: 0; }
+    .cs-toolbar select { min-width: 0; padding: 8px; font-size: 16px; }
+    .cs-toolbar button { padding: 8px 10px; font-size: 12px; }
+    .cs-private { padding: 0 12px; background: #f8faff; flex-shrink: 0; max-height: 35dvh; overflow: auto; }
+    .cs-private summary { font-size: 13px; }
+    .cs-log { flex: 1 1 auto; height: auto; min-height: 100px; padding: 16px 12px; gap: 16px; scrollbar-width: thin; }
+    .cs-message { max-width: 92%; }
+    .cs-message p { padding: 11px 13px; border-radius: 15px 15px 15px 4px; background: #f0f3f9; font-size: 14px; }
+    .cs-message[data-role=customer] p { background: #e9eeff; color: #253f9b; border-radius: 15px 15px 4px 15px; }
+    .cs-message[data-role=agent] p { border-color: #d5def5; }
+    .cs-compose { flex-shrink: 0; padding: 10px; background: #fff; }
+    .cs-shortcuts { flex-wrap: nowrap; overflow: auto; gap: 6px; margin-bottom: 8px; scrollbar-width: thin; }
+    .cs-shortcuts button { flex-shrink: 0; min-height: 44px; padding: 7px 10px; font-size: 12px; background: #f5f7fc; }
+    .cs-compose form { gap: 8px; }
+    .cs-compose textarea { min-height: 72px; height: 72px; max-height: 120px; padding: 10px; }
+    .cs-compose .cs-primary { min-width: 52px; min-height: 48px; padding: 10px; }
+    .cs-compose small { font-size: 11px; line-height: 1.5; }
+    .cs-notice { margin: 8px 4px; font-size: 13px; }
+    .cs-footer { font-size: 11px; padding: 0 4px 8px; }
+    .cq-rating label { font-size: 12px; }
+    .cq-rating select { font-size: 16px; }
+    @media (prefers-reduced-motion: no-preference) {
+        .gp-card, .cs-welcome { animation: gp-appear .2s ease-out; }
+        .gp-action, .cs-primary { transition: background-color .15s, box-shadow .15s; }
+        @keyframes gp-appear { from { opacity: .7; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+    }
+}

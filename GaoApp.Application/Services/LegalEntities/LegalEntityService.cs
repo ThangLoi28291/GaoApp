@@ -206,6 +206,9 @@ public sealed class LegalEntityService : ILegalEntityService
             var invoiceSetting = entity.InvoiceProviderSetting;
             var invoiceSettingValid = invoiceSetting != null
                 && invoiceSetting.IsActive
+                && !invoiceSetting.IsDeleted
+                && invoiceSetting.StoreId == entity.StoreId
+                && invoiceSetting.Id == entity.InvoiceProviderSettingId
                 && string.Equals(
                     invoiceSetting.ProviderCode,
                     "VIETTEL",
@@ -216,20 +219,20 @@ public sealed class LegalEntityService : ILegalEntityService
                 $"Cấu hình hóa đơn - {entity.Name}",
                 invoiceSettingValid,
                 invoiceSettingValid
-                    ? $"Đã chọn Viettel MST {invoiceSetting!.SupplierTaxCode}."
+                    ? $"Đã chọn Viettel MST kết nối {invoiceSetting!.SupplierTaxCode}."
                     : "Chưa chọn cấu hình Viettel đang hoạt động.",
                 entity.Id);
 
-            var invoiceTaxCodeMatches = invoiceSettingValid
-                && TaxCodesEqual(entity.TaxCode, invoiceSetting!.SupplierTaxCode);
+            var invoiceIdentityValid = invoiceSettingValid
+                && GaoApp.Application.Services.Invoices.InvoiceCommandService.ValidateProviderSetting(invoiceSetting, entity) == null;
             AddCheck(
                 checks,
                 $"LegalEntity.{entity.Id}.InvoiceTaxCode",
-                $"Đối chiếu MST hóa đơn - {entity.Name}",
-                invoiceTaxCodeMatches,
-                invoiceTaxCodeMatches
-                    ? "MST của HKD khớp cấu hình phát hành hóa đơn."
-                    : "MST của HKD phải khớp SupplierTaxCode trong cấu hình Viettel.",
+                $"Liên kết cấu hình hóa đơn - {entity.Name}",
+                invoiceIdentityValid,
+                invoiceIdentityValid
+                    ? $"HKD MST {entity.TaxCode} đã liên kết cấu hình Viettel MST kết nối {invoiceSetting!.SupplierTaxCode}."
+                    : "HKD cần MST người bán và cấu hình Viettel hợp lệ thuộc cùng cửa hàng.",
                 entity.Id);
         }
 
@@ -600,12 +603,6 @@ public sealed class LegalEntityService : ILegalEntityService
 
     private static string? NormalizeOptional(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-    private static bool TaxCodesEqual(string? left, string? right)
-        => string.Equals(
-            NormalizeOptional(left)?.ToUpperInvariant(),
-            NormalizeOptional(right)?.ToUpperInvariant(),
-            StringComparison.Ordinal);
 
     private static void AddCheck(
         ICollection<LegalEntityPreflightCheckDto> checks,

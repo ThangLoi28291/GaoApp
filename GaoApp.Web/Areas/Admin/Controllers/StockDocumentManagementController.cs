@@ -4,6 +4,7 @@ using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Application.Interfaces.Services.Products;
 using GaoApp.Domain.Enums;
 using GaoApp.Web.Areas.Admin.Models.Inventory;
+using GaoApp.Web.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -80,6 +81,11 @@ public class StockDocumentManagementController : Controller
                 PermissionCodes.Inventory.StockDocument.Approve);
         if (!authorized)
             return Forbid();
+
+        var approvalPolicy = model.ReceiptSource == PurchaseReceiptSource.PurchaseOrder || model.PurchaseOrderId.HasValue
+            ? PermissionCodes.Purchase.Receipt.Approve : PermissionCodes.Inventory.StockDocument.Approve;
+        if (!await HasAnyPermissionAsync(approvalPolicy, PermissionCodes.Purchase.Order.ViewCost))
+            ReceiptCommercialRedaction.Apply(model);
 
         // Thuế dùng cho bàn duyệt thương mại được nạp cùng request trang.
         // Nhờ vậy người chỉ có quyền duyệt không phải gọi endpoint cấu hình dành
@@ -325,6 +331,9 @@ public class StockDocumentManagementController : Controller
             User,
             resource: null,
             policyName: PermissionCodes.Purchase.Order.ViewCost)).Succeeded;
+
+        if (!hasApprovePermission && !hasViewCostPermission)
+            ReceiptCommercialRedaction.Apply(document);
 
         var vm = new StockDocumentLinesTableViewModel
         {

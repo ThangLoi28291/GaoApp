@@ -1,0 +1,191 @@
+/* UI-18: mobile presentation only. Desktop and print retain the native report styles. */
+@media screen and (max-width: 767.98px) {
+  [data-reports-workspace-phone-root] {
+    --mr-bg: #f3f6fb; --mr-panel: #fff; --mr-text: #172d4d; --mr-muted: #62758e;
+    --mr-border: #dce5f0; --mr-green: #2463eb; --mr-soft: #eaf1ff; --mr-mint: #eaf1ff;
+    --mr-amber: #b77915;
+    color: #172d4d; min-width: 0; max-width: 100%; margin-bottom: 18px;
+    font-size: 14px; line-height: 1.5; overflow-wrap: anywhere;
+  }
+  .dark-style [data-reports-workspace-phone-root] {
+    --mr-bg: #f3f6fb; --mr-panel: #fff; --mr-text: #172d4d; --mr-muted: #62758e;
+    --mr-border: #dce5f0; --mr-green: #2463eb; --mr-soft: #eaf1ff; --mr-mint: #eaf1ff; --mr-amber: #b77915;
+    padding: 0; border-radius: 0; background: transparent; color-scheme: light;
+  }
+  [data-reports-workspace-phone-root] [hidden],
+  [data-reports-workspace-phone-root] .d-none { display: none !important; }
+  [data-reports-workspace-phone-root] *,
+  [data-reports-workspace-phone-heading] * { box-sizing: border-box; }
+  [data-reports-workspace-phone-root] :is(button,a,input,select,textarea,summary):focus-visible,
+  [data-reports-workspace-phone-heading] :is(button,a):focus-visible {
+    outline: 3px solid #87adff; outline-offset: 3px;
+  }
+  [data-reports-workspace-phone-root] .mr-heading,
+  [data-reports-workspace-phone-heading] {
+    padding: 18px; margin: 0 0 14px; border: 1px solid #dce5f0; border-radius: 20px;
+    background: linear-gradient(135deg, #fff 30%, #edf3ff); box-shadow: 0 7px 22px #172d4d06;
+    display: flex; flex-direction: column; align-items: stretch; gap: 15px;
+  }
+  [data-reports-workspace-phone-root] .mr-heading h1,
+  [data-reports-workspace-phone-heading] .gds-page-header__title {
+    color: #172d4d; font-size: 25px; line-height: 1.25; letter-spacing: -.6px; margin: 4px 0 9px;
+  }
+  [data-reports-workspace-phone-root] .mr-heading p,
+  [data-reports-workspace-phone-heading] .gds-page-header__subtitle { color: #62758e; font-size: 13px; line-height: 1.55; margin: 0; }
+  [data-reports-workspace-phone-root] .mr-eyebrow,
+  [data-reports-workspace-phone-heading] .sales-report-eyebrow {
+    color: #2463eb; font-size: 10px; font-weight: 750; letter-spacing: 1.5px;
+  }
+  [data-reports-workspace-phone-root] .mr-actions:not([hidden]):not(.d-none),
+  [data-reports-workspace-phone-heading] .sales-report-header-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  [data-reports-workspace-phone-root] .mr-heading > .mr-actions { justify-content: stretch; }
+  [data-reports-workspace-phone-root] .mr-heading > .mr-actions > .mr-button { flex: 1 1 auto; }
+  [data-reports-workspace-phone-root] :is(.mr-button,.btn),
+  [data-reports-workspace-phone-heading] .btn {
+    min-height: 44px; border: 1px solid #dce5f0; border-radius: 12px; padding: 10px 13px;
+    font-size: 13px; font-weight: 650; line-height: 1.35; white-space: normal;
+    color: #244363; background: #fff; box-shadow: none;
+    touch-action: manipulation; transition: background-color .16s ease, border-color .16s ease;
+  }
+  [data-reports-workspace-phone-root] :is(.mr-button.mr-primary,.mr-button.primary,.btn-primary),
+  [data-reports-workspace-phone-heading] .btn-primary {
+    color: #fff; background: #2463eb; border-color: #2463eb;
+  }
+  [data-reports-workspace-phone-root] :is(.mr-button,.btn):disabled { opacity: .5; cursor: not-allowed; }
+  [data-reports-workspace-phone-root] .mr-nav:not([hidden]):not(.d-none) {
+    display: flex; flex-wrap: nowrap; gap: 7px; overflow-x: auto; margin: 0 0 14px;
+    padding: 0 0 8px; border: 0; scrollbar-width: thin; overscroll-behavior-x: contain;
+  }
+  [data-reports-workspace-phone-root] .mr-nav a:not([hidden]):not(.d-none) {
+    flex: 0 0 auto; display: inline-flex; align-items: center; min-height: 44px;
+    padding: 10px 14px; margin: 0; border: 1px solid #dce5f0; border-radius: 13px;
+    color: #62758e; background: #fff; font-size: 13px; font-weight: 650; white-space: nowrap;
+  }
+  [data-reports-workspace-phone-root] .mr-nav a[aria-current="page"]:not([hidden]):not(.d-none) { color: #fff; border-color: #172d4d; background: #172d4d; }
+  [data-reports-workspace-phone-root] :is(.mr-filters,.mr-tools):not([hidden]):not(.d-none) {
+    display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 10px;
+    min-width: 0; padding: 16px; border: 1px solid #dce5f0; border-radius: 18px; background: #fff;
+  }
+  [data-reports-workspace-phone-root] :is(.mr-filters,.mr-tools) > label {
+    min-width: 0; max-width: 100%; margin: 0; font-size: 11px; font-weight: 650; color: #62758e;
+  }
+  [data-reports-workspace-phone-root] .mr-filters > label:first-child,
+  [data-reports-workspace-phone-root] .mr-tools > label:first-child,
+  [data-reports-workspace-phone-root] :is(.mr-filters,.mr-tools) > button { grid-column: 1 / -1; }
+  [data-reports-workspace-phone-root] :is(input:not([type="hidden"]),select,textarea) {
+    max-width: 100%; min-width: 0; min-height: 46px; font-size: 16px; line-height: 1.4;
+    color: #172d4d; background: #fff; border: 1px solid #d2ddea; border-radius: 11px;
+    padding: 10px 11px; box-shadow: none;
+  }
+  [data-reports-workspace-phone-root] :is(.mr-filters,.mr-tools,.mr-form-grid) :is(input:not([type="hidden"]),select,textarea) { width: 100%; margin-top: 6px; }
+  [data-reports-workspace-phone-root] :is(input[type="checkbox"],input[type="radio"]) { min-height: auto; width: auto; }
+  [data-reports-workspace-phone-root] .mr-context { margin: 13px 2px; color: #62758e; font-size: 12px; line-height: 1.65; }
+  [data-reports-workspace-phone-root] :is(.mr-live,.mr-error,.mr-empty) {
+    padding: 18px; border-radius: 15px; font-size: 13px; line-height: 1.7;
+  }
+  [data-reports-workspace-phone-root] .mr-live { color: #2463eb; background: #eaf1ff; border: 1px solid #d7e5ff; }
+  [data-reports-workspace-phone-root] .mr-error:not([hidden]):not(.d-none) { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  [data-reports-workspace-phone-root] .mr-quality:not([hidden]):not(.d-none) { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 12px; }
+  [data-reports-workspace-phone-root] .mr-badge { font-size: 11px; line-height: 1.5; padding: 5px 9px; white-space: normal; max-width: 100%; border-radius: 8px; }
+  [data-reports-workspace-phone-root] .mr-badge.warning { color: #946015; background: #fff5df; }
+  [data-reports-workspace-phone-root] .mr-kpis:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin: 0 0 14px; }
+  [data-reports-workspace-phone-root] .mr-kpi { min-width: 0; padding: 15px 13px; border: 1px solid #dce5f0; border-radius: 17px; box-shadow: 0 4px 16px #172d4d04; }
+  [data-reports-workspace-phone-root] .mr-kpi-title { color: #62758e; font-size: 11px; line-height: 1.5; align-items: flex-start; gap: 6px; }
+  [data-reports-workspace-phone-root] .mr-kpi-title i { width: 26px; height: 26px; flex: 0 0 26px; font-size: 16px; border-radius: 8px; color: #2463eb; background: #eaf1ff; }
+  [data-reports-workspace-phone-root] .mr-kpi strong { display: block; color: #172d4d; font-size: clamp(20px,5.8vw,27px); line-height: 1.3; letter-spacing: -.6px; white-space: normal; margin: 11px 0 6px; }
+  [data-reports-workspace-phone-root] .mr-kpi small { display: block; font-size: 10px; line-height: 1.6; }
+  [data-reports-workspace-phone-root] .mr-grid:not([hidden]):not(.d-none) { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; }
+  [data-reports-workspace-phone-root] .mr-panel { min-width: 0; max-width: 100%; padding: 17px 14px; margin-bottom: 14px; border: 1px solid #dce5f0; border-radius: 18px; background: #fff; box-shadow: 0 5px 20px #172d4d04; }
+  [data-reports-workspace-phone-root] .mr-grid > .mr-panel { margin-bottom: 0; }
+  [data-reports-workspace-phone-root] .mr-panel-heading:not([hidden]):not(.d-none) { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin-bottom: 15px; }
+  [data-reports-workspace-phone-root] .mr-panel-heading > div { flex: 1 1 175px; min-width: 0; }
+  [data-reports-workspace-phone-root] .mr-panel h2 { color: #172d4d; font-size: 16px; line-height: 1.4; margin-bottom: 5px; }
+  [data-reports-workspace-phone-root] .mr-caption { color: #62758e; font-size: 12px; line-height: 1.6; white-space: normal; }
+  [data-reports-workspace-phone-root] .mr-panel-link { display: inline-flex; min-height: 44px; align-items: center; color: #2463eb; font-size: 12px; padding: 5px 0; }
+  [data-reports-workspace-phone-root] .mr-chart { width: 100%; min-width: 0; min-height: 270px; overflow: hidden; }
+  [data-reports-workspace-phone-root] .apexcharts-canvas { max-width: 100%; }
+  [data-reports-workspace-phone-root] :is(.mr-equivalent,.mr-panel > details,.mr-help) { margin-top: 14px; color: #62758e; font-size: 12px; }
+  [data-reports-workspace-phone-root] summary { min-height: 44px; padding: 11px 4px; color: #244363; font-size: 12px; font-weight: 650; cursor: pointer; }
+  [data-reports-workspace-phone-root] .mr-help { border: 1px solid #dce5f0; border-radius: 15px; padding: 4px 13px; background: #fff; line-height: 1.7; }
+  [data-reports-workspace-phone-root] .mr-cost-row { gap: 12px; align-items: flex-start; font-size: 13px; padding: 12px 0; }
+  [data-reports-workspace-phone-root] .mr-cost-row strong { max-width: 55%; text-align: right; white-space: normal; }
+  [data-reports-workspace-phone-root] .mr-rank-list { gap: 16px; }
+  [data-reports-workspace-phone-root] .mr-rank-label { gap: 12px; font-size: 12px; }
+  [data-reports-workspace-phone-root] .mr-rank-label span { min-width: 0; }
+  [data-reports-workspace-phone-root] .mr-rank-label strong { white-space: normal; text-align: right; }
+  [data-reports-workspace-phone-root] .mr-track { height: 7px; margin-top: 7px; border-radius: 8px; }
+  [data-reports-workspace-phone-root] .mr-pagination:not([hidden]):not(.d-none) { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 9px; font-size: 11px; margin-top: 14px; }
+  [data-reports-workspace-phone-root] .mr-pagination span { flex: 1 1 100%; text-align: center; order: -1; }
+  [data-reports-workspace-phone-root] :is(.mr-table-wrap,.sales-report-chart-data .table-responsive) { overflow-x: auto; max-width: 100%; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table]:not([hidden]):not(.d-none) { display: block; width: 100%; border: 0; margin: 0; font-size: 13px; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] > thead { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] > tbody:not([hidden]):not(.d-none) { display: grid; gap: 10px; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] > tbody > tr:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px 13px; border: 1px solid #dce5f0; border-radius: 14px; padding: 14px; background: #fff; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] > tbody > tr > :is(td,th):not([hidden]):not(.d-none) { display: block; min-width: 0; max-width: 100%; width: auto; padding: 0; border: 0; text-align: left !important; font-size: 13px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; background: transparent; box-shadow: none; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-label]::before { content: attr(data-reports-workspace-phone-label); display: block; color: #62758e; font-size: 10px; font-weight: 500; line-height: 1.5; margin-bottom: 4px; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] [data-reports-workspace-phone-wide] { grid-column: 1 / -1; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] [data-reports-workspace-phone-first] { font-size: 14px; font-weight: 700; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-first]::before { display: none; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] td small { display: block; color: #62758e; font-size: 11px; font-weight: 400; line-height: 1.6; margin-top: 4px; }
+  [data-reports-workspace-phone-root] [data-reports-workspace-phone-table] .mr-negative { color: #bf3f49; }
+  [data-reports-workspace-phone-root] dialog.mr-dialog {
+    position: fixed; inset: auto 0 0; width: 100%; max-width: 100%; min-width: 0; margin: auto 0 0;
+    max-height: calc(100vh - 20px); max-height: calc(100dvh - 20px); padding: 0; overflow: hidden;
+    color: #172d4d; background: #fff; border: 1px solid #dce5f0; border-bottom: 0; border-radius: 22px 22px 0 0;
+    box-shadow: 0 -12px 45px #102b4933;
+  }
+  [data-reports-workspace-phone-root] dialog.mr-dialog[open] { display: flex; }
+  [data-reports-workspace-phone-root] dialog.mr-dialog::backdrop { background: #142b4b80; backdrop-filter: blur(4px); }
+  [data-reports-workspace-phone-root] dialog.mr-dialog > form { display: flex; flex-direction: column; width: 100%; min-height: 0; max-height: inherit; margin: 0; }
+  [data-reports-workspace-phone-root] .mr-dialog-heading { flex: 0 0 auto; margin: 0; padding: 14px 17px; min-height: 70px; gap: 12px; border-bottom: 1px solid #e5ecf5; }
+  [data-reports-workspace-phone-root] .mr-dialog-heading h2 { color: #172d4d; font-size: 19px; line-height: 1.4; margin: 0; }
+  [data-reports-workspace-phone-root] .mr-dialog-heading button { flex: 0 0 44px; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 12px; color: #62758e; background: #f0f4fa; font-size: 25px; transform: none !important; }
+  [data-reports-workspace-phone-root] .rwm-dialog-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 16px 17px; overscroll-behavior: contain; scroll-padding: 16px; }
+  [data-reports-workspace-phone-root] .mr-form-grid { display: grid; grid-template-columns: minmax(0,1fr); gap: 15px; }
+  [data-reports-workspace-phone-root] .mr-form-grid label,
+  [data-reports-workspace-phone-root] [data-void-reason] { font-size: 12px; line-height: 1.5; font-weight: 650; color: #62758e; }
+  [data-reports-workspace-phone-root] [data-void-reason] textarea { width: 100%; margin-top: 7px; }
+  [data-reports-workspace-phone-root] .mr-dialog-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 9px; margin: 0; padding: 13px 17px calc(13px + env(safe-area-inset-bottom)); border-top: 1px solid #e5ecf5; background: #fff; }
+  [data-reports-workspace-phone-root] .mr-dialog-actions .mr-button { flex: 1 1 110px; min-height: 46px; justify-content: center; }
+  [data-reports-workspace-phone-root="sales"] .card { color: #172d4d; border: 1px solid #dce5f0 !important; border-radius: 18px; background: #fff; box-shadow: 0 5px 20px #172d4d04 !important; overflow: hidden; }
+  [data-reports-workspace-phone-root="sales"] :is(.sales-report-kpi-grid,.sales-report-main-grid,.sales-report-insights-grid):not([hidden]):not(.d-none) { display: grid; grid-template-columns: minmax(0,1fr); gap: 14px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-grid:not([hidden]):not(.d-none) { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card { min-width: 0; padding: 15px 13px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card.is-primary { color: #fff; background: linear-gradient(130deg,#172d4d,#244d83); border-color: #244d83 !important; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card.is-primary .sales-report-kpi-value { color: #fff; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card.is-primary :is(.sales-report-kpi-topline,.sales-report-kpi-delta) { color: #dce8ff; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card.is-primary .sales-report-kpi-topline i { color: #dce8ff; background: #ffffff14; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card.is-primary .sales-report-kpi-delta.is-up { color: #b6f5d0; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-card.is-primary .sales-report-kpi-delta.is-down { color: #ffc7ce; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-topline { font-size: 11px; gap: 6px; line-height: 1.5; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-value { font-size: clamp(19px,5.5vw,26px); line-height: 1.35; letter-spacing: -.5px; white-space: normal; overflow-wrap: anywhere; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-kpi-delta { font-size: 10px; line-height: 1.6; white-space: normal; }
+  [data-reports-workspace-phone-root="sales"] :is(.card-body,.card-header) { padding: 16px 14px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-panel-header { gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-panel-header > div { min-width: 0; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-panel-header h5 { color: #172d4d; font-size: 16px; line-height: 1.4; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-panel-header p { font-size: 12px; line-height: 1.6; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-section-eyebrow { font-size: 10px; color: #2463eb; letter-spacing: 1.1px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-filter-bar:not([hidden]):not(.d-none),
+  [data-reports-workspace-phone-root="sales"] .sales-report-secondary-filters:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 10px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-filter-bar > div { min-width: 0; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-filter-card .form-label { color: #62758e; font-size: 11px; font-weight: 650; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-filter-card :is(input,select) { width: 100%; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-secondary-actions { grid-column: 1 / -1; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-refresh-meta { color: #62758e; font-size: 11px; }
+  [data-reports-workspace-phone-heading] .sales-report-refresh-meta { flex: 1 1 100%; color: #62758e; font-size: 11px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-bridge-row { align-items: flex-start; gap: 12px; padding: 13px 0; font-size: 13px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-bridge-row strong { max-width: 55%; text-align: right; white-space: normal; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-attention .card-body { display: block; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-attention-copy { align-items: flex-start; gap: 10px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-attention-metrics { display: grid; grid-template-columns: minmax(0,1fr); gap: 10px; margin-top: 14px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-attention-metric { padding: 13px; min-height: 44px; border-radius: 12px; background: #f3f6fb; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-chart-data summary { border-top: 1px solid #e5ecf5; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-chart { min-width: 0; max-width: 100%; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-mini-stats { flex-wrap: wrap; gap: 8px; font-size: 12px; }
+  [data-reports-workspace-phone-root="sales"] .sales-report-customer-summary { flex-wrap: wrap; gap: 10px; }
+  [data-reports-workspace-phone-root="sales"] :is(.sales-report-insight-note,.sales-report-reconcile,.sales-report-stale-banner) { font-size: 12px; line-height: 1.7; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  [data-reports-workspace-phone-root] *, [data-reports-workspace-phone-heading] * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}

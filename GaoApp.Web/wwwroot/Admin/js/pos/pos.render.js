@@ -189,9 +189,9 @@ window.PosRender = (function () {
         if (!value) return '';
 
         try {
-            const dt = new Date(value);
+            const dt = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
             if (Number.isNaN(dt.getTime())) return '';
-            return dt.toLocaleTimeString('vi-VN');
+            return dt.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
         } catch {
             return '';
         }
@@ -634,9 +634,9 @@ window.PosRender = (function () {
         if (!createdAt) return '';
 
         try {
-            const dt = new Date(createdAt);
+            const dt = new Date(typeof createdAt === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(createdAt) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(createdAt) ? createdAt + 'Z' : createdAt);
             if (Number.isNaN(dt.getTime())) return '';
-            return dt.toLocaleString('vi-VN');
+            return dt.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
         } catch {
             return '';
         }
@@ -877,6 +877,7 @@ window.PosRender = (function () {
             draft?.rewardSummary ||
             draft?.RewardSummary ||
             null;
+        const isPointEligible = !isWholesale && reward?.isPointEligible !== false && reward?.IsPointEligible !== false;
 
         /*
          * Không có customer:
@@ -997,6 +998,7 @@ window.PosRender = (function () {
 
             <div class="pos-customer-benefit-grid">
 
+                ${isPointEligible ? `
                 <button type="button"
                         class="pos-customer-benefit-card
                                pos-customer-benefit-card--points"
@@ -1026,6 +1028,7 @@ window.PosRender = (function () {
                     </div>
 
                 </button>
+                ` : ''}
 
                 <button type="button"
                         class="pos-customer-benefit-card
@@ -1067,9 +1070,9 @@ window.PosRender = (function () {
             </div>
 
             ${document.getElementById('posCustomerProfileAccess')?.dataset.allowed === 'true' && Number(customer.customerId)>0
-                ? `<a class="pos-customer-profile-link" href="/admin/customers/${Number(customer.customerId)}/profile" target="_blank" rel="noopener" title="Xem lịch sử mua hàng, điểm và voucher trong tab mới">
+                ? `<a class="pos-customer-profile-link" href="/admin/customers/${Number(customer.customerId)}/profile" target="_blank" rel="noopener" title="${isPointEligible ? 'Xem lịch sử mua hàng, điểm và voucher trong tab mới' : 'Xem lịch sử mua hàng và voucher trong tab mới'}">
                     <i class="bx bx-history" aria-hidden="true"></i>
-                    <span>Lịch sử &amp; điểm</span>
+                    <span>${isPointEligible ? 'Lịch sử &amp; điểm' : 'Lịch sử khách hàng'}</span>
                     <i class="bx bx-link-external" aria-hidden="true"></i>
                 </a>`
                 : ''}
@@ -1077,7 +1080,7 @@ window.PosRender = (function () {
             <div class="pos-customer-compact__footer">
 
                 <span class="pos-customer-compact__hint">
-                    Bấm vào Điểm hoặc Voucher để xem chi tiết.
+                    ${isPointEligible ? 'Bấm vào Điểm hoặc Voucher để xem chi tiết.' : 'Bấm vào Voucher để xem chi tiết.'}
                 </span>
 
                 <button type="button"
@@ -2224,9 +2227,9 @@ window.PosRender = (function () {
             if (!value) return '';
 
             try {
-                const dt = new Date(value);
+                const dt = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
                 if (Number.isNaN(dt.getTime())) return '';
-                return dt.toLocaleString('vi-VN');
+                return dt.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
             } catch {
                 return '';
             }
@@ -2242,7 +2245,7 @@ window.PosRender = (function () {
             }
 
             try {
-                const dt = new Date(value);
+                const dt = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
                 if (Number.isNaN(dt.getTime())) {
                     return {
                         minutes: 0,
@@ -2513,6 +2516,7 @@ window.PosRender = (function () {
             phone: customer.phone,
             address: customer.address,
             priceTier: customer.priceTier,
+            isPointEligible: reward?.isPointEligible ?? reward?.IsPointEligible ?? true,
             availablePoints: Number(reward?.availablePoints || reward?.AvailablePoints || 0),
             redeemableVoucherCount: Number(reward?.redeemableVoucherCount || reward?.RedeemableVoucherCount || 0),
             availableVoucherCount: Number(reward?.availableVoucherCount || reward?.AvailableVoucherCount || 0),
@@ -2704,6 +2708,20 @@ window.PosRender = (function () {
 
         return patch;
     }
+    let scrollRestoreRevision = 0;
+    function restoreCartScroll(scroller, top) {
+        const revision = ++scrollRestoreRevision;
+        if (!scroller) return;
+        scroller.scrollTop = top;
+        const immediate = scroller.scrollTop;
+        // The scan receipt/badge is painted just after the draft patch. Restore once
+        // its final layout exists, unless the user or a newer render has moved on.
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => {
+            if (revision === scrollRestoreRevision && scroller.isConnected !== false && scroller.scrollTop === immediate)
+                scroller.scrollTop = top;
+        });
+    }
+
     function renderScreen(screen, posState) {
         const currentDraft = screen?.currentDraft || null;
         const cartScroller = document.querySelector('.pos-cart-scroll');
@@ -2732,7 +2750,7 @@ window.PosRender = (function () {
         renderDraftSections(currentDraft, posState);
         renderHeldList(heldOrders);
         window.PosScanFeedback?.sync(currentDraft);
-        if (cartScroller) cartScroller.scrollTop = cartScrollTop;
+        restoreCartScroll(cartScroller, cartScrollTop);
     }
 
     function syncDraftToUi(draft, posState) {
@@ -2747,7 +2765,7 @@ window.PosRender = (function () {
         window.PosScanFeedback?.sync(draft || null);
         // Replacing/reordering rows can temporarily collapse the scroll area.
         // Restore after the whole patch, never scroll the page toward a scan.
-        if (cartScroller) cartScroller.scrollTop = patch?.draftIdentityChanged ? 0 : cartScrollTop;
+        restoreCartScroll(cartScroller, patch?.draftIdentityChanged ? 0 : cartScrollTop);
         return patch;
     }
 

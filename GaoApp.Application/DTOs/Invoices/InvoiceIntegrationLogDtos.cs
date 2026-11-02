@@ -2,6 +2,9 @@
 
 namespace GaoApp.Application.DTOs.Invoices;
 
+using GaoApp.Application.Common;
+using GaoApp.Application.Common.Exceptions;
+
 public class InvoiceIntegrationLogQueryDto
 {
     public DateTime? FromDate { get; set; }
@@ -21,6 +24,21 @@ public class InvoiceIntegrationLogQueryDto
     public int Page { get; set; } = 1;
 
     public int PageSize { get; set; } = 20;
+
+    public int NormalizeAndValidate()
+    {
+        var paging = LogReadLimits.NormalizePage(Page, PageSize);
+        LogReadLimits.ValidateText(Keyword, LogReadLimits.MaxKeywordLength, "Từ khóa");
+        LogReadLimits.ValidateDateRange(FromDate?.Date, ToDate?.Date);
+        // These local dates cannot be converted to the UTC half-open interval:
+        // year 1 starts before UTC's minimum; the last date has no next day.
+        if (FromDate?.Date == DateTime.MinValue.Date || ToDate?.Date == DateTime.MinValue.Date ||
+            ToDate?.Date == DateTime.MaxValue.Date)
+            throw new ValidationAppException("Khoảng ngày tra cứu log không hợp lệ.");
+        Page = paging.Page;
+        PageSize = paging.PageSize;
+        return paging.Offset;
+    }
 }
 
 public class InvoiceIntegrationLogListItemDto

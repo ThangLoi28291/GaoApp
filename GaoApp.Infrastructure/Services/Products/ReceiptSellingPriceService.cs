@@ -30,7 +30,7 @@ public sealed partial class ReceiptSellingPriceService(AppDbContext db, ITenantC
             .Where(x => x.StoreId == StoreId && x.EntityName == HistoryEntity && x.EntityId == key)
             .OrderByDescending(x => x.Id).Take(30)
             .Select(x => new ReceiptSellingPriceHistoryDto(x.CreatedAtUtc, x.ActorUserName, x.Summary)).ToListAsync(ct);
-        return new(document.ReceiptSource, string.IsNullOrWhiteSpace(variant.ProductVariantName)
+        return new(EffectiveReceiptSource(document), string.IsNullOrWhiteSpace(variant.ProductVariantName)
                 ? variant.Product.Name : variant.ProductVariantName,
             variant.Product.BaseUnit?.Name ?? "Đơn vị gốc", Version(variant.Product.RowVersion),
             Version(variant.RowVersion), Version(line.RowVersion), Prices(variant, units), history)
@@ -57,6 +57,9 @@ public sealed partial class ReceiptSellingPriceService(AppDbContext db, ITenantC
         {
             await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
             var (document, line, variant, units) = await LoadAsync(documentId, lineId, ct);
+            if (document.PurchaseOrderId.HasValue && document.ReceiptSource != PurchaseReceiptSource.PurchaseOrder)
+                throw new BusinessRuleException(
+                    "Nguồn phiếu không khớp đơn mua đang liên kết. Vui lòng yêu cầu quản lý kiểm tra dữ liệu nguồn trước khi chỉnh giá bán.");
             EnsureVersion(request.ProductVersion, variant.Product.RowVersion);
             EnsureVersion(request.VariantVersion, variant.RowVersion);
             EnsureVersion(request.LineVersion, line.RowVersion);
@@ -75,12 +78,12 @@ public sealed partial class ReceiptSellingPriceService(AppDbContext db, ITenantC
                 ?? throw new BusinessRuleException("Chọn đơn vị giá lẻ để cập nhật Product.");
             var sourcePrice = request.Units.SingleOrDefault(x => x.Id == sourceId)?.Price ?? source.Price;
             var productPrice = decimal.Round(sourcePrice / source.Factor, 2, MidpointRounding.AwayFromZero);
-            if (!request.ReviewOnly && !ValidMoney(productPrice))
+            if (request.UpdateProductPrice && !request.ReviewOnly && !ValidMoney(productPrice))
                 throw new BusinessRuleException("Giá Product quy về đơn vị gốc không hợp lệ.");
 
             var entries = new List<AuditLog>();
             var changed = false;
-            var syncProduct = !request.ReviewOnly && productPrice != variant.Product.BasePrice;
+            var syncProduct = request.UpdateProductPrice && !request.ReviewOnly && productPrice != variant.Product.BasePrice;
             var writes = request.Units.ToList();
             // Keep the source unit's displayed retail price stable when normalizing an inherited Product price.
             var sourceConversion = units.SingleOrDefault(x => x.Id == sourceId);
@@ -182,6 +185,8 @@ public sealed partial class ReceiptSellingPriceService(AppDbContext db, ITenantC
     private async Task<StockDocument> DocumentAsync(int documentId, CancellationToken ct) =>
         await db.StockDocuments.AsNoTracking().SingleOrDefaultAsync(x => x.Id == documentId && x.StoreId == StoreId &&
             !x.IsDeleted && x.Type == StockDocumentType.Receipt, ct) ?? throw new BusinessRuleException("Không tìm thấy phiếu nhập.");
+    private static PurchaseReceiptSource EffectiveReceiptSource(StockDocument document) =>
+        document.PurchaseOrderId.HasValue ? PurchaseReceiptSource.PurchaseOrder : document.ReceiptSource;
     private static List<ReceiptSellingPriceUnitDto> Prices(ProductVariant variant, List<ProductUnitConversion> units) =>
         units.Count == 0
             ? new() { new(0, variant.Product.BaseUnit?.Name ?? "Đơn vị gốc", 1, EffectivePrice(null, variant), Version(variant.RowVersion))

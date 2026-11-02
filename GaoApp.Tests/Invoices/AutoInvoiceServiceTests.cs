@@ -14,12 +14,14 @@ namespace GaoApp.Tests.Invoices;
 
 public sealed partial class AutoInvoiceServiceTests
 {
+    // Keep today-scoped worker scenarios independent of the machine's UTC hour.
+    private static readonly DateTime TestNowUtc = new(2026, 10, 24, 12, 0, 0, DateTimeKind.Utc);
     [Fact]
     public async Task Paused_admin_keeps_draft_and_does_not_call_provider()
     {
         var repo = CreateRepository(enabled: false);
         var issue = new FakeIssueService();
-        var invoice = Invoice(1, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(1, completedAtUtc: TestNowUtc.AddHours(-1));
         repo.Candidates.Add(invoice);
         var service = CreateService(repo, issue);
 
@@ -35,7 +37,7 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService();
-        var invoice = Invoice(2, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(2, completedAtUtc: TestNowUtc.AddHours(-1));
         invoice.Details.First().UnitName = null;
         repo.Candidates.Add(invoice);
         var service = CreateService(repo, issue);
@@ -157,7 +159,7 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService();
-        var invoice = Invoice(3, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(3, completedAtUtc: TestNowUtc.AddHours(-1));
         invoice.Order!.InvoiceIssuanceRoute =
     InvoiceIssuanceRoute.Manual;
 
@@ -206,7 +208,7 @@ public sealed partial class AutoInvoiceServiceTests
             Invoice(
                 50,
                 completedAtUtc:
-                    DateTime.UtcNow.AddHours(-1));
+                    TestNowUtc.AddHours(-1));
 
         invoice.Order!.InvoiceIssuanceRoute =
             InvoiceIssuanceRoute.Automatic;
@@ -247,7 +249,7 @@ public sealed partial class AutoInvoiceServiceTests
             Invoice(
                 51,
                 completedAtUtc:
-                    DateTime.UtcNow.AddHours(-1));
+                    TestNowUtc.AddHours(-1));
 
         invoice.Order!.InvoiceIssuanceRoute =
             InvoiceIssuanceRoute.Manual;
@@ -293,7 +295,7 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService();
-        var invoice = Invoice(6, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(6, completedAtUtc: TestNowUtc.AddHours(-1));
         repo.Candidates.Add(invoice);
         repo.Operations.Add(new AutoInvoiceOperation
         {
@@ -329,7 +331,7 @@ public sealed partial class AutoInvoiceServiceTests
             Result = Result<ViettelInvoiceIssueResultDto>.Failure(
                 Error.Validation("TIMEOUT", "Timeout khi gọi Viettel."))
         };
-        var invoice = Invoice(4, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(4, completedAtUtc: TestNowUtc.AddHours(-1));
         repo.Candidates.Add(invoice);
         var service = CreateService(repo, issue);
 
@@ -348,7 +350,7 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService { Exception = new TimeoutException("provider timeout") };
-        repo.Candidates.Add(Invoice(5, completedAtUtc: DateTime.UtcNow.AddHours(-1)));
+        repo.Candidates.Add(Invoice(5, completedAtUtc: TestNowUtc.AddHours(-1)));
         var service = CreateService(repo, issue);
 
         await service.RunOnceAsync();
@@ -362,10 +364,10 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService();
-        var failed = Invoice(30, completedAtUtc: DateTime.UtcNow.AddHours(-2));
+        var failed = Invoice(30, completedAtUtc: TestNowUtc.AddHours(-2));
         failed.LastErrorCode = "Invoice.UnitMissing";
         failed.LastErrorMessage = "Thiếu đơn vị tính.";
-        var next = Invoice(31, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var next = Invoice(31, completedAtUtc: TestNowUtc.AddHours(-1));
         repo.Candidates.AddRange([failed, next]);
         var service = CreateService(repo, issue);
 
@@ -381,7 +383,7 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         var issue = new FakeIssueService();
-        var invoice = Invoice(36, completedAtUtc: DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(36, completedAtUtc: TestNowUtc.AddHours(-1));
         invoice.LastErrorCode = "Invoice.InputInvoiceStockInsufficient";
         invoice.LastErrorMessage = "Còn thiếu tồn trước đó.";
         repo.Candidates.Add(invoice);
@@ -400,7 +402,7 @@ public sealed partial class AutoInvoiceServiceTests
         var repo = CreateRepository(enabled: true);
         repo.Settings.MinimumAgeMinutes = 5;
         var issue = new FakeIssueService();
-        repo.Candidates.Add(Invoice(32, completedAtUtc: DateTime.UtcNow.AddMinutes(-1)));
+        repo.Candidates.Add(Invoice(32, completedAtUtc: TestNowUtc.AddMinutes(-1)));
         var service = CreateService(repo, issue);
 
         await service.RunOnceAsync();
@@ -418,10 +420,10 @@ public sealed partial class AutoInvoiceServiceTests
             Id = 1,
             StoreId = 1,
             WorkerName = "auto-invoice-worker",
-            NextRunAtUtc = DateTime.UtcNow.AddHours(1)
+            NextRunAtUtc = TestNowUtc.AddHours(1)
         });
         var issue = new FakeIssueService();
-        repo.Candidates.Add(Invoice(33, completedAtUtc: DateTime.UtcNow.AddHours(-1)));
+        repo.Candidates.Add(Invoice(33, completedAtUtc: TestNowUtc.AddHours(-1)));
         var service = CreateService(repo, issue);
 
         await service.RunOnceAsync(force: true);
@@ -436,7 +438,7 @@ public sealed partial class AutoInvoiceServiceTests
 
         var issue = new FakeIssueService();
 
-        var nowUtc = DateTime.UtcNow;
+        var nowUtc = TestNowUtc;
 
         var invoice = Invoice(
             501,
@@ -611,7 +613,7 @@ public sealed partial class AutoInvoiceServiceTests
             new FakeIssueService();
 
         var now =
-            DateTime.UtcNow;
+            TestNowUtc;
 
         var first =
             Invoice(
@@ -684,7 +686,7 @@ public sealed partial class AutoInvoiceServiceTests
             new FakeIssueService();
 
         var now =
-            DateTime.UtcNow;
+            TestNowUtc;
 
         var first =
             Invoice(
@@ -849,7 +851,7 @@ public sealed partial class AutoInvoiceServiceTests
         var invoice =
             Invoice(
                 70,
-                DateTime.UtcNow.AddHours(-1));
+                TestNowUtc.AddHours(-1));
 
         invoice.LastErrorCode =
             "Invoice.InputInvoiceStockInsufficient";
@@ -896,7 +898,7 @@ public sealed partial class AutoInvoiceServiceTests
         var invoice =
             Invoice(
                 71,
-                DateTime.UtcNow.AddHours(-1));
+                TestNowUtc.AddHours(-1));
 
         invoice.LastErrorCode =
             "Invoice.InputInvoiceStockInsufficient";
@@ -943,7 +945,7 @@ public sealed partial class AutoInvoiceServiceTests
         var invoice =
             Invoice(
                 72,
-                DateTime.UtcNow.AddHours(-1));
+                TestNowUtc.AddHours(-1));
 
         invoice.Details.Single()
             .UnitName = null;
@@ -995,7 +997,7 @@ public sealed partial class AutoInvoiceServiceTests
         var invoice =
             Invoice(
                 73,
-                DateTime.UtcNow.AddHours(-1));
+                TestNowUtc.AddHours(-1));
 
         invoice.ProviderStatus =
             InvoiceProviderStatus.Issuing;
@@ -1078,7 +1080,7 @@ public sealed partial class AutoInvoiceServiceTests
         var invoice =
             Invoice(
                 74,
-                DateTime.UtcNow.AddHours(-1));
+                TestNowUtc.AddHours(-1));
 
         invoice.LastErrorCode =
             "VIETTEL_REJECTED";
@@ -1119,9 +1121,9 @@ public sealed partial class AutoInvoiceServiceTests
     public async Task Manual_correction_of_automatic_original_keeps_durable_claim(InvoiceCorrectionType type)
     {
         var repo = CreateRepository(enabled: true);
-        var invoice = Invoice(201, DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(201, TestNowUtc.AddHours(-1));
         invoice.OriginalInvoiceHeadId = 200;
-        invoice.OriginalInvoiceHead = Invoice(200, DateTime.UtcNow.AddHours(-2));
+        invoice.OriginalInvoiceHead = Invoice(200, TestNowUtc.AddHours(-2));
         invoice.OriginalInvoiceHead.ProviderStatus = InvoiceProviderStatus.Issued;
         invoice.CorrectionType = type;
         // An information-only adjustment legitimately has no quantity, amount or unit.
@@ -1156,9 +1158,9 @@ public sealed partial class AutoInvoiceServiceTests
     public async Task Unsafe_correction_is_rejected_before_claim_and_provider(string condition)
     {
         var repo = CreateRepository(enabled: true);
-        var invoice = Invoice(201, DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(201, TestNowUtc.AddHours(-1));
         invoice.OriginalInvoiceHeadId = 200;
-        invoice.OriginalInvoiceHead = Invoice(200, DateTime.UtcNow.AddHours(-2));
+        invoice.OriginalInvoiceHead = Invoice(200, TestNowUtc.AddHours(-2));
         invoice.OriginalInvoiceHead.ProviderStatus = InvoiceProviderStatus.Issued;
         invoice.CorrectionType = InvoiceCorrectionType.Replacement;
         switch (condition)
@@ -1189,7 +1191,7 @@ public sealed partial class AutoInvoiceServiceTests
     {
         var repo = CreateRepository(enabled: true);
         repo.Settings.MinimumAgeMinutes = 30;
-        var invoice = Invoice(301, DateTime.UtcNow.AddHours(-2));
+        var invoice = Invoice(301, TestNowUtc.AddHours(-2));
         repo.Candidates.Add(invoice);
         var locked = false;
         repo.BeforeSingleClaimRead = () =>
@@ -1197,7 +1199,7 @@ public sealed partial class AutoInvoiceServiceTests
             Assert.True(locked);
             switch (change)
             {
-                case "age": invoice.LastIssuanceRelevantChangeAtUtc = DateTime.UtcNow; break;
+                case "age": invoice.LastIssuanceRelevantChangeAtUtc = TestNowUtc; break;
                 case "group-lane": SetInvoiceTotal(invoice, 50_000m); break;
                 case "zero-total": SetInvoiceTotal(invoice, 0); break;
                 case "correction": invoice.CorrectionType = InvoiceCorrectionType.Replacement; break;
@@ -1226,7 +1228,7 @@ public sealed partial class AutoInvoiceServiceTests
         InvoiceProviderStatus status, string outcome)
     {
         var repo = CreateRepository(true);
-        var invoice = Invoice(70, DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(70, TestNowUtc.AddHours(-1));
         invoice.ProviderStatus = status;
         invoice.TransactionUuid = "original-durable-uuid";
         repo.Candidates.Add(invoice);
@@ -1271,13 +1273,13 @@ public sealed partial class AutoInvoiceServiceTests
         var readyIds = new List<int>();
         foreach (var storeId in repo.ActiveStoreIds)
         {
-            var old = Invoice(storeId * 100, DateTime.UtcNow.AddHours(-2));
+            var old = Invoice(storeId * 100, TestNowUtc.AddHours(-2));
             old.StoreId = storeId;
             old.ProviderStatus = InvoiceProviderStatus.Issuing;
             old.TransactionUuid = $"store-{storeId}-uuid";
             repo.Candidates.Add(old);
             repo.Operations.Add(RecoveryOperation(storeId * 1000, storeId, old.Id));
-            var ready = Invoice(old.Id + 1, DateTime.UtcNow.AddHours(-1));
+            var ready = Invoice(old.Id + 1, TestNowUtc.AddHours(-1));
             ready.StoreId = ready.Order!.StoreId = ready.InvoiceProviderSetting!.StoreId = storeId;
             repo.Candidates.Add(ready);
             readyIds.Add(ready.Id);
@@ -1333,7 +1335,7 @@ public sealed partial class AutoInvoiceServiceTests
         var repo = CreateRepository(true);
         if (foreign)
         {
-            var invoice = Invoice(70, DateTime.UtcNow.AddHours(-1));
+            var invoice = Invoice(70, TestNowUtc.AddHours(-1));
             invoice.StoreId = 2;
             repo.Candidates.Add(invoice);
         }
@@ -1350,7 +1352,7 @@ public sealed partial class AutoInvoiceServiceTests
     public async Task Worker_tenant_fix_rejects_recovery_target_belonging_to_another_store()
     {
         var repo = CreateRepository(true);
-        var invoice = Invoice(70, DateTime.UtcNow.AddHours(-1));
+        var invoice = Invoice(70, TestNowUtc.AddHours(-1));
         invoice.StoreId = 2;
         invoice.ProviderStatus = InvoiceProviderStatus.Issuing;
         repo.Candidates.Add(invoice);
@@ -1393,7 +1395,8 @@ public sealed partial class AutoInvoiceServiceTests
     IInvoiceInputStockRepository? stock = null,
     IViettelInvoiceSyncService? sync = null,
     ITenantContext? tenant = null,
-    DateTime? nowUtc = null)
+    DateTime? nowUtc = null,
+    IInvoiceProviderSettingRepository? providerSettings = null)
     => new(
         repo,
         stock ?? new SufficientStockRepository(),
@@ -1402,7 +1405,7 @@ public sealed partial class AutoInvoiceServiceTests
         new NoopUnitOfWork(),
         tenant ?? new StoreTenant(1),
         new TestCurrentUser(),
-        new FixedTimeProvider(nowUtc ?? DateTime.UtcNow));
+        new FixedTimeProvider(nowUtc ?? TestNowUtc), providerSettings);
 
     private static FakeAutoInvoiceRepository CreateRepository(bool enabled)
         => new()

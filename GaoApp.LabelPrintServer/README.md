@@ -18,7 +18,7 @@ Luồng hiện có: **trình duyệt client → GaoApp.Web → hàng đợi SQL 
 
 Web và dịch vụ in là hai chương trình riêng. Chỉ publish Web hoặc GaoApp.AutoInvoiceWorker sẽ chưa xử lý được hàng đợi in tem. Không cần mở thêm cổng HTTP cho dịch vụ in hoặc cài phần mềm in ở client. Worker kiểm tra hàng đợi mỗi khoảng 2 giây khi không có lệnh đang xử lý.
 
-Đã có profile Visual Studio: nhấp phải **GaoApp.LabelPrintServer → Publish → FolderProfile**. Đích mặc định là `D:\Publish\GaoApp-ServerMoi\LabelPrintServer`, nằm cạnh `Web` và `Worker`. Có thể publish bằng lệnh:
+Đã có profile Visual Studio: nhấp phải **GaoApp.LabelPrintServer → Publish → FolderProfile**. Đích mặc định là `publish\server\LabelPrintServer` bên trong thư mục mã nguồn, nằm cạnh `Web` và `Worker`. Profile lấy vị trí từ `MSBuildProjectDirectory`, nên chuyển mã nguồn sang ổ hoặc thư mục khác không cần sửa đường dẫn publish. Đường dẫn `D:\GaoApp\LabelPrintServer` trong các lệnh cài dịch vụ bên dưới chỉ là ví dụ vị trí cố định trên máy chủ; thay bằng nơi triển khai thực tế. Có thể publish bằng lệnh:
 
 ```powershell
 dotnet publish .\GaoApp.LabelPrintServer\GaoApp.LabelPrintServer.csproj -c Release -p:PublishProfile=FolderProfile

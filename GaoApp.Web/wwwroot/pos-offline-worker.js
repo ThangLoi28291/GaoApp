@@ -1,5 +1,7 @@
 /* Cache only a prepared POS shell and public assets. API responses remain private in IndexedDB. */
 'use strict';
+importScripts('/Admin/js/pos/pos.offline.privacy.js');
+const privacy = self.PosOfflinePrivacy;
 const ASSETS = 'gao-pos-assets-v2', LEGACY_ASSETS = 'gao-pos-assets-v1', SHELLS = 'gao-pos-shells-v1';
 const POS_PAGES = new Set(['/admin/pos', '/admin/pos/', '/admin/pos/v3', '/admin/pos/legacy']);
 self.addEventListener('install', () => self.skipWaiting());
@@ -18,7 +20,14 @@ function meta(mode, work) {
 }
 async function prepare(data) {
     const page = new URL(data.page);
-    if (page.origin !== self.location.origin || !POS_PAGES.has(page.pathname) || typeof data.key !== 'string') return;
+    if (page.origin !== self.location.origin || !POS_PAGES.has(page.pathname) || typeof data.key !== 'string' || data.privacyVersion !== privacy.version) return;
+    const db = await privacy.open();
+    const allowed = async () => {
+        const authentication = await privacy.auth(db);
+        return authentication && !authentication.locked && authentication.key === data.key && authentication.revision === data.revision;
+    };
+    try {
+    if (!await allowed()) return;
     const response = await fetch(page.href, { credentials: 'same-origin', cache: 'no-store' });
     if (!response.ok || response.redirected || !response.headers.get('content-type')?.includes('text/html')) return;
     const cache = await caches.open(ASSETS);
@@ -41,8 +50,16 @@ async function prepare(data) {
             }
         }
     }
+    if (!await allowed()) return;
     await (await caches.open(SHELLS)).put('/__pos-shell__/' + encodeURIComponent(data.key), response);
+    await privacy.pruneShells(db);
     for (const client of await self.clients.matchAll()) client.postMessage({ type: 'pos-offline-prepared', key: data.key });
+    } finally { db.close(); }
+}
+async function lockClients(reason) {
+    for (const client of await self.clients.matchAll({ includeUncontrolled: true }))
+        client.postMessage({ type: 'pos-privacy-lock', reason });
+    await privacy.clean(reason);
 }
 self.addEventListener('message', event => {
     if (event.data?.type === 'prepare') event.waitUntil(prepare(event.data));
@@ -51,11 +68,20 @@ async function pageResponse(request) {
     const controller = new AbortController(), timer = setTimeout(() => controller.abort(), 4000);
     try {
         const response = await fetch(request, { signal: controller.signal });
-        if (response.status < 500) return response;
+        if (response.status < 500) {
+            if ([401, 403].includes(response.status) || response.redirected && /\/account\/login(?:\?|$)/i.test(response.url))
+                await lockClients('unauthorized');
+            return response;
+        }
     } catch { /* Use only a previously prepared, unexpired terminal. */ }
     finally { clearTimeout(timer); }
+    const db = await privacy.open();
+    let authentication;
+    try { await privacy.sweep(db); await privacy.pruneShells(db); authentication = await privacy.auth(db); }
+    finally { db.close(); }
     const active = await meta('readonly', store => store.get('active'));
-    if (active && new Date(active.expiresAt).getTime() > Date.now()) {
+    if (active?.privacyVersion === privacy.version && authentication && !authentication.locked &&
+        active.revision === authentication.revision && active.key === authentication.key && privacy.utc(active.expiresAt) > Date.now()) {
         const response = await (await caches.open(SHELLS)).match('/__pos-shell__/' + encodeURIComponent(active.key));
         if (response) return response;
     }
@@ -65,10 +91,10 @@ async function pageResponse(request) {
 self.addEventListener('fetch', event => {
     const request = event.request, url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
-    if (/\/(?:account|auth)\/logout$/i.test(url.pathname)) {
+    if (request.method === 'POST' && /\/(?:account|auth)\/logout$/i.test(url.pathname)) {
         event.respondWith((async () => {
-            await meta('readwrite', store => store.delete('active'));
-            await caches.delete(SHELLS);
+            // Complete logout even if storage is unavailable; lock every open POS first.
+            await lockClients('logout').catch(() => {});
             return fetch(request);
         })());
         return;

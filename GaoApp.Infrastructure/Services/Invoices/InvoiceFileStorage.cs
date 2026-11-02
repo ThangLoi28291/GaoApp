@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GaoApp.Infrastructure.Services.Invoices;
 
-public class InvoiceFileStorage : IInvoiceFileStorage
+public partial class InvoiceFileStorage : IInvoiceFileStorage
 {
     private readonly IHostEnvironment _environment;
     private readonly IConfiguration _configuration;

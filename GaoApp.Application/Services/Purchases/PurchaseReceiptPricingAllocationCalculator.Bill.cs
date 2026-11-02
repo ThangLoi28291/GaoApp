@@ -140,7 +140,7 @@ public sealed partial class PurchaseReceiptPricingAllocationCalculator
         }
         if (virtualPhysical.Count > 10_000) { result.Errors.Add("Kế hoạch có quá nhiều phần số lượng tham gia."); return; }
         var calculated = new PurchaseReceiptPricingAllocationPreview { ActualBillTotal = request.ActualBillTotal };
-        CalculateCore(new() { ActualBillTotal = request.ActualBillTotal == 0 ? 1m : request.ActualBillTotal, GlobalDiscountPercent = request.GlobalDiscountPercent,
+        CalculateCore(new() { ActualBillTotal = request.ActualBillTotal == 0 ? 1m : request.ActualBillTotal, GlobalDiscountPercent = request.GlobalDiscountPercent, GlobalDiscountAmount = request.GlobalDiscountAmount,
             Lines = virtualBill, Rules = virtualRules, GiftValuations = request.GiftValuations }, virtualPhysical, giftValues, calculated,
             10_000, exactPurchasedBaseQuantities: true);
         result.Errors.AddRange(calculated.Errors.Where(x => request.ActualBillTotal != 0 || !x.StartsWith("Chênh lệch tiền hàng:", StringComparison.Ordinal)));

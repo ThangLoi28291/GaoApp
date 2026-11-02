@@ -7,6 +7,7 @@
     const key=input=>input.closest('tr').dataset.receivingKey;
     const inputFor=id=>[...container.querySelectorAll('tr[data-receiving-key]')].find(row=>row.dataset.receivingKey===id)?.querySelector('.js-receiving-qty,[data-intake-quantity]');
     function publish(){
+        for(const draft of drafts.values())window.ReceivingDraftRecovery?.saveQuantityDraft(inputFor(draft.key),String(draft.quantity));
         document.dispatchEvent(new Event('receiving:quantity-draft'));
         window.updateReceivingSubmitState?.();
     }
@@ -24,7 +25,8 @@
     function step(input,delta){
         if(![1,-1].includes(delta) || !canStep(input))return;
         const id=key(input),old=drafts.get(id),current=value(input);
-        const next=Math.max(1,Math.round((current+delta)*1000)/1000);
+        const minimum=matchMedia('(max-width: 767.98px)').matches ? .001 : 1;
+        const next=Math.max(minimum,Math.round((current+delta)*1000)/1000);
         if(next===current)return;
         if(activeKey!==id && drafts.has(activeKey))drafts.get(activeKey).due=0;
         activeKey=id;
@@ -98,6 +100,7 @@
         matchMedia('(max-width: 768px)').addEventListener('change',()=>{if(drafts.size)void flush();});
         document.addEventListener('visibilitychange',()=>{if(document.hidden && drafts.size)void flush();});
     }
-    window.WarehouseReceivingQuantity={step,canStep,value,hasPending:()=>drafts.size>0,isSaving:()=>busy,hasFailed:()=>failed,flush,retry:()=>flush(true)};
+    window.WarehouseReceivingQuantity={step,canStep,value,hasPending:()=>drafts.size>0,isSaving:()=>busy,hasFailed:()=>failed,flush,retry:()=>flush(true),
+        finishRecovery:()=>{if(!busy){drafts.clear();failed=false;publish();}}};
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
@@ -35,6 +36,8 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
 
         if (original.LegacyReadOnly)
             return Result<InvoiceCorrectionCreateInfoDto>.Failure(Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu."));
+        if (type == InvoiceCorrectionType.AdjustmentAmount && (original.StorefrontServiceRevenueId.HasValue || original.Details.Any(x => x.StorefrontServiceRevenueId.HasValue)))
+            return Result<InvoiceCorrectionCreateInfoDto>.Failure(Error.Validation("Invoice.NativeServiceAdjustment", "Phí dịch vụ website có ngân sách nguồn riêng. Chưa hỗ trợ điều chỉnh tiền trên nguồn này; dùng thay thế nguyên nguồn hoặc quy trình điều chỉnh tài chính có chứng cứ."));
 
         var validate = ValidateOriginalInvoice(
             original,
@@ -66,8 +69,8 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
                 GrandTotal = original.GrandTotal,
                 Type = type,
                 TypeName = GetTypeName(type),
-                DefaultAgreementDocumentNo = $"BBTT-{DateTime.Now:yyyyMMdd}-{original.Id}",
-                DefaultAgreementDate = DateTime.Today
+                DefaultAgreementDocumentNo = $"BBTT-{VietnamTime.Now:yyyyMMdd}-{original.Id}",
+                DefaultAgreementDate = VietnamTime.Today
             });
     }
 
@@ -130,6 +133,8 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
 
         if (original.LegacyReadOnly)
             return Result<CreateInvoiceCorrectionResultDto>.Failure(Error.Validation("Invoice.LegacyReadOnly", "Hóa đơn GaoStore này chỉ lưu để tra cứu."));
+        if (request.Type == InvoiceCorrectionType.AdjustmentAmount && (original.StorefrontServiceRevenueId.HasValue || original.Details.Any(x => x.StorefrontServiceRevenueId.HasValue)))
+            return Result<CreateInvoiceCorrectionResultDto>.Failure(Error.Validation("Invoice.NativeServiceAdjustment", "Phí dịch vụ website chưa hỗ trợ điều chỉnh tiền thiếu ngân sách nguồn. Chưa tạo chứng từ; có thể thay thế nguyên nguồn."));
 
         var validate = ValidateOriginalInvoice(
             original,
@@ -423,11 +428,17 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
         {
             StoreId = original.StoreId,
             OrderId = original.OrderId,
+            StorefrontServiceRevenueId = original.StorefrontServiceRevenueId,
+            NativeServiceInvoiceRoute = original.NativeServiceInvoiceRoute,
+            NativeServiceRecognizedAtUtc = original.NativeServiceRecognizedAtUtc,
+            NativeServiceActorUserId = original.NativeServiceActorUserId,
+            NativeServiceCashOnly = original.NativeServiceCashOnly,
+            IsAutoInvoiceGroup = original.IsAutoInvoiceGroup,
             LegalEntityId = original.LegalEntityId,
             InvoiceProviderSettingId = original.InvoiceProviderSettingId,
 
             InvoiceNumber = null,
-            InvoiceDate = DateTime.Today,
+            InvoiceDate = VietnamTime.Today,
 
             BuyerName = original.BuyerName,
             BuyerTaxCode = original.BuyerTaxCode,
@@ -466,6 +477,7 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
 
         if (type == InvoiceCorrectionType.Replacement)
         {
+            newInvoice.RevenueTaxPercentage = original.RevenueTaxPercentage;
             CopyDetails(original, newInvoice);
             RecalculateTotals(newInvoice);
         }
@@ -531,6 +543,7 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
                 OrderLegalEntityAllocationId = source.OrderLegalEntityAllocationId,
                 ProductVariantId = source.ProductVariantId,
                 SourceType = source.SourceType,
+                StorefrontServiceRevenueId = source.StorefrontServiceRevenueId,
 
                 ItemName = source.ItemName,
                 UnitName = source.UnitName,
@@ -551,14 +564,7 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
 
     private static void RecalculateTotals(InvoiceHead invoice)
     {
-        var details = invoice.Details
-            .Where(x => !x.IsDeleted)
-            .ToList();
-
-        invoice.TotalQuantity = details.Sum(x => x.Quantity);
-        invoice.SubTotal = details.Sum(x => x.Amount);
-        invoice.VatAmount = details.Sum(x => x.VatAmount);
-        invoice.GrandTotal = details.Sum(x => x.TotalAmount);
+        InvoiceAmountCalculator.RecalculateHead(invoice);
     }
 
     private static InvoiceCorrectionHistoryItemDto MapHistoryItem(
@@ -594,8 +600,8 @@ public class InvoiceCorrectionService : IInvoiceCorrectionService
             CreatedAtUtc = correctionCase.CreatedAtUtc,
             IssuedAtUtc = correctionCase.IssuedAtUtc,
 
-            LastErrorCode = correctionCase.LastErrorCode,
-            LastErrorMessage = correctionCase.LastErrorMessage
+            LastErrorCode = InvoiceErrorReadSanitizer.Code(correctionCase.LastErrorCode),
+            LastErrorMessage = InvoiceErrorReadSanitizer.Message(correctionCase.LastErrorMessage, correctionCase.LastErrorCode)
         };
     }
 

@@ -29,5 +29,10 @@ internal static class InvoiceAmountCalculator
         invoiceHead.SubTotal = activeDetails.Sum(x => x.Amount);
         invoiceHead.VatAmount = activeDetails.Sum(x => x.VatAmount);
         invoiceHead.GrandTotal = activeDetails.Sum(x => x.TotalAmount);
+        invoiceHead.RevenueTaxReductionAmount = InvoiceRevenueTaxPolicy.Reduction(
+            InvoiceRevenueTaxPolicy.Gross(activeDetails.Select(x => x.TotalAmount)), invoiceHead.RevenueTaxPercentage);
+        if (invoiceHead.RevenueTaxPercentage.HasValue)
+            invoiceHead.GrandTotal = InvoiceRevenueTaxPolicy.Gross(activeDetails.Select(x => x.TotalAmount))
+                                     - invoiceHead.RevenueTaxReductionAmount;
     }
 }

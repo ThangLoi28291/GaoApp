@@ -36,13 +36,13 @@ public sealed class PreHostSecuritySqlServerTests
         foreach (var (userId, password) in new[] { (foreign.UserId, "Long-passphrase-for-test!"), (local.UserId, "123456") })
         {
             using var reset = await client.Http.PostAsync("/Admin/UserInStores/ResetPassword", PasswordForm(userId, password));
-            Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
+            Assert.Equal(password.Length < 12 ? HttpStatusCode.Redirect : HttpStatusCode.Forbidden, reset.StatusCode);
         }
         Assert.Equal(foreignHash, await db.Users.Where(x => x.Id == foreign.UserId).Select(x => x.PasswordHash).SingleAsync());
         Assert.Equal(localHash, await db.Users.Where(x => x.Id == local.UserId).Select(x => x.PasswordHash).SingleAsync());
         using var allowedReset = await client.Http.PostAsync("/Admin/UserInStores/ResetPassword", PasswordForm(local.UserId, "New-local-passphrase!"));
-        Assert.Equal(HttpStatusCode.Redirect, allowedReset.StatusCode);
-        Assert.NotEqual(localHash, await db.Users.Where(x => x.Id == local.UserId).Select(x => x.PasswordHash).SingleAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, allowedReset.StatusCode);
+        Assert.Equal(localHash, await db.Users.Where(x => x.Id == local.UserId).Select(x => x.PasswordHash).SingleAsync());
     }
 
     private static FormUrlEncodedContent PasswordForm(int userId, string password) => new(new Dictionary<string, string>

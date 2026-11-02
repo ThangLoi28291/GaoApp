@@ -1,5 +1,6 @@
 using GaoApp.Application.DTOs.Reports.Sales;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Delivery;
 
 namespace GaoApp.Application.DTOs.Reports.Profit;
 
@@ -42,7 +43,18 @@ public sealed class ProfitSummaryDto
 public sealed record ProfitTrendPointDto(int Bucket, string Label, ProfitSummaryDto Summary);
 public sealed record ProfitDetailRowDto(int OrderId, string OrderNumber, DateTime? SaleDate,
     DateTime EventDate, string EventKind, ProfitSummaryDto Summary, int? OrderLineId = null, string? ItemName = null,
-    int? SalesReturnId = null);
+    int? SalesReturnId = null, int? StorefrontServiceRevenueId = null);
+public sealed record ProfitCostIssueDto(int OrderId, string OrderNumber, int? OrderLineId,
+    string? ItemName, ProfitQuality Quality, string Code, string Message);
+public sealed class ProfitCostDiagnosticsDto
+{
+    public int AffectedOrders { get; set; }
+    public int AffectedLines { get; set; }
+    public int UnavailableOrders { get; set; }
+    public int ConflictingOrders { get; set; }
+    public int TotalIssues { get; set; }
+    public List<ProfitCostIssueDto> Issues { get; set; } = [];
+}
 public sealed record ProfitActivityRowDto(int EntryId, int? OrderId, string OrderNumber,
     DateTime? SaleDate, DateTime AdjustmentDate, decimal? Impact, ProfitQuality Quality);
 public sealed class ProfitActivityDto
@@ -58,6 +70,7 @@ public sealed class ProfitActivityDto
 public sealed record ProfitActivityDayDto(DateTime Date, decimal? Increase, decimal? Decrease, ProfitQuality Quality);
 public sealed class ProfitReportResponseDto
 {
+    public ProfitCostDiagnosticsDto CostDiagnostics { get; set; } = new();
     public string Generation { get; set; } = Guid.NewGuid().ToString("N");
     public DateTime GeneratedAtUtc { get; set; }
     public ProfitReportQueryDto Query { get; set; } = new();
@@ -76,6 +89,18 @@ public sealed class ProfitReportResponseDto
 // Detached evidence transferred only between repository and application. Never serialized by controllers.
 public sealed class ProfitSourceSnapshot
 {
+    public List<GaoApp.Domain.Storefront.StorefrontSaleBinding> StorefrontSales { get; set; } = [];
+    public List<GaoApp.Domain.Storefront.StorefrontSettlementLink> StorefrontSettlements { get; set; } = [];
+    public List<GaoApp.Domain.Storefront.StorefrontOrder> StorefrontOrders { get; set; } = [];
+    public List<GaoApp.Domain.Storefront.StorefrontOrderLine> StorefrontLines { get; set; } = [];
+    public List<GaoApp.Domain.Storefront.StorefrontFulfillmentSource> StorefrontSources { get; set; } = [];
+    public List<GaoApp.Domain.Storefront.StorefrontLineSource> StorefrontLineSources { get; set; } = [];
+    public List<GaoApp.Domain.Storefront.StorefrontServiceRevenue> StorefrontServices { get; set; } = [];
+    public List<DeliveryOrderLine> StorefrontDeliveryLines { get; set; } = [];
+    public List<DeliveryOrder> Deliveries { get; set; } = [];
+    public List<DeliveryJournalEntry> DeliveryJournals { get; set; } = [];
+    public List<DeliveryRevision> DeliveryRevisions { get; set; } = [];
+    public List<DeliveryDispatchCostFragment> DeliveryFragments { get; set; } = [];
     public List<GaoApp.Application.DTOs.Reports.ReportCustomerInfo> Customers { get; set; } = [];
     public List<GaoApp.Application.DTOs.Reports.ReportProductInfo> Products { get; set; } = [];
     public List<OperatingExpense> OperatingExpenses { get; set; } = [];

@@ -7,9 +7,10 @@ using GaoApp.Application.Services.Audit;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Entities;
 using GaoApp.Infrastructure.Data;
+using GaoApp.Infrastructure.Data.Configurations;
+using GaoApp.Infrastructure.Services.Audit;
 using GaoApp.Infrastructure.Interceptors;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GaoApp.Tests.Security;
 
@@ -40,16 +41,14 @@ public sealed class AuditSensitiveDataTests
     [Fact]
     public async Task Automatic_audit_excludes_hash_on_create_update_and_delete_but_keeps_business_changes()
     {
-        var auditOptions = new DbContextOptionsBuilder<AuditLogDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
-        var interceptor = new AuditSaveChangesInterceptor(new Context(), new AuditFactory(auditOptions), NullLogger<AuditSaveChangesInterceptor>.Instance);
+        var interceptor = new AuditSaveChangesInterceptor(new Context());
         var options = new DbContextOptionsBuilder<PrimaryDb>().UseInMemoryDatabase(Guid.NewGuid().ToString()).AddInterceptors(interceptor).Options;
         await using var db = new PrimaryDb(options);
         var item = new Tracked { StoreId = 7, Name = "before", PasswordHash = "synthetic-secret-old" };
         db.Add(item); await db.SaveChangesAsync();
         item.Name = "after"; item.PasswordHash = "synthetic-secret-new"; await db.SaveChangesAsync();
         db.Remove(item); await db.SaveChangesAsync();
-        await using var audit = new AuditLogDbContext(auditOptions);
-        var logs = await audit.AuditLogs.ToListAsync();
+        var logs = (await db.Set<AuditOutboxMessage>().AsNoTracking().ToListAsync()).Select(AuditOutboxEvidence.Read).ToList();
         Assert.Equal(3, logs.Count);
         foreach (var log in logs)
         {
@@ -69,11 +68,7 @@ public sealed class AuditSensitiveDataTests
     }
     private sealed class PrimaryDb(DbContextOptions<PrimaryDb> options) : DbContext(options)
     {
-        protected override void OnModelCreating(ModelBuilder modelBuilder) => modelBuilder.Entity<Tracked>();
-    }
-    private sealed class AuditFactory(DbContextOptions<AuditLogDbContext> options) : IDbContextFactory<AuditLogDbContext>
-    {
-        public AuditLogDbContext CreateDbContext() => new(options);
+        protected override void OnModelCreating(ModelBuilder modelBuilder) { modelBuilder.Entity<Tracked>(); modelBuilder.ApplyConfiguration(new AuditOutboxMessageConfiguration()); }
     }
     private sealed class Context : IAuditExecutionContextAccessor
     {

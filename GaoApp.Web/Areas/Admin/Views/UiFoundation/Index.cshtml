@@ -1,0 +1,221 @@
+@using GaoApp.Web.Areas.Admin.ViewModels.Commerce
+@{
+    Layout = "_CommercePreviewLayout";
+    // Fixture for this read-only preview only. Production navigation will use AdminMenuItems and permissions.
+    var navigation = new CommerceNavigation(new[] {
+        new CommerceNavigationItem("home", "Tổng quan", "ui-home", "ui-main"),
+        new CommerceNavigationItem("orders", "Đơn hàng", "ui-receipt", "ui-orders-heading"),
+        new CommerceNavigationItem("receiving", "Nhập hàng", "ui-box", "ui-receiving-dialog", true),
+        new CommerceNavigationItem("pos", "Bán hàng", "ui-bag", "ui-pos-dialog", true)
+    }, "ui-navigation-dialog", "home");
+    var orders = new[] {
+        new { Code = "DH-1048", Initials = "MA", Customer = "Nguyễn Minh Anh", Meta = "09:42 · 2 dòng hàng", Amount = "1.240.000 ₫", State = "pending", Status = new CommerceStatus("Chờ thanh toán", CommerceTone.Warning) },
+        new { Code = "DH-1047", Initials = "HV", Customer = "Cửa hàng Thực phẩm sạch Hương Việt", Meta = "09:28 · 8 dòng hàng", Amount = "3.680.000 ₫", State = "paid", Status = new CommerceStatus("Đã thanh toán", CommerceTone.Success) },
+        new { Code = "DH-1046", Initials = "TT", Customer = "Nguyễn Thị Thảo", Meta = "09:10 · 4 dòng hàng", Amount = "2.130.000 ₫", State = "shipping", Status = new CommerceStatus("Đang giao", CommerceTone.Info) },
+        new { Code = "DH-1045", Initials = "NS", Customer = "Công ty TNHH Phân phối Thương mại và Dịch vụ Nông sản Việt Nam", Meta = "08:55 · 17 dòng hàng", Amount = "12.480.000 ₫", State = "completed", Status = new CommerceStatus("Hoàn tất", CommerceTone.Neutral) }
+    };
+}
+<div data-gao-ui="modern" data-gao-theme="commerce" class="ui-preview" data-ui-foundation>
+    <a class="gds-button gds-skip-link" href="#ui-main">Đến nội dung chính</a>
+    <svg class="ui-preview__symbols" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <symbol id="ui-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+        <symbol id="ui-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+        <symbol id="ui-arrow" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+        <symbol id="ui-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+        <symbol id="ui-box" viewBox="0 0 24 24"><path d="m3 7 9-5 9 5v10l-9 5-9-5V7Zm0 0 9 5 9-5M12 12v10M8 4l9 5"/></symbol>
+        <symbol id="ui-receipt" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6M9 12h6"/></symbol>
+        <symbol id="ui-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+        <symbol id="ui-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+        <symbol id="ui-home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7M5 9v12h14V9M9 21v-8h6v8"/></symbol>
+        <symbol id="ui-bag" viewBox="0 0 24 24"><path d="M5 7h14l1 14H4L5 7Zm3 0V5a4 4 0 0 1 8 0v2m-8 4a4 4 0 0 0 8 0"/></symbol>
+        <symbol id="ui-menu" viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14"/></symbol>
+    </svg>
+    <div class="ui-preview__topbar">
+        <div class="ui-preview__topbar-inner">
+            <a class="ui-preview__brand" href="#ui-main" aria-label="GaoApp, đầu trang xem thử">
+                <span class="ui-preview__brand-mark" aria-hidden="true">g<span>•</span></span>
+                <span>GaoApp<span class="ui-preview__brand-caption">Commerce workspace</span></span>
+            </a>
+            <span class="ui-preview__preview-label"><span aria-hidden="true"></span>Bản xem thử</span>
+        </div>
+    </div>
+    <main id="ui-main" class="ui-preview__main gds-page" tabindex="-1">
+        <div class="ui-preview__heading">
+            @await Html.PartialAsync("Commerce/_Header", new CommerceHeader("Tổng quan cửa hàng", "KHÔNG GIAN LÀM VIỆC", "Mọi việc trong tầm tay. Bắt đầu từ điều quan trọng."))
+            <button type="button" class="gds-button gds-button--primary" data-gao-dialog-open="ui-form-dialog">
+                <svg class="gds-icon" aria-hidden="true"><use href="#ui-plus" /></svg>Thử biểu mẫu
+            </button>
+        </div>
+        <p class="ui-preview__sample-note">Dữ liệu minh họa · Các thao tác trên trang chỉ dùng để xem thử giao diện.</p>
+        <section class="gds-metric-grid" aria-label="Chỉ số đơn hàng mẫu">
+            <div class="gds-card gds-metric gds-metric--featured">
+                <span class="gds-metric__label">Tổng giá trị đơn mẫu</span>
+                <strong class="gds-metric__value gds-amount">19.530.000 <small>₫</small></strong>
+                <span class="gds-metric__note">4 đơn trong danh sách</span>
+            </div>
+            <div class="gds-card gds-metric"><span class="gds-metric__label">Đơn hàng hôm nay</span><strong class="gds-metric__value gds-amount">04</strong><span class="gds-metric__note">Gọn gàng trong một nơi</span></div>
+            <div class="gds-card gds-metric"><span class="gds-metric__label">Chờ thanh toán</span><strong class="gds-metric__value gds-amount">01</strong><span class="gds-metric__note">Cần tiếp tục xử lý</span></div>
+            <div class="gds-card gds-metric"><span class="gds-metric__label">Đang giao hàng</span><strong class="gds-metric__value gds-amount">01</strong><span class="gds-metric__note">Theo dõi tiến độ giao</span></div>
+        </section>
+        <div class="ui-preview__workspace">
+            <section class="gds-section ui-preview__orders" aria-labelledby="ui-orders-heading">
+                <div class="gds-section-heading"><h2 id="ui-orders-heading" tabindex="-1">Đơn hàng gần đây</h2><span class="ui-preview__section-caption">Hôm nay</span></div>
+                <div class="gds-filter-bar">
+                    <div class="gds-filter-bar__search">
+                        <label class="visually-hidden" for="ui-order-search">Tìm mã đơn hoặc tên khách hàng</label>
+                        <div class="gds-search">
+                            <svg class="gds-icon gds-muted" aria-hidden="true"><use href="#ui-search" /></svg>
+                            <input id="ui-order-search" type="search" placeholder="Tìm đơn, tên khách hàng…" autocomplete="off" />
+                            <button type="button" class="gds-button gds-button--quiet gds-button--icon" data-clear-search aria-label="Xóa nội dung tìm kiếm" hidden><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button>
+                        </div>
+                    </div>
+                    <button type="button" class="gds-button" data-gao-dialog-open="ui-filter-dialog"><svg class="gds-icon" aria-hidden="true"><use href="#ui-filter" /></svg>Bộ lọc<span data-filter-count hidden>1</span></button>
+                </div>
+                <div class="gds-chip-group ui-preview__order-chips" role="group" aria-label="Lọc nhanh trạng thái đơn mẫu">
+                    <button type="button" class="gds-chip" data-order-filter="all" aria-pressed="true">Tất cả<span class="gds-chip__count">4</span></button>
+                    <button type="button" class="gds-chip" data-order-filter="pending" aria-pressed="false">Chờ thanh toán<span class="gds-chip__count">1</span></button>
+                    <button type="button" class="gds-chip" data-order-filter="shipping" aria-pressed="false">Đang giao<span class="gds-chip__count">1</span></button>
+                </div>
+                <p class="visually-hidden" data-search-summary role="status">Hiển thị 4 đơn hàng mẫu.</p>
+                <div class="gds-record-list" data-order-list>
+                    @foreach (var order in orders)
+                    {
+                        <article class="gds-record" data-sample-order data-code="@order.Code" data-customer="@order.Customer" data-amount="@order.Amount" data-state="@order.State" data-status="@order.Status.Text">
+                            <span class="gds-record__avatar" aria-hidden="true">@order.Initials</span>
+                            <div><span class="gds-record__title">@order.Code</span><p class="ui-preview__customer">@order.Customer</p><p class="gds-record__meta">@order.Meta</p></div>
+                            <div class="gds-record__value"><strong class="gds-amount">@order.Amount</strong>@await Html.PartialAsync("Commerce/_Status", order.Status)</div>
+                            <button type="button" class="gds-button gds-button--quiet gds-button--icon" data-order-detail data-gao-dialog-open="ui-order-dialog" aria-label="Xem đơn mẫu @order.Code"><svg class="gds-icon" aria-hidden="true"><use href="#ui-arrow" /></svg></button>
+                        </article>
+                    }
+                </div>
+                <div data-no-results hidden>
+                    @await Html.PartialAsync("Commerce/_State", new CommerceState(CommerceStateKind.Empty, "Chưa tìm thấy đơn phù hợp", "Thử tên khách hàng, mã đơn khác hoặc đặt lại bộ lọc."))
+                    <button type="button" class="gds-button gds-button--quiet ui-preview__reset" data-reset-search>Đặt lại tìm kiếm</button>
+                </div>
+                <div class="ui-preview__list-footer"><span data-visible-count>4 đơn hàng mẫu</span><span>Mở mũi tên để xem chi tiết</span></div>
+            </section>
+            <aside class="ui-preview__aside" aria-label="Công việc và thành phần mẫu">
+                <section class="gds-section" aria-labelledby="ui-tasks-heading">
+                    <div class="gds-section-heading"><h2 id="ui-tasks-heading">Cần chú ý</h2><span class="ui-preview__task-count">2</span></div>
+                    <div class="ui-preview__task">
+                        <span class="ui-preview__task-icon" aria-hidden="true"><svg class="gds-icon"><use href="#ui-box" /></svg></span>
+                        <div><h3>Nhận hàng đang dở</h3><p>Phiếu NH-0284 · Đã kiểm 3/8 dòng</p><progress class="ui-preview__progress" value="3" max="8" aria-label="Đã kiểm 3 trên 8 dòng hàng">3/8</progress></div>
+                    </div>
+                    <div class="ui-preview__task">
+                        <span class="ui-preview__task-icon ui-preview__task-icon--amber" aria-hidden="true"><svg class="gds-icon"><use href="#ui-receipt" /></svg></span>
+                        <div><h3>Một đơn chờ thanh toán</h3><p>Đơn DH-1048 · 1.240.000 ₫</p><button class="gds-button gds-button--quiet ui-preview__text-button" type="button" data-show-pending>Xem trong danh sách<svg class="gds-icon" aria-hidden="true"><use href="#ui-arrow" /></svg></button></div>
+                    </div>
+                </section>
+                <section class="gds-section ui-preview__design-note" aria-labelledby="ui-design-heading">
+                    <span class="ui-preview__small-label">HƯỚNG THIẾT KẾ ĐÃ CHỌN</span>
+                    <h2 id="ui-design-heading">Ít rối mắt.<br />Nhiều khoảng thở.</h2>
+                    <p>Nền sáng, xanh lá trầm, thông tin theo thứ bậc. Nút đủ lớn để thao tác bằng một tay.</p>
+                    <div class="ui-preview__swatches" aria-label="Bảng màu GaoApp Commerce"><span class="ui-preview__swatch ui-preview__swatch--green" title="Xanh hành động #176B45"></span><span class="ui-preview__swatch ui-preview__swatch--ink" title="Chữ #192B23"></span><span class="ui-preview__swatch ui-preview__swatch--canvas" title="Nền #F5F7F5"></span><span class="ui-preview__swatch ui-preview__swatch--amber" title="Cảnh báo #FFF3D6"></span></div>
+                </section>
+            </aside>
+        </div>
+        <section class="gds-section" aria-labelledby="ui-components-heading">
+            <div class="gds-section-heading"><div><p class="gds-eyebrow">CÙNG MỘT BỘ THÀNH PHẦN</p><h2 id="ui-components-heading">Nhất quán trong từng thao tác</h2></div><span class="ui-preview__section-caption">Điện thoại · Tablet · Máy tính</span></div>
+            <div class="ui-preview__component-grid">
+                <div class="ui-preview__component-block"><h3>Trạng thái dễ nhận biết</h3><p>Có nhãn chữ, màu sắc hỗ trợ đọc nhanh.</p><div class="ui-preview__statuses">
+                    @await Html.PartialAsync("Commerce/_Status", new CommerceStatus("Hoàn tất", CommerceTone.Success))
+                    @await Html.PartialAsync("Commerce/_Status", new CommerceStatus("Đang xử lý", CommerceTone.Info))
+                    @await Html.PartialAsync("Commerce/_Status", new CommerceStatus("Cần kiểm tra", CommerceTone.Warning))
+                    @await Html.PartialAsync("Commerce/_Status", new CommerceStatus("Có lỗi", CommerceTone.Danger))
+                    @await Html.PartialAsync("Commerce/_Status", new CommerceStatus("Bản nháp"))
+                </div></div>
+                <div class="ui-preview__component-block"><h3>Thao tác rõ ràng</h3><p>Một hành động chính trong mỗi tác vụ.</p><div class="gds-actions"><button type="button" class="gds-button gds-button--primary" data-gao-dialog-open="ui-form-dialog">Thử biểu mẫu</button><button type="button" class="gds-button" data-gao-dialog-open="ui-confirm-dialog">Thử xác nhận</button><button type="button" class="gds-button" disabled>Chưa khả dụng</button></div></div>
+            </div>
+            <div class="ui-preview__state-heading"><h3>Khi dữ liệu chưa sẵn sàng</h3><div class="gds-chip-group" role="group" aria-label="Chọn trạng thái hiển thị mẫu"><button type="button" class="gds-chip" data-preview-state="empty" aria-pressed="true">Trống</button><button type="button" class="gds-chip" data-preview-state="loading" aria-pressed="false">Đang tải</button><button type="button" class="gds-chip" data-preview-state="error" aria-pressed="false">Lỗi</button></div></div>
+            <div data-state-panel="empty">@await Html.PartialAsync("Commerce/_State", new CommerceState(CommerceStateKind.Empty, "Chưa có nội dung", "Khi có dữ liệu, các mục sẽ xuất hiện tại đây."))</div>
+            <div data-state-panel="loading" hidden>@await Html.PartialAsync("Commerce/_State", new CommerceState(CommerceStateKind.Loading, "Đang tải dữ liệu", "Vui lòng chờ trong giây lát. Đây là trạng thái tải minh họa."))</div>
+            <div data-state-panel="error" hidden>@await Html.PartialAsync("Commerce/_State", new CommerceState(CommerceStateKind.Error, "Chưa thể tải nội dung", "Dữ liệu đã nhập vẫn được giữ. Kiểm tra kết nối rồi thử lại."))<button type="button" class="gds-button ui-preview__retry" data-preview-retry>Thử lại mẫu</button></div>
+        </section>
+        <footer class="ui-preview__footer"><span>GaoApp Commerce · UI-01</span><span>Bộ nền giao diện để chuyển từng màn theo kế hoạch</span></footer>
+    </main>
+
+    <dialog id="ui-filter-dialog" class="gds-dialog gds-dialog--sheet" aria-labelledby="ui-filter-title">
+        <form class="gds-dialog__frame" data-filter-form>
+            <div class="gds-dialog__header"><h2 id="ui-filter-title">Lọc đơn hàng mẫu</h2><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng bộ lọc"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div>
+            <div class="gds-dialog__body">
+                <div class="gds-field">
+                    <label for="ui-state-select">Trạng thái đơn hàng</label>
+                    <select id="ui-state-select" class="gds-input" name="state">
+                        <option value="all">Tất cả trạng thái</option>
+                        <option value="pending">Chờ thanh toán</option>
+                        <option value="paid">Đã thanh toán</option>
+                        <option value="shipping">Đang giao</option>
+                        <option value="completed">Hoàn tất</option>
+                    </select>
+                    <p class="gds-field__help">Bộ lọc áp dụng cho bốn đơn minh họa trên trang.</p>
+                </div>
+            </div>
+            <div class="gds-dialog__footer"><button type="button" class="gds-button" data-clear-filters>Xóa bộ lọc</button><button type="submit" class="gds-button gds-button--primary">Áp dụng bộ lọc</button></div>
+        </form>
+    </dialog>
+    <dialog id="ui-order-dialog" class="gds-dialog gds-dialog--sheet" aria-labelledby="ui-order-title">
+        <div class="gds-dialog__frame">
+            <div class="gds-dialog__header"><div><p class="gds-eyebrow">CHI TIẾT ĐƠN MẪU</p><h2 id="ui-order-title" data-detail-code>Đơn hàng</h2></div><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng chi tiết đơn"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div>
+            <div class="gds-dialog__body"><dl class="gds-detail-list"><div><dt>Khách hàng</dt><dd data-detail-customer></dd></div><div><dt>Trạng thái</dt><dd data-detail-status></dd></div><div><dt>Tổng giá trị</dt><dd class="gds-amount" data-detail-amount></dd></div></dl><div class="gds-notice ui-preview__detail-note"><svg class="gds-icon" aria-hidden="true"><use href="#ui-receipt" /></svg><p>Đơn minh họa để đánh giá bố cục chi tiết và thanh hành động.</p></div></div>
+            <div class="gds-action-dock"><div class="gds-action-dock__summary"><span class="gds-muted">Tổng giá trị</span><br /><strong class="gds-amount" data-detail-total></strong></div><button type="button" class="gds-button gds-button--primary" data-gao-dialog-close>Đã xem</button></div>
+        </div>
+    </dialog>
+    <dialog id="ui-form-dialog" class="gds-dialog" aria-labelledby="ui-form-title" aria-describedby="ui-form-description">
+        <form class="gds-dialog__frame" data-sample-form novalidate>
+            <div class="gds-dialog__header"><h2 id="ui-form-title">Thông tin khách hàng</h2><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng biểu mẫu"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div>
+            <div class="gds-dialog__body">
+                <p id="ui-form-description" class="gds-muted">Biểu mẫu minh họa. Thử để trống rồi kiểm tra để xem cách báo lỗi.</p>
+                <div class="gds-notice gds-notice--error ui-preview__form-summary" role="alert" data-form-summary hidden>Vui lòng kiểm tra các trường được đánh dấu bên dưới.</div>
+                <div class="gds-form-grid">
+                    <div class="gds-field gds-field--wide"><label for="ui-customer-name">Tên khách hàng <span aria-hidden="true">*</span></label><input class="gds-input" id="ui-customer-name" name="name" autocomplete="off" required maxlength="200" aria-describedby="ui-name-error" /><p class="gds-field__error" id="ui-name-error" hidden>Nhập tên khách hàng.</p></div>
+                    <div class="gds-field"><label for="ui-customer-phone">Số điện thoại <span aria-hidden="true">*</span></label><input class="gds-input" id="ui-customer-phone" name="phone" type="tel" inputmode="tel" autocomplete="off" required maxlength="20" aria-describedby="ui-phone-help ui-phone-error" /><p class="gds-field__help" id="ui-phone-help">Ví dụ: 0912 345 678</p><p class="gds-field__error" id="ui-phone-error" hidden>Nhập số điện thoại gồm 9–15 chữ số.</p></div>
+                    <div class="gds-field"><label for="ui-customer-group">Nhóm khách hàng</label><select class="gds-input" id="ui-customer-group" name="group"><option>Khách lẻ</option><option>Khách sỉ</option></select></div>
+                    <div class="gds-field gds-field--wide"><label for="ui-customer-address">Địa chỉ</label><input class="gds-input" id="ui-customer-address" name="address" autocomplete="off" maxlength="300" /></div>
+                    <div class="gds-field gds-field--wide"><label for="ui-customer-note">Ghi chú</label><textarea class="gds-input" id="ui-customer-note" name="note" rows="3" maxlength="1000" placeholder="Thông tin cần lưu ý khi phục vụ khách…"></textarea><p class="gds-field__help">Nội dung đang nhập vẫn giữ khi đóng và mở lại bản mẫu.</p></div>
+                </div>
+                <p class="gds-notice ui-preview__form-result" role="status" data-form-result hidden></p>
+            </div>
+            <div class="gds-dialog__footer"><button type="button" class="gds-button" data-gao-dialog-close>Đóng</button><button type="submit" class="gds-button gds-button--primary" data-form-submit>Kiểm tra mẫu</button></div>
+        </form>
+    </dialog>
+    <dialog id="ui-confirm-dialog" class="gds-dialog" aria-labelledby="ui-confirm-title">
+        <div class="gds-dialog__frame"><div class="gds-dialog__header"><h2 id="ui-confirm-title">Hộp xác nhận mẫu</h2><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng xác nhận"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div><div class="gds-dialog__body"><p>Hộp thoại nêu rõ đối tượng, ảnh hưởng và việc sẽ làm trước khi người dùng xác nhận.</p><div class="gds-notice"><p>Đây là thành phần xem thử. Không có chứng từ hoặc dữ liệu nào bị thay đổi.</p></div></div><div class="gds-dialog__footer"><button type="button" class="gds-button" data-gao-dialog-close autofocus>Quay lại</button><button type="button" class="gds-button gds-button--primary" data-preview-confirm>Xác nhận mẫu</button></div></div>
+    </dialog>
+    <dialog id="ui-receiving-dialog" class="gds-dialog gds-dialog--sheet" aria-labelledby="ui-receiving-title">
+        <div class="gds-dialog__frame">
+            <div class="gds-dialog__header"><div><p class="gds-eyebrow">NHẬP HÀNG · BẢN MẪU</p><h2 id="ui-receiving-title">Nhận hàng tại cửa hàng</h2></div><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng nhập hàng mẫu"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div>
+            <div class="gds-dialog__body">
+                <div class="gds-section-heading"><strong>Phiếu NH-0284</strong>@await Html.PartialAsync("Commerce/_Status", new CommerceStatus("Đang nhận", CommerceTone.Info))</div>
+                <p class="gds-muted">Đã kiểm 3/8 dòng hàng</p>
+                <progress class="ui-preview__progress" value="3" max="8" aria-label="Đã kiểm 3 trên 8 dòng hàng">3/8</progress>
+                <dl class="gds-detail-list ui-preview__detail-note"><div><dt>Gạo ST25 · bao 5 kg</dt><dd>Đã kiểm 12 bao</dd></div><div><dt>Gạo thơm · bao 10 kg</dt><dd>Đã kiểm 6 bao</dd></div><div><dt>Nếp sáp · bao 5 kg</dt><dd>Đã kiểm 4 bao</dd></div></dl>
+                <p class="gds-notice ui-preview__detail-note">Màn mẫu để xem cách mở tác vụ từ thanh menu điện thoại.</p>
+            </div>
+            <div class="gds-dialog__footer"><button type="button" class="gds-button gds-button--primary" data-gao-dialog-close>Đã xem mẫu</button></div>
+        </div>
+    </dialog>
+    <dialog id="ui-pos-dialog" class="gds-dialog gds-dialog--sheet" aria-labelledby="ui-pos-title">
+        <div class="gds-dialog__frame">
+            <div class="gds-dialog__header"><div><p class="gds-eyebrow">BÁN HÀNG · BẢN MẪU</p><h2 id="ui-pos-title">Giỏ hàng</h2></div><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng bán hàng mẫu"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div>
+            <div class="gds-dialog__body"><dl class="gds-detail-list"><div><dt>Gạo ST25 · bao 5 kg<br /><span class="gds-muted">2 bao × 185.000 ₫</span></dt><dd>370.000 ₫</dd></div><div><dt>Gạo thơm · bao 10 kg<br /><span class="gds-muted">1 bao × 270.000 ₫</span></dt><dd>270.000 ₫</dd></div></dl><p class="gds-notice ui-preview__detail-note">Giỏ minh họa có 2 dòng hàng. Các thao tác trên trang chưa tạo đơn hoặc thu tiền.</p></div>
+            <div class="gds-action-dock"><div class="gds-action-dock__summary"><span class="gds-muted">Tổng giá trị mẫu</span><br /><strong class="gds-amount">640.000 ₫</strong></div><button type="button" class="gds-button gds-button--primary" data-gao-dialog-close>Đã xem mẫu</button></div>
+        </div>
+    </dialog>
+    <dialog id="ui-navigation-dialog" class="gds-dialog gds-dialog--sheet" aria-labelledby="ui-navigation-title">
+        <div class="gds-dialog__frame">
+            <div class="gds-dialog__header"><h2 id="ui-navigation-title">Menu</h2><button type="button" class="gds-button gds-button--quiet gds-button--icon" data-gao-dialog-close aria-label="Đóng menu mẫu"><svg class="gds-icon" aria-hidden="true"><use href="#ui-close" /></svg></button></div>
+            <div class="gds-dialog__body">
+                <p class="gds-muted">Mở nhanh các khu vực trong bản xem thử.</p>
+                <div class="ui-preview__menu-grid">
+                    @foreach (var item in navigation.Items)
+                    {
+                        <button type="button" class="gds-button ui-preview__menu-entry" data-preview-menu-go="@item.Key"><svg class="gds-icon" aria-hidden="true"><use href="#@item.IconId" /></svg><span>@item.Label</span><svg class="gds-icon" aria-hidden="true"><use href="#ui-arrow" /></svg></button>
+                    }
+                </div>
+                <p class="ui-preview__sample-note ui-preview__detail-note">Đây là cấu hình minh họa. Menu sử dụng thực tế sẽ lấy từ cấu hình cửa hàng và quyền truy cập.</p>
+            </div>
+        </div>
+    </dialog>
+    @await Html.PartialAsync("Commerce/_BottomNavigation", navigation)
+    <p class="ui-preview__toast" role="status" data-preview-toast hidden></p>
+</div>

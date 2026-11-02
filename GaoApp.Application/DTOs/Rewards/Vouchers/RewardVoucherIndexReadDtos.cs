@@ -10,6 +10,7 @@ public static class RewardVoucherIndexStatuses
     public const string Cancelled = "cancelled";
     public const string Expired = "expired";
     public const string Locked = "locked";
+    public const string ReservedForDelivery = "reservedfordelivery";
 }
 
 public sealed class RewardVoucherIndexQueryRequest

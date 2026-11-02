@@ -7,6 +7,10 @@ public class StockDocumentLineDto
     public string RowVersion { get; set; } = string.Empty;
     public int Id { get; set; }
     public int LineNo { get; set; }
+    public string? RevisionChangeKind { get; set; }
+    public List<string> RevisionChangedFields { get; set; } = new();
+    public string RevisionChangeSummary { get; set; } = string.Empty;
+    public decimal? PreviousRevisionQuantity { get; set; }
 
     public int ProductVariantId { get; set; }
 

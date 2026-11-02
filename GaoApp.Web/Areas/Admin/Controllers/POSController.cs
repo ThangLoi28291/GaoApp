@@ -181,6 +181,7 @@ public class POSController : BasePOSPageController
             });
         }
 
+        await HttpContext.RequestServices.GetRequiredService<GaoApp.Web.Services.Acb.BankNotificationBridgeService>().ArmAsync(qr.Id, ct);
         await NotifyTerminalAsync(
             eventType: "payment_qr_created",
             orderId: qr.OrderId,
@@ -531,7 +532,7 @@ public class POSController : BasePOSPageController
         CancellationToken ct = default)
     {
         var model = await _pos.GetReceiptAsync(orderId, ct);
-        if (model.Delivery is not null)
+        if (model.Delivery is { IsSettlementSale: false })
             return Redirect(model.Delivery.BillUrl);
 
         return View("~/Areas/Admin/Views/ReceiptTemplates/Print.cshtml",
@@ -556,8 +557,9 @@ public class POSController : BasePOSPageController
         if (elapsed >= 1000)
         {
             HttpContext.RequestServices.GetRequiredService<ILogger<POSController>>().LogWarning(
-                "Slow POS order list: StoreId={StoreId}; Page={Page}; PageSize={PageSize}; HasKeyword={HasKeyword}; HasDateFilter={HasDateFilter}; Status={Status}; ElapsedMs={ElapsedMs}; TraceId={TraceId}",
+                "Slow POS order list: StoreId={StoreId}; Page={Page}; PageSize={PageSize}; HasKeyword={HasKeyword}; HasProductFilter={HasProductFilter}; HasDateFilter={HasDateFilter}; Status={Status}; ElapsedMs={ElapsedMs}; TraceId={TraceId}",
                 CurrentStoreIdValue(), result.Page, result.PageSize, !string.IsNullOrWhiteSpace(query.Keyword),
+                !string.IsNullOrWhiteSpace(query.Product),
                 query.FromDate.HasValue || query.ToDate.HasValue, query.Status, elapsed, HttpContext.TraceIdentifier);
         }
         return Ok(result);
@@ -719,7 +721,7 @@ public class POSController : BasePOSPageController
     public async Task<IActionResult> AddPaymentAndMaybeFinalizeCurrentCart([FromBody] QuickAddPaymentRequest request, CancellationToken ct)
     {
 
-        var draft = await _pos.AddPaymentToCurrentCartAsync(request, ct)
+        var draft = await _pos.AddPaymentAndMaybeFinalizeCurrentCartAsync(request, ct)
             ?? throw new InvalidOperationException(
                 "POS service returned no cart after adding a payment.");
 
@@ -742,11 +744,7 @@ public class POSController : BasePOSPageController
                 });
             }
 
-        if (draft.Status is not (OrderStatus.Draft or OrderStatus.Completed))
-            throw new GaoApp.Application.Common.Exceptions.ConflictAppException("Đơn đã đổi trạng thái. Vui lòng kiểm tra lịch sử thanh toán.");
-        var finalizedDraft = draft.Status == OrderStatus.Completed ? draft : await _pos.FinalizeAsync(draft.OrderId, ct)
-            ?? throw new InvalidOperationException(
-                "POS service returned no result after automatic finalization.");
+        var finalizedDraft = draft;
 
         await NotifyStoreAsync(
                 eventType: PosRealtimeEventTypes.OrderFinalized,

@@ -9,9 +9,14 @@
     var canCreate = canView && (bool?)ViewBag.CanRoleCreate == true;
 }
 @section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/security-workspace.mobile.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/role-permissions.css" asp-append-version="true" />
 }
-<div class="rp-page" id="rolePermissionsPage">
+<div class="rp-page" id="rolePermissionsPage" data-can-manage="@(((bool?)ViewBag.CanManagePermissions == true).ToString().ToLowerInvariant())">
+    @if ((bool?)ViewBag.CanManagePermissions != true)
+    {
+        <div class="alert alert-info">Bạn đang xem phân quyền. Chỉ ADMIN cửa hàng hoặc Host Admin được lưu; quyền của ADMIN chỉ Host Admin được sửa.</div>
+    }
     <header class="rp-header">
         <div><p class="rp-eyebrow">NHÂN SỰ & PHÂN QUYỀN</p><h1>Ai được làm gì?</h1><p>Chọn vai trò, cấp quyền theo công việc và lưu để áp dụng cho nhân viên.</p></div>
         <div class="rp-actions">
@@ -85,6 +90,7 @@
                 <header><div><p class="rp-eyebrow">KIỂM TRA TRƯỚC KHI LƯU</p><h2 id="changesTitle">Cập nhật quyền cho @Model.RoleName</h2></div><button type="button" class="rp-btn rp-close" data-close-dialog aria-label="Đóng">×</button></header>
                 <p class="rp-dialog-note">Áp dụng cho @Model.UserCount nhân viên đang dùng vai trò này. Những quyền khác được giữ nguyên.</p>
                 <div id="changesList" class="rp-changes-list"></div>
+                <partial name="_SecurityActionConfirmation" />
                 <footer><button type="button" class="rp-btn" data-close-dialog>Quay lại chỉnh sửa</button><button type="button" class="rp-btn rp-primary" id="confirmSave">Lưu phân quyền</button></footer>
             </dialog>
         </form>
@@ -93,3 +99,7 @@
 @section PageScripts {
     <script src="~/Admin/js/role-permissions.js" asp-append-version="true"></script>
 }
+
+@* UI-21 phone presentation; native desktop, forms and security owners are retained. *@
+<span hidden data-ui21-view="RolePermissions/Index"></span>
+<script src="~/Admin/js/security-workspace.mobile.js" asp-append-version="true" defer></script>

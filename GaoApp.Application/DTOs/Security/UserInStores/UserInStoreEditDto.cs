@@ -8,6 +8,7 @@ public class UserInStoreEditDto
     public int Id { get; set; }
 
     public int UserId { get; set; }
+    public bool IsHostAdmin { get; set; }
 
     public string Username { get; set; } = string.Empty;
 
@@ -16,6 +17,7 @@ public class UserInStoreEditDto
     public string? Email { get; set; }
 
     public int RoleId { get; set; }
+    public string RoleCode { get; set; } = string.Empty;
 
     public bool IsActive { get; set; }
     public string? PhoneNumber { get; set; }

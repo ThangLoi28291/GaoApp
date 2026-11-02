@@ -8,11 +8,13 @@ using GaoApp.Infrastructure.Data;
 using GaoApp.Web.Common.POS;
 using Microsoft.EntityFrameworkCore;
 using static GaoApp.Web.Services.Acb.AcbProtocol;
+using GaoApp.Application.Storefront;
+using GaoApp.Infrastructure.Services.Banking;
 
 namespace GaoApp.Web.Services.Acb;
 
 public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol protocol, IPOSService pos,
-    IPOSRuntimeContextAccessor runtime, IPosRealtimeNotifier notifier, IAcbOrderLockProvider locks)
+    IPOSRuntimeContextAccessor runtime, IPosRealtimeNotifier notifier, IAcbOrderLockProvider locks,IStorefrontBankRegistration? bankingRegistration=null)
 {
     private int StoreId => db.CurrentStoreId is > 0 ? db.CurrentStoreId.Value : throw new InvalidOperationException("Chưa xác định cửa hàng.");
     private IQueryable<AcbQrSession> Sessions => db.Set<AcbQrSession>().Where(x => x.StoreId == StoreId);
@@ -43,10 +45,13 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
             : await Sessions.OrderByDescending(x => x.Id).FirstOrDefaultAsync(x => x.OrderId == orderId && x.Status != AcbSessionStatus.Cancelled && x.PaymentId == null, ct);
         if (existing != null)
         {
+            await db.Entry(existing).ReloadAsync(ct);
+            if (request?.ClientRequestId != null && request.Amount is > 0 && request.Amount != existing.Amount)
+                throw new InvalidOperationException("Lần tạo QR này đã có số tiền khác. Hãy mở lại QR hoặc chọn tạo QR mới.");
+            // Reopening/retrying this QR must not bypass another unresolved attempt.
+            await RequirePreviousQrResolvedAsync(order, ct, existing.QrRequestId);
             if (request?.ClientRequestId != null)
             {
-                if (request.Amount is > 0 && request.Amount != existing.Amount)
-                    throw new InvalidOperationException("Lần tạo QR này đã có số tiền khác. Hãy mở lại QR hoặc chọn tạo QR mới.");
                 if (existing.Status == AcbSessionStatus.Creating)
                     throw new InvalidOperationException("Lần tạo QR đang chờ ACB xác minh. Hãy tra cứu lịch sử QR trước khi tạo lần mới.");
                 return (await ReopenQrAsync(orderId, existing.QrRequestId, ct)).Qr;
@@ -89,6 +94,7 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
         qr.RequestCode = providerOrderId;
         var session = new AcbQrSession
         {
+            BankBindingSnapshotJson = JsonSerializer.Serialize(GlobalBankReceiptLedger.AccountSnapshot(bank)),
             StoreId = StoreId, QrRequestId = qr.Id, OrderId = orderId, ShiftId = order.POSShiftId,
             TerminalId = order.POSShift.TerminalId, CashierId = runtime.UserId ?? 0,
             Amount = amount, CartFingerprint = AcbPaymentPolicy.Fingerprint(order),
@@ -96,6 +102,7 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
         };
         db.Set<AcbQrSession>().Add(session);
         await db.SaveChangesAsync(ct); // Persist the bank correlation BEFORE the network request.
+        await new GlobalBankReceiptLedger(db,protocol.Core).RegisterPosAsync(qr.Id,providerOrderId,ct);
         JsonElement result;
         try
         {
@@ -256,6 +263,13 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
     {
         var settings = await SettingsAsync(ct) ?? throw new InvalidOperationException("Thiếu cấu hình ACB.");
         var created = new DateTimeOffset(DateTime.SpecifyKind(session.CreatedAtUtc, DateTimeKind.Utc)).ToOffset(TimeSpan.FromHours(7)).Date;
+        var savedQr=await db.PosPaymentQrRequests.AsNoTracking().SingleAsync(x=>x.StoreId==StoreId&&x.Id==session.QrRequestId,ct);
+        var bankSnapshot=string.IsNullOrWhiteSpace(session.BankBindingSnapshotJson)?null:JsonSerializer.Deserialize<BankVerifiedAccount>(session.BankBindingSnapshotJson);
+        var currentBank=await db.StoreBankAccounts.AsNoTracking().SingleAsync(x=>x.StoreId==StoreId&&x.Id==savedQr.BankAccountId,ct);
+        var verifiedAccount=GlobalBankReceiptLedger.AccountSnapshot(currentBank);
+        var originalAccountMatches=bankSnapshot is not null&&bankSnapshot.Id==settings.BankAccountId&&
+            GlobalBankReceiptLedger.AccountIdentity(bankSnapshot.BankCode,bankSnapshot.AccountNumber)==GlobalBankReceiptLedger.AccountIdentity(currentBank.BankCode,currentBank.AccountNumber);
+        await new GlobalBankReceiptLedger(db,protocol.Core).RegisterPosAsync(session.QrRequestId,session.ProviderOrderId,ct);
         var page = 0;
         var confirmedAbsent = true;
         var bankEvidenceMismatch = false;
@@ -295,6 +309,20 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
                     saved.Amount = Money(tx, "transactionAmount"); saved.Status = Text(tx, "transactionStatus");
                     freshPaidEvidence |= IsPaid(saved.Status);
                     saved.Content = Text(tx, "transactionContent"); saved.PostedAt = Text(tx, "origPostDate");
+                    if(IsPaid(saved.Status))
+                    {
+                        if(!originalAccountMatches)
+                        {bankEvidenceMismatch=true;session.Status=AcbSessionStatus.ReviewRequired;session.ReviewReason="Nguồn tài khoản ACB cũ chưa có bằng chứng bất biến; cần đối soát trước khi ghi tiền.";}
+                        else
+                        {
+                            await db.SaveChangesAsync(ct);
+                            var evidence=await new GlobalBankReceiptLedger(db,protocol.Core).RecordVerifiedAsync(new(verifiedAccount,session.ProviderOrderId,
+                                BankPaymentChannel.Pos,number,saved.Amount,saved.Status,saved.PostedAt,tx.GetRawText(),CrossProtocolMappingVerified:
+                                bankingRegistration?.Get(StoreId) is {NotificationIdentityMappingVerified:true} identityProof&&identityProof.AccountIdentity==GlobalBankReceiptLedger.AccountIdentity(verifiedAccount.BankCode,verifiedAccount.AccountNumber)),ct);
+                            if(await db.Set<BankVerifiedReceipt>().AsNoTracking().AnyAsync(x=>x.Id==evidence.Id&&x.OriginStoreId==StoreId,ct))saved.BankVerifiedReceiptId=evidence.Id;
+                            if(evidence.Conflict){bankEvidenceMismatch=true;session.Status=AcbSessionStatus.ReviewRequired;session.ReviewReason="Mã giao dịch ngân hàng đã thuộc nguồn khác hoặc cần đối soát toàn cục.";}
+                        }
+                    }
                     await db.SaveChangesAsync(ct);
                 }
                 if (Text(bankOrder, "status") == "CANCELLED" && session.Status is AcbSessionStatus.Creating or AcbSessionStatus.Pending)
@@ -392,9 +420,21 @@ public sealed partial class AcbPaymentService(AppDbContext db, AcbProtocol proto
             // Save payment and its bank linkage together. A failed finalize may then be retried without adding money twice.
             var payment = new OrderPayment { StoreId = StoreId, OrderId = order.Id, Method = PaymentMethod.BankTransfer,
                 Amount = session.Amount, Provider = "ACB", ReferenceCode = session.ProviderOrderId };
+            var received=transactions.Single(x=>IsPaid(x.Status));
+            if(received.BankVerifiedReceiptId is not int globalReceiptId)throw new InvalidOperationException("Khoản thu cần tra cứu và ghi bằng chứng ngân hàng dùng chung trước khi chốt.");
+            var globalReceipt=await db.Set<BankVerifiedReceipt>().AsNoTracking().SingleAsync(x=>x.Id==globalReceiptId,ct);
+            if(GlobalBankReceiptLedger.BlocksPosAllocation(globalReceipt)||globalReceipt.OriginStoreId!=StoreId||globalReceipt.ProviderReference!=session.ProviderOrderId||globalReceipt.Channel!=BankPaymentChannel.Pos)
+                throw new InvalidOperationException("Khoản thu cần đối soát trước khi chốt tại POS.");
+            payment.BankVerifiedReceiptId=globalReceiptId;
             db.OrderPayments.Add(payment);
             await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await GlobalBankReceiptLedger.LockAsync(db,"GaoApp:BankReceipt:"+GlobalBankReceiptLedger.Hash(globalReceipt.Provider+"|"+globalReceipt.AccountIdentity+"|"+globalReceipt.ExternalTransactionId),ct);
+            globalReceipt=await db.Set<BankVerifiedReceipt>().AsNoTracking().SingleAsync(x=>x.Id==globalReceiptId,ct);
+            if(GlobalBankReceiptLedger.BlocksPosAllocation(globalReceipt)||globalReceipt.OriginStoreId!=StoreId||globalReceipt.ProviderReference!=session.ProviderOrderId||globalReceipt.Channel!=BankPaymentChannel.Pos||globalReceipt.Amount!=session.Amount)
+                throw new InvalidOperationException("Khoản thu vừa chuyển sang đối soát. Chưa ghi thêm tiền; hãy kiểm tra lại.");
+            if(await db.Set<BankReceiptConsumption>().AnyAsync(x=>x.BankVerifiedReceiptId==globalReceiptId,ct))throw new InvalidOperationException("Khoản ngân hàng đã được phân bổ cho thanh toán khác.");
             await db.SaveChangesAsync(ct);
+            db.Add(new BankReceiptConsumption{OriginStoreId=StoreId,BankVerifiedReceiptId=globalReceiptId,Channel=BankPaymentChannel.Pos,PosPaymentId=payment.Id});
             session.PaymentId = payment.Id;
             order.PaidTotal = order.Payments.Where(x => !x.IsDeleted).Sum(x => x.Amount);
             order.BalanceDue = Math.Max(0, order.GrandTotal - order.PaidTotal);

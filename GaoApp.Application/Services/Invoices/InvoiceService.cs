@@ -7,6 +7,8 @@ namespace GaoApp.Application.Services.Invoices;
 
 public class InvoiceService : IInvoiceService
 {
+    public Task<Result<InvoiceHeadDto>> UpdateRevenueTaxAsync(UpdateInvoiceRevenueTaxRequest request, CancellationToken ct = default)
+        => _commandService.UpdateRevenueTaxAsync(request, ct);
     private readonly IInvoiceReadService _readService;
     private readonly IInvoiceCommandService _commandService;
     private readonly IInvoiceBuyerService _buyerService;
@@ -84,6 +86,16 @@ public class InvoiceService : IInvoiceService
     {
         return _commandService.UpdateManualDetailAsync(request, ct);
     }
+
+    public Task<Result<InvoiceHeadDto>> UpdateDetailAsync(
+        UpdateManualInvoiceDetailRequest request,
+        CancellationToken ct = default)
+        => _commandService.UpdateDetailAsync(request, ct);
+
+    public Task<Result<InvoiceHeadDto>> DeleteDetailAsync(
+        int invoiceDetailId,
+        CancellationToken ct = default)
+        => _commandService.DeleteDetailAsync(invoiceDetailId, ct);
 
     public Task<Result<InvoiceHeadDto>> LockInvoiceAsync(
         LockInvoiceRequest request,

@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common.Security;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
@@ -20,7 +20,7 @@ public partial class InvoiceController
 
         if (!result.IsSuccess)
         {
-            FlashError(result.Error?.Message);
+            FlashError(InvoiceErrorReadSanitizer.UserMessage(result.Error));
 
             return RedirectToInvoiceDetailPage(id);
         }
@@ -40,6 +40,11 @@ public partial class InvoiceController
             invoiceResult.IsSuccess
                 ? invoiceResult.Value.InvoiceIssuanceRoute
                 : InvoiceIssuanceRoute.Unselected;
+        if (invoiceResult.IsSuccess)
+        {
+            invoiceResult.Value.InvoiceType = result.Value.Payload.GeneralInvoiceInfo.InvoiceType;
+            ViewBag.RevenueTaxInvoice = invoiceResult.Value;
+        }
 
         return View(
             "ViettelPayload",
@@ -58,7 +63,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Không xem trước được hóa đơn nháp Viettel.");
 
             return RedirectToViettelPayloadPage(id);
@@ -87,7 +92,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Phát hành hóa đơn Viettel thất bại.");
 
             return RedirectToViettelPayloadPage(id);
@@ -116,7 +121,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Tra cứu Viettel theo UUID thất bại.");
 
             return RedirectToViettelPayloadPage(id);
@@ -154,7 +159,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Gửi email hóa đơn Viettel thất bại.");
 
             return RedirectToViettelPayloadPage(request.InvoiceHeadId);
@@ -180,7 +185,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Tải PDF chính thức thất bại.");
 
             return RedirectToViettelPayloadPage(id);
@@ -206,7 +211,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Tải ZIP/XML chính thức thất bại.");
 
             return RedirectToViettelPayloadPage(id);
@@ -231,7 +236,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Chưa có PDF chính thức.");
 
             return RedirectToViettelPayloadPage(id);
@@ -256,7 +261,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             FlashError(
-                result.Error?.Message,
+                InvoiceErrorReadSanitizer.UserMessage(result.Error),
                 "Chưa có ZIP/XML chính thức.");
 
             return RedirectToViettelPayloadPage(id);

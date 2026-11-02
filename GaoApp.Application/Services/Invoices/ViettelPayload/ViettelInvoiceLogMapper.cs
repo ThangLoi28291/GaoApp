@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 
@@ -15,9 +16,9 @@ internal static class ViettelInvoiceLogMapper
                 Id = x.Id,
                 ActionName = GetActionName(x.ActionType),
                 IsSuccess = x.IsSuccess,
-                ErrorCode = x.ErrorCode,
-                ErrorMessage = x.ErrorMessage,
-                RequestUrl = x.RequestUrl,
+                ErrorCode = InvoiceLogReadSanitizer.Code(x.ErrorCode),
+                ErrorMessage = InvoiceLogReadSanitizer.Error(x.ErrorMessage),
+                RequestUrl = InvoiceLogReadSanitizer.Url(x.RequestUrl),
                 StartedAtUtc = x.StartedAtUtc,
                 FinishedAtUtc = x.FinishedAtUtc,
                 DurationMs = x.DurationMs

@@ -4,6 +4,12 @@ namespace GaoApp.Application.DTOs.Inventory;
 
 public class UpdateStockDocumentLineRequest
 {
+    /// <summary>Receipt version shown when the editor was opened.</summary>
+    public string? RowVersion { get; set; }
+
+    /// <summary>Line version shown when the editor was opened.</summary>
+    public string? LineRowVersion { get; set; }
+
     public int? UnitId { get; set; }
 
     [Range(typeof(decimal), "0.001", "999999999")]

@@ -17,6 +17,14 @@
         return whole + (fraction ? ',' + fraction : '');
     }
     function money(value) { return displayExact(value) + ' đ'; }
+    function costQualityLabel(fragment) {
+        const labels = { Final: 'Giá vốn đã chốt', Provisional: 'Giá vốn tạm tính', Unknown: 'Chưa xác định giá vốn', Resolved: 'Nguồn đã xử lý; giữ số ghi nhận ban đầu' };
+        if (!Object.hasOwn(labels, fragment.costQuality)) throw new Error('Trạng thái giá vốn chưa hợp lệ.');
+        const finalId = value => Number.isSafeInteger(value) && value > 0;
+        if (fragment.costQuality === 'Final' ? !finalId(fragment.inventoryCostLayerId) || !finalId(fragment.inventoryCostBudgetDebitId) :
+            fragment.inventoryCostLayerId !== null || fragment.inventoryCostBudgetDebitId !== null) throw new Error('Chứng cứ giá vốn không khớp trạng thái nguồn.');
+        return labels[fragment.costQuality];
+    }
     function parseUtcDate(value) {
         const text = typeof value === 'string' && !/(?:Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value) ? value + 'Z' : value;
         const date = new Date(text); if (!Number.isFinite(date.getTime())) throw new Error('Thời gian máy chủ không hợp lệ.'); return date;
@@ -105,6 +113,7 @@
             if (!inventory.canViewCosts && (line.dispatchedCostText !== null || line.acceptedReturnedCostText !== null)) throw new Error('Dữ liệu giá vốn không đúng quyền xem.');
         }
         if (!inventory.canViewCosts && inventory.costFragments.length) throw new Error('Dữ liệu giá vốn không đúng quyền xem.');
+        for (const fragment of inventory.costFragments) costQualityLabel(fragment);
         return inventory;
     }
     function projectionChanged(current, incoming, needsFresh) {
@@ -170,7 +179,7 @@
         if (!cancellationReason || cancellationReason.length > 500) throw new Error('Lý do hủy cần có nội dung, tối đa 500 ký tự.');
         return { clientRequestId, expectedVersion: detail.delivery.version, reason: cancellationReason };
     }
-    const api = { scaledQuantity, displayExact, money, parseUtcDate, canApplyProjection, reportLine, parseLookup, validRevision, createIntentStore, inventoryProjection, projectionChanged, intentPath, createInventoryIntentStore, cancellationBody };
+    const api = { scaledQuantity, displayExact, money, costQualityLabel, parseUtcDate, canApplyProjection, reportLine, parseLookup, validRevision, createIntentStore, inventoryProjection, projectionChanged, intentPath, createInventoryIntentStore, cancellationBody };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     if (!root.document) return;
     root.DeliveryPickingUi = api;
@@ -413,6 +422,12 @@
                 const value = node('dd', displayExact(line[key]) + ' ' + line.baseUnitName); value.dataset.quantity = key; facts.append(node('dt', label), value);
             }
             row.append(facts, note(line.inCustodyBaseQuantityText === null ? 'Trách nhiệm giao: chưa có xác nhận.' : 'Lượng đã xác nhận trách nhiệm giao: ' + displayExact(line.inCustodyBaseQuantityText) + ' ' + line.baseUnitName, 'delivery-inventory-custody')); box.append(row);
+            if (inventory.canViewCosts) for (const fragment of inventory.costFragments.filter(x => x.lineId === line.lineId)) {
+                const cost = node('div', null, 'delivery-inventory-cost'); cost.dataset.costQuality = fragment.costQuality;
+                cost.append(note(costQualityLabel(fragment)), note('Chứng từ xuất ' + displayExact(fragment.baseQuantityText) + ' ' + line.baseUnitName + ' · Giá vốn ghi nhận ban đầu: ' + money(fragment.costAmountText)));
+                if (fragment.costQuality !== 'Final') cost.append(note('Số ghi nhận ban đầu được giữ để đối chiếu; giá vốn thực tế dựa trên chứng cứ bù sau đó.'));
+                row.append(cost);
+            }
         }
         if (inventory.custody) {
             const c = inventory.custody, context = node('div', null, 'delivery-inventory-custody'); context.id = 'deliveryCustodyContext';

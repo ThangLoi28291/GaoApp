@@ -34,6 +34,9 @@ public sealed class CustomerRepository : ICustomerRepository
                 ct);
     }
 
+    public Task<Customer?> GetByIdAsync(int customerId, CancellationToken ct = default)
+        => _db.Customers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == customerId && !x.IsDeleted, ct);
+
     public async Task<List<Customer>> SearchActiveAsync(string keyword, int take = 20, CancellationToken ct = default)
     {
         keyword = (keyword ?? "").Trim();

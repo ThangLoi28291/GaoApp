@@ -1,5 +1,6 @@
 (() => {
   "use strict";
+  const cspScriptNonce = document.currentScript?.nonce || "";
   const root = document.getElementById("receivingWorkbench");
   if (!root) return;
 
@@ -457,7 +458,7 @@
     if (window.ZXingBrowser) return Promise.resolve(window.ZXingBrowser);
     if (!cameraDecoderPromise) cameraDecoderPromise = new Promise((resolve, reject) => {
       const script = document.createElement("script");
-      script.src = root.dataset.decoderUrl;
+      script.src = root.dataset.decoderUrl; const decoderSource = new URL(script.src, location.href); if (decoderSource.origin !== location.origin || !decoderSource.pathname.endsWith('/lib/zxing-browser/0.1.5/zxing-browser.min.js')) throw new Error('Invalid local decoder source'); script.nonce = cspScriptNonce;
       script.async = true;
       script.onload = () => window.ZXingBrowser
         ? resolve(window.ZXingBrowser)

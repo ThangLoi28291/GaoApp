@@ -2,6 +2,7 @@
 @section VendorStyles {
     <link rel="stylesheet" href="~/Admin/css/delivery.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/delivery.trip.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/delivery.mobile.css" asp-append-version="true" />
 }
 <div class="delivery-workspace delivery-trip-workspace" data-actor="@(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value)" data-store="@(ViewData["DeliveryStoreId"])">
     @Html.AntiForgeryToken()
@@ -15,7 +16,7 @@
         <aside class="delivery-panel delivery-trip-sidebar" aria-label="Danh sách chuyến">
             <div class="delivery-trip-section-heading"><h3>Chuyến giao</h3><button type="button" id="deliveryTripRefresh" class="delivery-link-button">Làm mới</button></div>
             <button type="button" id="deliveryTripNew" class="btn btn-primary w-100">+ Tạo chuyến mới</button>
-            <label class="delivery-input-label" for="deliveryTripState">Lọc trạng thái<select id="deliveryTripState" class="form-select"><option value="">Tất cả chuyến</option><option value="Draft">Đang xếp chuyến</option><option value="HandedOver">Đã nhận hàng</option><option value="Departed">Đã xuất phát</option><option value="Abandoned">Đã bỏ chuyến nháp</option></select></label>
+            <label class="delivery-input-label" for="deliveryTripState">Lọc trạng thái<select id="deliveryTripState" class="form-select"><option value="">Tất cả chuyến</option><option value="Draft">Đang xếp chuyến</option><option value="HandedOver">Đã nhận hàng</option><option value="Departed">Đã xuất phát · chưa hoàn thành</option><option value="Completed">Đã hoàn thành</option><option value="Abandoned">Đã bỏ chuyến nháp</option></select></label>
             <div id="deliveryTripList" class="delivery-trip-list"></div>
             <button type="button" id="deliveryTripMore" class="delivery-link-button" hidden>Xem thêm chuyến</button>
         </aside>
@@ -24,4 +25,4 @@
         </main>
     </div>
 </div>
-@section PageScripts { <script src="~/Admin/js/delivery.trip.js" asp-append-version="true"></script> }
+@section PageScripts { <script src="~/Admin/js/delivery.trip.js" asp-append-version="true"></script><script src="~/Admin/js/delivery.mobile.js" asp-append-version="true" defer></script> }

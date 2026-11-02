@@ -5,6 +5,7 @@
 @section VendorStyles {
     <link rel="stylesheet" href="~/vendor/libs/apex-charts/apex-charts.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/Admin/css/reports/management-report.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/reports-workspace.mobile.css" asp-append-version="true" />
 }
 @await Html.PartialAsync("~/Areas/Admin/Views/Shared/_ManagementReportWorkspace.cshtml")
 @section VendorScripts {
@@ -12,4 +13,5 @@
 }
 @section PageScripts {
     <script src="~/Admin/js/reports/management-report.page.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/reports-workspace.mobile.js" asp-append-version="true"></script>
 }

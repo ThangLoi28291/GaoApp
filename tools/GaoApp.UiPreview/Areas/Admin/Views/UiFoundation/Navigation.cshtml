@@ -1,0 +1,40 @@
+@{
+    Layout = null;
+    TempData["appName"] = "Gạo Mart · Trung tâm";
+    var pos = Context.Request.Query["surface"] == "pos";
+    var collapsed = !pos && Context.Request.Query["collapsed"] == "1";
+}
+<!DOCTYPE html>
+<html lang="vi" class="@(pos ? "" : "layout-menu-fixed" + (collapsed ? " layout-menu-collapsed" : ""))" dir="ltr" data-assets-path="/" data-template="vertical-menu-template-free" data-bs-theme="light">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" /><title>GaoApp · Menu thật UI-02</title>
+    @await Html.PartialAsync("Sections/_Styles")
+    @if (pos) { <link rel="stylesheet" href="~/Admin/css/pos/pos-prime.css" /> }
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.design-system.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.responsive-navigation.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.commerce-tokens.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.admin-navigation.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.mobile-pins.css" />
+    <link rel="stylesheet" href="~/Admin/css/gaoapp.navigation-edge-cases.mobile.css" />
+    @await Html.PartialAsync("Sections/_ScriptsIncludes")
+</head>
+<body>
+    @if (pos)
+    {
+        <main class="p-4"><h1>Menu trong POS</h1><p>Thành phần menu thật, dữ liệu cấu hình mẫu, không có thao tác ghi.</p><button class="btn btn-primary" id="navigation-pos-opener" data-bs-toggle="offcanvas" data-bs-target="#posPrimeAdminDrawer">Mở menu quản trị</button></main>
+        <div class="offcanvas offcanvas-start pos-prime-admin-drawer" id="posPrimeAdminDrawer" tabindex="-1" aria-labelledby="navigation-pos-title">
+            <div class="offcanvas-header pos-prime-admin-drawer__header"><h2 class="h5 mb-0" id="navigation-pos-title">Menu quản trị</h2><button class="btn-close" data-bs-dismiss="offcanvas" aria-label="Đóng menu quản trị"></button></div>
+            <div class="offcanvas-body pos-prime-admin-drawer__body"><div class="pos-prime-menu-host">@await Html.PartialAsync("Sections/Menu/_VerticalMenu")</div></div>
+        </div>
+    }
+    else
+    {
+        <div class="layout-wrapper layout-content-navbar"><div class="layout-container">
+            @await Html.PartialAsync("Sections/Menu/_VerticalMenu")
+            <div class="layout-page"><main class="p-4"><p class="text-primary fw-bold">UI-02a–b · THÀNH PHẦN THẬT</p><h1>Menu theo cửa hàng</h1><p>Trang này render trực tiếp partial menu đang dùng trong Admin và POS, với cấu hình mẫu để kiểm tra bố cục.</p><p>Trên ứng dụng, cùng partial lấy dữ liệu qua AdminMenuService theo cửa hàng, người dùng, quyền và thiết lập ẩn/hiện.</p><button type="button" class="btn btn-outline-primary layout-menu-toggle" id="navigation-top-opener">Mở / thu menu</button></main></div>
+        </div><div class="layout-overlay layout-menu-toggle"></div><button type="button" class="gds-responsive-nav-trigger layout-menu-toggle" aria-controls="layout-menu" aria-label="Mở menu điều hướng"><i class="bx bx-menu" aria-hidden="true"></i><span class="gds-responsive-nav-trigger__label">Menu</span></button><div class="drag-target"></div></div>
+    }
+    <span class="visually-hidden" data-fixture-read-calls="@Context.Items["NavigationReadCalls"]"></span>
+    @await Html.PartialAsync("Sections/_Scripts")
+    <script src="~/js/main.js"></script><script src="~/Admin/js/gaoapp.admin-navigation.js"></script>
+</body></html>

@@ -5,6 +5,10 @@
     ViewData["Title"] = "Hàng trả chờ nhập kho";
     var vi = CultureInfo.GetCultureInfo("vi-VN");
 }
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/pos/after-sales.mobile.css" asp-append-version="true" />
+}
+<main id="posPendingRestock" data-after-sales-phone>
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
     <div>
         <h3 class="mb-2">Hàng trả chờ nhập kho <span id="pendingRestockCount" class="badge bg-warning text-dark">@Model.Count phiếu</span></h3>
@@ -24,7 +28,7 @@
         <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
             <div>
                 <a class="fw-bold" href="/admin/pos/order-detail/@item.OrderId">@item.OrderNumber</a>
-                <div class="small text-muted">@item.ReturnNumber · Nhận trả @item.ReceivedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</div>
+                <div class="small text-muted">@item.ReturnNumber · Nhận trả @item.ReceivedAtUtc.ToVietnamTime().ToString("dd/MM/yyyy HH:mm")</div>
                 <div class="mt-1">Đã hoàn: <strong>@item.RefundedAmount.ToString("N0", vi) đ</strong></div>
             </div>
             <div><button class="btn btn-primary js-complete-restock" type="button" data-return-id="@item.ReturnId" disabled="@(!item.CanComplete)">Hoàn tất nhập kho</button></div>
@@ -34,13 +38,22 @@
             <tbody>
             @foreach (var line in item.Items)
             {
-                <tr><td>@line.ItemName</td><td>@line.WarehouseName</td><td class="text-end fw-semibold">@line.BaseQuantity.ToString("0.####", vi)</td>
+                <tr><td>@line.ItemName
+                    <dl class="after-sales-source d-md-none">
+                        <dt>Dòng trả</dt><dd>#@line.ReturnLineId</dd>
+                        <dt>Đã nhận cả dòng</dt><dd>@line.ReceivedQuantity.ToString("0.####", vi) @(string.IsNullOrWhiteSpace(line.ReceivedUnitName) ? "đơn vị bán" : line.ReceivedUnitName)</dd>
+                        <dt>Quy về đơn vị gốc</dt><dd>@line.ReceivedBaseQuantity.ToString("0.####", vi)</dd>
+                        <dt>Đã nhập tại kho này</dt><dd>@line.RestockedBaseQuantity.ToString("0.####", vi) <small>đơn vị gốc</small></dd>
+                    </dl>
+                </td><td>@line.WarehouseName</td><td class="text-end fw-semibold">@line.BaseQuantity.ToString("0.####", vi)</td>
                     <td style="min-width:220px;max-width:440px">@if (line.BlockReason != null) {<span class="text-warning">@line.BlockReason</span>} else {<span class="text-success">Đã xác định</span>}</td></tr>
             }
             </tbody>
         </table></div>
     </div>
 }
+</main>
 @section PageScripts {
     <script src="~/Admin/js/pos/pos.pending.restock.page.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/after-sales.mobile.js" asp-append-version="true" defer></script>
 }

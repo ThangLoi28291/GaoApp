@@ -5,6 +5,28 @@ namespace GaoApp.Tests.Configuration;
 
 public sealed class DatabaseSchemaNormalizationTests
 {
+    private const string DeliveryCostProof = "([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)";
+
+    [Theory]
+    [InlineData("([IsProvisional]=(0) AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL OR [IsProvisional]=(1) AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    [InlineData("IsProvisional=0 AND InventoryCostLayerId IS NOT NULL AND InventoryCostBudgetDebitId IS NOT NULL OR IsProvisional=1 AND InventoryCostLayerId IS NULL AND InventoryCostBudgetDebitId IS NULL")]
+    public void Delivery_cost_proof_matches_its_sql_server_persisted_form(string persisted)
+        => DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(persisted).Should()
+            .Be(DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(DeliveryCostProof));
+
+    [Theory]
+    [InlineData("([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=2 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    [InlineData("([IsProvisional]=0 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    [InlineData("([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NOT NULL)")]
+    [InlineData("([IsProvisional]=0 OR [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    [InlineData("([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) AND ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    [InlineData("[IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL AND ([InventoryCostBudgetDebitId] IS NOT NULL OR [IsProvisional]=1) AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL")]
+    [InlineData("([IsProvisional]=0 AND [InventoryCostLayerAllocationId] IS NOT NULL AND [InventoryCostBudgetDebitId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerAllocationId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    [InlineData("([IsProvisional]=0 AND [InventoryCostLayerId] IS NOT NULL) OR ([IsProvisional]=1 AND [InventoryCostLayerId] IS NULL AND [InventoryCostBudgetDebitId] IS NULL)")]
+    public void Altered_delivery_cost_proof_is_not_accepted_as_equivalent(string changed)
+        => DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(changed).Should()
+            .NotBe(DatabaseSchemaNormalization.NormalizeCheckConstraintExpression(DeliveryCostProof));
+
     private const string DepositFilter = "[OrderId] IS NOT NULL AND [Kind] IN ('Apply','Void')";
 
     [Theory]

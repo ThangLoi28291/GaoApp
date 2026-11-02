@@ -12,7 +12,7 @@
     const method=m=>({Cash:'Tiền mặt',BankTransfer:'Chuyển khoản',Card:'Thẻ',EWallet:'Ví điện tử',Other:'Khác'}[m]||m);
     const money=n=>n==null?'Chưa ghi nhận':Number(n).toLocaleString('vi-VN',{maximumFractionDigits:2})+' đ';
     const signed=n=>(n>0?'+':'')+money(n);
-    const date=s=>s?new Date(/Z$|[+-]\d\d:\d\d$/.test(s)?s:s+'Z').toLocaleString('vi-VN'):'—';
+    const date=s=>s?new Date(/Z$|[+-]\d\d:\d\d$/.test(s)?s:s+'Z').toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }):'—';
     const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const badge=r=>`<span class="pa-status is-${r.status==='Approved'?'approved':r.status==='Pending'?'pending':'other'}">${names[r.status]||'—'}</span>${r.appliedToClosedShift&&!r.reconciledAtUtc?'<small class="text-warning">Cần đối soát lại</small>':''}`;
     const orderLink=r=>r.depositEntryId?`<a href="/admin/customer-deposit?customerId=${Number(r.customerId)}" target="_blank" rel="noopener">${esc(r.number)}</a>`:`<a href="/admin/pos/order-detail/${Number(r.orderId)}" target="_blank" rel="noopener">${esc(r.number)}</a>`;

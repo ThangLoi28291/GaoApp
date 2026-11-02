@@ -11,8 +11,113 @@ namespace GaoApp.Tests.Security;
 [Collection("SqlServerConcurrency")]
 public sealed class ReceiptDocumentActionsSqlServerTests
 {
+    [Theory]
+    [InlineData(PurchaseReceiptSource.Direct)]
+    [InlineData(PurchaseReceiptSource.PurchaseOrder)]
+    public async Task Returned_receipts_can_be_soft_deleted_with_permissions_and_current_version_without_moving_stock(
+        PurchaseReceiptSource source)
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var seed = await ReceiptBarcodeProposalSqlServerTests.SeedAsync(app, store);
+        var prefix = source == PurchaseReceiptSource.PurchaseOrder ? "purchase.receipt." : "inventory.stockdocument.";
+        var otherPrefix = source == PurchaseReceiptSource.PurchaseOrder ? "inventory.stockdocument." : "purchase.receipt.";
+        var account = await app.AddAccountAsync(store, prefix + "update", prefix + "delete");
+        var managerAccount = await app.AddAccountAsync(store, prefix + "approve");
+        using var employee = await app.LoginAsync(account);
+        using var manager = await app.LoginAsync(managerAccount);
+        using var wrongSource = await app.LoginAsync(await app.AddAccountAsync(store, otherPrefix + "update", otherPrefix + "delete"));
+        using var foreign = await app.LoginAsync(await app.AddAccountAsync(app.Stores[1], "*"));
+        var url = $"/admin/api/stock-documents/{seed.ReceiptId}/document-actions";
+        static string Version(JsonElement data) => data.GetProperty("document").GetProperty("rowVersion").GetString()!;
+
+        await using var baseline = app.Database.CreateTenantContext(store.StoreId);
+        var beforeStock = await baseline.InventoryTransactions.AsNoTracking().OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.QuantityChange, x.TotalCost, x.AfterQty, x.AfterInventoryValue }).ToListAsync();
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var doc = await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId);
+            doc.Status = StockDocumentStatus.PendingApproval;
+            doc.SubmittedAtUtc = DateTime.UtcNow;
+            doc.SubmittedByUserId = account.UserId;
+            doc.ReceiptSource = source;
+            if (source == PurchaseReceiptSource.PurchaseOrder)
+            {
+                var po = new PurchaseOrder { StoreId = store.StoreId, OrderNumber = "PO-RETURN-DELETE", SupplierId = doc.SupplierId!.Value,
+                    ExpectedWarehouseId = doc.WarehouseId, LegalEntityId = (await db.Warehouses.SingleAsync(x => x.Id == doc.WarehouseId)).LegalEntityId };
+                db.Add(po); await db.SaveChangesAsync(); doc.PurchaseOrderId = po.Id;
+            }
+            await db.SaveChangesAsync();
+        }
+        var pending = await employee.JsonAsync(HttpMethod.Get, url);
+        Assert.False(pending.GetProperty("canDelete").GetBoolean());
+        await manager.JsonAsync(HttpMethod.Post, $"/admin/api/stock-documents/{seed.ReceiptId}/reject",
+            new { note = "Không dùng đến phiếu này", rowVersion = Version(pending) });
+        var returned = await employee.JsonAsync(HttpMethod.Get, url);
+        Assert.True(returned.GetProperty("canDelete").GetBoolean());
+        Assert.False(returned.GetProperty("document").GetProperty("neverSubmitted").GetBoolean());
+        var body = new { rowVersion = Version(returned) };
+        using (var denied = await manager.Http.PostAsJsonAsync(url + "/delete", body)) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await wrongSource.Http.PostAsJsonAsync(url + "/delete", body)) Assert.Equal(HttpStatusCode.Forbidden, denied.StatusCode);
+        using (var denied = await foreign.Http.PostAsJsonAsync(url + "/delete", body)) Assert.Equal(HttpStatusCode.Conflict, denied.StatusCode);
+
+        // A returned receipt that has been submitted again must no longer be deletable.
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var doc = await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId);
+            doc.Status = StockDocumentStatus.PendingApproval;
+            await db.SaveChangesAsync();
+        }
+        using (var stale = await employee.Http.PostAsJsonAsync(url + "/delete", body)) Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        pending = await employee.JsonAsync(HttpMethod.Get, url);
+        Assert.False(pending.GetProperty("canDelete").GetBoolean());
+        using (var blocked = await employee.Http.PostAsJsonAsync(url + "/delete", new { rowVersion = Version(pending) }))
+            Assert.Equal(HttpStatusCode.Conflict, blocked.StatusCode);
+        await manager.JsonAsync(HttpMethod.Post, $"/admin/api/stock-documents/{seed.ReceiptId}/reject",
+            new { note = "Trả về lần nữa", rowVersion = Version(pending) });
+
+        // Keep the existing guard against deleting another employee's active receiving session.
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var doc = await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId);
+            doc.ReceivingOwnerUserId = managerAccount.UserId;
+            doc.ReceivingLeaseExpiresAtUtc = DateTime.UtcNow.AddMinutes(5);
+            await db.SaveChangesAsync();
+        }
+        returned = await employee.JsonAsync(HttpMethod.Get, url);
+        using (var leased = await employee.Http.PostAsJsonAsync(url + "/delete", new { rowVersion = Version(returned) }))
+            Assert.Equal(HttpStatusCode.Conflict, leased.StatusCode);
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var doc = await db.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId);
+            doc.ReceivingLeaseExpiresAtUtc = null;
+            await db.SaveChangesAsync();
+        }
+        using (var stale = await employee.Http.PostAsJsonAsync(url + "/delete", new { rowVersion = Version(returned) }))
+            Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        returned = await employee.JsonAsync(HttpMethod.Get, url);
+        await employee.JsonAsync(HttpMethod.Post, url + "/delete", new { rowVersion = Version(returned) });
+        using (var removed = await employee.Http.GetAsync(url)) Assert.Equal(HttpStatusCode.Conflict, removed.StatusCode);
+
+        await using var check = app.Database.CreateTenantContext(store.StoreId);
+        Assert.False(await check.StockDocuments.AnyAsync(x => x.Id == seed.ReceiptId));
+        var deleted = await check.StockDocuments.IgnoreQueryFilters().SingleAsync(x => x.Id == seed.ReceiptId);
+        Assert.True(deleted.IsDeleted); Assert.Equal(account.UserId, deleted.DeletedBy);
+        Assert.Equal(StockDocumentStatus.Rejected, deleted.Status);
+        Assert.NotNull(deleted.SubmittedAtUtc); Assert.Equal(account.UserId, deleted.SubmittedByUserId);
+        Assert.Equal(2, await check.StockDocumentLines.IgnoreQueryFilters().CountAsync(x => x.StockDocumentId == seed.ReceiptId));
+        var audit = await check.PurchaseReceiptAuditEvents.Where(x => x.StockDocumentId == seed.ReceiptId).ToListAsync();
+        Assert.Equal(2, audit.Count(x => x.EventType == PurchaseReceiptAuditEventType.ReceiptRejected));
+        var deletion = Assert.Single(audit, x => x.EventType == PurchaseReceiptAuditEventType.ReceiptDraftDeleted);
+        Assert.Equal("Xóa phiếu nhập bị trả về/từ chối", deletion.Reason);
+        Assert.Equal(beforeStock, await check.InventoryTransactions.AsNoTracking().OrderBy(x => x.Id)
+            .Select(x => new { x.Id, x.QuantityChange, x.TotalCost, x.AfterQty, x.AfterInventoryValue }).ToListAsync());
+        Assert.Equal(100, (await check.InventoryBalances.SingleAsync()).OnHandQty);
+        Assert.Empty(await check.PurchasePayables.ToListAsync());
+    }
+
     [Fact]
-    public async Task Submitted_drafts_rejected_confirmed_and_purchase_receipts_keep_deletion_and_permission_boundaries()
+    public async Task Submitted_drafts_confirmed_and_purchase_receipts_keep_deletion_and_permission_boundaries()
     {
         await using var app = await FullApplicationFixture.StartAsync();
         var store = app.Stores[0];
@@ -24,7 +129,7 @@ public sealed class ReceiptDocumentActionsSqlServerTests
         using var purchaser = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Purchase.Receipt.Update,
             PermissionCodes.Purchase.Receipt.Delete));
         var url = $"/admin/api/stock-documents/{seed.ReceiptId}/document-actions";
-        foreach (var status in new[] { StockDocumentStatus.Draft, StockDocumentStatus.Rejected, StockDocumentStatus.Confirmed })
+        foreach (var status in new[] { StockDocumentStatus.Draft, StockDocumentStatus.Confirmed })
         {
             await using (var db = app.Database.CreateTenantContext(store.StoreId))
             {

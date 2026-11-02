@@ -2,8 +2,10 @@ using System.Net;
 using System.Net.Http.Json;
 using GaoApp.Application.Common.Security;
 using GaoApp.Application.Common.Interfaces;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Services.Inventory;
+using GaoApp.Application.Services.Invoices;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using GaoApp.Infrastructure.Repositories.Inventory;
@@ -17,6 +19,174 @@ namespace GaoApp.Tests.Security;
 [Collection("SqlServerConcurrency")]
 public sealed class ReceiptInvoiceFollowUpSqlServerTests
 {
+    [Theory]
+    [InlineData(false, InputInvoiceReconciliationState.Incomplete, false)]
+    [InlineData(true, InputInvoiceReconciliationState.Mismatch, false)]
+    [InlineData(false, InputInvoiceReconciliationState.Incomplete, true)]
+    [InlineData(true, InputInvoiceReconciliationState.Mismatch, true)]
+    public async Task Linked_xml_without_complete_matching_does_not_block_approval_or_repost_on_retry(
+        bool mapXmlLine, InputInvoiceReconciliationState expectedReconciliation, bool reviewAtApproval)
+    {
+        await using var app = await FullApplicationFixture.StartAsync();
+        var store = app.Stores[0];
+        var seed = await ReceiptBarcodeProposalSqlServerTests.SeedAsync(app, store);
+        ApprovePurchaseReceiptCommercialRequest request;
+        int invoiceId;
+        decimal receivedBaseQuantity;
+        await using (var db = app.Database.CreateTenantContext(store.StoreId))
+        {
+            var doc = await db.StockDocuments.Include(x => x.Lines).SingleAsync(x => x.Id == seed.ReceiptId);
+            doc.Status = StockDocumentStatus.PendingApproval;
+            var warehouse = await db.Warehouses.Include(x => x.LegalEntity).SingleAsync(x => x.Id == doc.WarehouseId);
+            warehouse.LegalEntity!.TaxCode = "0101234567";
+            var line = doc.Lines.OrderBy(x => x.LineNo).First();
+            var xmlQuantity = line.Quantity + 1m;
+            var head = new InputInvoiceHead
+            {
+                StoreId = store.StoreId, SellerName = "Supplier", SellerTaxCode = "0312770607",
+                BuyerTaxCode = "0101234567", InvoiceSeries = "C26TEST",
+                InvoiceNumber = Guid.NewGuid().ToString("N"), InvoiceDate = DateTime.Today,
+                ResolvedSupplierId = doc.SupplierId,
+                SupplierResolutionStatus = InputInvoiceSupplierResolutionStatus.Resolved,
+                TotalBeforeTax = xmlQuantity * 9000m, TotalPaymentAmount = xmlQuantity * 9000m
+            };
+            InputInvoiceIdentityPolicy.ApplyRequiredIdentity(head);
+            var detail = new InputInvoiceDetail
+            {
+                LineNo = 1, ItemName = "Tên nhà cung cấp", UnitName = line.UnitNameSnapshot,
+                NormalizedItemName = "TÊN NHÀ CUNG CẤP",
+                NormalizedUnitName = InputInvoiceItemIdentityNormalizer.NormalizeText(line.UnitNameSnapshot),
+                Quantity = xmlQuantity, UnitPrice = 9000m, LineAmount = head.TotalBeforeTax, VatRate = "0%"
+            };
+            head.Details.Add(detail);
+            db.Add(head);
+            await db.SaveChangesAsync();
+            invoiceId = head.Id;
+            db.Add(new StockDocumentInputInvoiceMap
+            {
+                StoreId = store.StoreId, StockDocumentId = doc.Id, InputInvoiceHeadId = head.Id
+            });
+            if (mapXmlLine)
+                db.Add(new StockDocumentLineInputInvoiceMap
+                {
+                    StoreId = store.StoreId, StockDocumentId = doc.Id,
+                    StockDocumentLineId = line.Id, InputInvoiceDetailId = detail.Id, UseInputInvoice = true
+                });
+            await db.SaveChangesAsync();
+            receivedBaseQuantity = doc.Lines.Sum(x => x.BaseQuantity);
+            request = new()
+            {
+                RowVersion = Convert.ToBase64String(doc.RowVersion), SupplierId = doc.SupplierId,
+                IsMerchandisePaid = false, AcceptPriceVariance = true,
+                Lines = doc.Lines.Select(x => new PurchaseReceiptFinancialLineInputDto
+                    { StockDocumentLineId = x.Id, UnitPriceBeforeVat = 12000m }).ToList()
+            };
+        }
+        using var manager = await app.LoginAsync(await app.AddAccountAsync(store, PermissionCodes.Inventory.StockDocument.Approve));
+        var approveUrl = $"/admin/api/stock-documents/{seed.ReceiptId}/approve-commercial";
+        if (reviewAtApproval)
+        {
+            await manager.JsonAsync(HttpMethod.Get,
+                $"/admin/api/stock-documents/{seed.ReceiptId}/input-invoices/reconciliation");
+            var pendingReview = await manager.JsonAsync(HttpMethod.Get,
+                $"/admin/api/stock-documents/{seed.ReceiptId}/invoice-follow-up");
+            request.RowVersion = pendingReview.GetProperty("rowVersion").GetString()!;
+            request.InputInvoiceReview = new()
+            {
+                MapId = pendingReview.GetProperty("mapId").GetInt32(),
+                EvidenceFingerprint = pendingReview.GetProperty("evidenceFingerprint").GetString()!
+            };
+            var snapshot = request.InputInvoiceReview.EvidenceFingerprint;
+            request.InputInvoiceReview.EvidenceFingerprint = "stale";
+            using (var stale = await manager.Http.PostAsJsonAsync(approveUrl, request))
+                Assert.Equal(HttpStatusCode.BadRequest, stale.StatusCode);
+            request.InputInvoiceReview.EvidenceFingerprint = snapshot;
+            request.InputInvoiceReview.MapId++;
+            using (var stale = await manager.Http.PostAsJsonAsync(approveUrl, request))
+                Assert.Equal(HttpStatusCode.BadRequest, stale.StatusCode);
+            request.InputInvoiceReview.MapId--;
+            await using var rejected = app.Database.CreateTenantContext(store.StoreId);
+            Assert.Equal(StockDocumentStatus.PendingApproval,
+                (await rejected.StockDocuments.SingleAsync(x => x.Id == seed.ReceiptId)).Status);
+            Assert.Empty(await rejected.InventoryTransactions.Where(x => x.ReferenceType == InventoryReferenceType.StockDocument &&
+                x.ReferenceId == seed.ReceiptId.ToString()).ToListAsync());
+            Assert.Empty(await rejected.PurchasePayables.Where(x => x.StockDocumentId == seed.ReceiptId).ToListAsync());
+            Assert.Empty(await rejected.PurchaseReceiptAuditEvents.Where(x => x.StockDocumentId == seed.ReceiptId &&
+                x.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed).ToListAsync());
+        }
+        await manager.JsonAsync(HttpMethod.Post, approveUrl, request);
+        await using var before = app.Database.CreateTenantContext(store.StoreId);
+        var approved = await before.StockDocuments.AsNoTracking().SingleAsync(x => x.Id == seed.ReceiptId);
+        Assert.Equal(StockDocumentStatus.Confirmed, approved.Status);
+        Assert.NotNull(approved.ApprovedAtUtc);
+        Assert.NotNull(approved.ConfirmedAtUtc);
+        var reconciliation = await before.StockDocumentInputInvoiceReconciliations.AsNoTracking()
+            .SingleAsync(x => x.StockDocumentId == seed.ReceiptId);
+        Assert.Equal(expectedReconciliation, reconciliation.OverallState);
+        Assert.Null(reconciliation.AcceptedAtUtc);
+        Assert.Equal(mapXmlLine ? 0 : 1, reconciliation.UnmatchedDetailCount);
+        Assert.NotEqual(0m, reconciliation.SubtotalDifference);
+        Assert.Equal(invoiceId, (await before.StockDocumentInputInvoiceMaps.AsNoTracking()
+            .SingleAsync(x => x.StockDocumentId == seed.ReceiptId)).InputInvoiceHeadId);
+        Assert.Empty(await before.PurchaseReceiptBillLines.Where(x => x.PricingPlan.StockDocumentId == seed.ReceiptId).ToListAsync());
+        Assert.Equal(reviewAtApproval ? 1 : 0, await before.PurchaseReceiptAuditEvents.CountAsync(x =>
+            x.StockDocumentId == seed.ReceiptId && x.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed));
+        Assert.Empty(await before.PurchaseReceiptAuditEvents.Where(x => x.StockDocumentId == seed.ReceiptId &&
+            x.EventType == PurchaseReceiptAuditEventType.InputInvoiceReconciliationAccepted).ToListAsync());
+        var transactions = await before.InventoryTransactions.AsNoTracking()
+            .Where(x => x.ReferenceType == InventoryReferenceType.StockDocument && x.ReferenceId == seed.ReceiptId.ToString())
+            .OrderBy(x => x.Id).Select(x => new { x.Id, x.QuantityChange, x.TotalCost }).ToListAsync();
+        Assert.Equal(receivedBaseQuantity, transactions.Sum(x => x.QuantityChange));
+        Assert.Equal(48000m, transactions.Sum(x => x.TotalCost));
+        var payables = await before.PurchasePayables.CountAsync(x => x.StockDocumentId == seed.ReceiptId);
+        Assert.True(payables > 0);
+        var followUp = await manager.JsonAsync(HttpMethod.Get, $"/admin/api/stock-documents/{seed.ReceiptId}/invoice-follow-up");
+        Assert.True(followUp.GetProperty("hasLinkedInvoice").GetBoolean());
+        Assert.Equal(reviewAtApproval ? "Reviewed" : "NeedsReview", followUp.GetProperty("state").GetString());
+        Assert.Equal(reviewAtApproval ? "Reviewed" : "NeedsReview",
+            (await new StockDocumentRepository(before).GetReceiptListAsync()).Single(x => x.Id == seed.ReceiptId).InvoiceFollowUp);
+        if (reviewAtApproval)
+        {
+            var invoiceStock = await new InvoiceInputStockReadRepository(before).GetMovementsAsync(store.StoreId);
+            var receiptStock = invoiceStock.Where(x => x.StockDocumentId == seed.ReceiptId).ToList();
+            Assert.Equal(transactions.Count, receiptStock.Count);
+            Assert.Equal(receivedBaseQuantity, receiptStock.Sum(x => x.Change));
+            Assert.Equal(transactions.Sum(x => x.TotalCost), receiptStock.Sum(x => x.TotalCost));
+            await using var auditDb = app.Database.CreateTenantContext(store.StoreId);
+            var audit = await auditDb.PurchaseReceiptAuditEvents.SingleAsync(x => x.StockDocumentId == seed.ReceiptId &&
+                x.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed);
+            Assert.True(ReceiptInvoiceFollowUp.IsReviewCurrent(audit.NewValuesJson,
+                request.InputInvoiceReview!.MapId, reconciliation.EvidenceFingerprint));
+            var head = await auditDb.InputInvoiceHeads.SingleAsync(x => x.Id == invoiceId);
+            Assert.All(receiptStock, x =>
+            {
+                Assert.Equal("C26TEST", x.XmlSeries);
+                Assert.Equal(head.InvoiceNumber, x.XmlNumber);
+                Assert.Equal(approved.DocumentNo, x.SourceCode);
+            });
+            foreach (var keyword in new[] { head.InvoiceNumber!, "C26TEST", $"C26TEST · {head.InvoiceNumber}", $"C26TEST/{head.InvoiceNumber}" })
+            {
+                var page = InvoiceInputStockReadService.BuildPage(invoiceStock,
+                    new() { View = "ledger", Keyword = keyword });
+                Assert.Equal(receiptStock.Count, page.TotalItems);
+                var balancePage = InvoiceInputStockReadService.BuildPage(invoiceStock,
+                    new() { View = "balance", Keyword = keyword });
+                Assert.Equal(receivedBaseQuantity, balancePage.Balances.Single().Received);
+            }
+        }
+
+        await manager.JsonAsync(HttpMethod.Post, approveUrl, request);
+        await using var after = app.Database.CreateTenantContext(store.StoreId);
+        Assert.Equal(transactions, await after.InventoryTransactions.AsNoTracking()
+            .Where(x => x.ReferenceType == InventoryReferenceType.StockDocument && x.ReferenceId == seed.ReceiptId.ToString())
+            .OrderBy(x => x.Id).Select(x => new { x.Id, x.QuantityChange, x.TotalCost }).ToListAsync());
+        Assert.Equal(payables, await after.PurchasePayables.CountAsync(x => x.StockDocumentId == seed.ReceiptId));
+        Assert.Equal(1, await after.PurchaseReceiptAuditEvents.CountAsync(x => x.StockDocumentId == seed.ReceiptId &&
+            x.EventType == PurchaseReceiptAuditEventType.CommercialApprovalConfirmed));
+        Assert.Equal(reviewAtApproval ? 1 : 0, await after.PurchaseReceiptAuditEvents.CountAsync(x =>
+            x.StockDocumentId == seed.ReceiptId && x.EventType == PurchaseReceiptAuditEventType.InputInvoiceFollowUpReviewed));
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

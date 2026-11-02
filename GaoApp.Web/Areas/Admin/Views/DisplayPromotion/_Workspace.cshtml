@@ -42,13 +42,13 @@
             <div><h2>Nội dung trình chiếu <span class="dp-count">@Model.Count</span></h2><p>Hình ảnh, video và lời chào trên màn hình tại quầy.</p></div>
             @if (canManage)
             {
-                <button type="button" class="btn btn-primary" onclick="openCreateModal()"><i class="bx bx-plus" aria-hidden="true"></i>Thêm nội dung</button>
+                <button type="button" class="btn btn-primary" data-csp-action="promotion-create"><i class="bx bx-plus" aria-hidden="true"></i>Thêm nội dung</button>
             }
         </div>
         @if (Model.Count == 0)
         {
             <div class="dp-empty"><span><i class="bx bx-slideshow" aria-hidden="true"></i></span><h3>Thêm lời chào đầu tiên cho tiệm</h3><p>Một hình ảnh đẹp, video ngắn hoặc ưu đãi hôm nay<br />sẽ giúp khách khám phá thêm trong lúc chờ thanh toán.</p>
-                @if (canManage) { <button type="button" class="btn btn-outline-primary" onclick="openCreateModal()"><i class="bx bx-plus" aria-hidden="true"></i>Tạo nội dung đầu tiên</button> }
+                @if (canManage) { <button type="button" class="btn btn-outline-primary" data-csp-action="promotion-create"><i class="bx bx-plus" aria-hidden="true"></i>Tạo nội dung đầu tiên</button> }
             </div>
         }
         else
@@ -78,10 +78,10 @@
                             </div></td>
                             <td class="dp-playback-cell"><span class="dp-kind"><i class="bx @kindIcon" aria-hidden="true"></i>@kind</span><span class="dp-duration"><i class="bx bx-time-five" aria-hidden="true"></i>@item.DurationSeconds giây / lượt</span></td>
                             <td class="dp-order-cell" data-label="Thứ tự"><span class="dp-order">@item.SortOrder</span></td>
-                            <td class="dp-state-cell"><label class="dp-state-control"><input class="form-check-input" type="checkbox" checked="@item.IsActive" disabled="@(!canManage)" aria-label="Bật hiển thị @item.Title" onchange="toggleActive(@item.Id, this.checked)" /><span class="dp-state-text">@(item.IsActive ? "Đang bật" : "Tạm ẩn")</span></label></td>
+                            <td class="dp-state-cell"><label class="dp-state-control"><input class="form-check-input" type="checkbox" checked="@item.IsActive" disabled="@(!canManage)" aria-label="Bật hiển thị @item.Title" data-csp-action="promotion-toggle" data-csp-id="@item.Id" data-csp-event="change" /><span class="dp-state-text">@(item.IsActive ? "Đang bật" : "Tạm ẩn")</span></label></td>
                             <td class="dp-actions-cell"><div class="dp-row-actions">
-                                <button type="button" class="btn dp-edit" disabled="@(!canManage)" onclick="openEditModal(@item.Id)" aria-label="Sửa @item.Title"><i class="bx bx-edit-alt" aria-hidden="true"></i><span>Sửa</span></button>
-                                <button type="button" class="btn dp-delete" disabled="@(!canManage)" onclick="deletePromotion(@item.Id)" aria-label="Xóa @item.Title" title="Xóa nội dung"><i class="bx bx-trash" aria-hidden="true"></i></button>
+                                <button type="button" class="btn dp-edit" disabled="@(!canManage)" data-csp-action="promotion-edit" data-csp-id="@item.Id" aria-label="Sửa @item.Title"><i class="bx bx-edit-alt" aria-hidden="true"></i><span>Sửa</span></button>
+                                <button type="button" class="btn dp-delete" disabled="@(!canManage)" data-csp-action="promotion-delete" data-csp-id="@item.Id" aria-label="Xóa @item.Title" title="Xóa nội dung"><i class="bx bx-trash" aria-hidden="true"></i></button>
                             </div></td>
                         </tr>
                     }

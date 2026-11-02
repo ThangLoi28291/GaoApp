@@ -7,7 +7,11 @@
 }
 
 @section VendorStyles {
-    <link href="~/admin/css/stock-document-management.css" rel="stylesheet" />
+    <link href="~/admin/css/stock-document-management.css" rel="stylesheet"  asp-append-version="true" />
+}
+
+@section PageStyles {
+    <link href="~/Admin/css/receipt-management.mobile.css" rel="stylesheet" asp-append-version="true" />
 }
 
 <div class="container-fluid flex-grow-1 container-p-y" id="splitReceiptWorkspace"
@@ -133,3 +137,5 @@
     window.purchaseReceiptSplitWorkspace = @Json.Serialize(Model);
 </script>
 <script src="~/Admin/js/split-receipt.js" asp-append-version="true"></script>
+
+    <script src="~/Admin/js/receipt-management.mobile.js" asp-append-version="true"></script>

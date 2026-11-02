@@ -80,6 +80,7 @@
                         <a asp-area="Admin"
                                asp-controller="Invoice"
                                asp-action="ViettelDraftPreview"
+                               data-tax-dependent
                                asp-route-id="@Model.InvoiceHeadId"
                                target="_blank"
                                class="btn btn-success">
@@ -95,12 +96,13 @@
     <form asp-area="Admin"
           asp-controller="Invoice"
           asp-action="ViettelIssue"
+          data-tax-dependent
           asp-route-id="@Model.InvoiceHeadId"
           method="post"
           class="d-inline"
           data-submit-guard
           data-submit-loading-text="Đang phát hành..."
-          onsubmit="return confirm('Xác nhận PHÁT HÀNH hóa đơn Viettel? Sau khi phát hành sẽ sinh số hóa đơn và không nên sửa nội dung nữa.');">
+          data-csp-confirm="Xác nhận PHÁT HÀNH hóa đơn Viettel? Sau khi phát hành sẽ sinh số hóa đơn và không nên sửa nội dung nữa.">
 
         @Html.AntiForgeryToken()
 
@@ -148,7 +150,7 @@ else if (!Model.IsIssued)
                               class="d-inline"
                               data-submit-guard
                               data-submit-loading-text="Đang tra cứu..."
-                              onsubmit="return confirm('Tra cứu Viettel theo transactionUuid để đồng bộ trạng thái hóa đơn?');">
+                              data-csp-confirm="Tra cứu Viettel theo transactionUuid để đồng bộ trạng thái hóa đơn?">
                             @Html.AntiForgeryToken()
 
                             <button type="submit" class="btn btn-outline-warning">
@@ -305,14 +307,14 @@ else if (!Model.IsIssued)
                 <div class="viettel-toolbar-actions payload-toolbar">
                     <button type="button"
                             class="btn btn-primary"
-                            onclick="copyPayloadJson()">
+                            data-csp-action="invoice-copy">
                         <i class="bx bx-copy"></i>
                         Copy JSON
                     </button>
 
                     <button type="button"
                             class="btn btn-outline-primary"
-                            onclick="location.reload()">
+                            data-csp-action="reload">
                         <i class="bx bx-refresh"></i>
                         Tải lại log
                     </button>

@@ -45,25 +45,22 @@
 
     function dt(value) {
         if (!value) return '-';
-        return new Date(value).toLocaleString('vi-VN');
+        return new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     }
 
     function dateInput(date) {
-        const y = date.getFullYear();
-        const m = String(date.getMonth() + 1).padStart(2, '0');
-        const d = String(date.getDate()).padStart(2, '0');
-        return y + '-' + m + '-' + d;
+        return new Date(date.getTime() + 7 * 3600000).toISOString().slice(0, 10);
     }
 
     function fromDateUtc(value) {
         if (!value) return null;
-        return new Date(value + 'T00:00:00').toISOString();
+        return new Date(value + 'T00:00:00+07:00').toISOString();
     }
 
     function toDateUtcExclusive(value) {
         if (!value) return null;
-        const d = new Date(value + 'T00:00:00');
-        d.setDate(d.getDate() + 1);
+        const d = new Date(value + 'T00:00:00+07:00');
+        d.setUTCDate(d.getUTCDate() + 1);
         return d.toISOString();
     }
 
@@ -253,6 +250,7 @@
     }
 
     function renderKpis(overview) {
+        document.getElementById('dashboardPaymentBreakdown').innerHTML = window.PosShiftManagerDetail.breakdownHtml(overview.paymentBreakdown);
         overview = overview || {};
 
         document.getElementById('kpiTotalSales').textContent = money(overview.totalSales);
@@ -304,13 +302,14 @@
             return ''
                 + '<tr>'
                 + '  <td>'
-                + '      <div class="row-main">' + userNameText(x) + '</div>'
+                + '      <button class="manager-employee-name" type="button" data-employee="' + x.userId + '">' + escapeHtml(userNameText(x)) + '</button>'
                 + '      <div class="row-sub">' + (x.closedShifts || 0) + ' ca đóng / ' + (x.openShifts || 0) + ' ca mở</div>'
+                + '      <button class="btn btn-link btn-sm p-0 mt-1" type="button" data-employee-breakdown="' + x.userId + '" aria-expanded="false">Phương thức thanh toán</button>'
                 + '  </td>'
                 + '  <td class="text-end fw-bold">' + (x.totalShifts || 0) + '</td>'
                 + '  <td class="text-end fw-bold">' + money(x.totalSales) + '</td>'
                 + '  <td class="text-end">' + diffPill(x.cashDifferenceTotal) + '</td>'
-                + '</tr>';
+                + '</tr><tr class="manager-employee-breakdown" id="employee-breakdown-' + x.userId + '" hidden><td colspan="4">' + window.PosShiftManagerDetail.breakdownHtml(x.paymentBreakdown) + '</td></tr>';
         }).join('');
     }
 
@@ -438,6 +437,7 @@
         }
 
         selectedShiftId = id;
+        window.PosShiftManagerDetail.load(id, document.getElementById('detailReconciliation'));
 
         document.getElementById('detailTitle').textContent = item.shiftCode || ('Ca #' + item.id);
         document.getElementById('detailSub').textContent = shiftUserNameText(item) + ' - ' + dt(item.openedAtUtc);
@@ -448,6 +448,8 @@
             + popupItem('Nhân viên mở ca', escapeHtml(shiftUserNameText(item)))
             + popupItem('Mở lúc', dt(item.openedAtUtc))
             + popupItem('Đóng lúc', dt(item.closedAtUtc))
+            + popupItem('Ghi chú mở ca', escapeHtml(item.openNote || '-'))
+            + popupItem('Ghi chú chốt ca', escapeHtml(item.closeNote || '-'))
             + popupItem('Tiền đầu ca', money(item.openingCash))
             + popupItem('Doanh thu', money(item.totalSales))
             + popupItem('Tiền mặt', money(item.cashSalesTotal))
@@ -563,6 +565,9 @@ function exportManagerDashboardExcel() {
             + '<div class="box"><div class="label">Ca đã đóng</div><div class="value">' + (o.closedShifts || 0) + '</div></div>'
             + '<div class="box"><div class="label">Refund / Void</div><div class="value">' + (o.refundCount || 0) + ' / ' + (o.voidCount || 0) + '</div></div>'
             + '</div>'
+            + '<h4>Chi tiết không tiền mặt</h4><table><thead><tr><th>Phương thức</th><th>Số giao dịch</th><th>Tiền ghi nhận</th><th>Tiền tính doanh thu</th></tr></thead><tbody>'
+            + (o.paymentBreakdown?.channels || []).map(function (x) { return '<tr><td>' + escapeHtml(x.label) + '</td><td class="right">' + Number(x.paymentCount) + '</td><td class="right">' + money(x.recordedAmount) + '</td><td class="right">' + money(x.salesAmount) + '</td></tr>'; }).join('')
+            + '</tbody></table>'
             + '<h3>Danh sách ca</h3>'
             + '<table>'
             + '<thead>'
@@ -634,6 +639,7 @@ function exportManagerDashboardExcel() {
     }
 
     function bindEvents() {
+        detailModalEl.addEventListener('hidden.bs.modal', function () { selectedShiftId = null; window.PosShiftManagerDetail.cancel(); });
         receiptForm.addEventListener('submit', confirmCashReceipt);
         receiptAmount.addEventListener('input', updateReceiptDifference);
         receiptFilter.addEventListener('change', function () {
@@ -641,6 +647,16 @@ function exportManagerDashboardExcel() {
             renderShifts(dashboardData?.shifts || []);
         });
         document.addEventListener('click', function (e) {
+            const breakdown = e.target.closest('[data-employee-breakdown]');
+            if (breakdown) {
+                const row = document.getElementById('employee-breakdown-' + Number(breakdown.dataset.employeeBreakdown));
+                row.hidden = !row.hidden; breakdown.setAttribute('aria-expanded', String(!row.hidden));
+            }
+            const employee = e.target.closest('[data-employee]');
+            if (employee) {
+                filterUserId.value = String(Number(employee.dataset.employee));
+                loadDashboard(false).then(function () { document.getElementById('shiftBody').scrollIntoView({ block: 'center', behavior: 'smooth' }); });
+            }
             const detailBtn = e.target.closest('[data-detail]');
 
             if (detailBtn) {
@@ -668,8 +684,7 @@ function exportManagerDashboardExcel() {
 
         document.getElementById('btnLast7Days').addEventListener('click', function () {
             const now = new Date();
-            const from = new Date();
-            from.setDate(now.getDate() - 6);
+            const from = new Date(now.getTime() - 6 * 86400000);
 
             filterFromDate.value = dateInput(from);
             filterToDate.value = dateInput(now);
@@ -678,8 +693,7 @@ function exportManagerDashboardExcel() {
 
         document.getElementById('btnLast30Days').addEventListener('click', function () {
             const now = new Date();
-            const from = new Date();
-            from.setDate(now.getDate() - 29);
+            const from = new Date(now.getTime() - 29 * 86400000);
 
             filterFromDate.value = dateInput(from);
             filterToDate.value = dateInput(now);

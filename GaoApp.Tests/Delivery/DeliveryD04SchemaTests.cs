@@ -27,14 +27,15 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
     private const string Promotion = "20261007090000_AddMixedQuantityPromotions";
     private const string Inventory = "20261007100000_AddDeliveryInventoryPosting";
     private const string Trips = "20261008100000_AddDeliveryTrips";
-    private const string Latest = "20261008180000_AllowDeliveryOpeningCostSources";
+    private const string Provisional = "20261008120000_AddDeliveryProvisionalCosts";
+    private const string Latest = "20261022090000_AddDurableAuditOutbox";
 
     [Fact]
     public async Task M01_Current70_SQL_manifest_matches_without_creating_picking_work_for_Created_orders()
     {
         using var c = await DeliveryD04Case.CreateAsync(fixture);
         await using var db = c.Source.Context();
-        await AssertSchema(db, 74, 38);
+        await AssertSchema(db, 80, 41);
         await AssertPickingCheckNormalizationRejectsAlteredSemantics(db);
         Assert.False(db.Database.HasPendingModelChanges());
         Assert.False(await db.DeliveryPickingWorks.AnyAsync(x => x.DeliveryOrderId == c.Id));
@@ -57,7 +58,7 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
             var before = await HistoricalSnapshot(db);
             await sql.MigrateAsync();
             Assert.Equal(before, await HistoricalSnapshot(db));
-            await AssertSchema(db, 74, 38);
+            await AssertSchema(db, 80, 41);
             Assert.False(await db.DeliveryPickingWorks.AnyAsync());
             Assert.False(await db.DeliveryPickingLines.AnyAsync());
             var original = await db.DeliveryOrderLines.AsNoTracking().SingleAsync(x => x.DeliveryOrderId == id);
@@ -67,7 +68,7 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
             await AssertSchema(db, 69, 12);
             await sql.MigrateAsync();
             Assert.Equal(before, await HistoricalSnapshot(db));
-            await AssertSchema(db, 74, 38);
+            await AssertSchema(db, 80, 41);
         }
         finally { await sql.MigrateAsync(); }
     }
@@ -254,11 +255,11 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
             using var c = await DeliveryD04Case.CreateAsync(isolated);
             await c.ClaimAsync();
             await using var db = c.Source.Context();
-            await AssertSchema(db, 74, 38);
+            await AssertSchema(db, 80, 41);
             var before = await PickingSnapshot(db, c.Id);
             try
             {
-                await isolated.Web.Database.MigrateAsync(Current);
+                await MigrationTestSupport.MigrateHistoricalPrefixAsync(isolated.Web.Database, Current);
                 await AssertSchema(db, 70, 15);
                 Assert.Equal(before, await PickingSnapshot(db, c.Id));
                 var ex = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(Previous));
@@ -269,7 +270,7 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
             finally
             {
                 await isolated.Web.Database.MigrateAsync(Latest);
-                await AssertSchema(db, 74, 38);
+                await AssertSchema(db, 80, 41);
             }
         }
         finally
@@ -288,12 +289,13 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
     [InlineData(71, 15)]
     [InlineData(72, 27)]
     [InlineData(73, 38)]
-    [InlineData(74, 38)]
+    [InlineData(74, 41)]
+    [InlineData(75, 41)]
     public void M07_Historical_prefix_manifest_keeps_its_exact_trigger_and_schema_inventory(int count, int triggers)
     {
         using var db = fixture.Web.Database.CreateHostContext();
         var ids = db.Database.GetMigrations().ToArray();
-        Assert.Equal(74, ids.Length); Assert.Equal(Latest, ids[^1]); Assert.Equal(Inventory, ids[71]);
+        Assert.Equal(80, ids.Length); Assert.Equal(Latest, ids[^1]); Assert.Equal(Trips, ids[72]); Assert.Equal(Inventory, ids[71]);
         Assert.Equal(Current, ids[69]); Assert.Equal(Previous, ids[68]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids[..count], out var manifest));
@@ -354,7 +356,7 @@ public sealed class DeliveryD04SchemaTests(DeliveryD02Fixture fixture)
     private static async Task AssertSchema(AppDbContext db, int count, int triggers)
     {
         var ids = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(count, ids.Length); Assert.Equal(count >= 74 ? Latest : count == 73 ? Trips : count == 72 ? Inventory : count == 71 ? Promotion : count == 70 ? Current : Previous, ids[^1]);
+        Assert.Equal(count, ids.Length); Assert.Equal(count >= 75 ? Latest : count == 74 ? Provisional : count == 73 ? Trips : count == 72 ? Inventory : count == 71 ? Promotion : count == 70 ? Current : Previous, ids[^1]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(ids, out var expected));
         await db.Database.OpenConnectionAsync();

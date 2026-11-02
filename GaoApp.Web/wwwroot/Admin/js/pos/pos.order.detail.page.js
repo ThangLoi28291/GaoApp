@@ -306,7 +306,7 @@
         }
 
         const date =
-            new Date(value);
+            new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
 
         if (
             Number.isNaN(
@@ -317,7 +317,7 @@
         }
 
         return date.toLocaleString(
-            'vi-VN'
+            'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }
         );
     }
 
@@ -830,6 +830,9 @@
         state.returnEligibility =
             null;
 
+        const footerTotal = optionalElement('returnRefundFooterTotal');
+        if (footerTotal) footerTotal.textContent = formatMoney(0);
+
         dom.btnSubmitReturnRefund.disabled =
             true;
 
@@ -936,476 +939,98 @@
     }
 
     function renderReturnRefundForm(data) {
-        const lines =
-            safeArray(
-                data?.lines
-            );
-
-        const refundMethodOptions = `
-            <option value="0">
-                Tiền mặt
-            </option>
-
-            <option value="1">
-                Chuyển khoản
-            </option>
-
-            <option value="2">
-                Thẻ
-            </option>
-
-            <option value="3">
-                Ví điện tử
-            </option>
-
-            <option value="99">
-                Khác
-            </option>
-            ${Number(data?.depositRefundable) > 0 ? '<option value="100">Hoàn vào số dư đặt cọc</option>' : ''}
-        `;
-
-        const lineRows =
-            lines.length === 0
-                ? `
-                    <tr>
-                        <td
-                            colspan="9"
-                            class="text-center text-muted py-4">
-
-                            Không có dòng hàng nào để xử lý.
-
-                        </td>
-                    </tr>
-                `
-                : lines
-                    .map(
-                        (
-                            line,
-                            index
-                        ) => {
-                            const orderLineId =
-                                toPositiveInt(
-                                    line?.orderLineId,
-                                    0
-                                );
-
-                            const maxQty =
-                                toNonNegativeNumber(
-                                    line?.returnableQuantity,
-                                    0
-                                );
-
-                            const soldQty =
-                                toNonNegativeNumber(
-                                    line?.quantity ??
-                                    line?.soldQuantity ??
-                                    line?.originalQuantity ??
-                                    line?.orderedQuantity,
-                                    0
-                                );
-
-                            const rawMultiplier =
-                                toFiniteNumber(
-                                    line?.multiplier,
-                                    1
-                                );
-
-                            const multiplier =
-                                rawMultiplier > 0
-                                    ? rawMultiplier
-                                    : 1;
-
-                            const unitPrice =
-                                toNonNegativeNumber(
-                                    line?.unitPrice,
-                                    0
-                                );
-
-                            const defaultRefundUnit =
-                                toNonNegativeNumber(
-                                    line?.suggestedRefundUnitAmount ?? line?.refundUnitAmount ??
-                                    unitPrice,
-                                    unitPrice
-                                );
-
-                            const disabled =
-                                orderLineId
-                                    ? ''
-                                    : ' disabled';
-
-                            return `
-                                <tr
-                                    class="align-middle"
-                                    data-order-line-id="${orderLineId}"
-                                    data-restock-block-reason="${escapeHtml(line?.canRestock === false ? line.restockBlockReason || 'Chưa đủ dữ liệu giá vốn để nhập lại hàng.' : '')}">
-
-                                    <td class="text-center">
-                                        ${index + 1}
-                                    </td>
-
-                                    <td>
-                                        <div class="fw-semibold">
-                                            ${escapeHtml(
-                                line?.itemName ||
-                                ''
-                            )
-                                }
-                                        </div>
-
-                                        <div class="small text-muted">
-                                            SKU:
-                                            ${escapeHtml(
-                                    line?.sku ||
-                                    '-'
-                                )
-                                }
-
-                                            ${line?.unitName
-                                    ? ` - ĐVT: ${escapeHtml(
-                                        line.unitName
-                                    )
-                                    }`
-                                    : ''
-                                }
-                                        </div>
-                                        ${line?.canRestock === false && maxQty > 0 ? `<div class="small text-warning mt-2">${escapeHtml(line.restockBlockReason)} ${escapeHtml(line.restockActionHint)}</div>` : ''}
-                                    </td>
-
-                                    <td class="text-end">
-                                        ${formatNumber(soldQty)}
-                                    </td>
-
-                                    <td
-                                        class="text-end text-primary fw-semibold">
-
-                                        ${formatNumber(maxQty)}
-
-                                    </td>
-
-                                    <td style="width: 120px;">
-                                        <input
-                                            type="number"
-                                            class="form-control text-end js-return-qty"
-                                            data-order-line-id="${orderLineId}"
-                                            data-max="${formatInputNumber(maxQty)}"
-                                            data-multiplier="${formatInputNumber(multiplier)}"
-                                            min="0"
-                                            max="${formatInputNumber(maxQty)}"
-                                            step="1"
-                                            value="0"${disabled}>
-                                    </td>
-
-                                    <td style="width: 140px;">
-                                        <input
-                                            type="number"
-                                            class="form-control text-end js-refund-unit"
-                                            data-order-line-id="${orderLineId}"
-                                            min="0"
-                                            step="100"
-                                            value="${formatInputNumber(defaultRefundUnit)}"${disabled}>
-                                    </td>
-
-                                    <td
-                                        class="text-center"
-                                        style="min-width: 170px;">
-                                        <select class="form-select js-restock" aria-label="Xử lý hàng trả" data-order-line-id="${orderLineId}"${disabled}>
-                                            <option value="1" ${line?.canRestock === false ? '' : 'selected'}>Nhập lại kho</option>
-                                            <option value="2" ${line?.canRestock === false ? 'selected' : ''}>Chờ nhập kho</option>
-                                            <option value="0">Không nhập kho</option>
-                                        </select>
-                                    </td>
-
-                                    <td>
-                                        <input
-                                            type="text"
-                                            class="form-control js-line-reason"
-                                            data-order-line-id="${orderLineId}"
-                                            placeholder="Lý do dòng này (nếu có)"${disabled}>
-                                    </td>
-
-                                    <td
-                                        class="text-end fw-semibold js-line-total"
-                                        data-order-line-id="${orderLineId}">
-
-                                        ${formatMoney(0)}
-
-                                    </td>
-
-                                </tr>
-                            `;
-                        }
-                    )
-                    .join('');
-
+        const lines = safeArray(data?.lines);
+        const lineCards = lines.map((line, index) => {
+            const orderLineId = toPositiveInt(line?.orderLineId, 0);
+            const maxQty = toNonNegativeNumber(line?.returnableQuantity, 0);
+            const soldQty = toNonNegativeNumber(line?.quantity ?? line?.soldQuantity ?? line?.originalQuantity ?? line?.orderedQuantity, 0);
+            const rawMultiplier = toFiniteNumber(line?.multiplier, 1);
+            const multiplier = rawMultiplier > 0 ? rawMultiplier : 1;
+            const unitPrice = toNonNegativeNumber(line?.unitPrice, 0);
+            const defaultRefundUnit = toNonNegativeNumber(line?.suggestedRefundUnitAmount ?? line?.refundUnitAmount ?? unitPrice, unitPrice);
+            const disabled = orderLineId ? '' : ' disabled';
+            const blockReason = line?.canRestock === false ? line.restockBlockReason || 'Chưa đủ dữ liệu giá vốn để nhập lại hàng.' : '';
+            return `
+                <article class="ret-line-card" role="listitem" data-order-line-id="${orderLineId}"
+                         data-restock-block-reason="${escapeHtml(blockReason)}">
+                    <div class="ret-line-heading">
+                        <span class="ret-line-index">${index + 1}</span>
+                        <div class="ret-line-product">
+                            <h6>${escapeHtml(line?.itemName || '')}</h6>
+                            <div class="ret-line-meta">SKU: ${escapeHtml(line?.sku || '-')}${line?.unitName ? ` · ĐVT: ${escapeHtml(line.unitName)}` : ''}</div>
+                            <div class="ret-line-quantities">
+                                <span>Đã bán <strong>${formatNumber(soldQty)}</strong></span>
+                                <span class="ret-line-remaining">Còn trả được <strong>${formatNumber(maxQty)}</strong></span>
+                            </div>
+                        </div>
+                        <div class="ret-line-amount"><span>Tiền hàng trả</span><strong class="js-line-total" data-order-line-id="${orderLineId}">${formatMoney(0)}</strong></div>
+                    </div>
+                    ${blockReason && maxQty > 0 ? `
+                        <div class="ret-line-warning" role="note">
+                            <span class="ret-line-warning-mark" aria-hidden="true">!</span>
+                            <div><p>${escapeHtml(blockReason)}</p>${line?.restockActionHint ? `<details><summary>Hướng xử lý</summary><p>${escapeHtml(line.restockActionHint)}</p></details>` : ''}</div>
+                        </div>` : ''}
+                    <div class="ret-line-controls">
+                        <label class="ret-line-field"><span>Số lượng trả</span>
+                            <input type="number" class="form-control text-end js-return-qty" data-order-line-id="${orderLineId}"
+                                   data-max="${formatInputNumber(maxQty)}" data-multiplier="${formatInputNumber(multiplier)}"
+                                   min="0" max="${formatInputNumber(maxQty)}" step="1" value="0"${disabled}>
+                        </label>
+                        <label class="ret-line-field"><span>Đơn giá hoàn</span>
+                            <input type="number" class="form-control text-end js-refund-unit" data-order-line-id="${orderLineId}"
+                                   min="0" step="100" value="${formatInputNumber(defaultRefundUnit)}"${disabled}>
+                        </label>
+                        <label class="ret-line-field"><span>Xử lý hàng trả</span>
+                            <select class="form-select js-restock" data-order-line-id="${orderLineId}"${disabled}>
+                                <option value="1" ${line?.canRestock === false ? '' : 'selected'}>Nhập lại kho</option>
+                                <option value="2" ${line?.canRestock === false ? 'selected' : ''}>Chờ nhập kho</option>
+                                <option value="0">Không nhập kho</option>
+                            </select>
+                        </label>
+                        <label class="ret-line-field ret-line-reason"><span>Lý do riêng <small>(nếu có)</small></span>
+                            <input type="text" class="form-control js-line-reason" data-order-line-id="${orderLineId}" placeholder="Lý do trả sản phẩm này"${disabled}>
+                        </label>
+                    </div>
+                </article>`;
+        }).join('');
         return `
             <div class="return-refund-form">
-
-                <div class="ord-popup-callout">
-                    Chọn cách xử lý ở từng món. <strong>Chờ nhập kho</strong> vẫn ghi nhận hàng đã trả và tiền hoàn,
-                    hàng chưa cộng vào tồn có thể bán. Quản lý hoàn tất nhập kho sau khi xác định giá vốn.
-                    Hàng lỗi không bán lại được có thể chọn <strong>Không nhập kho</strong>.
-                </div>
-
                 <div class="ret-summary">
-
-                    <div class="ret-stat">
-                        <div class="ret-stat-label">
-                            Đơn hàng
-                        </div>
-
-                        <div class="ret-stat-value">
-                            ${escapeHtml(
-            data?.orderNumber ||
-            '-'
-        )
-            }
-                        </div>
-                    </div>
-
-                    <div class="ret-stat">
-                        <div class="ret-stat-label">
-                            Khách hàng
-                        </div>
-
-                        <div class="ret-stat-value">
-                            ${escapeHtml(
-                data?.customerName ||
-                'Khách lẻ'
-            )
-            }
-                        </div>
-                    </div>
-
-                    <div class="ret-stat">
-                        <div class="ret-stat-label">
-                            Tổng thanh toán
-                        </div>
-
-                        <div class="ret-stat-value">
-                            ${formatMoney(data?.grandTotal || 0)}
-                        </div>
-                    </div>
-
-                    <div class="ret-stat">
-                        <div class="ret-stat-label">
-                            Đã hoàn trước đó
-                        </div>
-
-                        <div class="ret-stat-value text-danger">
-                            ${formatMoney(data?.alreadyRefunded || 0)}
-                        </div>
-                    </div>
-
+                    <div class="ret-stat"><div class="ret-stat-label">Đơn hàng</div><div class="ret-stat-value">${escapeHtml(data?.orderNumber || '-')}</div></div>
+                    <div class="ret-stat"><div class="ret-stat-label">Khách hàng</div><div class="ret-stat-value" data-return-customer-order="${escapeHtml(data?.orderId)}">${escapeHtml(data?.customerName || 'Khách lẻ')}</div></div>
+                    <div class="ret-stat"><div class="ret-stat-label">Tổng thanh toán</div><div class="ret-stat-value">${formatMoney(data?.grandTotal || 0)}</div></div>
+                    <div class="ret-stat"><div class="ret-stat-label">Đã hoàn trước đó</div><div class="ret-stat-value text-danger" data-return-refunded-order="${escapeHtml(data?.orderId)}">${formatMoney(data?.alreadyRefunded || 0)}</div></div>
                 </div>
-
-                <div class="row g-3 mb-3">
-
-                    <div class="col-md-4">
-
-                        <label
-                            class="form-label fw-semibold"
-                            for="returnType">
-
-                            Loại xử lý
-
-                        </label>
-
-                        <select
-                            class="form-select"
-                            id="returnType">
-
-                            <option
-                                value="3"
-                                selected>
-                                Trả hàng + hoàn tiền
-                            </option>
-
-                            <option value="2">
-                                Chỉ trả hàng
-                            </option>
-
-                            <option value="1" ${data?.isCreditSale || Number(data?.depositAmount) > 0 ? 'disabled' : ''}>
-                                Chỉ hoàn tiền
-                            </option>
-
+                <div class="ret-form-options">
+                    <label class="ret-line-field" for="returnType"><span>Loại xử lý</span>
+                        <select class="form-select" id="returnType">
+                            <option value="3" selected>Trả hàng + hoàn tiền</option>
+                            <option value="2">Chỉ trả hàng</option>
+                            <option value="1" ${data?.isCreditSale || Number(data?.depositAmount) > 0 ? 'disabled' : ''}>Chỉ hoàn tiền</option>
                         </select>
-
-                    </div>
-
-                    <div class="col-md-8">
-
-                        <label
-                            class="form-label fw-semibold"
-                            for="returnReason">
-
-                            Lý do chung
-
-                        </label>
-
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="returnReason"
-                            placeholder="Nhập lý do chung">
-
-                    </div>
-
+                    </label>
+                    <label class="ret-line-field" for="returnReason"><span>Lý do chung</span><input type="text" class="form-control" id="returnReason" placeholder="Nhập lý do trả hàng / hoàn tiền"></label>
                 </div>
-
-                <div class="ord-box mb-3">
-
-                    <div class="table-responsive">
-
-                        <table
-                            class="table ord-table table-hover align-middle mb-0">
-
-                            <thead>
-                                <tr>
-                                    <th
-                                        class="text-center"
-                                        style="width: 60px;">
-                                        #
-                                    </th>
-
-                                    <th>
-                                        Sản phẩm
-                                    </th>
-
-                                    <th
-                                        class="text-end"
-                                        style="width: 100px;">
-                                        Đã bán
-                                    </th>
-
-                                    <th
-                                        class="text-end"
-                                        style="width: 120px;">
-                                        Còn trả được
-                                    </th>
-
-                                    <th
-                                        class="text-end"
-                                        style="width: 120px;">
-                                        SL trả
-                                    </th>
-
-                                    <th
-                                        class="text-end"
-                                        style="width: 140px;">
-                                        Đơn giá hoàn
-                                    </th>
-
-                                    <th
-                                        class="text-center"
-                                        style="width: 110px;">
-                                        Nhập kho
-                                    </th>
-
-                                    <th style="width: 220px;">
-                                        Lý do dòng
-                                    </th>
-
-                                    <th
-                                        class="text-end"
-                                        style="width: 140px;">
-                                        Thành tiền
-                                    </th>
-                                </tr>
-                            </thead>
-
-                            <tbody id="returnLinesBody">
-                                ${lineRows}
-                            </tbody>
-
-                        </table>
-
+                <section class="ret-products-section" aria-labelledby="returnProductsHeading">
+                    <div class="ret-section-heading"><h6 id="returnProductsHeading">Sản phẩm trả</h6><span>${lines.length} sản phẩm</span></div>
+                    <div class="ord-popup-callout ret-restock-help">
+                        <span>Chọn số lượng và cách xử lý cho từng sản phẩm.</span>
+                        <details><summary>Giải thích nhập kho</summary><p><strong>Nhập lại kho:</strong> hàng được cộng vào tồn có thể bán. <strong>Chờ nhập kho:</strong> ghi nhận hàng đã trả và tiền hoàn; quản lý hoàn tất nhập kho sau khi xác định giá vốn. Hàng lỗi không bán lại được có thể chọn <strong>Không nhập kho</strong>.</p></details>
                     </div>
-
-                </div>
-
-                <div class="row g-3">
-
-                    <div class="col-md-3">
-
-                        <label
-                            class="form-label fw-semibold"
-                            for="refundMethod">
-
-                            Phương thức hoàn
-
+                    <div id="returnLinesBody" class="ret-line-list" role="list">${lineCards || '<div class="ord-empty">Không có dòng hàng nào để xử lý.</div>'}</div>
+                </section>
+                <section class="ret-payment-section" aria-labelledby="returnPaymentHeading">
+                    <div class="ret-section-heading"><h6 id="returnPaymentHeading">Thông tin hoàn tiền</h6></div>
+                    <div class="ret-payment-fields">
+                        <label class="ret-line-field" for="refundMethod"><span>Phương thức hoàn</span>
+                            <select class="form-select" id="refundMethod"><option value="0">Tiền mặt</option><option value="1">Chuyển khoản</option><option value="2">Thẻ</option><option value="3">Ví điện tử</option><option value="99">Khác</option>${Number(data?.depositRefundable) > 0 ? '<option value="100">Hoàn vào số dư đặt cọc</option>' : ''}</select>
                         </label>
-
-                        <select
-                            class="form-select"
-                            id="refundMethod">
-
-                            ${refundMethodOptions}
-
-                        </select>
-
+                        <label class="ret-line-field" for="refundAmount"><span>Số tiền hoàn</span><input type="number" class="form-control" id="refundAmount" min="0" step="100" value="0"></label>
+                        <label class="ret-line-field" for="refundReference"><span>Mã tham chiếu</span><input type="text" class="form-control" id="refundReference" placeholder="Nếu có"></label>
+                        <label class="ret-line-field" for="returnSubtotalDisplay"><span>Tổng tiền hàng trả</span><input type="text" class="form-control fw-bold" id="returnSubtotalDisplay" value="0 đ" readonly></label>
                     </div>
-
-                    <div class="col-md-3">
-
-                        <label
-                            class="form-label fw-semibold"
-                            for="refundAmount">
-
-                            Số tiền hoàn
-
-                        </label>
-
-                        <input
-                            type="number"
-                            class="form-control"
-                            id="refundAmount"
-                            min="0"
-                            step="100"
-                            value="0">
-
-                    </div>
-
-                    <div class="col-md-3">
-
-                        <label
-                            class="form-label fw-semibold"
-                            for="refundReference">
-
-                            Mã tham chiếu
-
-                        </label>
-
-                        <input
-                            type="text"
-                            class="form-control"
-                            id="refundReference"
-                            placeholder="Nếu có">
-
-                    </div>
-
-                    <div class="col-md-3">
-
-                        <label
-                            class="form-label fw-semibold"
-                            for="returnSubtotalDisplay">
-
-                            Tổng tiền hàng trả
-
-                        </label>
-
-                        <input
-                            type="text"
-                            class="form-control fw-bold"
-                            id="returnSubtotalDisplay"
-                            value="0 đ"
-                            readonly>
-
-                    </div>
-
-                </div>
-
-            </div>
-        `;
+                </section>
+            </div>`;
     }
 
     function applyReturnTypeUi() {
@@ -1577,7 +1202,7 @@
                 qtyInput => {
                     const row =
                         qtyInput.closest(
-                            'tr'
+                            '.ret-line-card'
                         );
 
                     if (!row) {
@@ -1658,6 +1283,8 @@
                     subtotal
                 );
         }
+        const footerTotal = optionalElement('returnRefundFooterTotal');
+        if (footerTotal) footerTotal.textContent = formatMoney(subtotal);
     }
 
     function buildReturnRefundRequest() {
@@ -1787,7 +1414,7 @@
 
                         const row =
                             qtyInput.closest(
-                                'tr'
+                                '.ret-line-card'
                             );
 
                         if (!row) {

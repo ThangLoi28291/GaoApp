@@ -1,0 +1,31 @@
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: #eef1f5; color: #111; font: 12px/1.4 Arial, Helvetica, sans-serif; }
+.deposit-print-actions { display: flex; max-width: 80mm; margin: 0 auto 12px; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.deposit-print-actions a { color: #215bbb; }
+.deposit-print-actions button { padding: 8px 12px; border: 0; border-radius: 6px; background: #215bbb; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+.deposit-print-paper-size { flex-basis: 100%; color: #526073; text-align: center; }
+.deposit-receipt { width: 80mm; max-width: 100%; margin: auto; padding: 4mm; background: white; border: 1px solid #dce2ea; overflow-wrap: anywhere; }
+.deposit-receipt-store { padding-bottom: 8px; border-bottom: 1px dashed #777; text-align: center; }
+.deposit-receipt-store strong { font-size: 14px; }
+.deposit-receipt-store div { margin-top: 3px; font-size: 11px; }
+.deposit-receipt-heading { margin: 10px 0; text-align: center; }
+.deposit-receipt-heading h1 { margin: 0 0 4px; font-size: 14px; line-height: 1.35; }
+.deposit-receipt-heading p { margin: 4px 0 0; font-size: 11px; }
+.deposit-receipt-info { margin: 0; }
+.deposit-receipt-info > div { display: grid; grid-template-columns: 24mm minmax(0, 1fr); gap: 2mm; padding: 3px 0; break-inside: avoid; }
+.deposit-receipt-info dt { color: #333; }
+.deposit-receipt-info dd { min-width: 0; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.deposit-receipt-info .deposit-receipt-field--full { display: block; }
+.deposit-receipt-field--full dd { margin-top: 2px; }
+.deposit-receipt-info .deposit-receipt-amount { display: block; margin: 7px 0; padding: 7px 0; border-top: 1px dashed #777; border-bottom: 1px dashed #777; font-weight: 700; }
+.deposit-receipt-amount dd { margin-top: 3px; text-align: right; font-size: 18px; font-variant-numeric: tabular-nums; }
+.deposit-receipt-balance { margin: 10px 0 0; padding-top: 7px; border-top: 1px dashed #777; font-size: 11px; }
+.deposit-receipt-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm; min-height: 22mm; margin-top: 12px; text-align: center; break-inside: avoid; font-size: 11px; }
+.deposit-receipt-signatures small { display: block; margin-top: 3px; font-size: 10px; font-style: italic; }
+@page { size: 80mm 300mm; margin: 0; }
+@media print {
+    html, body { width: 80mm; margin: 0; padding: 0; background: white; color: black; }
+    .deposit-print-actions { display: none; }
+    .deposit-receipt { width: 80mm; max-width: 80mm; margin: 0; padding: 4mm; border: 0; }
+    .deposit-receipt-info dt { color: black; }
+}

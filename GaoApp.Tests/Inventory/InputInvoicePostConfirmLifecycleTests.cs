@@ -93,6 +93,9 @@ public sealed class InputInvoicePostConfirmLifecycleTests
             nameof(IStockDocumentRepository.GetConversionAsync) =>
                 Task.FromResult<ProductUnitConversion?>(conversion),
             nameof(IStockDocumentRepository.GetNextLineNoAsync) => Task.FromResult(1),
+            nameof(IStockDocumentRepository.BeginTransactionAsync) or
+            nameof(IStockDocumentRepository.CommitTransactionAsync) or
+            nameof(IStockDocumentRepository.RollbackTransactionAsync) => Task.CompletedTask,
             nameof(IStockDocumentRepository.SaveChangesAsync) => db.SaveChangesAsync(),
             _ => throw new InvalidOperationException(method.Name)
         });

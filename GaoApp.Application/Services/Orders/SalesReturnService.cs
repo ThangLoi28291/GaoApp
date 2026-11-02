@@ -159,6 +159,8 @@ public sealed class SalesReturnService : ISalesReturnService
             else if (_pendingRestock != null) await _pendingRestock.LockOrderAsync(request.OrderId, ct);
             var order = await _orders.GetByIdWithDetailsAsync(request.OrderId, ct)
                 ?? throw new BusinessRuleException("Không tìm thấy order.");
+            if (order.Lines.Any(x => x.StorefrontOrderLineId.HasValue))
+                throw new BusinessRuleException("Đơn website sử dụng nguồn xuất giao và ngân sách hoàn riêng. Mở xử lý đơn website, không trả/hoàn qua POS.");
 
             if (order.Status != OrderStatus.Completed && order.Status != OrderStatus.Refunded)
                 throw new BusinessRuleException("Chỉ xử lý return/refund cho đơn đã chốt.");
@@ -600,7 +602,7 @@ public sealed class SalesReturnService : ISalesReturnService
             // 11. Gắn note cho order để dễ tra cứu nhanh
             // =====================================================
             var returnNote =
-     $"[RETURN/REFUND - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] {entity.ReturnNumber} - {entity.Reason}";
+     $"[RETURN/REFUND - {VietnamTime.Now:dd/MM/yyyy HH:mm:ss}] {entity.ReturnNumber} - {entity.Reason}";
 
             order.Note = string.IsNullOrWhiteSpace(order.Note)
                 ? returnNote
@@ -714,6 +716,8 @@ public sealed class SalesReturnService : ISalesReturnService
     {
         var order = await _orders.GetByIdWithDetailsAsync(orderId, ct)
             ?? throw new BusinessRuleException("Không tìm thấy order.");
+        if (order.Lines.Any(x => x.StorefrontOrderLineId.HasValue))
+            throw new BusinessRuleException("Đơn website cần xử lý hàng và tiền tại trang đơn website.");
 
         var refundedTotal = await _salesReturns.GetRefundedTotalByOrderAsync(order.Id, ct);
 
@@ -834,7 +838,7 @@ public sealed class SalesReturnService : ISalesReturnService
     /// </summary>
     private Task<string> GenerateReturnNumberAsync(CancellationToken ct)
     {
-        return Task.FromResult($"RTN-{DateTime.Now:yyyyMMdd}-{Guid.NewGuid():N}"[..29]);
+        return Task.FromResult($"RTN-{VietnamTime.Now:yyyyMMdd}-{Guid.NewGuid():N}"[..29]);
     }
     private async Task ApplyRewardDeductionForSalesReturnAsync(
     Order order,

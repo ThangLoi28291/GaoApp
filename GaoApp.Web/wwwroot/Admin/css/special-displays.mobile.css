@@ -1,0 +1,41 @@
+/* UI-22: dedicated customer/kiosk/monitor screens stay dedicated. Large-screen compositions are unchanged. */
+@media screen and (max-width: 767.98px) {
+    body.wm-page:has(#gao-store-wall) { overflow:auto !important; }
+    #gao-store-wall[data-view="3d"] { position:relative; width:100%; height:auto; min-height:100dvh; transform:none; overflow:visible; }
+    #gao-store-wall :is(.wm-screen,.wm-main) { min-width:0; }
+    #gao-store-wall[data-view="3d"] :is(.wm-screen,.wm-main) { display:block; height:auto; }
+    #gao-store-wall .wm-header { display:flex; flex-wrap:wrap !important; gap:12px; padding:14px; }
+    #gao-store-wall .wm-toolbar { width:100%; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+    #gao-store-wall :is(.wm-toolbar button,.wm-toolbar a,.wm3-views button,.wm3-camera-tools button,#wm-detail-close) { min-width:44px; min-height:44px; font-size:14px; white-space:normal !important; padding:10px; }
+    #gao-store-wall .wm-main { padding:12px !important; }
+    #gao-store-wall .wm-summary { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+    #gao-store-wall .wm-summary-item { min-width:0; padding:12px !important; }
+    #gao-store-wall .wm-arrival { margin-bottom:12px !important; overflow-wrap:anywhere; }
+    #gao-store-wall[data-view="3d"] .wm3-shell { display:grid; grid-template-columns:minmax(0,1fr); }
+    #gao-store-wall .wm3-stage { height:56dvh; min-height:340px; }
+    #gao-store-wall .wm3-views { flex-wrap:nowrap; overflow-x:auto; pointer-events:auto; }
+    #gao-store-wall .wm3-views button { flex-shrink:0; }
+    #gao-store-wall .wm3-panel { max-height:none; overflow:visible; }
+    #gao-store-wall :is(.wm-area-grid,.wm-body) { grid-template-columns:minmax(0,1fr); }
+    #gao-store-wall :is(.wm-detail,.wm3-detail) { overflow-wrap:anywhere; }
+    #gao-store-wall .wm-detail { width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow:auto; padding:16px; }
+    #gao-store-wall .wm-detail-heading { position:sticky; top:-16px; padding:12px 0; background:var(--wm-surface); z-index:2; }
+    body:has(#customerDisplayApp) { overflow:auto; }
+    #customerDisplayApp { min-height:100dvh; height:auto; padding:12px; }
+    #customerDisplayApp :is(.cd-header,.cd-footer) { flex-wrap:wrap; gap:10px; }
+    #customerDisplayApp .cd-modern-layout { grid-template-columns:minmax(0,1fr); min-height:0; }
+    #customerDisplayApp :is(.cd-workspace,.cd-order-panel,.cd-feature-panel) { min-width:0; height:auto; }
+    #customerDisplayApp .cd-modern-lines { max-height:45dvh; min-height:140px; overflow-y:auto; }
+    #customerDisplayApp :is(.cd-hero-name,.cd-brand-name,.cd-staff-copy) { overflow-wrap:anywhere; }
+    #customerDisplayApp .cd-fullscreen { min-width:44px; min-height:44px; }
+    #gao-kiosk { min-height:100dvh; }
+    #gao-kiosk :is(input,select,textarea) { min-height:46px; font-size:16px; max-width:100%; }
+    #gao-kiosk :is(button,a.g-button) { min-height:44px; }
+    #gao-kiosk :is(h1,h2,h3,p,strong) { overflow-wrap:anywhere; }
+    #gao-kiosk .g-cart-controls { flex-wrap:wrap; gap:10px; }
+    #gao-kiosk .g-cart-line-total { white-space:nowrap; overflow-wrap:normal; min-width:max-content; }
+    #gao-kiosk dialog { max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow-y:auto; }
+    #gao-kiosk dialog[open] { display:flex; flex-direction:column; min-height:0; }
+    #gao-kiosk dialog > h2, #gao-kiosk dialog > .g-actions { flex-shrink:0; }
+    #gao-kiosk dialog > div:not(.g-actions) { min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+}

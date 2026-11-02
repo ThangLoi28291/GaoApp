@@ -20,14 +20,16 @@ public static class InputInvoiceReconciliationPolicy
     public static InputInvoiceDetailReconciliationState ResolveDetailState(
         bool complete, bool ignored, bool vatComparable,
         decimal quantityDifference, decimal baseUnitPriceDifference,
-        decimal vatAmountDifference, decimal? receiptVatRate, decimal? xmlVatRate)
+        decimal vatAmountDifference, decimal? receiptVatRate, decimal? xmlVatRate,
+        bool compareVatBreakdown = true)
     {
         if (ignored) return InputInvoiceDetailReconciliationState.Ignored;
         if (!complete) return InputInvoiceDetailReconciliationState.Incomplete;
         if (!vatComparable) return InputInvoiceDetailReconciliationState.NeedsReview;
         var quantityMismatch = !QuantityMatches(quantityDifference);
         var amountMismatch = !MoneyMatches(baseUnitPriceDifference);
-        var vatMismatch = receiptVatRate != xmlVatRate || !MoneyMatches(vatAmountDifference);
+        var vatMismatch = compareVatBreakdown &&
+            (receiptVatRate != xmlVatRate || !MoneyMatches(vatAmountDifference));
         var count = (quantityMismatch ? 1 : 0) + (amountMismatch ? 1 : 0) +
             (vatMismatch ? 1 : 0);
         if (count > 1) return InputInvoiceDetailReconciliationState.CombinedMismatch;
@@ -52,6 +54,7 @@ public static class InputInvoiceReconciliationPolicy
             Append(builder, value.Header.XmlPaymentAmount);
             Append(builder, value.Header.NeedsReview);
             Append(builder, value.Header.Reason);
+            Append(builder, value.Header.VatBreakdownComparable);
         }
         foreach (var detail in value.Details.OrderBy(x => x.InputInvoiceDetailId))
         {
@@ -75,6 +78,8 @@ public static class InputInvoiceReconciliationPolicy
             Append(builder, detail.XmlVatRate);
             Append(builder, detail.ReceiptVatAmount);
             Append(builder, detail.XmlVatAmount);
+            Append(builder, detail.BaseUnitPriceAfterVatDifference);
+            Append(builder, detail.VatBreakdownComparable);
             Append(builder, detail.IsIgnored);
             Append(builder, detail.IgnoreReason);
             foreach (var lineId in detail.StockDocumentLineIds.Order()) Append(builder, lineId);

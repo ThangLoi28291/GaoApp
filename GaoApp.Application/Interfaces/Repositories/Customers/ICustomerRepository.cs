@@ -4,6 +4,8 @@ namespace GaoApp.Application.Interfaces.Repositories.Customers;
 
 public interface ICustomerRepository
 {
+    Task<Customer?> GetByIdAsync(int customerId, CancellationToken ct = default);
+
     Task<Customer?> GetActiveByIdAsync(int customerId, CancellationToken ct = default);
 
     Task<Customer?> GetByPhoneAsync(string phone, CancellationToken ct = default);

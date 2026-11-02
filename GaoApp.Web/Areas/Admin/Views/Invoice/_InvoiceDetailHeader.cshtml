@@ -17,7 +17,7 @@
         || issuedStatuses.Contains(invoice.ProviderStatus);
 
     var isHardLocked = invoice.IsLocked || isViettelIssued;
-    var canEditInvoice = !isHardLocked;
+    var canEditInvoice = invoice.CanEditDetails;
 
     var isCorrectionInvoice =
         invoice.OriginalInvoiceHeadId.HasValue ||
@@ -129,7 +129,7 @@
                     id="btnOpenManualDetailModal"
                     data-invoice-head-id="@invoice.Id">
                 <i class="bx bx-plus"></i>
-                Thêm dòng manual (F2)
+                Thêm sản phẩm (F2)
             </button>
 
             <button type="button"

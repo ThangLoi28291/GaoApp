@@ -311,7 +311,7 @@
                            aria-label="Đặt ${escapeHtml(x.name)} làm kho mặc định"
                            ${x.isDefault ? "checked" : ""}
                            ${!x.isActive || !permissions.canUpdate ? "disabled" : ""}
-                           onchange="WarehousePage.confirmSetDefault(${x.id}, this)" />
+                           data-csp-action="warehouse-default" data-csp-event="change" data-csp-id="${Number(x.id)}" />
                     <span class="warehouse-switch-label">Mặc định</span>
                 </label>
                 <label class="form-check form-switch warehouse-switch-control">
@@ -320,7 +320,7 @@
                            aria-label="Cho phép âm kho ${escapeHtml(x.name)}"
                            ${x.allowNegativeInventory ? "checked" : ""}
                            ${!permissions.canUpdate ? "disabled" : ""}
-                           onchange="WarehousePage.confirmToggleNegative(${x.id}, this.checked, this)" />
+                           data-csp-action="warehouse-negative" data-csp-event="change" data-csp-id="${Number(x.id)}" />
                     <span class="warehouse-switch-label is-danger">Âm kho</span>
                 </label>
             </div>`;
@@ -334,7 +334,7 @@
                        aria-label="Trạng thái kho ${escapeHtml(x.name)}"
                        ${x.isActive ? "checked" : ""}
                        ${!permissions.canUpdate ? "disabled" : ""}
-                       onchange="WarehousePage.confirmToggleActive(${x.id}, this.checked, this)" />
+                       data-csp-action="warehouse-active" data-csp-event="change" data-csp-id="${Number(x.id)}" />
                 <span class="warehouse-switch-label ${x.isActive ? "is-success" : ""}">
                     ${x.isActive ? "Đang hoạt động" : "Ngưng hoạt động"}
                 </span>
@@ -346,7 +346,7 @@
 
         return `<button type="button"
                         class="btn btn-sm btn-outline-primary ${isMobile ? "warehouse-mobile-card__action" : ""}"
-                        onclick="WarehousePage.openEditModal(${x.id})">
+                        data-csp-action="warehouse-edit" data-csp-id="${Number(x.id)}">
                     <i class="bx bx-edit-alt" aria-hidden="true"></i>
                     Sửa
                 </button>`;

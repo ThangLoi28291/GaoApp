@@ -1,20 +1,21 @@
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
+using GaoApp.Application.Common.Helpers;
 using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace GaoApp.Web.Services.Acb;
 
-public sealed class AcbReconciliationService(AppDbContext db)
+public sealed class AcbReconciliationService(AppDbContext db, TimeProvider? time = null)
 {
     private int StoreId => db.CurrentStoreId is > 0 ? db.CurrentStoreId.Value : throw new InvalidOperationException("Chưa xác định cửa hàng.");
 
     public async Task<AcbReconciliationPage> ReadAsync(DateTime? from, DateTime? to, string? source, int page, CancellationToken ct)
     {
-        var start = (from ?? DateTime.UtcNow.AddHours(7).AddDays(-1)).Date;
+        var start = (from ?? (time ?? TimeProvider.System).GetUtcNow().ToVietnamTime().DateTime).Date;
         var end = (to ?? start).Date;
         if (end < start || (end - start).TotalDays > 30) throw new ArgumentException("Chọn khoảng tra cứu tối đa 31 ngày.");
-        source ??= "TRANSACTION_HISTORY";
+        source ??= "ALL";
         if (source is not ("ALL" or "TRANSACTION_HISTORY" or "TRANSACTION_UPDATE")) throw new ArgumentException("Loại thông báo không hợp lệ.");
         page = Math.Max(1, page);
         var query = db.Set<AcbQrNotificationItem>().AsNoTracking().Where(x => x.StoreId == StoreId &&

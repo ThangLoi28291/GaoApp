@@ -2,19 +2,24 @@
 window.PosOffline = (function () {
     'use strict';
     const core = window.PosOfflineCore;
+    const privacy = window.PosOfflinePrivacy;
     const nativeFetch = window.fetch.bind(window);
-    const databaseName = 'gao-pos-offline-v1';
     const catalogMaxAgeMs = 15 * 60 * 1000;
     let database, state, catalog, ready = false, writer = false, connected = true, authBlocked = false, storageError = '', blockedPending = false;
     let preparing = false, blockedWriter = false, sessionIssue = null;
-    let initPromise, writerRetryTimer, pageActive = true;
+    let initPromise, writerRetryTimer, preparationRetryTimer, pageActive = true;
+    let initializationComplete = false, bootstrapScreen = null, startupHadPending = false, preparationRevision = 0;
     let chain = Promise.resolve(), syncRunning = false, token = '', refreshTimer, unlock, shellReady = false;
-    let lastSyncAttemptAt = null, lastSyncAt = null, syncError = '';
+    let lastSyncAttemptAt = null, lastSyncAt = null, syncError = '', retryNotBefore = 0;
+    let privacyLocked = false, hardLocked = false, privacyDialog;
     const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
     const fail = (message, status = 409) => json({ message, errorCode: 'POS_OFFLINE_REVIEW', errorType: 'business' }, status);
     const serial = work => { const next = chain.then(work, work); chain = next.catch(() => {}); return next; };
     const uuid = () => crypto.randomUUID();
-    const isUnavailable = response => response.status >= 500 || response.status === 408;
+    const isUnavailable = response => response.status >= 500 || response.status === 408 || response.status === 429;
+    const busyMessage = response => response.status === 429
+        ? 'Máy chủ đang bận. Giao dịch vẫn được giữ trên máy và sẽ tự gửi lại sau thời gian chờ.'
+        : `Máy chủ trả lỗi HTTP ${response.status}. POS sẽ tự thử lại.`;
     const maxPosQuantity = 1000000;
     function invalidQueueOperation(op) {
         if (!op?.url) return null;
@@ -57,8 +62,8 @@ window.PosOffline = (function () {
         return quantityConflict(conflict) || (conflict.kind === 'invalid-operation' ? core.clone(conflict) : null)
             || paymentOverpayConflict(conflict) || (conflict.kind === 'server-rejection' ? core.clone(conflict) : null);
     }
-    const expired = () => !state || new Date(state.context.expiresAtUtc).getTime() <= Date.now();
-    function canWork() { return ready && writer && !authBlocked && !storageError && !sessionIssue && !expired(); }
+    const expired = () => !state || !(privacy.utc(state.context.expiresAtUtc) > Date.now());
+    function canWork() { return ready && writer && !authBlocked && !privacyLocked && !storageError && !sessionIssue && !expired(); }
     function localMode() { return canWork() && (!connected || state.queue.length > 0); }
     function notify() { window.dispatchEvent(new CustomEvent('pos:offline-status')); }
     function status() {
@@ -67,7 +72,38 @@ window.PosOffline = (function () {
             syncing: syncRunning, lastSyncAttemptAt, lastSyncAt, syncError, queueIssue,
             quarantined: state?.quarantined?.length || 0,
             message: storageError || (authBlocked ? 'Cần đăng nhập lại đúng nhân viên để đồng bộ.' : sessionIssue?.message || (!writer && ready ? 'POS đang mở ở tab khác của quầy.' : expired() && ready ? 'Phiên offline đã hết hạn. Kết nối server để chuẩn bị lại quầy.' : queueIssue?.message || state?.conflict?.message || '')),
-            expiresAt: state?.context.expiresAtUtc, context: state?.context };
+            locked: privacyLocked, expiresAt: state?.context.expiresAtUtc, context: privacyLocked ? undefined : state?.context };
+    }
+    function lockPrivacy(reason) {
+        clearTimeout(preparationRetryTimer);
+        privacyLocked = true; authBlocked = true;
+        hardLocked ||= ['logout', 'context-changed'].includes(reason);
+        if (hardLocked) { writer = false; unlock?.(); }
+        window.fetch = intercepted;
+        if (!privacyDialog && document.body) {
+            privacyDialog = document.createElement('dialog');
+            privacyDialog.setAttribute('aria-label', 'Phiên POS đã khóa');
+            privacyDialog.style.cssText = 'position:fixed;inset:0;margin:0;border:0;max-width:none;max-height:none;width:100vw;height:100vh;background:#fff;padding:10vh 8vw;z-index:2147483647;';
+            const title = document.createElement('h2'); title.textContent = 'Phiên POS đã khóa';
+            const message = document.createElement('p');
+            message.textContent = 'Đăng nhập lại đúng nhân viên và quầy để tiếp tục. Giao dịch chưa đồng bộ vẫn được giữ trên máy.';
+            const login = document.createElement('a'); login.href = '/admin/account/login?returnUrl=' + encodeURIComponent(location.pathname || '/admin/pos');
+            login.textContent = 'Đăng nhập lại';
+            privacyDialog.append(title, message, login);
+            privacyDialog.addEventListener('cancel', event => event.preventDefault());
+            document.body.append(privacyDialog); privacyDialog.showModal();
+        }
+        notify();
+    }
+    function unlockPrivacy() {
+        privacyLocked = false; authBlocked = false;
+        privacyDialog?.close(); privacyDialog?.remove(); privacyDialog = null;
+    }
+    window.addEventListener('pos:privacy-lock', event => lockPrivacy(event.detail?.reason || 'unauthorized'));
+    async function rejectAuthentication() {
+        if (privacyLocked) return;
+        privacy.announce('unauthorized');
+        if (database) { await privacy.sweep(database, { reason: 'unauthorized' }); await privacy.pruneShells(database); }
     }
     async function sessionRejected(response) {
         // A business rejection proves the server is reachable. Never turn a
@@ -79,17 +115,7 @@ window.PosOffline = (function () {
             title: problem.errorCode === 'POS_SHIFT_NOT_OPEN' ? 'Chưa mở ca POS' : 'Cần kiểm tra phiên POS',
             message: [problem.message || 'Phiên POS hiện chưa sẵn sàng.', problem.actionHint].filter(Boolean).join(' ')
         };
-    }
-    async function openDatabase() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(databaseName, 1);
-            request.onupgradeneeded = () => {
-                for (const name of ['sessions', 'catalogs', 'meta']) request.result.createObjectStore(name);
-            };
-            request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
-            request.onerror = () => reject(request.error);
-            request.onblocked = () => reject(new Error('Đóng tab POS cũ để cập nhật dữ liệu offline.'));
-        });
+        await rejectAuthentication();
     }
     async function get(store, key) {
         return new Promise((resolve, reject) => {
@@ -100,23 +126,20 @@ window.PosOffline = (function () {
     }
     async function save(next, nextCatalog) {
         try {
-            await new Promise((resolve, reject) => {
-                const tx = database.transaction(nextCatalog ? ['sessions', 'catalogs', 'meta'] : ['sessions', 'meta'], 'readwrite');
-                tx.objectStore('sessions').put(next, next.key);
-                tx.objectStore('meta').put({ key: next.key, expiresAt: next.context.expiresAtUtc }, 'active');
-                if (nextCatalog) tx.objectStore('catalogs').put(nextCatalog, next.key);
-                tx.oncomplete = resolve;
-                tx.onerror = () => reject(tx.error);
-                tx.onabort = () => reject(tx.error || new Error('Không lưu được dữ liệu POS.'));
-            });
-            state = next;
-            if (nextCatalog) catalog = nextCatalog;
+            if (privacyLocked || hardLocked) throw new Error('Phiên POS đã khóa.');
+            const reduced = privacy.minimize(next, nextCatalog || catalog);
+            await privacy.commit(database, reduced.state, reduced.catalog);
+            state = reduced.state; catalog = reduced.catalog;
         } catch (e) {
+            if (e.privacyLock) lockPrivacy('context-changed');
+            if (privacyLocked || hardLocked) throw e;
             storageError = 'Không ghi được dữ liệu trên máy. Chưa xác nhận thao tác; giữ nguyên dữ liệu để kiểm tra bộ nhớ.';
             notify(); throw e;
         }
     }
-    async function raw(url, options = {}, timeoutMs = 4000) {
+    // Snapshot reads can include cold database queries. Keep their budget separate
+    // from foreground writes, which still fall back to the durable journal in 4s.
+    async function raw(url, options = {}, timeoutMs = 15000) {
         const controller = new AbortController();
         let rejectDeadline;
         const deadline = new Promise((_, reject) => { rejectDeadline = reject; });
@@ -128,11 +151,20 @@ window.PosOffline = (function () {
         try {
             if (options.signal?.aborted) abort();
             return await Promise.race([deadline, (async () => {
-                const response = await nativeFetch(url, { ...options, credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-                if (response.redirected && !response.headers.get('content-type')?.includes('application/json')) return fail('Cần đăng nhập lại.', 401);
+                const response = await nativeFetch(url, { ...options, credentials: 'same-origin', cache: 'no-store', signal: controller.signal })
+                    .catch(error => { error.posTransportFailure = true; throw error; });
+                if (response.redirected && !response.headers.get('content-type')?.includes('application/json')) {
+                    await rejectAuthentication(); return fail('Cần đăng nhập lại.', 401);
+                }
                 // Fetch resolves at headers. Keep the deadline until the complete body is
                 // received so a stalled proxy response cannot hold the journal lock forever.
-                const body = await response.arrayBuffer();
+                const body = await response.arrayBuffer().catch(error => { error.posTransportFailure = true; throw error; });
+                if (response.status === 429 || response.status === 503 && response.headers.has('Retry-After')) {
+                    const value = response.headers.get('Retry-After');
+                    const seconds = Number(value) || Math.ceil((Date.parse(value) - Date.now()) / 1000) || 1;
+                    retryNotBefore = Math.max(retryNotBefore, Date.now() + Math.min(3600, Math.max(1, seconds)) * 1000);
+                }
+                if (response.status === 401) await rejectAuthentication();
                 return new Response([204, 205, 304].includes(response.status) ? null : body,
                     { status: response.status, statusText: response.statusText, headers: response.headers });
             })()]);
@@ -205,17 +237,18 @@ window.PosOffline = (function () {
             if (!localMode()) {
                 let response;
                 try { response = await raw(url.href, options); }
-                catch (e) { if (options.signal?.aborted) throw e; connected = false; }
+                catch (e) { if (options.signal?.aborted) throw e; connected = false; syncError = syncFailure(e); }
                 if (response && !isUnavailable(response)) {
                     if (response.status === 401) { authBlocked = true; notify(); return response; }
                     // An authoritative screen may be shown while the session is
                     // blocked, but must not overwrite unsynced local order data.
                     if (response.ok && !sessionIssue && !state.queue.length) {
                         const data = await response.clone().json();
-                        const next = core.clone(state); core.absorb(next, data); await save(next); connected = true;
+                        const next = core.clone(state); core.absorb(next, data); await save(next); connected = true; syncError = '';
                     }
                     return response;
                 }
+                if (response) syncError = `Máy chủ trả lỗi HTTP ${response.status}. POS sẽ tự thử lại.`;
                 connected = false; notify();
             }
             if (!canWork()) return fail('Dữ liệu offline hết hạn hoặc không lưu được trên máy.');
@@ -268,6 +301,8 @@ window.PosOffline = (function () {
     async function intercepted(input, options = {}) {
         const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.href);
         if (url.origin !== location.origin) return nativeFetch(input, options);
+        if ((privacyLocked || hardLocked) && (url.pathname.startsWith(base + '/') || url.pathname.startsWith('/admin/acb/')))
+            return fail('Phiên POS đã khóa. Đăng nhập lại đúng nhân viên để tiếp tục.', 401);
         if (!ready) {
             const posRequest = url.pathname.startsWith(base + '/') || url.pathname.startsWith('/admin/acb/');
             if (posRequest && blockedWriter) return fail('POS đang mở ở tab khác của quầy.');
@@ -276,39 +311,72 @@ window.PosOffline = (function () {
             if (posRequest && preparing) {
                 if (!writer) return fail('POS đang mở ở tab khác của quầy.');
                 // Let online sales proceed during preparation, and drain them before taking the final snapshot.
-                return serial(() => ready && handled(url) ? transport(url, options) : nativeFetch(input, options));
+                return serial(() => {
+                    if (ready && handled(url)) return transport(url, options);
+                    if ((options.method || 'GET').toUpperCase() !== 'GET') preparationRevision++;
+                    return nativeFetch(input, options);
+                });
             }
             return nativeFetch(input, options);
         }
         const history = url.pathname.match(/^\/admin\/acb\/payments\/orders\/(\d+)\/qrs(?:\/(\d+))?$/);
         if (history) return serial(async () => {
+            let historyFailure = null;
             if (!localMode()) {
+                let response;
                 try {
-                    const response = await raw(url.href, options);
+                    response = await raw(url.href, options);
+                } catch (error) {
+                    if (options.signal?.aborted) throw error;
+                    if (error.posTransportFailure || error.name === 'TimeoutError') {
+                        connected = false; syncError = syncFailure(error); notify();
+                    }
+                    historyFailure = json({ message: 'Chưa tải được lịch sử QR. Bấm tải lại để thử lại.', errorCode: 'POS_QR_HISTORY_UNAVAILABLE', errorType: 'technical' }, 503);
+                }
+                if (privacyLocked || hardLocked) return fail('Phiên POS đã khóa. Đăng nhập lại đúng nhân viên để tiếp tục.', 401);
+                if (response) {
+                    // A history feature error does not mean the POS server is offline.
+                    connected = true;
                     if (response.ok) {
-                        const data = await response.clone().json();
-                        if (data.qr) await rememberQr(data.qr, { readOnly: data.readOnly, canCancel: data.canCancel, savedStatus: data.status });
-                        if (!history[2]) {
+                        let data;
+                        try {
+                            data = await response.clone().json();
+                            if (history[2] ? Number(data?.qr?.id) !== Number(history[2]) || Number(data?.qr?.orderId) !== Number(history[1])
+                                : Number(data?.orderId) !== Number(history[1]) || !Array.isArray(data?.items) || data.items.some(item => !item || !Number.isFinite(Number(item.qrId))))
+                                throw new Error('Invalid QR history');
+                        } catch {
+                            historyFailure = json({ message: 'Dữ liệu lịch sử QR chưa hợp lệ. Bấm tải lại để thử lại.', errorCode: 'POS_QR_HISTORY_INVALID', errorType: 'technical' }, 502);
+                        }
+                        if (data && !historyFailure) {
+                            // Cache failures keep the storage lock from save(), but the
+                            // authoritative response remains usable and proves connectivity.
+                            if (history[2]) {
+                                try { await rememberQr(data.qr, { readOnly: data.readOnly, canCancel: data.canCancel, savedStatus: data.status }); }
+                                catch (error) { if (error.privacyLock || privacyLocked || hardLocked) return fail('Phiên POS đã khóa. Đăng nhập lại đúng nhân viên để tiếp tục.', 401); }
+                                return response;
+                            }
                             const next = core.clone(state);
                             for (const item of data.items) if (next.qrs[item.qrId]) {
                                 next.qrs[item.qrId].savedStatus = item.status;
                                 next.qrs[item.qrId].readOnly = ['Recorded', 'Completed', 'Paid', 'ManualConfirmed', 'Cancelled', 'ReviewRequired', 'Failed'].includes(item.status);
                             }
-                            await save(next); return json(mergeQrHistory(Number(history[1]), data));
+                            try { await save(next); }
+                            catch (error) { if (error.privacyLock || privacyLocked || hardLocked) return fail('Phiên POS đã khóa. Đăng nhập lại đúng nhân viên để tiếp tục.', 401); }
+                            return json(mergeQrHistory(Number(history[1]), data));
                         }
-                        return response;
-                    }
-                    if (!isUnavailable(response)) return response;
-                } catch { /* Use the journal's QR history. */ }
-                connected = false; notify();
+                    } else if (!isUnavailable(response)) return response;
+                    else historyFailure = response;
+                }
             }
             if (history[2]) {
                 const saved = state.qrs[history[2]];
-                if (!saved || Number(core.mapId(state, 'order', saved.orderId)) !== Number(core.mapId(state, 'order', history[1]))) return fail('QR này chưa được lưu trên máy.');
+                if (!saved || Number(core.mapId(state, 'order', saved.orderId)) !== Number(core.mapId(state, 'order', history[1]))) return historyFailure || fail('QR này chưa được lưu trên máy.');
                 const qr = manualQr(saved);
                 return json({ qr, readOnly: qr.readOnly, canCancel: qr.canCancel, status: qr.savedStatus || (qr.status === 1 ? 'ManualConfirmed' : 'Pending'), message: qr.savedMessage });
             }
-            return json(mergeQrHistory(Number(history[1])));
+            const cached = mergeQrHistory(Number(history[1]));
+            if (historyFailure && !cached.items.length) return historyFailure;
+            return json(historyFailure ? { ...cached, cached: true, message: 'Đang hiển thị lịch sử QR đã lưu tại quầy. Bấm tải lại để cập nhật.' } : cached);
         });
         // QR prepared locally is a transfer instruction, never a bank confirmation.
         if (url.pathname === base + '/cart/current/payment-qr') {
@@ -371,9 +439,15 @@ window.PosOffline = (function () {
         if (!initPromise) initPromise = initialize();
         return initPromise;
     }
+    function initialScreen() {
+        if (!initializationComplete || !state?.key || !state.context || !writer || blockedWriter || blockedPending || privacyLocked || hardLocked || authBlocked || storageError || sessionIssue || expired()) return null;
+        // Pending sales belong to the authorized journal, never the older server snapshot.
+        if (startupHadPending || state.queue.length || !connected) return canWork() ? core.clone(core.screen(state)) : null;
+        return bootstrapScreen ? core.clone(bootstrapScreen) : null;
+    }
     window.addEventListener('pagehide', () => {
         pageActive = false; writer = false; unlock?.();
-        clearInterval(refreshTimer); clearInterval(writerRetryTimer);
+        clearInterval(refreshTimer); clearInterval(writerRetryTimer); clearTimeout(preparationRetryTimer);
     });
     function watchWriterRelease(name) {
         clearInterval(writerRetryTimer);
@@ -404,7 +478,7 @@ window.PosOffline = (function () {
     }
     async function prepareWorker() {
         if (!window.isSecureContext || !navigator.serviceWorker || !writer) return;
-        const registration = await navigator.serviceWorker.register('/pos-offline-worker.js', { scope: '/' });
+        const registration = await navigator.serviceWorker.register('/pos-offline-worker.js', { scope: '/', updateViaCache: 'none' });
         await navigator.serviceWorker.ready;
         navigator.serviceWorker.addEventListener('message', event => {
             if (event.data?.type === 'pos-offline-prepared' && event.data.key === state.key) { shellReady = true; notify(); }
@@ -412,6 +486,7 @@ window.PosOffline = (function () {
         const assets = Array.from(document.querySelectorAll('script[src], link[rel="stylesheet"][href]'))
             .map(x => new URL(x.src || x.href, location.href)).filter(x => x.origin === location.origin).map(x => x.href);
         (registration.active || registration.waiting)?.postMessage({ type: 'prepare', key: state.key,
+            revision: state.privacyRevision, privacyVersion: privacy.version,
             expiresAt: state.context.expiresAtUtc, page: location.href, assets });
     }
     function startTransport() {
@@ -421,21 +496,41 @@ window.PosOffline = (function () {
         navigator.storage?.persist?.().catch(() => {});
         prepareWorker().catch(() => {});
         clearInterval(refreshTimer);
-        refreshTimer = setInterval(() => sync().catch(() => {}), 6000);
+        refreshTimer = setInterval(async () => {
+            if (expired() && !privacyLocked) {
+                privacy.announce('expired');
+                await privacy.sweep(database); await privacy.pruneShells(database);
+            }
+            await sync().catch(() => {});
+        }, 6000);
         sync().catch(() => {});
     }
     async function prepareCatalog(context) {
         try {
-            const [products, customers, promotionsResponse] = await Promise.all([
+            const loaded = await Promise.allSettled([
                 pages(base + '/offline/catalog'), pages(base + '/offline/customers'), raw(base + '/offline/promotions')
             ]);
+            const failure = loaded.find(x => x.status === 'rejected');
+            if (failure) throw failure.reason;
+            const [products, customers, promotionsResponse] = loaded.map(x => x.value);
             if (!promotionsResponse.ok) throw new Error('Chưa tải đủ khuyến mãi để bán offline.');
             const nextCatalog = { products, customers, promotions: await promotionsResponse.json(), fetchedAtUtc: new Date().toISOString() };
             for (const product of products) if (!product.units.length && product.baseUnitId)
                 product.units.push({ id: null, unitId: product.baseUnitId, unitName: product.baseUnitName, factor: 1,
                     price: product.price, wholesalePrice: null, isBaseUnit: true, isDefaultForSale: true, barcodes: [] });
+            const revision = preparationRevision, prefetched = new Map();
+            const pending = [...context.screen.draftOrders, ...context.screen.heldOrders.filter(x => x.isCurrentTerminal && x.isCurrentShift)]
+                .filter(item => !state.orders[item.orderId]);
+            let cursor = 0;
+            // Auxiliary held carts must not occupy the foreground mutation/screen lane.
+            await Promise.all(Array.from({ length: Math.min(2, pending.length) }, async () => {
+                while (cursor < pending.length) {
+                    const item = pending[cursor++], response = await raw(base + '/' + item.orderId);
+                    if (response.ok) prefetched.set(item.orderId, await response.json());
+                }
+            }));
             await serial(async () => {
-                if (!writer) return;
+                if (!writer || privacyLocked || hardLocked || core.contextKey(state.context) !== core.contextKey(context)) return;
                 const statusResponse = await raw(base + '/offline/status');
                 if (!statusResponse.ok || core.contextKey(await statusResponse.json()) !== core.contextKey(context))
                     throw new Error('Ca hoặc phiên đăng nhập đã thay đổi. Mở lại POS để chuẩn bị đúng quầy.');
@@ -445,32 +540,44 @@ window.PosOffline = (function () {
                 const latestScreen = await screenResponse.json();
                 const next = core.clone(state); next.context = { ...context, screen: latestScreen };
                 core.absorb(next, latestScreen);
-                for (const item of [...latestScreen.draftOrders, ...latestScreen.heldOrders.filter(x => x.isCurrentTerminal && x.isCurrentShift)]) {
-                    if (next.orders[item.orderId]) continue;
-                    const draftResponse = await raw(base + '/' + item.orderId);
-                    if (draftResponse.ok) next.orders[item.orderId] = await draftResponse.json();
-                }
+                if (revision === preparationRevision)
+                    for (const item of [...latestScreen.draftOrders, ...latestScreen.heldOrders.filter(x => x.isCurrentTerminal && x.isCurrentShift)])
+                        if (!next.orders[item.orderId] && prefetched.has(item.orderId)) next.orders[item.orderId] = prefetched.get(item.orderId);
                 await save(next, nextCatalog);
                 preparing = false;
                 startTransport();
             });
         } catch (e) {
-            storageError = e.message || 'Chưa chuẩn bị được POS offline.';
+            if (e.privacyLock) lockPrivacy('context-changed');
+            if (!e.privacyLock && Date.now() < retryNotBefore && pageActive && writer && !privacyLocked && !hardLocked) {
+                syncError = 'Máy chủ đang bận. POS sẽ tự tải lại danh mục sau thời gian chờ; giao dịch đang lưu vẫn được giữ.';
+                clearTimeout(preparationRetryTimer);
+                preparationRetryTimer = setTimeout(() => {
+                    if (!pageActive || !writer || privacyLocked || hardLocked) return;
+                    preparing = true; prepareCatalog(context);
+                }, Math.max(1000, retryNotBefore - Date.now()) + 200 + Math.random() * 300);
+            } else storageError = e.message || 'Chưa chuẩn bị được POS offline.';
         } finally { preparing = false; notify(); }
     }
     async function initialize() {
         try {
-            database = await openDatabase();
+            if (!privacy) throw new Error('Cần tải lại POS trực tuyến để cập nhật bảo vệ dữ liệu offline.');
+            await privacy.settled();
+            database = await privacy.open();
+            await privacy.sweep(database); await privacy.pruneShells(database);
             const shell = document.getElementById('posShell');
             const prefix = `${shell?.dataset.storeId}:${shell?.dataset.terminalId}:${shell?.dataset.userId}:`;
             const active = await get('meta', 'active');
-            if (active?.key?.startsWith(prefix)) { state = await get('sessions', active.key); catalog = await get('catalogs', active.key); }
+            const authentication = await privacy.auth(database);
+            if (active?.privacyVersion === privacy.version && active.revision === authentication?.revision && !authentication?.locked &&
+                active.key?.startsWith(prefix)) { state = await get('sessions', active.key); catalog = await get('catalogs', active.key); }
             let response;
-            try { response = await raw(base + '/offline/bootstrap', {}, 6000); }
-            catch { connected = false; }
+            try { response = await raw(base + '/offline/bootstrap', {}, 30000); }
+            catch (error) { connected = false; syncError = syncFailure(error); }
             if (response?.ok) {
                 const context = await response.json(); token = context.antiForgeryToken;
                 const key = core.contextKey(context);
+                if (!key.startsWith(prefix)) { lockPrivacy('context-changed'); throw new Error('Nhân viên hoặc quầy đã thay đổi. Tải lại POS.'); }
                 const sessions = await new Promise((resolve, reject) => {
                     const query = database.transaction('sessions').objectStore('sessions').getAll();
                     query.onsuccess = () => resolve(query.result); query.onerror = () => reject(query.error);
@@ -482,17 +589,24 @@ window.PosOffline = (function () {
                 }
                 const stored = await get('sessions', key);
                 state = stored || core.initial(context); catalog = await get('catalogs', key);
+                if (state.queue.length && !catalog) throw new Error('Thiếu danh mục gốc của giao dịch chờ đồng bộ. Cần phục hồi dữ liệu tại quầy.');
+                if (authentication && (authentication.key !== key || authentication.deviceBinding !== context.deviceBinding))
+                    privacy.announce('context-changed', true, false);
                 await takeWriterLock(key);
                 window.addEventListener('online', () => sync().catch(() => {}));
                 window.addEventListener('offline', () => { connected = false; notify(); });
                 window.addEventListener('pagehide', () => { writer = false; unlock?.(); clearInterval(refreshTimer); });
                 if (writer) {
-                    if (state.queue.length && !catalog) throw new Error('Thiếu danh mục gốc của giao dịch chờ đồng bộ. Cần phục hồi dữ liệu tại quầy.');
+                    const authorization = await privacy.authorize(database, authentication, context);
+                    const next = core.clone(state); next.context = context; next.privacyRevision = authorization.revision;
+                    next.privacyVersion = privacy.version; next.privacyLocked = false;
+                    if (!next.queue.length) core.absorb(next, context.screen);
+                    unlockPrivacy(); await save(next);
+                    await privacy.sweep(database, { keepKey: key }); await privacy.pruneShells(database);
+                    if (context.screen && Array.isArray(context.screen.draftOrders) && Array.isArray(context.screen.heldOrders)) bootstrapScreen = context.screen;
                     const cacheAge = Date.now() - new Date(catalog?.fetchedAtUtc).getTime();
                     if (catalog && (state.queue.length || cacheAge >= 0 && cacheAge < catalogMaxAgeMs && !expired())) {
-                        const next = core.clone(state); next.context = context;
-                        if (!next.queue.length) core.absorb(next, context.screen);
-                        await save(next);
+                        preparing = false;
                     } else {
                         preparing = true;
                         window.fetch = intercepted;
@@ -502,23 +616,28 @@ window.PosOffline = (function () {
                 }
                 connected = true;
             } else {
-                if (response && [401, 403].includes(response.status)) { authBlocked = true; state = null; }
+                if (response && [401, 403].includes(response.status)) { await rejectAuthentication(); state = null; }
                 else if (response && !isUnavailable(response)) await sessionRejected(response);
                 else connected = false;
-                if (state && catalog && !expired()) await takeWriterLock(state.key);
+                if (state && catalog && !state.privacyLocked && state.privacyRevision === authentication?.revision &&
+                    state.context.deviceBinding === authentication?.deviceBinding && !expired()) await takeWriterLock(state.key);
                 window.addEventListener('online', () => sync().catch(() => {}));
                 window.addEventListener('offline', () => { connected = false; notify(); });
                 window.addEventListener('pagehide', () => { writer = false; unlock?.(); clearInterval(refreshTimer); });
             }
+            startupHadPending = !!state?.queue.length;
             if (!preparing) startTransport();
         } catch (e) {
+            if (e.privacyLock) lockPrivacy('context-changed');
             storageError = e.message || 'Chưa chuẩn bị được POS offline.';
             // Never replace a pending journal after a failed setup.
             if (state?.queue.length) window.fetch = intercepted;
         }
+        initializationComplete = true;
         notify();
     }
     async function quarantineFirstBlocked() {
+        if (privacyLocked || hardLocked) throw new Error('Đăng nhập lại trước khi đối soát giao dịch.');
         if (!ready || !writer || !state?.queue.length) throw new Error('Không còn thao tác nào đang chờ đồng bộ.');
         const result = await serial(async () => {
             const op = state.queue[0], issue = invalidQueueOperation(op) || blockedServerConflict(state.conflict);
@@ -541,25 +660,43 @@ window.PosOffline = (function () {
     }
     const quarantineFirstInvalid = quarantineFirstBlocked;
     async function sync(force = false) {
-        if (syncRunning || !ready || !writer || storageError || !pageActive) return;
+        if (syncRunning || !ready || !writer || storageError || !pageActive || hardLocked || Date.now() < retryNotBefore) return;
         syncRunning = true;
         lastSyncAttemptAt = new Date().toISOString();
         notify();
         const hadPending = state.queue.length > 0, wasConnected = connected, hadSessionIssue = !!sessionIssue;
         try {
+            const authentication = await privacy.auth(database);
+            if (authentication?.locked && authentication.reason === 'logout' ||
+                authentication && !authentication.locked && authentication.revision !== state.privacyRevision && !privacyLocked) {
+                lockPrivacy('context-changed'); return;
+            }
             const response = await raw(base + '/offline/status', {}, 15000);
-            if ([401, 403].includes(response.status)) { connected = true; sessionIssue = null; authBlocked = true; notify(); return; }
+            if ([401, 403].includes(response.status)) { await rejectAuthentication(); connected = true; sessionIssue = null; notify(); return; }
             if (!response.ok) {
-                if (isUnavailable(response)) { connected = false; syncError = `Máy chủ trả lỗi HTTP ${response.status}. POS sẽ tự thử lại.`; }
+                if (isUnavailable(response)) { connected = false; syncError = busyMessage(response); }
                 else await sessionRejected(response);
                 notify(); return;
             }
             const info = await response.json();
             connected = true;
             if (core.contextKey(info) !== state.key) {
+                lockPrivacy('context-changed');
+                await privacy.sweep(database, { keepKey: core.contextKey(info) }); await privacy.pruneShells(database);
                 sessionIssue = { code: 'POS_SESSION_CHANGED', title: 'Ca hoặc nhân viên đã thay đổi',
                     message: state.queue.length ? 'Quầy còn giao dịch của phiên trước. Cần đồng bộ/đối soát đúng ca gốc trước khi bán tiếp.' : 'Tải lại POS để sử dụng ca và nhân viên hiện tại.' };
                 notify(); return;
+            }
+            if (privacyLocked || authentication?.locked || authentication?.revision !== state.privacyRevision || info.deviceBinding !== state.context.deviceBinding) {
+                if (hardLocked) return;
+                const bootstrapResponse = await raw(base + '/offline/bootstrap', {}, 30000);
+                if (!bootstrapResponse.ok) return;
+                const context = await bootstrapResponse.json();
+                if (core.contextKey(context) !== state.key) { lockPrivacy('context-changed'); return; }
+                const authorized = await privacy.authorize(database, authentication, context);
+                const next = core.clone(state); next.context = context; next.privacyRevision = authorized.revision;
+                next.privacyVersion = privacy.version; next.privacyLocked = false;
+                unlockPrivacy(); await save(next);
             }
             sessionIssue = null;
             authBlocked = false;
@@ -588,7 +725,7 @@ window.PosOffline = (function () {
                     let replay;
                     try { replay = await send(op, undefined, 30000); }
                     catch (error) { connected = false; syncError = syncFailure(error); return; }
-                    if (isUnavailable(replay)) { connected = false; syncError = `Máy chủ trả lỗi HTTP ${replay.status} khi đồng bộ. POS sẽ tự thử lại.`; return; }
+                    if (isUnavailable(replay)) { connected = false; syncError = busyMessage(replay); return; }
                     if (!replay.ok) {
                         const data = await replay.json().catch(() => ({}));
                         const message = data.message || 'Một giao dịch cần đối soát trước khi gửi tiếp.';
@@ -699,6 +836,7 @@ window.PosOffline = (function () {
         next.qrs[qrId] = qr; await save(next); return qr;
     }
     function print(orderId, postPayment = false, preopenedWindow = null) {
+        if (privacyLocked || hardLocked || expired()) return false;
         const order = state?.orders[orderId] || state?.orders[core.mapId(state, 'order', orderId)];
         if (!order || !localMode()) return false;
         core.permission(state, 'pos.order.reprint');
@@ -714,13 +852,13 @@ window.PosOffline = (function () {
         return true;
     }
     function exportPending() {
-        if (!state) return;
+        if (!state || privacyLocked || authBlocked || hardLocked || expired()) return;
         const exported = core.clone(state); delete exported.context.antiForgeryToken;
         const blob = new Blob([JSON.stringify({ exportedAtUtc: new Date().toISOString(), state: exported }, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob), anchor = document.createElement('a'); anchor.href = url;
         anchor.download = `gao-pos-pending-${state.context.terminalId}-${Date.now()}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
-    return { init, canWork, localMode, status, sync, quarantineFirstInvalid, quarantineFirstBlocked, print, exportPending, createQr, manualQr, prepareManualConfirmation,
+    return { init, initialScreen, canWork, localMode, status, sync, quarantineFirstInvalid, quarantineFirstBlocked, print, exportPending, createQr, manualQr, prepareManualConfirmation,
         pendingInvoiceIntentOrderId: () => ready && writer && state ? core.pendingInvoiceIntent(state) : null,
         invoiceIntentStatus: id => state ? core.clone(core.invoiceIntentOrder(state, id)?.invoiceIntent || null) : null,
         receiptPrintPreference: id => state ? core.invoiceIntentOrder(state, id)?.askBeforePrintingReceipt === true : false,

@@ -3,6 +3,7 @@ using GaoApp.Application.Common.Abstractions;
 using GaoApp.Application.Common.Options;
 using GaoApp.Application.DTOs.Media;
 using GaoApp.Domain.Entities;
+using GaoApp.Domain.Storefront;
 using GaoApp.Infrastructure.Data;
 using GaoApp.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +28,7 @@ public sealed class MediaLibraryService(AppDbContext db, IFileStorageService sto
 
     // Ignore filters deliberately: even a deleted ProductImage can still be a
     // live variant's primary image. Inactive products/variants also retain files.
+    // Storefront links retain media even while the website, product or variant is hidden.
     private IQueryable<int> UsedAssetIds()
     {
         var direct = from pi in db.ProductImages.IgnoreQueryFilters()
@@ -38,7 +40,9 @@ public sealed class MediaLibraryService(AppDbContext db, IFileStorageService sto
                        join p in db.Products.IgnoreQueryFilters() on v.ProductId equals p.Id
                        where !v.IsDeleted && !p.IsDeleted
                        select pi.MediaAssetId;
-        return direct.Union(variants);
+        var storefront = db.Set<StorefrontMedia>().IgnoreQueryFilters()
+            .Where(link => !link.IsDeleted).Select(link => link.MediaAssetId);
+        return direct.Union(variants).Union(storefront);
     }
 
     private async Task<List<MediaLibraryItem>> LoadItemsAsync(int? id, CancellationToken ct)
@@ -137,7 +141,14 @@ public sealed class MediaLibraryService(AppDbContext db, IFileStorageService sto
                        where v.StoreId == storeId && pi.StoreId == storeId && p.StoreId == storeId &&
                            !v.IsDeleted && !p.IsDeleted && ids.Contains(pi.MediaAssetId)
                        select new { pi.MediaAssetId, p.Id, p.Name };
-        var links = await direct.Union(variants).ToListAsync(ct);
+        var storefront = from link in db.Set<StorefrontMedia>().IgnoreQueryFilters().AsNoTracking()
+                         join publication in db.StorefrontProducts.IgnoreQueryFilters().AsNoTracking()
+                             on new { link.StoreId, Id = link.StorefrontProductId } equals new { publication.StoreId, publication.Id }
+                         join p in db.Products.IgnoreQueryFilters().AsNoTracking()
+                             on new { publication.StoreId, Id = publication.ProductId } equals new { p.StoreId, p.Id }
+                         where link.StoreId == storeId && !link.IsDeleted && !publication.IsDeleted && !p.IsDeleted && ids.Contains(link.MediaAssetId)
+                         select new { link.MediaAssetId, p.Id, p.Name };
+        var links = await direct.Union(variants).Union(storefront).ToListAsync(ct);
         foreach (var item in items)
             item.Products = links.Where(x => x.MediaAssetId == item.Id).Select(x => new MediaProductLink(x.Id, x.Name)).ToList();
     }

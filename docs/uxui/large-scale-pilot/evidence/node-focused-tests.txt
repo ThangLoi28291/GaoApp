@@ -1,0 +1,41 @@
+✔ PosError HTTP rejections retain their status instead of becoming unknown network failures (7.3408ms)
+✔ checkout locks immediately while a scan is in flight (PosState helpers: true) (5.2412ms)
+✔ checkout locks immediately while a scan is in flight (PosState helpers: false) (2.0423ms)
+✔ checkout unlocks after scan success without waiting for an offline heartbeat (1.5086ms)
+✔ checkout unlocks after scan failure without waiting for an offline heartbeat (1.7999ms)
+✔ checkout unlocks after scan abort without waiting for an offline heartbeat (1.3602ms)
+✔ pending-action-only controls update without a heartbeat (1.5642ms)
+✔ finishing a scan preserves an independent checkout lock (1.454ms)
+✔ finishing a scan does not enable online-only checkout while disconnected (1.3987ms)
+✔ patching a scanned cart updates payment status alongside its new balance (52.0673ms)
+✔ invalid scan clears the old code and quantity and focuses for the next scan (4.5411ms)
+✔ failed addition from a name search clears the submitted name (2.5165ms)
+✔ a successful scan preserves the next input and quantity (0.9531ms)
+✔ a failed scan preserves the next input and quantity (0.5999ms)
+✔ editing and retyping the same code while a request is pending is preserved (0.6739ms)
+✔ scanner Enter cancels the pending autocomplete instead of showing the old product after success (0.8912ms)
+✔ a late search reply cannot reopen suggestions after scanning (1.4749ms)
+✔ scanning a second barcode while old suggestions exist adds the new barcode exactly once (1.1421ms)
+✔ Enter selects the highlighted suggestion for a partial numeric barcode (1.216ms)
+✔ a partial numeric search respects the selected row and quantity prefix (1.1386ms)
+✔ Enter finishes a loading numeric search without submitting a partial barcode (0.869ms)
+✔ a visible numeric search with no results remains editable without a scan warning (0.6405ms)
+✔ a missing scanner code still opens the scan warning and never accepts a fuzzy match (1.5296ms)
+✔ typing a product name still selects its current suggestion and quantity prefix (0.6794ms)
+✔ an earlier reply cannot overwrite a newer cached product search (0.7736ms)
+✔ cash reminder appears only after invoice popup closes and preserves paid cash through next-cart changes (14.3937ms)
+✔ receipt print preference keeps the reminder pending until the final choice and includes exact cash (1.2536ms)
+✔ default invoice completion shows the cash reminder without opening an invoice-choice dialog (0.7021ms)
+✔ printing in a foreground tab does not consume the four-second POS reminder before the cashier returns (0.6225ms)
+✔ following checkout cancels the old reminder timer and non-cash/reprint summaries never reuse cash (0.6448ms)
+✔ cash feedback uses cash tender separately from transfers and keeps confirmed change (0.575ms)
+✔ exact cash shows zero change, non-cash and empty drafts do not show cash feedback (1.828ms)
+✔ actual cash finalize passes the paid order snapshot only after successful finalize (2.8275ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 364.0705

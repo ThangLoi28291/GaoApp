@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
+using System.Security.Claims;
 using GaoApp.Application.Common;
 using GaoApp.Application.Common.Security;
 using GaoApp.Infrastructure.Data;
@@ -18,15 +19,25 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class StoreActivityController(ITenantContext tenant, AppDbContext db,
     StoreActivityRegistry registry, StoreActivityTicket tickets, IAuthorizationService authorization,
-    SessionPrincipalValidator sessions, TimeProvider time) : ControllerBase
+    SessionPrincipalValidator sessions, TimeProvider time, StoreDeliveryMonitor delivery,
+    StoreCheckoutMonitor checkouts, StoreMonitorReadCache cache) : ControllerBase
 {
     public sealed class PresenceRequest
     {
-        [Required, StringLength(2048)] public string Ticket { get; set; } = "";
+        [Required, StringLength(StoreActivityTicket.MaxLength)] public string Ticket { get; set; } = "";
         public Guid TabId { get; set; }
+        public bool Interaction { get; set; } = true;
         [Required, RegularExpression("^(viewing|editing|leave)$")] public string State { get; set; } = "viewing";
     }
-    [HttpPost("presence"), RequestSizeLimit(4096)]
+    public sealed class OnlineRequest { public Guid TabId { get; set; } }
+    [HttpPost("online"), RequestSizeLimit(4096)]
+    public IActionResult Online([FromForm] OnlineRequest request)
+    {
+        if (tenant.IsHostAdmin || tenant.StoreId is not > 0 || request.TabId == Guid.Empty ||
+            !int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var user) || user <= 0) return Forbid();
+        return registry.Online(tenant.StoreId.Value, user, request.TabId, StoreActivityTicket.Person(User)) ? NoContent() : StatusCode(429);
+    }
+    [HttpPost("presence"), RequestSizeLimit(8192)]
     public async Task<IActionResult> Presence([FromForm] PresenceRequest request, CancellationToken ct)
     {
         if (tenant.IsHostAdmin || tenant.StoreId is not > 0 || request.TabId == Guid.Empty) return Forbid();
@@ -37,11 +48,11 @@ public sealed class StoreActivityController(ITenantContext tenant, AppDbContext 
             if ((await authorization.AuthorizeAsync(User, code)).Succeeded) { allowed = true; break; }
         if (!allowed) return Forbid();
         return registry.Presence(ticket.StoreId, ticket.UserId, request.TabId, StoreActivityTicket.Person(User),
-            ticket.Module, StoreActivityTicket.Terminal(User), request.State, ticket.WorkKey, ticket.Document) ? NoContent() : StatusCode(429);
+            ticket.Module, StoreActivityTicket.Terminal(User), request.State, ticket.WorkKey, ticket.Document, ticket.DocumentTitle, request.Interaction) ? NoContent() : StatusCode(429);
     }
     [HttpGet("snapshot"), Authorize(Policy = PermissionCodes.Admin.StoreMonitorView)]
     public async Task<IActionResult> Snapshot(CancellationToken ct) => await HasCurrentAccess(ct)
-        ? Ok(registry.Snapshot(tenant.StoreId!.Value)) : Forbid();
+        ? Ok(await ReadSnapshot(ct)) : Forbid();
 
     // SSE deliberately uses HTTP tenant resolution and fresh SQL authorization, independent of the POS terminal hub.
     [HttpGet("stream"), Authorize(Policy = PermissionCodes.Admin.StoreMonitorView)]
@@ -63,8 +74,8 @@ public sealed class StoreActivityController(ITenantContext tenant, AppDbContext 
         {
             while (!ct.IsCancellationRequested)
             {
-                var snapshot = registry.Snapshot(tenant.StoreId.Value);
-                var fingerprint = JsonSerializer.Serialize(new { snapshot.People, snapshot.Events });
+                var snapshot = await ReadSnapshot(ct);
+                var fingerprint = JsonSerializer.Serialize(new { snapshot.People, snapshot.Events, snapshot.Delivery, snapshot.Employees, snapshot.Checkouts });
                 var changed = previous != fingerprint;
                 if (changed || time.GetUtcNow() - checkedAt >= TimeSpan.FromSeconds(5))
                 {
@@ -85,9 +96,17 @@ public sealed class StoreActivityController(ITenantContext tenant, AppDbContext 
     }
     private async Task<bool> HasCurrentAccess(CancellationToken ct) =>
         !tenant.IsHostAdmin && tenant.StoreId is > 0 &&
-        await sessions.ValidateAsync(User, ct) &&
+        await sessions.ValidateAsync(User, ct, Request.Cookies[PosDeviceSession.CookieName]) &&
         await db.Stores.AsNoTracking().AnyAsync(x => x.Id == tenant.StoreId && x.IsActive && !x.IsDeleted, ct) &&
         (await authorization.AuthorizeAsync(User, PermissionCodes.Admin.StoreMonitorView)).Succeeded;
+    private async Task<StoreActivitySnapshot> ReadSnapshot(CancellationToken ct)
+    {
+        var snapshot = registry.Snapshot(tenant.StoreId!.Value);
+        var saved = await cache.ReadAsync(tenant.StoreId.Value, async () => new StoreMonitorSavedData(
+            await delivery.ReadAsync(tenant.StoreId.Value, ct), await checkouts.ReadAsync(tenant.StoreId.Value, ct)), ct);
+        return snapshot with { Delivery = saved.Delivery, Checkouts = saved.Checkouts, Events = snapshot.Events.Concat(saved.Delivery.Events)
+            .OrderByDescending(x => x.OccurredAtUtc).ThenByDescending(x => x.Id).Take(StoreActivityRegistry.MaxEvents).ToArray() };
+    }
     private async Task WriteEvent(string name, object payload, CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(payload, new JsonSerializerOptions(JsonSerializerDefaults.Web));

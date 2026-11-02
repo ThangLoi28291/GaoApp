@@ -82,6 +82,18 @@ public sealed class PosCustomerPackPricingSqlServerTests
         Assert.Equal(24m, mixed.GetProperty("lines").EnumerateArray().Sum(x => x.GetProperty("baseQuantity").GetDecimal()));
         Total(await Customer(retailId), 100000);
 
+        // Quick creation selects the new customer and immediately applies their price tier.
+        var quickCreateOrder = await Cart();
+        Total(await Add(quickCreateOrder, bottleId, 24), 100000);
+        var createdWholesale = await client.JsonAsync(HttpMethod.Post, "/admin/pos/customers/quick-create",
+            new { name = "Khách sỉ tạo nhanh", priceTier = "WHOLESALE" });
+        Total(createdWholesale, 96000);
+        Assert.Equal("WHOLESALE", createdWholesale.GetProperty("customerPriceTier").GetString());
+        var createdRetail = await client.JsonAsync(HttpMethod.Post, "/admin/pos/customers/quick-create",
+            new { name = "Khách lẻ tạo nhanh", priceTier = "RETAIL" });
+        Total(createdRetail, 100000);
+        Assert.Equal("RETAIL", createdRetail.GetProperty("customerPriceTier").GetString());
+
         var boxOrder = await Cart();
         Total(await Add(boxOrder, boxId, 1), 100000);
         Total(await Customer(wholesaleId), 96000);

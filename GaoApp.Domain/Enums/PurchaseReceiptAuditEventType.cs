@@ -53,5 +53,6 @@ public enum PurchaseReceiptAuditEventType
     ReceiptTitleChangeDeclined = 49,
     ReceiptDraftDeleted = 50,
     InputInvoiceWaitingEnded = 51,
-    InputInvoiceFollowUpReviewed = 52
+    InputInvoiceFollowUpReviewed = 52,
+    ReceiptSupplierCorrected = 53
 }

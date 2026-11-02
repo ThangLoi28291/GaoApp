@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GaoApp.Infrastructure.Services.Banking;
 
 namespace GaoApp.Web.Services.Acb;
 
@@ -8,6 +9,7 @@ public sealed class AcbApiException : InvalidOperationException
     internal AcbApiException(string message) : base(message) { }
     public bool BusinessRequestNotSent { get; internal set; }
     public string? ProviderResponseCode { get; internal set; }
+    public AcbResponseFailureReason ResponseFailureReason { get; internal set; }
 
     internal static AcbApiException NetworkFailure(HttpRequestException error)
     {

@@ -224,9 +224,10 @@
             one("[data-profit-cost-state]").textContent = s.costState;
             one("[data-profit-exposure]").textContent = "Giá vốn tạm tính: " + amount(s.provisionalCogs.value) +
                 (s.affectedOrders === null ? " • Chưa xác định đủ số đơn/dòng liên quan" : " • " + s.affectedOrders + " đơn / " + s.affectedLines + " dòng liên quan");
-            table(one("[data-profit-detail-table]"), "Chi tiết trong phạm vi — giá vốn theo kỳ bán gốc", ["Đơn / dòng", "Ngày bán gốc", "Ngày ghi nhận", "Loại", "Net Sales", "COGS", "Lợi nhuận", "Tạm tính", "Trạng thái"],
+            table(one("[data-profit-detail-table]"), "Chi tiết trong phạm vi — giá vốn theo kỳ bán gốc", ["Đơn / dòng", "Ngày bán gốc", "Ngày ghi nhận", "Loại", "Net Sales", "COGS", "Lợi nhuận", "Tạm tính", "Trạng thái / nguyên nhân"],
                 data.details.map(x => [x.orderNumber + (x.itemName ? " / " + x.itemName : ""), date(x.saleDate), date(x.eventDate), x.eventKind,
-                    amount(x.summary.netSales.value), amount(x.summary.cogs.value), amount(x.summary.grossProfit.value), amount(x.summary.provisionalCogs.value), x.summary.costState]));
+                    amount(x.summary.netSales.value), amount(x.summary.cogs.value), amount(x.summary.grossProfit.value), amount(x.summary.provisionalCogs.value),
+                    x.summary.cogs.available ? x.summary.costState : x.summary.costState + ' · ' + (x.summary.message || 'Thiếu dữ liệu nguồn')]));
         }
         renderTrend(data);
         one("[data-profit-page]").textContent = "Trang " + data.query.page + " • " + data.totalItems + " dòng";

@@ -19,6 +19,7 @@ public sealed class PurchaseReceiptPricingPlanConfiguration : IEntityTypeConfigu
         b.ToTable("PurchaseReceiptPricingPlan", t =>
         {
             t.HasCheckConstraint("CK_PurchaseReceiptPricingPlan_State", "[State] = 1 OR [State] = 2 OR [State] = 3");
+            t.HasCheckConstraint("CK_PurchaseReceiptPricingPlan_GlobalDiscount", "[GlobalDiscountAmount] >= 0 AND ([GlobalDiscountAmount] = 0 OR [GlobalDiscountPercent] = 0)");
             t.HasCheckConstraint("CK_PurchaseReceiptPricingPlan_Money", "[ActualBillTotal] > 0 AND [SystemTotal] > 0 AND [GlobalDiscountPercent] >= 0 AND [GlobalDiscountPercent] < 100");
         });
     }

@@ -42,6 +42,9 @@ public sealed record DeliveryPickingLineDto(int LineId, int OriginalRootLineId, 
 
 public sealed record DeliveryPickingRootCoverageDto(int OriginalRootLineId, string OrderedQuantityText, string DraftRetainedQuantityText, string DraftReplacementCoverageText, string DraftMissingQuantityText, string? ApprovedRetainedQuantityText, string? ApprovedReplacementCoverageText, string? ApprovedMissingQuantityText);
 
-public sealed record DeliveryPickingDetailDto(DeliveryDetailDto Delivery, DateTimeOffset ServerTimeUtc, int? PickerUserId, string? PickerName, DateTimeOffset? AssignedAtUtc, DateTimeOffset? StartedAtUtc, DateTimeOffset? SubmittedAtUtc, bool ApprovalRequired, int? ApprovedRevision, int? ApprovedByUserId, DateTimeOffset? ApprovedAtUtc, string QuotedTotalText, string DraftTotalText, string? ApprovedTotalText, IReadOnlyList<DeliveryPickingLineDto> Lines, IReadOnlyList<DeliveryPickingRootCoverageDto> RootCoverage, DeliveryPickingCapabilitiesDto Capabilities, IReadOnlyList<DeliveryPickingPickerOptionDto> PickerOptions, DeliveryInventorySummaryDto? Inventory = null);
+public sealed record DeliveryPickingDetailDto(DeliveryDetailDto Delivery, DateTimeOffset ServerTimeUtc, int? PickerUserId, string? PickerName, DateTimeOffset? AssignedAtUtc, DateTimeOffset? StartedAtUtc, DateTimeOffset? SubmittedAtUtc, bool ApprovalRequired, int? ApprovedRevision, int? ApprovedByUserId, DateTimeOffset? ApprovedAtUtc, string QuotedTotalText, string DraftTotalText, string? ApprovedTotalText, IReadOnlyList<DeliveryPickingLineDto> Lines, IReadOnlyList<DeliveryPickingRootCoverageDto> RootCoverage, DeliveryPickingCapabilitiesDto Capabilities, IReadOnlyList<DeliveryPickingPickerOptionDto> PickerOptions, DeliveryInventorySummaryDto? Inventory = null)
+{
+    public DeliverySalePriceDto? SalePrices { get; init; }
+}
 
 public sealed record DeliveryPickingReplacementOptionDto(int VariantId, int? ProductUnitConversionId, int SellingUnitId, int BaseUnitId, string ItemName, string UnitName, string BaseUnitName, string BaseMultiplierText, string UnitPriceText, string PriceTier);

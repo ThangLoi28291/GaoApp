@@ -35,7 +35,8 @@ public class HttpAuditExecutionContextAccessor : IAuditExecutionContextAccessor
         {
             return new AuditExecutionContextDto
             {
-                StoreId = _tenantContext.StoreId
+                StoreId = _tenantContext.StoreId,
+                UserName = "SYSTEM:background"
             };
         }
 
@@ -68,8 +69,10 @@ public class HttpAuditExecutionContextAccessor : IAuditExecutionContextAccessor
             UserName = user.Identity?.Name,
             TraceId = httpContext.TraceIdentifier,
             IpAddress = httpContext.Connection.RemoteIpAddress?.ToString(),
-            UserAgent = httpContext.Request.Headers.UserAgent.ToString(),
-            Path = httpContext.Request.Path.ToString()
+            UserAgent = GaoApp.Application.Common.Security.SensitiveRequestData.Redact(
+                httpContext.Request.Headers.UserAgent.ToString(),
+                GaoApp.Application.Common.Security.SensitiveRequestData.InvoiceToken(httpContext.Request.Path, httpContext.Request.QueryString.Value)),
+            Path = GaoApp.Application.Common.Security.SensitiveRequestData.Redact(httpContext.Request.Path)
         };
     }
 }

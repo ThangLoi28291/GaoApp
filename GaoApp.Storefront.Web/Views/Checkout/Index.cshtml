@@ -1,0 +1,38 @@
+@model StorefrontAddressDirectory
+@{ ViewData["Title"] = "Đặt hàng"; var codEnabled=ViewData["CodEnabled"] is true; var qrEnabled=ViewData["QrEnabled"] is true; }
+<div class="page-shell checkout-page" data-checkout-page>
+    <header class="page-heading"><p class="eyebrow">Một bước, đủ thông tin</p><h1>Nhận hàng và thanh toán</h1><p>Kiểm tra giá, ưu đãi và phí giao trước khi xác nhận đặt hàng.</p></header>
+    @if (Model is null)
+    { <section class="empty-state error-state"><h2>Chưa thể nhận yêu cầu mới</h2><p>@ViewData["Unavailable"]</p><a class="button" href="/shop/cart">Về giỏ hàng</a><a class="text-link" href="/shop/orders">Tra cứu bằng liên kết riêng</a></section><section id="checkout-resume" class="checkout-notice" hidden><h2>Kiểm tra lại đơn vừa gửi</h2><p>Yêu cầu trước đó có thể đã được nhận. Kiểm tra lại cùng mã để khôi phục đúng liên kết riêng, không tạo yêu cầu mới.</p><button id="checkout-resume-retry" class="button" type="button">Kiểm tra lại đơn vừa gửi</button><p id="checkout-resume-message" role="status"></p><a id="checkout-resume-link" class="button secondary-button" href="/shop/orders" hidden>Xem đúng đơn đã nhận</a></section> }
+    else
+    {
+        <div id="checkout-empty" class="empty-state" hidden><h2>Giỏ hàng đang trống</h2><p>Chọn sản phẩm và đơn vị bán trước khi nhập thông tin nhận hàng.</p><a class="button" href="/shop/products">Xem sản phẩm</a></div>
+        <div id="checkout-message" class="checkout-notice" role="status" hidden></div>
+        <div class="checkout-layout" id="checkout-content">
+            <form id="checkout-form" method="post" action="/shop/checkout/quote" novalidate>
+                <fieldset id="recipient-fields">
+                    <legend>Thông tin nhận hàng</legend>
+                    <div class="checkout-field"><label for="recipient-name">Họ và tên người nhận</label><input id="recipient-name" name="RecipientName" autocomplete="shipping name" maxlength="200" required aria-describedby="error-RecipientName" /><p class="field-message" id="error-RecipientName" data-field-error="RecipientName" hidden></p></div>
+                    <div class="checkout-field"><label for="recipient-phone">Số điện thoại</label><input id="recipient-phone" name="RecipientPhone" type="tel" autocomplete="shipping tel" inputmode="tel" maxlength="30" required aria-describedby="error-RecipientPhone" /><p class="field-message" id="error-RecipientPhone" data-field-error="RecipientPhone" hidden></p></div>
+                    <div class="checkout-field"><label for="recipient-province">Tỉnh / thành phố</label><select id="recipient-province" name="ProvinceCode" required aria-describedby="error-ProvinceCode"><option value="">Chọn tỉnh / thành phố</option>@foreach (var province in Model.Provinces) { <option value="@province.Code">@province.Name</option> }</select><p class="field-message" id="error-ProvinceCode" data-field-error="ProvinceCode" hidden></p></div>
+                    <div class="checkout-field"><label for="recipient-ward">Phường / xã</label><select id="recipient-ward" name="WardCode" required disabled aria-describedby="error-WardCode"><option value="">Chọn tỉnh / thành phố trước</option></select><p class="field-message" id="error-WardCode" data-field-error="WardCode" hidden></p></div>
+                    <div class="checkout-field"><label for="recipient-street">Số nhà, đường, thôn / ấp</label><textarea id="recipient-street" name="StreetAddress" autocomplete="shipping street-address" maxlength="800" rows="3" required aria-describedby="error-StreetAddress"></textarea><p class="field-message" id="error-StreetAddress" data-field-error="StreetAddress" hidden></p></div>
+                    <div class="checkout-field"><label for="recipient-note">Ghi chú giao hàng <span class="muted">(không bắt buộc)</span></label><textarea id="recipient-note" name="Note" maxlength="1000" rows="2"></textarea></div>
+                    <div class="payment-choice"><label for="checkout-payment-method">Phương thức thanh toán</label><select id="checkout-payment-method" name="PaymentMethod">@if(codEnabled){<option value="0">Thanh toán khi nhận hàng (COD)</option>}@if(qrEnabled){<option value="1">Chuyển khoản QR tự xác minh</option>}</select><p>Máy chủ kiểm tra điều kiện của từng giỏ. Chưa thu tiền lúc bấm đặt; QR chỉ được xác nhận khi đã đối chiếu bằng chứng ngân hàng.</p></div>
+                    <button id="checkout-quote" class="button" type="submit">Xem báo giá và phí giao</button>
+                </fieldset>
+            </form>
+            <aside id="checkout-summary" class="cart-summary" aria-label="Báo giá xác nhận">
+                <h2>Kiểm tra trước khi đặt</h2><p id="quote-placeholder">Nhập thông tin nhận hàng để cửa hàng xác định đúng vùng và phí giao.</p>
+                <div id="quote-content" hidden><div id="quote-lines"></div><p id="quote-address"></p><p id="quote-delivery"></p><p id="quote-weight"></p><div class="summary-amount"><span>Tiền hàng sau ưu đãi</span><strong id="quote-goods">—</strong></div><div class="summary-amount"><span>Phí giao</span><strong id="quote-shipping">—</strong></div><div class="summary-amount quote-grand"><span>Tổng cần thanh toán</span><strong id="quote-total">—</strong></div><p id="quote-shortage" class="stock-notice" hidden>Một số hàng cần cửa hàng chuẩn bị thêm. Cửa hàng vẫn tiếp nhận theo chính sách bán âm đã cấu hình.</p><p id="quote-expiry"></p><p>Giá và ưu đãi ở đây là báo giá chốt; có thể khác tạm tính trong giỏ.</p></div>
+                <p id="placement-error" class="field-message" role="alert" hidden></p><button id="checkout-confirm" class="button" type="button" disabled>Xác nhận đặt đơn</button>
+            </aside>
+        </div>
+        <section id="placement-success" class="empty-state" hidden><h2>Đã nhận đơn của bạn</h2><p>Mã đơn: <strong id="placed-code"></strong></p><p>Tổng cần thanh toán: <strong id="placed-total"></strong></p><p id="placed-payment-message">Chưa thanh toán. Cửa hàng đang chờ chuẩn bị.</p><a id="placed-link" class="button" href="/shop/orders">Xem trạng thái đơn bằng liên kết riêng</a><p>Giữ liên kết riêng này để mở lại đơn. Mã đơn hoặc số điện thoại không thay thế liên kết bảo mật.</p></section>
+    }
+    <noscript><p class="checkout-notice">Hãy bật JavaScript để kiểm tra báo giá và xác nhận đơn bằng đúng yêu cầu đã gửi.</p></noscript>
+</div>
+@section Scripts {
+    <script src="~/assets/checkout.js" asp-append-version="true" defer></script>
+    <script src="~/assets/pending-order.js" asp-append-version="true" defer></script>
+}

@@ -36,6 +36,15 @@ public static class SaleValuationCostPolicy
     private static Result Unknown(string reason) => new(Quality.Unavailable, null, null, null, 0, reason);
     private static Result Conflict(string reason) => new(Quality.DataIntegrityConflict, null, null, null, 0, reason);
 
+    // Native dispatch retains its actual Delivery11 reference. Only the budget source
+    // subtype changes; interval/debit/resolution validation remains the shared implementation.
+    public static Result EvaluateDeliveryBudget(InventoryValuationEntry source,
+        IReadOnlyCollection<InventoryValuationEntry> revaluations, IReadOnlyCollection<InventoryValuationEntry> linkedEntries)
+    {
+        if (source.InventoryTransaction?.PostingPrecisionPolicy is not (1 or 2)) return Conflict("Delivery source requires typed budget posting proof.");
+        return EvaluateBudget(source, revaluations, linkedEntries, delivery: true);
+    }
+
     public static Result Evaluate(
         InventoryValuationEntry source,
         IReadOnlyCollection<InventoryValuationEntry> revaluations,
@@ -211,13 +220,13 @@ public static class SaleValuationCostPolicy
     }
 
     private static Result EvaluateBudget(InventoryValuationEntry source, IReadOnlyCollection<InventoryValuationEntry> revaluations,
-        IReadOnlyCollection<InventoryValuationEntry> linkedEntries)
+        IReadOnlyCollection<InventoryValuationEntry> linkedEntries, bool delivery = false)
     {
         var tx = source.InventoryTransaction;
         if (source.Id <= 0 || source.StoreId <= 0 || source.IsDeleted || source.Quantity >= 0 ||
-            source.ReferenceType != InventoryReferenceType.Order || source.ReferenceLineId is null || source.EntryType != InventoryValuationEntryType.Outbound ||
+            source.ReferenceType != (delivery ? InventoryReferenceType.Delivery : InventoryReferenceType.Order) || source.ReferenceLineId is null || source.EntryType != InventoryValuationEntryType.Outbound ||
             tx is null || tx.IsDeleted || tx.Id != source.InventoryTransactionId || tx.StoreId != source.StoreId ||
-            tx.WarehouseId != source.WarehouseId || tx.ProductVariantId != source.ProductVariantId || tx.TransactionType != InventoryTransactionType.SaleIssue ||
+            tx.WarehouseId != source.WarehouseId || tx.ProductVariantId != source.ProductVariantId || tx.TransactionType != (delivery ? InventoryTransactionType.DeliveryDispatchOut : InventoryTransactionType.SaleIssue) ||
             tx.ReferenceType != source.ReferenceType || tx.ReferenceId != source.ReferenceId || tx.ReferenceLineId != source.ReferenceLineId ||
             source.Warehouse is not { } wh || wh.IsDeleted || wh.StoreId != source.StoreId || wh.Id != source.WarehouseId ||
             source.ProductVariant is not { } variant || variant.IsDeleted || variant.StoreId != source.StoreId || variant.Id != source.ProductVariantId)

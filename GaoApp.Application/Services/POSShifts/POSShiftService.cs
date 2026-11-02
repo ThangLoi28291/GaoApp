@@ -217,7 +217,7 @@ public class POSShiftService : IPOSShiftService
                 });
         }
         var shiftCode =
-    $"SHIFT-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
+    $"SHIFT-{VietnamTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8].ToUpperInvariant()}";
         var shift = new POSShift
         {
             StoreId = storeId,
@@ -867,7 +867,7 @@ public class POSShiftService : IPOSShiftService
         shift.OpenedByUserId = currentUserId;
 
         var takeoverNote =
-            $"[TIẾP QUẢN CA - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] " +
+            $"[TIẾP QUẢN CA - {VietnamTime.Now:dd/MM/yyyy HH:mm:ss}] " +
             $"Từ: {oldUserName ?? $"User #{oldUserId}"} → {newUserName}. " +
             $"Lý do: {reason}";
 
@@ -1029,7 +1029,7 @@ public class POSShiftService : IPOSShiftService
             ct);
 
         var closeNote =
-            $"[ĐÓNG HỘ CA - {DateTime.Now:dd/MM/yyyy HH:mm:ss}] " +
+            $"[ĐÓNG HỘ CA - {VietnamTime.Now:dd/MM/yyyy HH:mm:ss}] " +
             $"Ca của: {oldUserName ?? $"User #{shift.OpenedByUserId}"}. " +
             $"Người đóng hộ: {_currentUser.UserName ?? $"User #{currentUserId}"}. " +
             $"Lý do: {reason}";
@@ -1271,10 +1271,17 @@ public class POSShiftService : IPOSShiftService
             query.Status,
             ct);
 
+        var breakdowns = await _shiftRepo.GetPaymentBreakdownsAsync(storeId, shifts.Select(x => x.Id).ToArray(), ct);
+        foreach (var shift in shifts)
+        {
+            if (!breakdowns.TryGetValue(shift.Id, out var breakdown)) breakdowns[shift.Id] = breakdown = new();
+            breakdown.ShiftNonCashSalesTotal = shift.NonCashSalesTotal;
+        }
         var result = new POSShiftManagerDashboardDto();
 
         result.Overview = new POSShiftManagerOverviewDto
         {
+            PaymentBreakdown = POSShiftPaymentBreakdownDto.Combine(breakdowns.Values),
             TotalShifts = shifts.Count,
 
             OpenShifts = shifts.Count(x =>
@@ -1353,6 +1360,7 @@ public class POSShiftService : IPOSShiftService
 
                 return new POSShiftManagerEmployeeStatDto
                 {
+                    PaymentBreakdown = POSShiftPaymentBreakdownDto.Combine(g.Select(x => breakdowns[x.Id])),
                     UserId = g.Key,
 
                     UserName = user?.UserName,
@@ -1405,6 +1413,7 @@ public class POSShiftService : IPOSShiftService
         result.Shifts = shifts
             .Select(x => new POSShiftManagerShiftItemDto
             {
+                PaymentBreakdown = breakdowns[x.Id],
                 Id = x.Id,
 
                 ShiftCode = x.ShiftCode,

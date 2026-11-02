@@ -14,19 +14,22 @@ public class RolePermissionAdminService : IRolePermissionAdminService
     private readonly IPermissionRepository _permissionRepository;
     private readonly IUserInStoreRepository _userInStoreRepository;
     private readonly IAppUnitOfWork _uow;
+    private readonly ISecurityAdministrationGuard _security;
 
     public RolePermissionAdminService(
         IRoleRepository roleRepository,
         IRolePermissionRepository rolePermissionRepository,
         IPermissionRepository permissionRepository,
         IUserInStoreRepository userInStoreRepository,
-        IAppUnitOfWork uow)
+        IAppUnitOfWork uow,
+        ISecurityAdministrationGuard security)
     {
         _roleRepository = roleRepository;
         _rolePermissionRepository = rolePermissionRepository;
         _permissionRepository = permissionRepository;
         _userInStoreRepository = userInStoreRepository;
         _uow = uow;
+        _security = security;
     }
 
     public async Task<RolePermissionMatrixDto?> GetMatrixAsync(int storeId, int roleId, CancellationToken ct = default)
@@ -57,6 +60,9 @@ public class RolePermissionAdminService : IRolePermissionAdminService
         SaveRolePermissionsRequest request,
         CancellationToken ct = default)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Permissions, ct);
+        security.RequireAdministrator();
+        await security.ConfirmAsync(request, true, ct);
         var role = await _roleRepository.GetByIdAsync(storeId, request.RoleId, ct);
         if (role == null)
             return (false, "Không tìm thấy vai trò.");
@@ -89,7 +95,8 @@ public class RolePermissionAdminService : IRolePermissionAdminService
             await _rolePermissionRepository.AddRangeAsync(entities, ct);
         }
 
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Lưu phân quyền vai trò", nameof(Role), role.Id,
+            new { PermissionIds = currentIds }, new { PermissionIds = selectedIds }, request.Reason, ct: ct);
         return (true, null);
     }
 

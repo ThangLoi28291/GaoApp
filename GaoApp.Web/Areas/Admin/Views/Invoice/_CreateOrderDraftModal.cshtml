@@ -1,0 +1,32 @@
+<div class="modal fade" id="invoiceOrderDraftModal" tabindex="-1" aria-labelledby="invoiceOrderDraftTitle" aria-hidden="true"
+     data-search-url="@Url.Action("SearchOrdersForDraft", "Invoice", new { area = "Admin" })"
+     data-preview-url="@Url.Action("PreviewOrderDraft", "Invoice", new { area = "Admin" })"
+     data-create-url="@Url.Action("CreateOrderDraft", "Invoice", new { area = "Admin" })"
+     data-detail-url="@Url.Action("Detail", "Invoice", new { area = "Admin" })">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title fs-5" id="invoiceOrderDraftTitle">Tạo hóa đơn từ đơn POS</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tìm đơn bán hàng đã hoàn tất để tạo hóa đơn trống, rồi thêm sản phẩm thủ công.</p>
+                <form id="invoiceOrderDraftSearch" autocomplete="off">
+                    @Html.AntiForgeryToken()
+                    <label class="form-label" for="invoiceOrderDraftTerm">Mã đơn POS / số thứ tự đơn hàng</label>
+                    <div class="d-flex gap-2">
+                        <input id="invoiceOrderDraftTerm" class="form-control" maxlength="100" placeholder="Ví dụ: POS-20261009-00004 hoặc 1799601" />
+                        <button type="submit" class="btn btn-outline-primary text-nowrap">Tìm đơn</button>
+                    </div>
+                </form>
+                <div id="invoiceOrderDraftMessage" class="mt-3" role="status" aria-live="polite"></div>
+                <div id="invoiceOrderDraftResults" class="list-group mt-3" aria-label="Đơn POS tìm được"></div>
+                <div id="invoiceOrderDraftSelection" class="mt-3" hidden></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+                <button type="button" class="btn btn-primary" id="invoiceOrderDraftCreate" disabled>Tạo hóa đơn trống</button>
+            </div>
+        </div>
+    </div>
+</div>

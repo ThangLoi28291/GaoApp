@@ -3,19 +3,23 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {chromium}=require('playwright');
+const ui11 = require('./receipt-mobile-review.cjs'); // UI-11 review hook
 (async()=>{
  const info=JSON.parse(await new Promise(resolve=>{let data='';process.stdin.on('data',x=>data+=x);process.stdin.on('end',()=>resolve(data));}));
  const browser=await chromium.launch({channel:'chrome',headless:true});
  let page;
  try {
   const context=await browser.newContext({viewport:{width:1440,height:1000}}),errors=[];page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  await ui11.protect(context,info.baseUrl); // UI-11 review hook
   await page.goto(info.baseUrl+'/admin/account/login');await page.locator('[name="UserName"]').fill(info.user);await page.locator('[name="Password"]').fill(info.password);
   await page.locator('[name="SelectedTerminalId"]').selectOption(String(info.terminalId));await page.locator('button[type="submit"]').click();
   await page.goto(info.baseUrl+`/admin/stock-documents/${info.receiptId}`);
   await page.waitForFunction(()=>document.getElementById('pricingBillConversion')?.textContent.includes('Chỉ tìm trong'));
   await page.locator('[data-workbench-tab="pricing"]').click();fs.mkdirSync(info.evidenceRoot,{recursive:true});
+  await ui11.review(page,'pricing-empty-bill',ui11.output('pricing')); // UI-11 review hook
   assert.equal(await page.locator('#pricingAllocationLines .sd-bill-row').count(),0);
   assert.equal(await page.locator('#pricingActualBillTotal').inputValue(),'');
+  assert.equal(await page.locator('#pricingGlobalDiscountMode').inputValue(),'amount');
   const comparison=page.locator('#pricingQuantityComparison [data-product-variant-id]');
   assert.equal(await comparison.count(),1);assert.equal(await comparison.getAttribute('data-pricing-comparison-state'),'pending');
   const pendingColor=await comparison.evaluate(el=>getComputedStyle(el).backgroundColor);
@@ -204,15 +208,15 @@ const {chromium}=require('playwright');
   if(info.fixedDiscountAmount)await page.locator('#pricingRuleDiscountAmount').fill(String(info.fixedDiscountAmount));
   assert.equal(await page.locator(`[data-source-quantity="${keys[2]}"]`).inputValue(),'2');await page.locator('#pricingSaveRule').click();
   assert.equal(await page.locator('#pricingRuleList .sd-pricing-rule strong').first().textContent(),info.fixedDiscountAmount?'Giảm 20 đ':'Giảm 10%');
-  // Remaining availability is per bill row, across programs, and sources shared by
+  // Remaining availability is per bill row and program kind; sources shared by
   // several gift rules in one program must be reserved only once.
   async function remainingChoices(){
    await programSearch.fill('');await programSearch.click();
    return programSuggestions.locator('[data-program-bill-key]').evaluateAll(rows=>rows.map(r=>({key:r.dataset.programBillKey,quantity:Number(r.dataset.programAvailableQuantity)})));
   }
   await page.locator('#pricingNewProgram').click();
-  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:1},{key:keys[1],quantity:.75},{key:keys[3],quantity:.25}]);
-  await programSearch.fill('Dòng 3');assert.equal(await programSuggestions.locator('[data-program-bill-key]').count(),0);
+  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:1},{key:keys[1],quantity:.75},{key:keys[2],quantity:2},{key:keys[3],quantity:.25}]);
+  await programSearch.fill('Dòng 3');assert.equal(await programSuggestions.locator('[data-program-bill-key]').count(),1, 'A discounted row can still earn a gift.');
   await chooseProgramBill(keys[0]);await page.locator(`[data-source-quantity="${keys[0]}"]`).fill('0.3');
   await chooseProgramBill(keys[3]);await page.locator('[data-gift-quantity="0"]').fill('0.1');
   await page.locator('#pricingExtraGiftChooser summary').click();await page.locator('#pricingExtraGiftSearch').fill(billProductName);await page.locator('#pricingExtraGiftSuggestions button').first().click();
@@ -220,22 +224,22 @@ const {chromium}=require('playwright');
   await page.locator('#pricingSaveRule').click();assert.equal(await page.locator('#pricingRuleList .sd-pricing-rule').count(),2);
   const partialCard=page.locator('#pricingRuleList .sd-pricing-rule').filter({has:page.locator('strong',{hasText:'Kiểm tra phần còn lại'})});
   await page.locator('#pricingNewProgram').click();
-  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:.7},{key:keys[1],quantity:.75},{key:keys[3],quantity:.15}]);
+  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:.7},{key:keys[1],quantity:.75},{key:keys[2],quantity:2},{key:keys[3],quantity:.15}]);
   assert.match(await programSuggestions.locator(`[data-program-bill-key="${keys[0]}"]`).textContent(),/Còn lại: 0,7 Lốc.*70 đ/);
   await page.locator('#pricingRuleEditor').screenshot({path:path.join(info.evidenceRoot,'program-remaining-quantities.png')});
   await chooseProgramBill(keys[3]);assert.equal(await page.locator('[data-gift-quantity="0"]').inputValue(),'0.15');assert.equal(await page.locator('[data-gift-quantity="0"]').getAttribute('max'),'0.15');
   await chooseProgramBill(keys[1]);await page.locator('[data-gift-quantity="0"]').fill('0.2');await page.locator('#pricingSaveRule').click();assert.match(await page.locator('#pricingRuleError').textContent(),/chỉ còn 0,15/);
   await page.locator('#pricingCloseRule').click();await page.locator('#pricingNewProgram').click();await page.locator('#pricingRuleType').selectOption('2');
-  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:.7},{key:keys[1],quantity:.75}]);
-  await chooseProgramBill(keys[0]);assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'0.7');assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).getAttribute('max'),'0.7');
-  await page.locator(`[data-source-quantity="${keys[0]}"]`).fill('0.8');await page.locator('#pricingSaveRule').click();assert.match(await page.locator('#pricingRuleError').textContent(),/chỉ còn 0,7/);
+  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:1},{key:keys[1],quantity:.75}]);
+  await chooseProgramBill(keys[0]);assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'1');assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).getAttribute('max'),'1');
+  await page.locator(`[data-source-quantity="${keys[0]}"]`).fill('1.1');await page.locator('#pricingSaveRule').click();assert.match(await page.locator('#pricingRuleError').textContent(),/không vượt số lượng/);
   await page.locator('#pricingCloseRule').click();
   await partialCard.locator('button',{hasText:'Sửa'}).click();assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'0.3');assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).getAttribute('max'),'1');
   assert.equal(await page.locator('[data-gift-quantity="0"]').getAttribute('max'),'0.25');await page.locator(`[data-selected-source-bill-key="${keys[0]}"] button`).click();
   await chooseProgramBill(keys[0]);assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'1');await page.locator('#pricingCloseRule').click();
   await page.locator('#pricingNewProgram').click();await chooseProgramBill(keys[0]);assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'0.7');
   await partialCard.locator('button',{hasText:'Gỡ'}).click();assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).getAttribute('max'),'1');
-  assert.deepEqual(await remainingChoices(),[{key:keys[1],quantity:.75},{key:keys[3],quantity:.25}]);await page.locator('#pricingCloseRule').click();
+  assert.deepEqual(await remainingChoices(),[{key:keys[1],quantity:.75},{key:keys[2],quantity:2},{key:keys[3],quantity:.25}]);await page.locator('#pricingCloseRule').click();
   const discountCard=page.locator('#pricingRuleList .sd-pricing-rule').first();await discountCard.locator('button',{hasText:'Sửa'}).click();
   assert.equal(await page.locator(`[data-source-quantity="${keys[2]}"]`).getAttribute('max'),'2');await page.locator('#pricingCloseRule').click();
   await page.locator('#pricingNewProgram').click();await chooseProgramBill(keys[1]);await chooseProgramBill(keys[0]);
@@ -258,16 +262,57 @@ const {chromium}=require('playwright');
   await page.screenshot({path:path.join(info.evidenceRoot,'program-partial-quantity.png'),fullPage:true});await page.locator('#pricingSaveRule').click();
   assert.equal(await page.locator('#pricingRuleList .sd-pricing-rule').count(),2);
   assert.match(await page.locator('#pricingProgramQuantityComparison').textContent(),/Khớp số lượng/);
+  // A row fully used for gifts is hidden for another gift program, but can still
+  // receive either kind of discount on all purchased units. Changing kind also
+  // refreshes the selected quantity limit and the save validation.
+  for(const type of ['2','3']){
+   await page.locator('#pricingNewProgram').click();
+   assert.ok(!(await remainingChoices()).some(x=>x.key===keys[1]));
+   await page.locator('#pricingRuleType').selectOption(type);await chooseProgramBill(keys[1]);
+   const quantityInput=page.locator(`[data-source-quantity="${keys[1]}"]`);
+   assert.equal(await quantityInput.inputValue(),'0.75');assert.equal(await quantityInput.getAttribute('max'),'0.75');
+   await page.locator('#pricingRuleType').selectOption('1');
+   assert.equal(await quantityInput.getAttribute('max'),'0');await page.locator('#pricingSaveRule').click();
+   assert.match(await page.locator('#pricingRuleError').textContent(),/chỉ còn 0.*tặng quà khác/);
+   await page.locator('#pricingRuleType').selectOption(type);assert.equal(await quantityInput.getAttribute('max'),'0.75');
+   if(type==='3')await page.locator('#pricingRuleDiscountAmount').fill('5');
+   await page.locator('.sd-program-optional-name summary').click();const name=`Quà kèm giảm ${type}`;
+   await page.locator('#pricingRuleName').fill(name);await page.locator('#pricingSaveRule').click();
+   assert.equal(await page.locator('#pricingRuleList .sd-pricing-rule').count(),3);
+   const combinedPreview=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/preview'));
+   await page.locator('.sd-pricing-steps [data-pricing-step="price"]').click();const combined=await(await combinedPreview).json();
+   assert.equal(combined.systemTotal,type==='3'?350:347.5);assert.equal(combined.quantities[0].giftBaseQuantity,1);
+   await page.waitForFunction(()=>!document.getElementById('pricingPreview').disabled);
+   await page.locator('.sd-pricing-steps [data-pricing-step="program"]').click();await page.locator('#pricingNewProgram').click();
+   assert.ok(!(await remainingChoices()).some(x=>x.key===keys[1]));
+   await page.locator('#pricingRuleType').selectOption(type);assert.ok(!(await remainingChoices()).some(x=>x.key===keys[1]),'Do not stack another discount.');
+   await page.locator('#pricingCloseRule').click();
+   await page.locator('#pricingRuleList .sd-pricing-rule').filter({has:page.locator('strong',{hasText:name})}).locator('button',{hasText:'Gỡ'}).click();
+  }
+  await page.locator('.sd-pricing-steps [data-pricing-step="price"]').click();
+  await page.waitForFunction(()=>!document.getElementById('pricingPreview').disabled);
+  const globalMoneyPreview=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/preview'));
+  await page.locator('#pricingGlobalDiscountAmount').fill('5');
+  assert.equal((await(await globalMoneyPreview).json()).systemTotal,350);
+  await page.waitForFunction(()=>!document.getElementById('pricingPreview').disabled);
+  await page.screenshot({path:path.join(info.evidenceRoot,'global-money-discount.png'),fullPage:true});
+  await page.reload();await page.waitForFunction(()=>document.getElementById('pricingAllocationMessage')?.textContent.includes('Đã khôi phục'));
+  await page.locator('[data-workbench-tab="pricing"]').click();
+  assert.equal(await page.locator('#pricingGlobalDiscountMode').inputValue(),'amount');
+  assert.equal(await page.locator('#pricingGlobalDiscountAmount').inputValue(),'5');
+  const resetGlobal=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/preview'));await page.locator('#pricingGlobalDiscountAmount').fill('0');await resetGlobal;
+  await page.waitForFunction(()=>!document.getElementById('pricingPreview').disabled);
+  await page.locator('.sd-pricing-steps [data-pricing-step="program"]').click();
   await page.locator('#pricingNewProgram').click();await page.locator('#pricingRuleType').selectOption('3');await chooseProgramBill(keys[0]);
-  assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'0.5');assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).getAttribute('max'),'0.5');
+  assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).inputValue(),'1');assert.equal(await page.locator(`[data-source-quantity="${keys[0]}"]`).getAttribute('max'),'1');
   await page.locator(`[data-source-quantity="${keys[0]}"]`).fill('2');await page.locator('#pricingRuleDiscountAmount').fill('5');await page.locator('#pricingSaveRule').click();
   assert.match(await page.locator('#pricingRuleError').textContent(),/không vượt số lượng/);
-  await page.locator(`[data-source-quantity="${keys[0]}"]`).fill('0.75');await page.locator('#pricingSaveRule').click();assert.match(await page.locator('#pricingRuleError').textContent(),/chỉ còn 0,5/);
   await page.locator(`[data-source-quantity="${keys[0]}"]`).fill('0.5');await page.locator('#pricingRuleDiscountAmount').fill('0.001');await page.locator('#pricingSaveRule').click();
   assert.match(await page.locator('#pricingRuleError').textContent(),/hai số lẻ/);await page.locator('#pricingRuleDiscountAmount').fill('5');
   await page.locator('#pricingRuleDiscountAmount').fill('50');await page.locator('#pricingSaveRule').click();assert.match(await page.locator('#pricingRuleError').textContent(),/nhỏ hơn tổng tiền hàng/);
   await page.locator('#pricingRuleDiscountAmount').fill('5');assert.equal(await page.locator('#pricingRuleError').textContent(),'');
   await page.locator('#pricingRuleEditor').screenshot({path:path.join(info.evidenceRoot,'program-fixed-amount.png')});
+  await ui11.review(page,'pricing-program-editor',ui11.output('pricing')); // UI-11 review hook
   await page.setViewportSize({width:390,height:844});await page.locator('#pricingRuleEditor').screenshot({path:path.join(info.evidenceRoot,'program-fixed-amount-mobile.png')});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1));await page.setViewportSize({width:1440,height:1000});
   await page.evaluate(()=>window.GaoAppPurchaseReceiptApproval.refreshAfterIntake());await page.waitForFunction(()=>document.getElementById('pricingRuleEditor')?.hidden===false);
@@ -276,7 +321,8 @@ const {chromium}=require('playwright');
   const fixedPreview=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/preview'));await page.locator('.sd-pricing-steps [data-pricing-step="price"]').click();
   const fixedResult=await(await fixedPreview).json();assert.equal(fixedResult.systemTotal,350);assert.ok(fixedResult.rules.some(r=>r.amount===5));
   await page.waitForFunction(()=>!document.getElementById('pricingPreview').disabled);await page.locator('.sd-pricing-steps [data-pricing-step="program"]').click();
-  await page.locator('#pricingNewProgram').click();assert.deepEqual(await remainingChoices(),[]);assert.match(await programSuggestions.textContent(),/đã dùng hết/);await page.locator('#pricingCloseRule').click();
+  await page.locator('#pricingNewProgram').click();assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:.5},{key:keys[2],quantity:2}]);
+  await page.locator('#pricingRuleType').selectOption('2');assert.deepEqual(await remainingChoices(),[{key:keys[1],quantity:.75}]);await page.locator('#pricingCloseRule').click();
   const fixedCard=page.locator('#pricingRuleList .sd-pricing-rule').filter({has:page.locator('strong',{hasText:'Giảm 5 đ'})});
   await fixedCard.locator('button',{hasText:'Sửa'}).click();assert.equal(await page.locator('#pricingRuleDiscountAmount').inputValue(),'5');assert.equal(await page.locator('#pricingRuleName').inputValue(),'');
   await page.locator('#pricingCloseRule').click();await fixedCard.locator('button',{hasText:'Gỡ'}).click();
@@ -299,8 +345,10 @@ const {chromium}=require('playwright');
   assert.match(await priceRows.nth(0).locator('[data-pricing-result="unitPrice"]').textContent(),/^25,36 đ\//);
   assert.match(await priceRows.nth(1).locator('[data-pricing-result="unitPrice"]').textContent(),/^152,15 đ\//);
   await page.screenshot({path:path.join(info.evidenceRoot,'pricing-preview-desktop.png'),fullPage:true});
+  await ui11.review(page,'pricing-preview',ui11.output('pricing')); // UI-11 review hook
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:path.join(info.evidenceRoot,'pricing-preview-mobile.png'),fullPage:true});await page.setViewportSize({width:1440,height:1000});
   await page.locator('#pricingActualBillTotal').fill('355');assert.equal(await priceRows.nth(0).locator('[data-pricing-result="unitPrice"]').textContent(),'—');
+  await page.locator('#pricingGlobalDiscountMode').selectOption('percent');
   await page.route('**/pricing-allocation/preview',async route=>{const response=await route.fetch();await page.locator('#pricingGlobalDiscount').fill('1');await route.fulfill({response});});
   const late=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/preview'));await page.locator('#pricingPreview').click();await late;await page.waitForFunction(()=>!document.getElementById('pricingPreview').disabled);
   assert.equal(await priceRows.nth(0).locator('[data-pricing-result="unitPrice"]').textContent(),'—');await page.unroute('**/pricing-allocation/preview');await page.locator('#pricingGlobalDiscount').fill('0');
@@ -311,7 +359,7 @@ const {chromium}=require('playwright');
   if(info.fixedDiscountAmount){assert.ok(graph.draft.rules.some(r=>r.discountAmount===info.fixedDiscountAmount&&r.discountPercent===0));}
   await page.waitForFunction(key=>localStorage.getItem(key)===null,draftKey);
   await page.locator('.sd-pricing-steps [data-pricing-step="program"]').click();await page.locator('#pricingNewProgram').click();
-  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:.5}]);await page.locator('#pricingCloseRule').click();await page.locator('.sd-pricing-steps [data-pricing-step="price"]').click();
+  assert.deepEqual(await remainingChoices(),[{key:keys[0],quantity:.5},{key:keys[2],quantity:2}]);await page.locator('#pricingCloseRule').click();await page.locator('.sd-pricing-steps [data-pricing-step="price"]').click();
   await page.waitForFunction(()=>!document.getElementById('pricingApply').disabled);
   const apply=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/apply'));await page.locator('#pricingApply').click();assert.equal((await apply).status(),200);
   await page.waitForFunction(()=>document.getElementById('commercialApprovalWorkbench').dataset.allocationApplied==='true');assert.equal(await page.locator('.commercial-unit-price[readonly]').count(),0);
@@ -337,7 +385,8 @@ const {chromium}=require('playwright');
   assert.equal(await goodsPrice.inputValue(),'120');
   await page.locator('.sd-pricing-steps [data-pricing-step="price"]').click();
   await page.waitForFunction(()=>!document.getElementById('pricingSave').disabled);
-  const helperSave=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation')&&r.request().method()==='PUT');await page.locator('#pricingSave').click();assert.equal((await helperSave).status(),200);
+  const helperSave=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation')&&r.request().method()==='PUT');await page.locator('#pricingSave').click();const helperResponse=await helperSave;assert.equal(helperResponse.status(),200);
+  const helperWorkspace=await helperResponse.json();assert.equal(helperWorkspace.isStale,false,'Saving the plan must refresh the manual price dependencies.');
   await page.waitForFunction(()=>!document.getElementById('pricingApply').disabled);assert.equal(await goodsPrice.inputValue(),'120');
   const reapply=page.waitForResponse(r=>r.url().endsWith('/pricing-allocation/apply'));await page.locator('#pricingApply').click();assert.equal((await reapply).status(),200);
   await page.waitForFunction(()=>!document.getElementById('pricingReload').disabled);assert.equal(await goodsPrice.inputValue(),originalGoodsPrice);

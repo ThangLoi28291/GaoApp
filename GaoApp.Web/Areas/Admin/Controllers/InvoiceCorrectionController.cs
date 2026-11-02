@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Services.Invoices;
 using GaoApp.Domain.Enums;
 using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
@@ -32,7 +33,7 @@ public class InvoiceCorrectionController : Controller
 
         if (!infoResult.IsSuccess)
         {
-            TempData["Error"] = infoResult.Error?.Message ?? "Không thể lập hóa đơn xử lý sai sót.";
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(infoResult.Error) ?? "Không thể lập hóa đơn xử lý sai sót.";
 
             return RedirectToAction(
                 "ViettelPayload",
@@ -65,7 +66,7 @@ public class InvoiceCorrectionController : Controller
 
         if (!result.IsSuccess)
         {
-            TempData["Error"] = result.Error?.Message ?? "Không thể tạo hóa đơn xử lý sai sót.";
+            TempData["Error"] = InvoiceErrorReadSanitizer.UserMessage(result.Error) ?? "Không thể tạo hóa đơn xử lý sai sót.";
 
             var infoResult = await _correctionService.GetCreateInfoAsync(
                 request.OriginalInvoiceHeadId,

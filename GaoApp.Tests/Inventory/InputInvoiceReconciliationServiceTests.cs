@@ -113,6 +113,46 @@ public sealed class InputInvoiceReconciliationServiceTests
         result.Header.ReceiptVatAmount.Should().Be(60m);
     }
 
+    [Fact]
+    public async Task Gross_receipt_prices_match_xml_after_adding_its_line_vat_without_changing_receipt()
+    {
+        var scenario = Scenario.Create();
+        scenario.Receipt.HasVat = false;
+        scenario.Receipt.SubtotalBeforeVat = 110m;
+        scenario.Receipt.VatAmount = 0m;
+        foreach (var line in scenario.Receipt.Lines) { line.VatAmount = 0m; line.TaxRate = 0m; }
+        scenario.Invoice.Details.Single().VatAmount = 0m; // Existing XML supplied TSuat, not VATAmount.
+
+        var result = await scenario.Service.CalculateAsync(1, 10);
+
+        Assert.Equal(InputInvoiceReconciliationState.Matched, result.State);
+        var detail = Assert.Single(result.Details);
+        Assert.Equal(110m, detail.XmlAfterVatAmount);
+        Assert.Equal(11m, detail.XmlBaseUnitPriceAfterVat);
+        Assert.Equal(0m, detail.BaseUnitPriceAfterVatDifference);
+        Assert.False(result.Header!.VatBreakdownComparable);
+        Assert.Equal("Matched", Assert.Single(result.ProductSummaries).PriceStatus);
+        Assert.Equal("IncludedInPrice", Assert.Single(result.ProductSummaries).VatStatus);
+        Assert.All(scenario.Receipt.Lines, line => Assert.Equal(0m, line.VatAmount));
+        Assert.Equal(0, scenario.SaveCalls);
+    }
+
+    [Fact]
+    public async Task Gross_preview_uses_current_vat_mode_instead_of_persisted_mode()
+    {
+        var scenario = Scenario.Create();
+        var request = scenario.PreviewRequest(hasVat: false, unitPriceBeforeVat: 11m);
+        request.Lines.Single(x => x.StockDocumentLineId == 51).UnitPriceBeforeVat = 55m;
+
+        var result = await scenario.Service.PreviewCommercialAsync(1, 10, request);
+
+        Assert.Equal(InputInvoiceReconciliationState.Matched, result.State);
+        Assert.False(result.Header!.VatBreakdownComparable);
+        Assert.Equal(0m, result.Header.PaymentDifference);
+        Assert.True(scenario.Receipt.HasVat);
+        Assert.Equal(0, scenario.SaveCalls);
+    }
+
     [Theory]
     [InlineData("stale-row-version")]
     [InlineData("missing-line")]
@@ -826,7 +866,7 @@ public sealed class InputInvoiceReconciliationServiceTests
             {
                 Id = 10, StoreId = 1, Type = StockDocumentType.Receipt,
                 Status = StockDocumentStatus.PendingApproval,
-                SubtotalBeforeVat = 100m, VatAmount = 10m,
+                SubtotalBeforeVat = 100m, VatAmount = 10m, HasVat = true,
                 RowVersion = [1, 2, 3]
             };
             var link = new StockDocumentInputInvoiceMap

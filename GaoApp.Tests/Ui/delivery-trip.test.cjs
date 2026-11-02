@@ -88,6 +88,19 @@ test('projection separates unknown custody from dispatched quantity and checks s
     d.orders[0].custody = { tripId: 11, courierUserId: 8, custodyEventId: 13 }; assert.equal(ui.validateDetail(d, 6).orders[0].lines[0].inCustodyBaseQuantityText, '2');
     d.orders[0].custody.courierUserId = 9; assert.throws(() => ui.validateDetail(d, 6));
 });
+
+test('Completion takes precedence over return while completion flags must match active closed orders', () => {
+    const d=detail('Departed'); d.returnToStore={};
+    assert.equal(ui.tripStatus(d).label,'Đã trở về');
+    d.isCompleted=true;
+    assert.throws(()=>ui.validateDetail(d,6),/hoàn thành/);
+    d.orders[0].state='Settled';
+    d.orders[0].custody={tripId:d.tripId,courierUserId:d.courierUserId,custodyEventId:13};
+    for(const line of d.orders[0].lines) line.inCustodyBaseQuantityText='0';
+    assert.equal(ui.tripStatus(ui.validateDetail(d,6)).label,'Đã hoàn thành');
+    d.orders[0].isActive=false;
+    assert.throws(()=>ui.validateDetail(d,6),/hoàn thành/);
+});
 test('delayed precommand GET and lower revisions cannot restore stale capabilities; same-version freshness can apply', () => {
     const current = detail(), newer = detail(); newer.revision++; assert.equal(ui.canApply(current, newer, 1, 2), false); assert.equal(ui.canApply(newer, current, 2, 2), false);
     current.capabilities.canDepart = false; assert.equal(ui.canApply(newer, { ...newer, capabilities: current.capabilities }, 3, 3), true);

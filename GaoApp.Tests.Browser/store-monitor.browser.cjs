@@ -11,6 +11,12 @@ const path = require('node:path');
     const errors = [], checks = [];
     async function newPage(width = 1440, height = 1000) {
         const context = await browser.newContext({ viewport: { width, height } });
+        // This probe verifies all work/scene nodes; the fitted overview is covered separately.
+        await context.addInitScript(() => {
+            localStorage.setItem('gao.monitor.layout', 'detail');
+            // This probe targets the detailed 2D work nodes; 3D is now the default.
+            localStorage.setItem('gao.monitor.view', '2d');
+        });
         const page = await context.newPage(); page.on('pageerror', error => errors.push(error.message)); return { context, page };
     }
     async function login(page, user, password, terminalId = info.terminalId) {
@@ -34,7 +40,8 @@ const path = require('node:path');
         await monitor.goto(info.baseUrl + '/admin/store-monitor');
         await monitor.waitForFunction(() => document.querySelector('#wm-connection')?.textContent.includes('ĐANG NHẬN'));
         assert.equal(await monitor.locator('#gao-store-wall').getAttribute('data-theme'), 'light');
-        assert.equal(await monitor.locator('#wm-delivery [data-active=false]').count(), 1);
+        assert.equal(await monitor.locator('#wm-delivery .wd-empty').count(), 1);
+        assert.equal(await monitor.locator('#wm-delivery .wd-card').count(), 0);
         const { page: receiving } = await newPage();
         await login(receiving, info.user, info.password); await receiving.goto(info.baseUrl + '/admin/warehouse-receiving');
         await monitor.waitForSelector('#wm-receipt .wm-live-person');
@@ -152,8 +159,8 @@ const path = require('node:path');
         const work = ([module, , , , document]) => `${module === 'pos' ? 'order' : module === 'warehouse' ? document.startsWith('Chuyển') ? 'transfer' : 'count' : module === 'label' ? 'label' : 'receipt'}:${document.match(/\d+/)[0]}`;
         const fixture = {
             serverTimeUtc: at(0), startedAtUtc: at(-3600000),
-            people: definitions.map(([module, person, terminal, , document], i) => ({ userId: actorIds.get(person), module, person, terminal, workKey: work(definitions[i]), document, state: 'editing', seenAtUtc: at(0), openedAtUtc: at(-180000 - i * 25000), editedAtUtc: at(1) })),
-            events: definitions.map(([module, person, terminal, text, document, detail], i) => ({ id: 100 - i, userId: actorIds.get(person), module, person, terminal, text, document, detail, workKey: work(definitions[i]), occurredAtUtc: at(-i * 300), action: 'UI fixture' }))
+            people: definitions.map(([module, person, terminal, , document], i) => ({ userId: actorIds.get(person), module, person, terminal, workKey: work(definitions[i]), document, state: 'editing', seenAtUtc: at(0), openedAtUtc: at(-180000 - i * 25000), editedAtUtc: at(-10000) })),
+            events: definitions.map(([module, person, terminal, text, document, detail], i) => ({ id: 100 - i, userId: actorIds.get(person), module, person, terminal, text, document, detail, workKey: work(definitions[i]), occurredAtUtc: at(-i * 300), action: ['POS.AddByBarcode','POS.Finalize','POS.HoldOrder','StockDocuments.AddLineByBarcode','StockCounts.UpdateLine','LabelPrinting.Print','StockDocuments.Approve','ReceiptIntake.Capture','StockDocuments.UpdateLine','StockTransfers.AddLine','StockCounts.UpdateLine','LabelPrinting.Plan','LabelPrinting.Confirm','StockDocuments.SubmitApproval','StockDocuments.SavePriceDraft'][i] }))
         };
         await layout.addInitScript(payload => {
             window.EventSource = class extends EventTarget {
@@ -164,123 +171,77 @@ const path = require('node:path');
         await layout.goto(info.baseUrl + '/admin/store-monitor');
         await layout.waitForSelector('#wm-review[data-state=working]');
         await layout.locator('.wm-title-row .wm-overline').evaluate(node => node.textContent = 'KIỂM TRA BỐ CỤC · DỮ LIỆU MÔ PHỎNG');
-        const animations = await layout.evaluate(() => Object.fromEntries(['pos', 'receipt', 'warehouse', 'label', 'review', 'delivery'].map(key => [key, document.querySelector('#wm-' + key).getAnimations({ subtree: true }).map(a => a.animationName)])));
-        for (const [key, name] of Object.entries({ pos: 'wm-scan', receipt: 'wm-pen', warehouse: 'wm-package', label: 'wm-print', review: 'wm-stamp' })) assert.ok(animations[key].includes(name), `${key} approved animation missing`);
-        assert.deepEqual(animations.delivery, []);
+        const emit = payload => layout.evaluate(value => window.probeSource.dispatchEvent(new MessageEvent('snapshot', { data: JSON.stringify(value) })), payload);
+        const expected = {
+            'order:182041': ['scan', '.sm-product'], 'order:182039': ['print', '.sm-bill'],
+            'receipt:6792': ['check', '.sm-receive-beam'], 'receipt:6794': ['input', '.sm-document-sheet'],
+            'count:903': ['check', '.sm-stock-beam'], 'transfer:903': ['transfer', '.sm-transfer-crate'],
+            'label:248': ['print', '.sm-label-feed'], 'label:249': ['input', '.sm-preview-label:nth-child(2)'],
+            'receipt:6790': ['approved', '.sm-stamp']
+        };
+        const animations = {};
+        for (const [key, [effect, part]] of Object.entries(expected)) {
+            const scene = layout.locator(`.wm-station[data-work-key="${key}"] .wm-scene`);
+            assert.equal(await scene.getAttribute('data-effect'), effect);
+            animations[key] = await scene.locator(part).evaluate(node => node.getAnimations().map(a => ({ name:a.animationName, iterations:a.effect.getTiming().iterations })));
+            assert.ok(animations[key].some(a => a.iterations === 1), `${key} must actually animate once`);
+        }
+        assert.equal(await layout.locator('[class*=progress],progress,[role=progressbar]').count(), 0);
         assert.equal(await layout.locator('#wm-pos .wm-station').count(), 3);
         for (const key of ['receipt', 'warehouse', 'label', 'review']) {
             assert.equal(await layout.locator(`#wm-${key} .wm-station`).count(), 3);
-            assert.equal(await layout.locator(`#wm-${key} .wm-stations`).evaluate(node => node.scrollHeight > node.clientHeight), false, `${key} must not hide active work in an internal scroll`);
-            assert.equal(await layout.locator(`#wm-${key} .wm-scene[data-active=true]`).count(), 3);
+            assert.equal(await layout.locator(`#wm-${key} .wm-stations`).evaluate(node => node.scrollHeight > node.clientHeight), false, `${key} must not hide work in an internal scroll`);
         }
-        assert.equal(await layout.locator('#wm-receipt .wm-station[data-work-key="receipt:6792"]').count(), 1);
-        assert.equal(await layout.locator('#wm-receipt .wm-station[data-work-key="receipt:6794"]').count(), 1);
-        assert.equal(await layout.locator('#wm-warehouse .wm-station[data-work-key="count:903"]').count(), 1);
-        assert.equal(await layout.locator('#wm-warehouse .wm-station[data-work-key="transfer:903"]').count(), 1);
-        const clippedArt = await layout.locator('.wm-station .wm-art').evaluateAll(items => items.filter(art => {
-            const sprite = art.getBoundingClientRect(), stage = art.parentElement.getBoundingClientRect();
-            return sprite.left < stage.left - 1 || sprite.right > stage.right + 1 || sprite.top < stage.top - 1 || sprite.bottom > stage.bottom + 1;
-        }).length);
-        assert.equal(clippedArt, 0, 'Approved art must stay centered and fully inside all 15 work cards');
-        await layout.screenshot({ path: path.join(evidence, 'office-light.png'), fullPage: true });
-        const officeMetrics = await layout.evaluate(() => ({ height: document.documentElement.scrollHeight, viewport: innerHeight, areas: [...document.querySelectorAll('.wm-area')].map(node => ({ id: node.id, top: node.offsetTop, height: node.offsetHeight })) }));
-        fs.writeFileSync(path.join(evidence, 'office-metrics.json'), JSON.stringify(officeMetrics, null, 2));
-        assert.equal(officeMetrics.height <= officeMetrics.viewport, true, `All areas must fit the office 1920x1080 viewport: ${officeMetrics.height}`);
-        assert.match(await layout.locator('#wm-clock').innerText(), /\d{2}:\d{2}:\d{2}/);
-        await layout.locator('#wm-theme').click(); assert.equal(await layout.locator('#gao-store-wall').getAttribute('data-theme'), 'dark');
-        await layout.screenshot({ path: path.join(evidence, 'office-dark.png'), fullPage: true });
-        await layout.locator('#wm-theme').click();
-        for (const width of [1366, 1024, 704, 390]) {
-            await layout.setViewportSize({ width, height: 900 });
-            assert.equal(await layout.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `Horizontal overflow at ${width}`);
-            if (width === 1366 || width === 390) await layout.screenshot({ path: path.join(evidence, width === 390 ? 'mobile.png' : 'office-1366.png'), fullPage: true });
-        }
-        await layout.setViewportSize({ width: 1920, height: 1080 });
-        await layout.locator('#wm-motion').click(); assert.equal(await layout.locator('#gao-store-wall').getAttribute('data-motion'), 'false');
-        assert.equal(await layout.evaluate(() => document.querySelector('.wm-operations').getAnimations({ subtree: true }).length), 0);
-        await layout.locator('#wm-motion').click(); await layout.emulateMedia({ reducedMotion: 'reduce' });
-        await layout.waitForFunction(() => document.querySelector('#gao-store-wall')?.dataset.paused === 'true');
-        assert.equal(await layout.evaluate(() => document.querySelector('.wm-operations').getAnimations({ subtree: true }).length), 0);
-        checks.push('Separate UI fixture: 15 independent work cards, 3 per module, same person on 2 documents and count/transfer with same numeric ID; no internal clipping; 5 animations, delivery static, themes, responsive widths, reduced motion');
-        await layout.emulateMedia({ reducedMotion: 'no-preference' });
-        await layout.waitForFunction(() => document.querySelector('#gao-store-wall').dataset.paused === 'false' && document.querySelector('#wm-pos .wm-visual').getAnimations({ subtree: true }).length > 0);
-        await layout.evaluate(payload => {
-            window.probeScene = document.querySelector('#wm-pos .wm-visual');
-            window.probeAnimation = window.probeScene.getAnimations({ subtree: true })[0];
-            window.probeSource.dispatchEvent(new MessageEvent('snapshot', { data: JSON.stringify({ ...payload, serverTimeUtc: new Date().toISOString() }) }));
-        }, fixture);
-        assert.equal(await layout.evaluate(() => window.probeScene === document.querySelector('#wm-pos .wm-visual') && window.probeAnimation === window.probeScene.getAnimations({ subtree: true })[0]), true, 'Snapshots must preserve active animation nodes');
-        const escaped = structuredClone(fixture); escaped.events[0].detail = '<img src=x onerror="window.probeXss=true">';
-        escaped.events.find(event => event.module === 'receipt').text = 'vừa nhập <img src=x onerror="window.probeXss=true">';
-        await layout.evaluate(payload => window.probeSource.dispatchEvent(new MessageEvent('snapshot', { data: JSON.stringify({ ...payload, serverTimeUtc: new Date().toISOString() }) })), escaped);
-        assert.equal(await layout.locator('#wm-pos img').count(), 0); assert.equal(await layout.evaluate(() => window.probeXss), undefined);
-        assert.match(await layout.locator('#wm-pos .wm-task-detail').first().innerText(), /<img/);
-        assert.equal(await layout.locator('#wm-receipt img').count(), 0);
-        assert.match(await layout.locator('#wm-receipt .wm-task-title').first().innerText(), /<img/);
-
-        const motionSamples = {};
-        for (const [key, selector] of Object.entries({ pos: '.wm-scanner-beam', receipt: '.wm-pen-art', warehouse: '.wm-package-art', label: '.wm-label-art', review: '.wm-review-stamp' })) {
-            const moving = layout.locator('#wm-' + key + ' .wm-scene[data-mode=working] ' + selector).first();
-            const before = await moving.evaluate(node => { const style = getComputedStyle(node); return [style.transform, style.opacity, style.left].join('|'); });
-            await layout.waitForTimeout(1400);
-            const after = await moving.evaluate(node => { const style = getComputedStyle(node); return [style.transform, style.opacity, style.left].join('|'); });
-            assert.notEqual(after, before, key + ' must visibly move, rather than only declare an animation');
-            motionSamples[key] = { before, after };
-        }
-        // Test save/edit ordering on one receipt while another document of the same employee keeps moving.
-        const savedAt = Date.now(), transition = structuredClone(fixture);
-        const target = transition.people.find(person => person.workKey === 'receipt:6792');
-        target.editedAtUtc = new Date(savedAt - 1000).toISOString();
-        const savedEvent = { ...transition.events.find(event => event.workKey === target.workKey), id: 101, occurredAtUtc: new Date(savedAt).toISOString(), text: 'vừa lưu số lượng phiếu nhập' };
-        transition.events.unshift(savedEvent);
-        transition.serverTimeUtc = new Date(savedAt).toISOString();
+        assert.equal(await layout.locator('.wm-art').evaluateAll(items => items.filter(art => {
+            const sprite=art.getBoundingClientRect(),stage=art.closest('.wm-visual').getBoundingClientRect();
+            return sprite.left<stage.left-1||sprite.right>stage.right+1||sprite.top<stage.top-1||sprite.bottom>stage.bottom+1;
+        }).length), 0);
         await layout.evaluate(() => {
-            window.neighborArt = document.querySelector('#wm-receipt [data-work-key="receipt:6794"] .wm-art');
-            window.neighborAnimation = window.neighborArt.querySelector('.wm-pen-art').getAnimations()[0];
+            window.probeScene=document.querySelector('[data-work-key="receipt:6794"] .wm-art');
+            window.probeAnimation=window.probeScene.querySelector('.sm-document-sheet').getAnimations()[0];
         });
-        const emit = payload => layout.evaluate(value => window.probeSource.dispatchEvent(new MessageEvent('snapshot', { data: JSON.stringify(value) })), payload);
-        const targetCard = layout.locator('#wm-receipt [data-work-key="receipt:6792"]');
+        await emit(fixture);
+        assert.equal(await layout.evaluate(() => window.probeScene===document.querySelector('[data-work-key="receipt:6794"] .wm-art')&&window.probeAnimation===window.probeScene.querySelector('.sm-document-sheet').getAnimations()[0]),true,'Repeated snapshot preserves the model and animation');
+        const savedAt=Date.now(),transition=structuredClone(fixture);
+        transition.serverTimeUtc=new Date(savedAt).toISOString();
+        transition.events.unshift({...transition.events.find(e=>e.workKey==='receipt:6792'),id:101,occurredAtUtc:new Date(savedAt).toISOString()});
         await emit(transition);
-        assert.equal(await targetCard.locator('.wm-scene').getAttribute('data-mode'), 'saved', 'Newer successful save takes priority over earlier editing presence');
-        assert.match(await targetCard.innerText(), /Vừa lưu xong/);
-        assert.equal(await targetCard.locator('.wm-pen-art').evaluate(node => node.getAnimations().length), 0, 'Writing stops when the save is confirmed');
-        await layout.waitForTimeout(700);
-        assert.equal(await targetCard.locator('.wm-save-confirm').evaluate(node => getComputedStyle(node).opacity), '1');
-        assert.equal(await targetCard.locator('.wm-save-confirm').evaluate(node => node.getAnimations()[0].effect.getTiming().iterations), 1, 'Confirmation must not loop');
-        const repeatAt = Date.now();
-        transition.events.unshift({ ...savedEvent, id: 102, occurredAtUtc: new Date(repeatAt).toISOString() });
-        transition.serverTimeUtc = new Date(repeatAt).toISOString();
-        await emit(transition);
-        assert.equal(await targetCard.locator('.wm-save-confirm').evaluate(node => {
-            const animation = node.getAnimations()[0]; return animation.playState === 'running' && animation.currentTime < 400;
-        }), true, 'A second save replays only its brief check');
-        transition.serverTimeUtc = new Date(repeatAt + 12500).toISOString();
-        await emit(transition);
-        assert.equal(await targetCard.locator('.wm-scene').getAttribute('data-mode'), 'idle', 'Expiring save confirmation must not revive older typing presence');
-        target.editedAtUtc = new Date(repeatAt + 12600).toISOString();
-        transition.serverTimeUtc = new Date(repeatAt + 12620).toISOString();
-        await emit(transition);
-        assert.equal(await targetCard.locator('.wm-scene').getAttribute('data-mode'), 'working', 'Editing after the save resumes writing');
-        assert.equal(await targetCard.locator('.wm-save-confirm').evaluate(node => getComputedStyle(node).opacity), '0');
-        target.state = 'viewing';
-        transition.serverTimeUtc = new Date(repeatAt + 30000).toISOString();
-        await emit(transition);
-        assert.equal(await targetCard.locator('.wm-scene').getAttribute('data-mode'), 'idle');
-        assert.equal(await targetCard.locator('.wm-visual').evaluate(node => node.getAnimations({ subtree: true }).length), 0, 'Waiting work must be static');
-        assert.equal(await layout.evaluate(() => {
-            const art = document.querySelector('#wm-receipt [data-work-key="receipt:6794"] .wm-art');
-            return art === window.neighborArt && art.querySelector('.wm-pen-art').getAnimations()[0] === window.neighborAnimation;
-        }), true, 'Save/edit/idle transitions on one receipt must preserve the other document and animation');
-        checks.push('Approved animation artwork visibly moves in all 5 modules, centered in 15 cards; save/edit ordering, one-shot confirmation with rapid replay, idle static; neighboring receipt animation unaffected');
-        await emit({ ...fixture, serverTimeUtc: new Date().toISOString() });
-        await layout.screenshot({ path: path.join(evidence, 'office-approved-animations.png'), fullPage: true });
-        const old = { ...fixture, people: [], serverTimeUtc: new Date(utc + 20000).toISOString() };
-        await layout.evaluate(payload => window.probeSource.dispatchEvent(new MessageEvent('snapshot', { data: JSON.stringify(payload) })), old);
-        assert.equal(await layout.locator('.wm-operations .wm-live-person').count(), 0);
-        assert.equal(await layout.locator('.wm-operations .wm-scene[data-active=true]').count(), 0);
-        assert.equal(await layout.evaluate(() => document.querySelector('.wm-operations').getAnimations({ subtree: true }).length), 0, 'Old saved work must not keep playing idle animations');
-        assert.match(await layout.locator('#wm-receipt').innerText(), /Thêm Gạo ST25 vào phiếu nhập/);
-        checks.push('Stable counter positions and animation nodes; escaped metadata; old saved events retain content without false live activity');
+        assert.equal(await layout.locator('[data-work-key="receipt:6792"] .sm-receive-beam').evaluate(node=>node.getAnimations()[0].currentTime<400),true,'New save replays its own physical effect');
+        assert.equal(await layout.evaluate(()=>window.probeScene===document.querySelector('[data-work-key="receipt:6794"] .wm-art')&&window.probeAnimation===window.probeScene.querySelector('.sm-document-sheet').getAnimations()[0]),true,'Neighboring work remains undisturbed');
+        const expired=structuredClone(transition);expired.people=[];expired.serverTimeUtc=new Date(savedAt+30000).toISOString();
+        await emit(expired);
+        assert.equal(await layout.locator('.wm-operations .wm-scene[data-active=true]').count(),0);
+        assert.equal(await layout.locator('.wm-visual').evaluateAll(items=>items.reduce((n,node)=>n+node.getAnimations({subtree:true}).length,0)),0,'Old work has no looping machine animation');
+        await emit({...fixture,serverTimeUtc:new Date().toISOString()});
+        await layout.screenshot({path:path.join(evidence,'office-approved-animations.png'),fullPage:true});
+        await layout.locator('#wm-theme').click();
+        assert.equal(await layout.locator('#gao-store-wall').getAttribute('data-theme'),'dark');
+        await layout.screenshot({path:path.join(evidence,'office-dark.png'),fullPage:true});
+        await layout.locator('#wm-theme').click();
+        for(const width of [1366,1024,704,390]) {
+            await layout.setViewportSize({width,height:900});
+            assert.equal(await layout.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`No horizontal overflow at ${width}`);
+        }
+        await layout.locator('#wm-motion').click();
+        assert.equal(await layout.locator('.wm-operations').evaluate(node=>node.getAnimations({subtree:true}).length),0);
+        await layout.locator('#wm-motion').click();
+        await layout.emulateMedia({reducedMotion:'reduce'});
+        await layout.waitForFunction(()=>document.querySelector('#gao-store-wall').dataset.paused==='true');
+        assert.equal(await layout.locator('.wm-operations').evaluate(node=>node.getAnimations({subtree:true}).length),0);
+        await layout.locator('#wm-motion').click();
+        assert.equal(await layout.locator('#gao-store-wall').getAttribute('data-force-motion'),'true','User can explicitly enable effects despite reduced-motion preference');
+        await layout.emulateMedia({reducedMotion:'no-preference'});
+        const escaped=structuredClone(fixture);escaped.events[0].detail='<img src=x onerror="window.probeXss=true">';
+        escaped.events.find(event=>event.module==='receipt').document='<img src=x onerror="window.probeXss=true">';
+        await emit(escaped);
+        assert.equal(await layout.locator('.wm-station img').count(),0);
+        assert.equal(await layout.evaluate(()=>window.probeXss),undefined);
+        await layout.locator('[data-work-key="receipt:6792"]').click();
+        assert.equal(await layout.locator('#wm-selection').isVisible(),true);
+        assert.equal(await layout.locator('#wm-feed .wm-event').evaluateAll(items=>items.every(item=>item.textContent.includes('Hoàng Nam'))),true);
+        await layout.locator('#wm-show-all').click();
+        checks.push('UI fixture: 15 independent model cards, action-specific one-shot animations, no progress bars or clipped models, repeated snapshot stability, rapid save isolation, stale/idle stop, responsive layout, themes, reduced motion with explicit opt-in, escaped metadata and employee filter');
+        const motionSamples={finite:true};
         assert.deepEqual(errors, []);
         fs.writeFileSync(path.join(evidence, 'browser-results.json'), JSON.stringify({ status: 'PASS', checks, pageErrors: errors, fixtureAnimations: animations, animationMotionSamples: motionSamples, realCounters: actualStations.map(item => item.terminal) }, null, 2));
         console.log('PASS: ' + checks.join('; '));

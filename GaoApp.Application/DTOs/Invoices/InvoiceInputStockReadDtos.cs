@@ -15,6 +15,13 @@ public sealed class InvoiceInputStockQuery
 
 public sealed class InvoiceInputStockMovement
 {
+    internal InvoiceInputStockMovement WithBalance(decimal before, decimal after)
+    {
+        var copy = (InvoiceInputStockMovement)MemberwiseClone();
+        copy.Before = before;
+        copy.After = after;
+        return copy;
+    }
     public string Key { get; set; } = "";
     public int WarehouseId { get; set; }
     public int? LegalEntityId { get; set; }
@@ -44,12 +51,24 @@ public sealed class InvoiceInputStockMovement
     public string? LegacyInvoiceNumber { get; set; }
     public string? LegacyInvoiceSymbol { get; set; }
     public string? OperationLabel { get; set; }
+    public string? XmlSeries { get; set; }
     public string? XmlNumber { get; set; }
     public string Note { get; set; } = "";
 }
 
 public sealed class InvoiceInputStockBalance
 {
+    internal InvoiceInputStockBalance Copy(InvoiceInputStockMovement? displayRow = null)
+    {
+        var copy = (InvoiceInputStockBalance)MemberwiseClone();
+        if (displayRow != null)
+        {
+            copy.ProductName = displayRow.ProductName; copy.Code = displayRow.Code;
+            copy.BaseUnit = displayRow.BaseUnit; copy.WarehouseName = displayRow.WarehouseName;
+            copy.LegalEntityName = displayRow.LegalEntityName;
+        }
+        return copy;
+    }
     public int WarehouseId { get; set; }
     public int ProductVariantId { get; set; }
     public string ProductName { get; set; } = "";

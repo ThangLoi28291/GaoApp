@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 
@@ -9,7 +9,7 @@ namespace GaoApp.Domain.Entities;
 /// Lưu snapshot để giữ lịch sử chứng từ.
 /// </summary>
 [Table("StockTransferLine")]
-public class StockTransferLine : BaseStoreEntity
+public class StockTransferLine : BaseStoreEntity, IAuditTrackedEntity
 {
     public int StockTransferDocumentId { get; set; }
 

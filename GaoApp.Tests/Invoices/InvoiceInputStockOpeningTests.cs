@@ -28,6 +28,8 @@ public sealed class InvoiceInputStockOpeningTests
         Assert.Equal(issued, balance.Issued);
         Assert.Equal(available, balance.Available);
         Assert.Equal(rows.Sum(x => x.Change), balance.Remaining);
-        Assert.Equal(balance.Remaining, rows[^1].After);
+        var ledger = InvoiceInputStockReadService.BuildPage(rows, new() { View = "ledger" });
+        Assert.Equal(balance.Remaining, ledger.Movements.Single(x => x.Key == "held").After);
+        Assert.All(rows, row => Assert.Equal(0m, row.After));
     }
 }

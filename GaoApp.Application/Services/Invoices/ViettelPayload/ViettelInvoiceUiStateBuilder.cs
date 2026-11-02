@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Domain.Enums;
 
 namespace GaoApp.Application.Services.Invoices;
@@ -8,7 +8,8 @@ internal static class ViettelInvoiceUiStateBuilder
     public static ViettelInvoiceUiState Build(InvoiceHeadDto invoice)
     {
         var isIssued = IsIssuedLike(invoice);
-        var requiresUuidSyncBeforeIssue = IsProcessingOrUnclear(invoice);
+        var requiresUuidSyncBeforeIssue = invoice.RequiresUuidSyncBeforeIssue ??
+            IsProcessingOrUnclear(invoice.ProviderStatus, invoice.LastErrorCode, invoice.LastErrorMessage);
 
         var hasOfficialPdf =
             invoice.OfficialPdfStatus == InvoiceFileDownloadStatus.Downloaded ||
@@ -120,19 +121,19 @@ internal static class ViettelInvoiceUiStateBuilder
             InvoiceProviderStatus.EmailSent;
     }
 
-    private static bool IsProcessingOrUnclear(InvoiceHeadDto invoice)
+    internal static bool IsProcessingOrUnclear(InvoiceProviderStatus status, string? errorCode, string? errorMessage)
     {
-        if (invoice.ProviderStatus == InvoiceProviderStatus.Issuing)
+        if (status == InvoiceProviderStatus.Issuing)
             return true;
 
-        if (invoice.ProviderStatus == InvoiceProviderStatus.IssuedWaitingNumber)
+        if (status == InvoiceProviderStatus.IssuedWaitingNumber)
             return true;
 
-        if (invoice.ProviderStatus != InvoiceProviderStatus.IssueFailed)
+        if (status != InvoiceProviderStatus.IssueFailed)
             return false;
 
-        var code = invoice.LastErrorCode ?? string.Empty;
-        var message = invoice.LastErrorMessage ?? string.Empty;
+        var code = errorCode ?? string.Empty;
+        var message = errorMessage ?? string.Empty;
 
         if (code.Equals("TIMEOUT", StringComparison.OrdinalIgnoreCase))
             return true;

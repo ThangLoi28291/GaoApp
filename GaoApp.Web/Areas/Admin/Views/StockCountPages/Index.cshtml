@@ -32,6 +32,10 @@
     <link href="~/Admin/css/stock-count.css" rel="stylesheet" asp-append-version="true" />
 }
 
+@section PageStyles {
+    <link href="~/Admin/css/stock-count.mobile.css" rel="stylesheet" asp-append-version="true" />
+}
+
 <div class="stock-count-index-page gds-page"
      data-gao-ui="modern"
      data-stock-count-index
@@ -91,4 +95,5 @@
 @section PageScripts {
     <script>window.stockCountPage = { mode: 'index', permissions: { canCreate: @canCreate.ToString().ToLowerInvariant() } };</script>
     <script src="~/Admin/js/stock-count.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/stock-count.mobile.js" asp-append-version="true"></script>
 }

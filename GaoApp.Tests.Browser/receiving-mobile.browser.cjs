@@ -3,10 +3,13 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {chromium}=require('playwright');
 (async()=>{
  const info=JSON.parse(await new Promise(resolve=>{let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>resolve(s));}));
- const out=path.resolve('TestResults/receiving-mobile/browser');fs.mkdirSync(out,{recursive:true});
+ const out=path.resolve(process.env.RECEIVING_BROWSER_OUTPUT||(process.env.RECEIVING_UI05E_CHECK==='1'?'TestResults/mobile-ui-05e-20261025/browser':process.env.RECEIVING_UI05D_CHECK==='1'?'TestResults/mobile-ui-05d-20261025/browser':process.env.RECEIVING_UI05C_CHECK==='1'?'TestResults/mobile-ui-05c-20261025/browser':process.env.RECEIVING_UI05B_CHECK==='1'?'TestResults/mobile-ui-05b-20261025/browser':'TestResults/receiving-mobile/browser'));fs.mkdirSync(out,{recursive:true});
  const browser=await chromium.launch({channel:'chrome',headless:true});
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(20000);
+ if(process.env.RECEIVING_UI05B_BASELINE==='1')await page.route('**/warehouse-receiving-detail.mobile-v2.*',route=>route.fulfill({status:200,contentType:route.request().url().includes('.css')?'text/css':'application/javascript',body:''}));
+ if(process.env.RECEIVING_UI05D_BEFORE==='1')for(const name of ['warehouse-receiving-detail','receipt-intake','warehouse-receiving-feedback','warehouse-receiving-app'])await page.route('**/'+name+'.js*',route=>route.fulfill({contentType:'application/javascript',body:fs.readFileSync(path.join('.artifacts/ui-05d/before/GaoApp.Web/wwwroot/Admin/js',name+'.js'),'utf8')}));
+ if(process.env.RECEIVING_UI05E_BEFORE==='1')for(const name of ['warehouse-receiving-quantity','warehouse-receiving-mobile','warehouse-receiving-app'])await page.route('**/'+name+'.js*',route=>route.fulfill({contentType:'application/javascript',body:fs.readFileSync(path.join('.artifacts/ui-05e/before/GaoApp.Web/wwwroot/Admin/js',name+'.js'),'utf8')}));
  const endpoint=`/admin/api/stock-documents/${info.receiptId}/intake`;
  async function login(p,user){await p.goto(info.baseUrl+'/admin/account/login');await p.locator('[name=UserName]').fill(user.user);await p.locator('[name=Password]').fill(user.password);const terminal=p.locator('[name=SelectedTerminalId]');if(await terminal.count())await terminal.selectOption(String(info.terminalId));await Promise.all([p.waitForURL(u=>!u.pathname.endsWith('/login')),p.locator('button[type=submit]').click()]);}
  async function state(){return page.evaluate(async url=>(await(await fetch(url)).json()).state,endpoint);}
@@ -49,7 +52,19 @@ const {chromium}=require('playwright');
   });
   await login(page,info.employee);await page.goto(info.baseUrl+`/admin/warehouse-receiving/${info.receiptId}`);
   await page.waitForFunction(()=>window.ReceiptIntake&&document.querySelector('#riBaseUnit').options.length>1);
-  await page.addScriptTag({url:info.baseUrl+'/lib/jsbarcode/JsBarcode.all.min.js'});
+  await require('./browser-contract.cjs').addNoncedScript(page, {url:info.baseUrl+'/lib/jsbarcode/JsBarcode.all.min.js'});
+  if(process.env.RECEIVING_UI05E_CHECK==='1'){
+   await require('./receiving-acceptance.browser.cjs')({page,info,context,out,errors,idle,close,state,login,browser});return;
+  }
+  if(process.env.RECEIVING_UI05D_CHECK==='1'||process.env.RECEIVING_ACK_CHECK==='1'){
+   await require('./receiving-acknowledgement.browser.cjs')({page,info,context,out,errors,idle,close,state,login,browser});return;
+  }
+  if(process.env.RECEIVING_UI05C_CHECK==='1'){
+   await require('./receiving-packing.browser.cjs')({page,info,context,out,errors,idle,close,state,login,browser});return;
+  }
+  if(process.env.RECEIVING_UI05B_CHECK==='1'){
+   await require('./receiving-detail-v2.browser.cjs')({page,info,context,out,errors,idle,close,state,login});return;
+  }
   if(process.env.RECEIVING_FEEDBACK_RELOAD_CHECK==='1'){
    await require('./receiving-feedback-reload.browser.cjs')({page,info,context,out,errors,idle,close,state});
    return;
@@ -225,7 +240,15 @@ const {chromium}=require('playwright');
    await provisional().locator('[data-wra-edit]').click();await page.locator('#wraRemove').click();await page.locator('#receiptIntakeReviewModal.show').waitFor();await close('#receiptIntakeReviewModal');
    await context.setOffline(true);await page.waitForFunction(()=>document.querySelector('#wraStatus').dataset.state==='error');await context.setOffline(false);
    for(const width of [320,390,768]){
-    await page.setViewportSize({width,height:844});await page.locator('[data-wra-tab="items"]').click();await page.evaluate(()=>window.scrollTo(0,0));
+    await page.setViewportSize({width,height:844});
+    await page.waitForFunction(w=>!!document.querySelector('[data-receiving-phone]')===(w<768),width);
+    if(width>=768){
+     assert.equal(await page.locator('.wra-dock').isVisible(),false,'768px retains the desktop/tablet layout');
+     await page.locator('.wrd-capture-actions #wrdOpenCamera').waitFor({state:'visible'});
+     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`No overflow at ${width}`);
+     await page.screenshot({path:path.join(out,`app-${width}.png`)});continue;
+    }
+    await page.locator('[data-wra-tab="items"]').click();await page.evaluate(()=>window.scrollTo(0,0));
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,`No overflow at ${width}`);
     const dock=await page.locator('.wra-dock').boundingBox();assert.ok(dock.y+dock.height<=845&&dock.y>500);
     await page.screenshot({path:path.join(out,`app-${width}.png`)});
@@ -241,7 +264,9 @@ const {chromium}=require('playwright');
    await page.locator('#wraDockActions #wrdOpenCamera').waitFor({state:'visible'});
    assert.equal(await page.locator('#wraDockActions #wrdOpenCamera').isVisible(),true);
    const removed=page.locator(`tr[data-receiving-conversion="${info.packId}"]`),removedId=await removed.getAttribute('data-line-id');
-   await removed.locator('[data-wra-edit]').click();page.once('dialog',dialog=>dialog.accept());await page.locator('#wraRemove').click();await page.locator(`tr[data-line-id="${removedId}"]`).waitFor({state:'detached'});await idle();
+   await removed.locator('[data-wra-edit]').click();await page.locator('#wraRemove').click();await page.locator('#deleteReceivingLineModal.show').waitFor();
+   assert.equal(await page.locator(`tr[data-line-id="${removedId}"]`).count(),1,'Delete remains pending until the existing confirmation dialog is accepted');
+   await page.locator('#btnConfirmDeleteReceivingLine').click();await page.locator('#deleteReceivingLineModal').waitFor({state:'hidden'});await page.locator(`tr[data-line-id="${removedId}"]`).waitFor({state:'detached'});await idle();
    console.log('PASS app tabs, pending items, more menu, row steppers, decimal sheet, validation, known/provisional lost-response retries, offline indicator, 320/390/768/1440 layouts');
   }
   if(process.env.RECEIVING_FEEDBACK_CHECK==='1'){

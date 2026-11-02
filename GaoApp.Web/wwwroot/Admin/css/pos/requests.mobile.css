@@ -1,0 +1,81 @@
+/* UI-08a — phone only. Desktop, native dialog ownership and financial controls remain original. */
+@media (max-width: 767.98px) {
+    #posOperationsRequests {color: #172d4d; padding-bottom: 16px;}
+    #posOperationsRequests *, #posOperationsRequests dialog * {min-width: 0; box-sizing: border-box;}
+    #posOperationsRequests [hidden] {display: none !important;}
+    #posOperationsRequests > .ca-heading {display: grid; padding: 18px; gap: 14px; margin: 12px 0 14px; background: #172d4d; color: #fff; border-radius: 20px;}
+    #posOperationsRequests .ca-heading h1 {font-size: 1.35rem; color: #fff; line-height: 1.35; margin: 4px 0 8px;}
+    #posOperationsRequests .ca-heading p {font-size: .82rem; color: #d5e2f4; line-height: 1.5;}
+    #posOperationsRequests .ca-heading .ca-eyebrow {font-size: .65rem; color: #c7d7ef; letter-spacing: .09em;}
+    #posOperationsRequests #operationsReconciliation {color: #fff; border-color: #7994bb; background: #ffffff0b; min-height: 44px; border-radius: 12px; font-size: .82rem; box-shadow: none;}
+    #posOperationsRequests .operations-tabs {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin-bottom: 12px;}
+    #posOperationsRequests .operations-tabs > button {min-height: 64px; padding: 12px; border-radius: 14px; border-color: #dce5f0; font-size: .85rem; line-height: 1.45;}
+    #posOperationsRequests .operations-tabs > button small {font-size: .7rem; line-height: 1.4;}
+    #posOperationsRequests .operations-tabs > .is-active {background: #2463eb; border-color: #2463eb; color: #fff; box-shadow: none;}
+    #posOperationsRequests .ca-panel {padding: 14px 12px; border-radius: 16px; border-color: #dce5f0; box-shadow: none;}
+    #posOperationsRequests .operations-panel-toolbar {gap: 10px; align-items: center; margin-bottom: 12px;}
+    #posOperationsRequests .operations-panel-toolbar p {font-size: .78rem; line-height: 1.5;}
+    #posOperationsRequests .operations-panel-toolbar > .btn {font-size: .78rem; padding: 9px 12px;}
+    #posOperationsRequests button, #posOperationsRequests summary, #posOperationsRequests .btn {min-height: 44px;}
+    #posOperationsRequests .btn {white-space: normal; box-shadow: none; border-radius: 12px;}
+    #posOperationsRequests .btn-primary {background: #2463eb; border-color: #2463eb;}
+    #posOperationsRequests .btn-outline-primary {color: #1c50bb; border-color: #b9cef6;}
+    #posOperationsRequests .ca-tabs {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding-bottom: 12px; overflow: visible;}
+    #posOperationsRequests #paymentAdjustments .ca-tabs {grid-template-columns: repeat(3,minmax(0,1fr));}
+    #posOperationsRequests .ca-tabs > .btn {padding: 8px 6px; white-space: normal; font-size: .76rem; line-height: 1.45; border-radius: 10px; background: #f3f6fb; color: #526079;}
+    #posOperationsRequests .ca-tabs > .active {background: #edf3ff; color: #1c50bb; box-shadow: inset 0 0 0 1px #c1d5fa;}
+    #posOperationsRequests .ca-filters {display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; padding: 14px 0;}
+    #posOperationsRequests .ca-filters label {min-width: 0; width: 100%; grid-column: 1 / -1; font-size: .78rem;}
+    #posOperationsRequests .ca-filters > .btn {font-size: .8rem; padding: 9px;}
+    #posOperationsRequests #caScope, #posOperationsRequests #paScope {grid-column: 1 / -1; font-size: .76rem; overflow-wrap: anywhere; line-height: 1.5;}
+    #posOperationsRequests .form-control, #posOperationsRequests .form-select {font-size: 16px; min-height: 48px; max-width: 100%; border-radius: 12px; border-color: #dce5f0; background-color: #fff; color: #172d4d;}
+    #posOperationsRequests .form-control:disabled, #posOperationsRequests .form-select:disabled {background-color: #eef1f6; color: #667085;}
+    #posOperationsRequests .ca-table-wrap {overflow: visible;}
+    #posOperationsRequests .ca-table-wrap table {display: block; width: 100%; min-width: 0;}
+    #posOperationsRequests .ca-table-wrap thead {position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);}
+    #posOperationsRequests .ca-table-wrap tbody {display: grid; gap: 12px;}
+    #posOperationsRequests .ca-table-wrap tr {display: grid; border: 1px solid #dce5f0; border-radius: 14px; padding: 5px 12px; background: #fff;}
+    #posOperationsRequests .ca-table-wrap td {display: block; min-width: 0; width: auto; padding: 10px 0; border: 0; border-bottom: 1px solid #edf1f5; font-size: .84rem; line-height: 1.6; white-space: normal; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-table-wrap td:last-child {border: 0;}
+    #posOperationsRequests td[data-request-phone-label]::before {content: attr(data-request-phone-label); display: block; color: #667085; font-size: .7rem; margin-bottom: 4px;}
+    #posOperationsRequests .ca-table-wrap td small {max-width: none; font-size: .73rem; line-height: 1.5;}
+    #posOperationsRequests .ca-table-wrap td .btn {width: 100%; min-height: 44px; font-size: .8rem; white-space: normal; background: #edf3ff; border-color: #d6e3ff;}
+    #posOperationsRequests .ca-pager {display: grid; gap: 10px; font-size: .76rem; margin-top: 14px;}
+    #posOperationsRequests .ca-pager > div {display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; width: 100%;}
+    #posOperationsRequests .ca-pager .btn {font-size: .8rem;}
+    #posOperationsRequests .ca-dialog[open] {position: fixed; display: flex; flex-direction: column; top: var(--requests-visible-top,0px); left: 0; width: 100vw; height: var(--requests-visible-height,100dvh); max-width: none; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; background: #f3f6fb; box-shadow: none; overflow: hidden;}
+    #posOperationsRequests .ca-dialog-header {flex: 0 0 auto; margin: 0; padding: max(14px,env(safe-area-inset-top)) 16px 14px; background: #172d4d; color: #fff; gap: 10px;}
+    #posOperationsRequests .ca-dialog-header .ca-eyebrow {color: #c7d7ef; font-size: .62rem;}
+    #posOperationsRequests .ca-dialog h2 {color: #fff; font-size: 1.05rem; line-height: 1.4; margin: 4px 0 0; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-dialog-header .btn {flex: 0 0 44px; min-width: 44px; padding: 8px; background: transparent; color: #fff; border-color: #7994bb;}
+    #posOperationsRequests #caDialogError, #posOperationsRequests #paDialogError {flex: 0 0 auto; margin: 10px 12px 0; padding: 12px; border-radius: 12px; max-height: 25dvh; overflow: auto; font-size: .82rem; overflow-wrap: anywhere;}
+    #posOperationsRequests #caDialogBody, #posOperationsRequests #paDialogBody {flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 14px 12px; scroll-padding: 16px; font-size: .85rem;}
+    #posOperationsRequests .ca-dialog p {line-height: 1.6; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-dialog h3 {font-size: .88rem; line-height: 1.5;}
+    #posOperationsRequests .ca-dialog label {font-size: .8rem; line-height: 1.5; margin: 14px 0;}
+    #posOperationsRequests .ca-compare {grid-template-columns: minmax(0,1fr); gap: 10px; margin: 12px 0;}
+    #posOperationsRequests .ca-box {padding: 14px; background: #fff; border-color: #dce5f0; border-radius: 14px;}
+    #posOperationsRequests .ca-box.proposed {background: #edf9f3; border-color: #c8e8d8;}
+    #posOperationsRequests .ca-amount, #posOperationsRequests #paDialog .ca-box .ca-amount {font-size: 1.45rem; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-position, #posOperationsRequests #paDialog .ca-position {grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px;}
+    #posOperationsRequests .ca-position > div {padding: 12px 10px; border-radius: 12px; background: #fff; font-size: .72rem; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-position strong {font-size: 1rem; line-height: 1.5; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-delta {background: #edf3ff; color: #244775; padding: 12px; border-radius: 12px; line-height: 1.6; overflow-wrap: anywhere;}
+    #posOperationsRequests .pa-receipt {padding: 14px; display: grid; gap: 6px; background: #eaf0fa; border-radius: 14px;}
+    #posOperationsRequests .pa-receipt strong {font-size: 1.45rem;}
+    #posOperationsRequests .pa-impact {padding: 12px; border-radius: 14px;}
+    #posOperationsRequests .pa-simple-impact {grid-template-columns: minmax(0,1fr); gap: 8px;}
+    #posOperationsRequests .pa-simple-impact > span {transform: rotate(90deg); justify-self: center;}
+    #posOperationsRequests .pa-simple-impact strong {font-size: 1.15rem; line-height: 1.5;}
+    #posOperationsRequests .ca-audit > summary, #posOperationsRequests .pa-extra > summary {min-height: 44px; padding: 12px 0; cursor: pointer; font-size: .8rem; font-weight: 700;}
+    #posOperationsRequests .ca-negative-warning {padding: 14px; border-radius: 14px; overflow-wrap: anywhere;}
+    #posOperationsRequests .ca-negative-warning p {font-size: .8rem;}
+    #posOperationsRequests .requests-phone-footer {flex: 0 0 auto; border-top: 1px solid #dce5f0; padding: 10px max(12px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); background: #fff;}
+    #posOperationsRequests .requests-phone-footer .ca-actions {position: static; display: grid; grid-template-columns: minmax(0,1fr); gap: 8px; margin: 0; padding: 0; border: 0;}
+    #posOperationsRequests .requests-phone-footer .btn {min-height: 48px; width: 100%; padding: 10px 12px; font-size: .84rem; line-height: 1.4;}
+    #posOperationsRequests .requests-phone-footer .btn-success {background: #147b54; border-color: #147b54; color: #fff;}
+    #posOperationsRequests :focus-visible {outline: 3px solid #9ab8ff; outline-offset: 2px;}
+    @media (prefers-reduced-motion: reduce) {
+        #posOperationsRequests *, #posOperationsRequests .ca-dialog::backdrop {scroll-behavior: auto !important; transition: none !important;}
+    }
+}

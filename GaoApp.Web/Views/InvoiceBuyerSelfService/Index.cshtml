@@ -1,5 +1,6 @@
-﻿@using GaoApp.Application.DTOs.Invoices
+@using GaoApp.Application.DTOs.Invoices
 @model InvoiceBuyerSelfServiceViewDto
+@inject TimeProvider Clock
 
 @{
     Layout = null;
@@ -11,7 +12,7 @@
             StringComparison.OrdinalIgnoreCase);
 
     var expiresLocal =
-        Model.ExpiresAtUtc.ToLocalTime();
+        Model.ExpiresAtUtc.ToVietnamTime();
 }
 
 <!doctype html>
@@ -19,7 +20,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport"
-          content="width=device-width, initial-scale=1" />
+          content="width=device-width, initial-scale=1, viewport-fit=cover" />
 
     <title>Thông tin hóa đơn</title>
 
@@ -186,24 +187,6 @@
             cursor: pointer;
         }
 
-        .readonly-grid {
-            display: grid;
-            gap: 10px;
-        }
-
-        .readonly-item {
-            padding: 10px 12px;
-            background: #f7f9f8;
-            border-radius: 9px;
-        }
-
-        .readonly-item span {
-            display: block;
-            margin-bottom: 3px;
-            color: #66746c;
-            font-size: 12px;
-        }
-
         .footer-note {
             margin-top: 20px;
             color: #66746c;
@@ -211,9 +194,16 @@
             text-align: center;
         }
     </style>
+    <link rel="stylesheet" href="~/css/gaoapp.mobile-public.css" asp-append-version="true" />
 </head>
 
-<body>
+<body data-invoice-expires="@(new DateTimeOffset(DateTime.SpecifyKind(Model.ExpiresAtUtc, DateTimeKind.Utc)).ToUnixTimeMilliseconds())" data-invoice-server-now="@Clock.GetUtcNow().ToUnixTimeMilliseconds()">
+@if (!Model.CanView || !Model.CanEdit || Clock.GetUtcNow().UtcDateTime >= Model.ExpiresAtUtc)
+{
+    <p>Liên kết nhập thông tin hóa đơn không còn khả dụng. Vui lòng liên hệ cửa hàng.</p>
+}
+else
+{
 <div class="page">
     <div class="card">
 
@@ -251,7 +241,7 @@
         @if (ViewData["SuccessMessage"]
              is string successMessage)
         {
-            <div class="notice notice-success">
+            <div class="notice notice-success" role="status">
                 @successMessage
             </div>
         }
@@ -259,7 +249,7 @@
         @if (ViewData["ErrorMessage"]
              is string errorMessage)
         {
-            <div class="notice notice-error">
+            <div class="notice notice-error" role="alert">
                 @errorMessage
             </div>
         }
@@ -280,7 +270,7 @@
 
         @if (Model.CanEdit)
         {
-            <form method="post">
+            <form method="post" autocomplete="off">
                 @Html.AntiForgeryToken()
 
                 <h2>Loại người mua</h2>
@@ -407,75 +397,6 @@
                 </button>
             </form>
         }
-        else
-        {
-            <h2>Thông tin hiện tại</h2>
-
-            <div class="readonly-grid">
-
-                @if (isBusiness)
-                {
-                    <div class="readonly-item">
-                        <span>Tên đơn vị</span>
-                        <strong>
-                            @(Model.BuyerLegalName ?? "—")
-                        </strong>
-                    </div>
-
-                    <div class="readonly-item">
-                        <span>Mã số thuế</span>
-                        <strong>
-                            @(Model.BuyerTaxCode ?? "—")
-                        </strong>
-                    </div>
-                }
-                else
-                {
-                    <div class="readonly-item">
-                        <span>Tên người mua</span>
-                        <strong>
-                            @(Model.BuyerName ?? "—")
-                        </strong>
-                    </div>
-                }
-
-                <div class="readonly-item">
-                    <span>Địa chỉ</span>
-                    <strong>
-                        @(Model.BuyerAddress ?? "—")
-                    </strong>
-                </div>
-
-                @if (!string.IsNullOrWhiteSpace(
-                         Model.BuyerEmail))
-                {
-                    <div class="readonly-item">
-                        <span>Email</span>
-                        <strong>@Model.BuyerEmail</strong>
-                    </div>
-                }
-
-                @if (!string.IsNullOrWhiteSpace(
-                         Model.BuyerPhone))
-                {
-                    <div class="readonly-item">
-                        <span>Điện thoại</span>
-                        <strong>@Model.BuyerPhone</strong>
-                    </div>
-                }
-
-                @if (!string.IsNullOrWhiteSpace(
-                         Model.BuyerCitizenId))
-                {
-                    <div class="readonly-item">
-                        <span>CCCD</span>
-                        <strong>@Model.BuyerCitizenId</strong>
-                    </div>
-                }
-
-            </div>
-        }
-
         <div class="footer-note">
             Việc gửi thông tin không đồng nghĩa
             hóa đơn đã được phát hành.
@@ -571,5 +492,7 @@
     updateBuyerType();
 })();
 </script>
+<script src="~/js/invoice-buyer-self-service.js" asp-append-version="true"></script>
+}
 </body>
 </html>

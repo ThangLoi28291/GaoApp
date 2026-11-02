@@ -421,7 +421,7 @@
             }
 
             const date =
-                new Date(value);
+                new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
 
             if (
                 Number.isNaN(
@@ -433,40 +433,13 @@
 
             return date
                 .toLocaleString(
-                    'vi-VN'
+                    'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }
                 );
         }
 
         function toDateInputValue(date) {
-            if (
-                !(date instanceof Date) ||
-                Number.isNaN(
-                    date.getTime()
-                )
-            ) {
-                return '';
-            }
-
-            const year =
-                date.getFullYear();
-
-            const month =
-                String(
-                    date.getMonth() + 1
-                ).padStart(
-                    2,
-                    '0'
-                );
-
-            const day =
-                String(
-                    date.getDate()
-                ).padStart(
-                    2,
-                    '0'
-                );
-
-            return `${year}-${month}-${day}`;
+            return date instanceof Date && !Number.isNaN(date.getTime())
+                ? new Date(date.getTime() + 7 * 3600000).toISOString().slice(0, 10) : '';
         }
 
         // =====================================================
@@ -647,21 +620,15 @@
             if (filterFrom.value) {
                 params.append(
                     'fromUtc',
-                    new Date(
-                        filterFrom.value
-                    ).toISOString()
+                    new Date(filterFrom.value + 'T00:00:00+07:00').toISOString()
                 );
             }
 
             if (filterTo.value) {
                 const toDate =
-                    new Date(
-                        filterTo.value
-                    );
+                    new Date(filterTo.value + 'T00:00:00+07:00');
 
-                toDate.setDate(
-                    toDate.getDate() + 1
-                );
+                toDate.setUTCDate(toDate.getUTCDate() + 1);
 
                 params.append(
                     'toUtcExclusive',
@@ -929,7 +896,7 @@
             }
 
             const date =
-                new Date(value);
+                new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
 
             if (
                 Number.isNaN(
@@ -941,13 +908,13 @@
 
             const dateText =
                 date.toLocaleDateString(
-                    'vi-VN'
+                    'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }
                 );
 
             const timeText =
                 date.toLocaleTimeString(
                     'vi-VN',
-                    {
+                    { timeZone: 'Asia/Ho_Chi_Minh',
                         hour: '2-digit',
                         minute: '2-digit',
                         second: '2-digit'
@@ -2368,7 +2335,7 @@
             const printedAt =
                 new Date()
                     .toLocaleString(
-                        'vi-VN'
+                        'vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }
                     );
 
             return `<!doctype html>
@@ -2854,8 +2821,8 @@
             const from =
                 new Date(now);
 
-            from.setDate(
-                now.getDate() -
+            from.setUTCDate(
+                now.getUTCDate() -
                 (
                     safeDayCount - 1
                 )

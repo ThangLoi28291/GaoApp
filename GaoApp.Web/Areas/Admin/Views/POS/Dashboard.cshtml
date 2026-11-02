@@ -1,4 +1,8 @@
-﻿@{
+@inject GaoApp.Web.Services.AdminNavigationProvider Navigation
+@{
+    var navigation = await Navigation.GetAsync(ViewContext);
+    var shortcuts = GaoApp.Web.Services.AdminNavigationSnapshot.Flatten(navigation.PosNodes())
+        .Where(item => !navigation.IsCustomerDisplay(item) && !item.IsCurrent).ToArray();
     ViewData["Title"] = "POS Dashboard";
     Layout = "_ContentNavbarLayout";
 }
@@ -7,6 +11,7 @@
     <link rel="stylesheet"
           href="~/Admin/css/pos/pos-dashboard.css"
           asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/pos/pos-dashboard.mobile.css" asp-append-version="true" />
 }
 
 @section header {
@@ -321,18 +326,13 @@
             </div>
 
             <div class="pos-dashboard-actions" aria-label="Đi tới màn vận hành POS">
-                <a href="/admin/pos/orders-page" class="btn btn-primary">
-                    <i class="bx bx-receipt" aria-hidden="true"></i>
-                    <span>Xem Đơn POS</span>
-                </a>
-                <a href="/admin/pos-shift" class="btn btn-outline-primary">
-                    <i class="bx bx-time-five" aria-hidden="true"></i>
-                    <span>Ca POS</span>
-                </a>
-                <a href="/admin/pos-shift/history" class="btn btn-outline-secondary">
-                    <i class="bx bx-history" aria-hidden="true"></i>
-                    <span>Lịch sử ca</span>
-                </a>
+                @for (var index = 0; index < shortcuts.Length; index++)
+                {
+                    var item = shortcuts[index];
+                    <a href="@item.Href" class="btn @(index == 0 ? "btn-primary" : "btn-outline-primary")" data-menu-id="@item.Id">
+                        <i class="@item.Icon" aria-hidden="true"></i><span>@item.Title</span>
+                    </a>
+                }
             </div>
         </section>
     </div>
@@ -342,4 +342,5 @@
     <script id="posDashboardPageScript"
             src="~/Admin/js/pos/pos.dashboard.page.js"
             asp-append-version="true"></script>
+    <script src="~/Admin/js/pos/pos.dashboard.mobile.js" asp-append-version="true"></script>
 }

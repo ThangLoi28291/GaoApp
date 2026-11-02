@@ -19,7 +19,7 @@ public sealed class PosRealtimeBatchSqlServerTests
     [InlineData(10)]
     [InlineData(20)]
     [InlineData(50)]
-    public async Task Live_validation_uses_three_reads_per_batch_and_isolates_a_revoked_user(int clientCount)
+    public async Task Live_validation_uses_three_reads_per_batch_and_isolates_revoked_user_and_device(int clientCount)
     {
         await using var fixture = new InventoryPostingLocalDb();
         await fixture.MigrateAsync();
@@ -34,16 +34,22 @@ public sealed class PosRealtimeBatchSqlServerTests
             User = new User { UserName = $"batch-{Guid.NewGuid():N}", FullName = "Synthetic user", PasswordHash = "synthetic" }
         }).ToArray();
         db.UserInStores.AddRange(members);
+        var devices = Enumerable.Range(0, clientCount).Select(i => new POSTerminalDevice {
+            StoreId = seed.StoreId, Terminal = terminal, DeviceKey = Guid.NewGuid().ToString("N"), DeviceName = "Batch device " + i
+        }).ToArray();
+        db.POSTerminalDevices.AddRange(devices);
         await db.SaveChangesAsync();
         var sessions = members.Select((member, i) => new PosRealtimeSessionValidator.Session(i.ToString(),
             new ClaimsPrincipal(new ClaimsIdentity(new[] {
                 new Claim(ClaimTypes.NameIdentifier, member.UserId.ToString()), new Claim("store_id", seed.StoreId.ToString()),
                 new Claim("terminal_id", terminal.Id.ToString()), new Claim("role_id", role.Id.ToString()),
+                new Claim(PosDeviceSession.IdClaim, devices[i].Id.ToString()),
+                new Claim(PosDeviceSession.StampClaim, PosDeviceSession.CreateStamp(devices[i])),
                 new Claim(ClaimTypes.Role, role.Code), new Claim(AuthSessionStamp.ClaimType, AuthSessionStamp.Create(member.User, member))
             }, "test")), member.UserId, seed.StoreId, terminal.Id)).ToArray();
 
         var counter = new ReadCounter();
-        await using var provider = new ServiceCollection()
+        await using var provider = new ServiceCollection().AddScoped<GaoApp.Infrastructure.Tenant.TenantContext>()
             .AddScoped<AppDbContext>(_ => fixture.CreateHostContext(counter)).BuildServiceProvider();
         var validator = new PosRealtimeSessionValidator(provider.GetRequiredService<IServiceScopeFactory>());
         var allowed = await validator.ValidateAsync(sessions, CancellationToken.None);
@@ -51,11 +57,24 @@ public sealed class PosRealtimeBatchSqlServerTests
         Assert.All(allowed.Values, access => Assert.True(access.CanBroadcastPayment));
         Assert.Equal(3, counter.Count);
 
-        members[0].User.IsActive = false;
+        devices[1].IsActive = false;
         await db.SaveChangesAsync();
         counter.Count = 0;
         allowed = await validator.ValidateAsync(sessions, CancellationToken.None);
         Assert.Equal(clientCount - 1, allowed.Count);
+        Assert.DoesNotContain(sessions[1].ConnectionId, allowed.Keys);
+        Assert.Equal(3, counter.Count);
+
+        devices[1].IsActive = true;
+        await db.SaveChangesAsync();
+        allowed = await validator.ValidateAsync(sessions, CancellationToken.None);
+        Assert.DoesNotContain(sessions[1].ConnectionId, allowed.Keys); // A new generation never revives the old ticket.
+
+        members[0].User.IsActive = false;
+        await db.SaveChangesAsync();
+        counter.Count = 0;
+        allowed = await validator.ValidateAsync(sessions, CancellationToken.None);
+        Assert.Equal(clientCount - 2, allowed.Count);
         Assert.DoesNotContain(sessions[0].ConnectionId, allowed.Keys);
         Assert.Equal(3, counter.Count);
     }

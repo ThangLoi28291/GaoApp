@@ -9,6 +9,7 @@ public class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
     public void Configure(EntityTypeBuilder<AuditLog> builder)
     {
         builder.HasKey(x => x.Id);
+        builder.HasIndex(x => x.EventId).IsUnique().HasFilter("[EventId] IS NOT NULL");
 
         builder.Property(x => x.EntityName).HasMaxLength(150);
         builder.Property(x => x.EntityId).HasMaxLength(100);

@@ -8,6 +8,7 @@
     let supplierSaving = false;
     let supplierSaveFailed = false;
     let imagePreviewBound = false;
+    let commercialKeyboardBound = false;
 
     // Expose this before DOMContentLoaded so the generic receipt page can
     // delegate without depending on script event-handler order.
@@ -18,7 +19,8 @@
         refreshReconciliationPreview: refreshCommercialReconciliationPreview,
         refreshAfterIntake: refreshAfterIntake,
         supplierForIntake: supplierForIntake,
-        saveSupplierForIntake: saveSupplierForIntake
+        saveSupplierForIntake: saveSupplierForIntake,
+        getState: () => ({ supplierSaving, supplierSaveFailed })
     };
 
     document.addEventListener('DOMContentLoaded', initCommercialApproval);
@@ -85,6 +87,7 @@
         syncVatState();
         syncFreightState(false);
         recalculateCommercialTotals();
+        window.GaoReceiptApprovalWorkspace?.init();
         if (!readOnly) scheduleCommercialReconciliationPreview();
     }
 
@@ -233,6 +236,7 @@
         const supplierId = nullablePositiveInt(element.value);
         supplierSaving = true;
         supplierSaveFailed = false;
+        document.dispatchEvent(new Event('receipt-approval-operation-changed'));
         element.disabled = true;
         if (picker) picker.disabled = true;
         document.dispatchEvent(new Event('input-invoice-supplier-changing'));
@@ -289,6 +293,7 @@
             supplierSaving = false;
             element.disabled = false;
             syncSettlementState();
+            document.dispatchEvent(new Event('receipt-approval-operation-changed'));
         }
         if (!supplierSaveFailed) {
             try { await window.loadInputInvoiceAssociation?.(); }
@@ -482,6 +487,8 @@
 
         // stock-document-management.js gắn handler legacy trước. Ghi đè nút xác nhận
         // để giá, VAT, công nợ, phí và nghiệp vụ ghi kho đi trong đúng một request.
+        if (commercialKeyboardBound) return;
+        commercialKeyboardBound = true;
         document.addEventListener('keydown', function (event) {
             if (!event.ctrlKey || event.key !== 'Enter' || event.altKey || event.metaKey) return;
             if (document.querySelector('.modal.show')) return;
@@ -496,6 +503,11 @@
     }
 
     function prepareCommercialApprovalConfirmation() {
+        const readiness = window.GaoReceiptApprovalWorkspace?.getState();
+        if (readiness?.blocking.length) {
+            window.GaoReceiptApprovalWorkspace.revealIssue(readiness.blocking[0].key);
+            return false;
+        }
         const workbench = document.getElementById('commercialApprovalWorkbench');
         if (workbench?.dataset.hasPendingOutside === 'true') {
             window.activateStockDocumentWorkbenchTab?.('goods');
@@ -524,6 +536,15 @@
     async function submitCommercialApproval() {
         if (document.getElementById('btnApprove')?.disabled) return;
         if (!validateCommercialApproval(true, true)) {
+            const priceAcceptance = document.getElementById('acceptPriceVariance');
+            const overdelivery = document.getElementById('acceptOverdelivery');
+            if (!window.GaoReceiptApprovalWorkspace?.getState()?.blocking.length &&
+                (!overdelivery || overdelivery.checked) && getPriceVariances().length > 0 && priceAcceptance && !priceAcceptance.checked) {
+                const message = document.getElementById('approveMessage');
+                if (message) message.textContent = 'Vui lòng xác nhận đã kiểm tra và chấp nhận chênh lệch giá nhập.';
+                priceAcceptance.focus();
+                return;
+            }
             hideApproveModal();
             return;
         }
@@ -533,20 +554,24 @@
         const documentId = Number(window.stockDocumentPage?.documentId || 0);
         let releaseDrafts;
         let approvalSent = false;
+        let approvalCommitted = false;
 
         if (message) message.textContent = '';
         if (button) {
             button.disabled = true;
             button.dataset.originalText = button.innerHTML;
-            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang ghi sổ...';
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang lưu giá...';
         }
 
         try {
             releaseDrafts = await window.GaoReceiptPriceDrafts?.hold();
+            if (button) button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang kiểm tra hóa đơn...';
             const waitForInputInvoice = await window.GaoReceiptInvoiceFollowUp.approvalChoice();
             const payload = buildCommercialPayload();
             payload.waitForInputInvoice = waitForInputInvoice;
+            payload.inputInvoiceReview = window.GaoReceiptInvoiceFollowUp.approvalReview();
             approvalSent = true;
+            if (button) button.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Đang ghi sổ...';
             const response = await fetch(`/admin/api/stock-documents/${documentId}/approve-commercial`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -559,27 +584,35 @@
                 return;
             }
 
+            approvalCommitted = true;
+            if (button) button.innerHTML = '<i class="bx bx-check-circle me-1"></i>Đã duyệt và ghi sổ';
             hideApproveModal();
-            if (await window.GaoLabels?.afterApproval(documentId, document.getElementById('approvalQueueLabels')?.checked === true)) return;
+            if (window.GaoReceiptApprovalWorkspace) window.GaoReceiptApprovalWorkspace.leaving = true;
+            const enqueueLabels = document.getElementById('approvalQueueLabels')?.checked === true;
+            const redirectUrl = api.data?.redirectUrl || '/admin/stock-documents';
             if (typeof window.showStockDocumentToast === 'function') {
                 window.showStockDocumentToast(
                     'success',
                     'Đã duyệt và ghi sổ',
-                    api.data?.message || 'Tồn kho, FIFO và công nợ đã được ghi nhận.',
-                    api.data?.redirectUrl || '/admin/stock-documents');
-            } else {
-                window.location.href = api.data?.redirectUrl || `/admin/stock-documents/${documentId}`;
+                    enqueueLabels ? 'Tồn kho và công nợ đã ghi nhận. Đang đưa phiếu vào danh sách in tem.' :
+                        api.data?.message || 'Tồn kho, FIFO và công nợ đã được ghi nhận.',
+                    enqueueLabels ? null : redirectUrl, enqueueLabels ? 10000 : 250);
             }
+            if (enqueueLabels && await window.GaoLabels?.afterApproval(documentId, true)) return;
+            if (enqueueLabels || typeof window.showStockDocumentToast !== 'function') window.location.href = redirectUrl;
         } catch (error) {
             console.error(error);
-            if (message) message.textContent = approvalSent
+            if (message) message.textContent = approvalCommitted
+                ? 'Phiếu đã duyệt và ghi sổ. Mở lại phiếu để tiếp tục xử lý in tem.'
+                : approvalSent
                 ? 'Chưa xác định được kết quả duyệt. Vui lòng tải lại phiếu để kiểm tra trước khi thử lại.'
                 : error.message;
         } finally {
             releaseDrafts?.();
             if (button) {
-                button.disabled = false;
-                button.innerHTML = button.dataset.originalText || 'Xác nhận duyệt';
+                button.disabled = approvalCommitted;
+                button.innerHTML = approvalCommitted ? '<i class="bx bx-check-circle me-1"></i>Đã duyệt và ghi sổ' :
+                    button.dataset.originalText || 'Xác nhận duyệt';
             }
         }
     }
@@ -609,15 +642,15 @@
             hasVat: hasVat,
             includeVatInInventoryCost: includeVatInInventoryCost,
             supplierId: nullablePositiveInt(document.getElementById('commercialSupplierId')?.value),
-            isMerchandisePaid: document.getElementById('commercialMerchandisePaid')?.checked === true,
-            merchandisePayeeName: valueOrNull('commercialPayeeName'),
+            isMerchandisePaid: false,
+            merchandisePayeeName: null,
             lines: lines,
             hasFreight: hasFreight,
             capitalizeFreightInInventoryCost: capitalizeFreightInInventoryCost,
             freightTotal: hasFreight ? roundMoney(readNumber(document.getElementById('commercialFreightTotal'))) : 0,
             freightPayeeName: hasFreight ? valueOrNull('commercialFreightPayee') : null,
             freightNote: hasFreight ? valueOrNull('commercialFreightNote') : null,
-            isFreightPaid: hasFreight && document.getElementById('commercialFreightPaid')?.checked === true,
+            isFreightPaid: false,
             resetAutomaticAllocation: false,
             allocations: lines.map(function (line, index) {
                 const row = getCommercialRows()[index];
@@ -633,6 +666,14 @@
 
     function validateCommercialApproval(focusInvalid, requireOverdeliveryAcceptance) {
         clearCommercialError();
+        if (document.getElementById('commercialApprovalWorkbench')?.dataset.hasRevisionRequest === 'true') {
+            return fail('Cần giải quyết yêu cầu xin sửa: trả phiếu hoặc từ chối yêu cầu có lý do trước khi duyệt.', document.getElementById('receiptRevisionRequest'), focusInvalid);
+        }
+        const readiness = window.GaoReceiptApprovalWorkspace?.getState();
+        if (readiness?.blocking.length) {
+            if (focusInvalid) window.GaoReceiptApprovalWorkspace.revealIssue(readiness.blocking[0].key);
+            return false;
+        }
         if (supplierSaving || supplierSaveFailed) {
             return fail(supplierSaving ? 'Đang lưu nhà cung cấp. Vui lòng đợi trước khi duyệt.'
                 : 'Nhà cung cấp chưa được lưu thành công. Vui lòng chọn lại hoặc tải lại phiếu.',
@@ -699,7 +740,7 @@
 
             if (capitalizeFreight) {
                 const allocated = roundMoney(rows.reduce(function (sum, row) {
-                    return sum + readNumber(row.querySelector('.commercial-freight-allocation'));
+                    return sum + roundMoney(readNumber(row.querySelector('.commercial-freight-allocation')));
                 }, 0));
                 if (roundMoney(allocated - freightTotal) !== 0) {
                     return fail('Tổng phí phân bổ phải bằng đúng tổng phí vận chuyển.', document.querySelector('.commercial-freight-allocation'), focusInvalid);
@@ -719,6 +760,7 @@
             box.classList.remove('d-none');
         }
         if (focusInvalid && element) {
+            if (window.GaoReceiptApprovalWorkspace?.revealIssue(element)) return false;
             document.getElementById('commercialApprovalWorkbench')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
             window.setTimeout(function () {
                 if (window.jQuery && jQuery.fn?.select2 && element.id === 'commercialSupplierId') {
@@ -780,7 +822,7 @@
             capitalization.disabled = readOnly || !enabled;
         }
         const capitalized = enabled && capitalization?.checked === true;
-        const ids = ['commercialFreightTotal', 'commercialFreightPayee', 'commercialFreightPaid', 'commercialFreightNote', 'commercialAutoAllocate'];
+        const ids = ['commercialFreightTotal', 'commercialFreightPayee', 'commercialFreightNote', 'commercialAutoAllocate'];
         ids.forEach(function (id) {
             const element = document.getElementById(id);
             if (element) element.disabled = readOnly || !enabled || (id === 'commercialAutoAllocate' && !capitalized);
@@ -873,7 +915,7 @@
         return getCommercialRows().map(function (row) {
             const previous = readLastPurchasePrice(row);
             const current = roundMoney(readNumber(row.querySelector('.commercial-unit-price')));
-            if (previous === null || !(current > 0) || roundMoney(current - previous) === 0) return null;
+            if (!(previous > 0) || !(current > 0) || roundMoney(current - previous) === 0) return null;
             return {
                 lineNo: Number(row.dataset.lineNo || 0),
                 previous: roundMoney(previous),
@@ -900,7 +942,11 @@
     }
 
     function autoAllocateFreight() {
-        const rows = getCommercialRows();
+        // Keep the rounding remainder on the original final line even when
+        // revised goods are displayed first for the manager's review.
+        const rows = getCommercialRows().sort((left, right) =>
+            Number(left.dataset.lineNo) - Number(right.dataset.lineNo) ||
+            Number(left.dataset.lineId) - Number(right.dataset.lineId));
         const hasFreight = document.getElementById('commercialHasFreight')?.checked === true;
         const capitalized = hasFreight && document.getElementById('capitalizeFreightInInventoryCost')?.checked === true;
         const total = capitalized ? roundMoney(readNumber(document.getElementById('commercialFreightTotal'))) : 0;
@@ -934,7 +980,7 @@
         }
 
         const allocated = roundMoney(getCommercialRows().reduce(function (sum, row) {
-            return sum + readNumber(row.querySelector('.commercial-freight-allocation'));
+            return sum + roundMoney(readNumber(row.querySelector('.commercial-freight-allocation')));
         }, 0));
         const difference = roundMoney(freightTotal - allocated);
         const balanced = difference === 0;
@@ -953,7 +999,7 @@
         if (!modal) return;
         const summary = modal.querySelector('.alert-success');
         if (summary) {
-            summary.textContent = 'Tồn kho, FIFO/cost và công nợ sẽ được ghi một lần.';
+            summary.textContent = 'Xác nhận để ghi nhận hàng vào kho và các khoản phải trả theo thông tin bên dưới.';
         }
     }
 
@@ -978,12 +1024,17 @@
         let releaseDrafts;
         input.dataset.saving = 'true';
         input.disabled = true;
+        document.dispatchEvent(new Event('receipt-approval-operation-changed'));
         try {
             releaseDrafts = await window.GaoReceiptPriceDrafts?.hold();
             const response = await fetch(`/admin/api/stock-documents/${documentId}/lines/${lineId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    ...(window.stockDocumentLineTokens?.(lineId) || {
+                        rowVersion: window.stockDocumentPage?.rowVersion || '',
+                        lineRowVersion: row?.dataset.rowVersion || ''
+                    }),
                     unitId: unitId,
                     quantity: roundQuantity(quantity),
                     unitCost: null,
@@ -993,16 +1044,22 @@
             });
             const api = await readJsonResponse(response);
             if (!api.ok) {
-                input.value = decimalInput(original);
-                fail(api.data?.message || 'Không thể cập nhật số lượng thực nhận.', input, true);
+                if (response.status !== 409) input.value = decimalInput(original);
+                fail(response.status === 409
+                    ? 'Phiếu hoặc dòng hàng đã thay đổi ở nơi khác. Số lượng đang nhập được giữ lại; sao chép nếu cần rồi tải lại phiếu để đối chiếu.'
+                    : api.data?.message || 'Không thể cập nhật số lượng thực nhận.', input, true);
                 return;
             }
 
             window.stockDocumentRowVersion?.update(api.data?.rowVersion);
+            if (api.data?.lineRowVersion) row.dataset.rowVersion = api.data.lineRowVersion;
             window.GaoReceiptPriceDrafts?.updateLineVersion(lineId, api.data?.lineRowVersion);
             const normalized = roundQuantity(quantity);
             input.dataset.original = String(normalized);
             row.dataset.quantity = String(normalized);
+            // Quantity changes invalidate the old persisted line amount.
+            row.dataset.exactUnitPrice = '';
+            row.dataset.exactBeforeVat = '';
             recalculateCommercialTotals();
             if (!manualFreightAllocation) {
                 autoAllocateFreight();
@@ -1016,6 +1073,7 @@
             releaseDrafts?.();
             input.dataset.saving = 'false';
             input.disabled = false;
+            document.dispatchEvent(new Event('receipt-approval-operation-changed'));
         }
     }
 
@@ -1043,7 +1101,8 @@
     }
 
     function roundMoney(value) {
-        return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+        const number = Number(value), parts = String(Math.abs(number)).split('e');
+        return Math.sign(number) * Number(String(Math.round(Number(parts[0] + 'e' + (Number(parts[1] || 0) + 2)))) + 'e-2');
     }
 
     function roundQuantity(value) {
@@ -1087,6 +1146,7 @@
     let activeSuggestion = -1;
     let programSearches = [];
     let localDraftKey, restoringDraft = true, localDraftRemembered = false, pendingLocalDraft;
+    let globalDiscountMode = 'amount';
     let xmlInvoices = [], xmlChoices = new Map(), xmlLoading = false, xmlLoaded = false, xmlGeneration = 0;
     const previousPhysical = new Map();
     const byId = id => document.getElementById(id);
@@ -1103,6 +1163,7 @@
     const product = id => products().find(x => x.productVariantId === Number(id)) || [...previousPhysical.values()].find(x => x.productVariantId === Number(id));
     const unit = (id, unitId) => product(id)?.units.find(x => x.unitId === Number(unitId)) || [...previousPhysical.values()].find(x => x.productVariantId === Number(id))?.units.find(x => x.unitId === Number(unitId));
     const bill = key => draft.billLines.find(x => x.billLineKey === key);
+    const billPriceBasis = () => byId('commercialHasVat')?.checked === true ? 'trước VAT' : 'đã gồm VAT';
     const groupKey = rule => rule.programKey || rule.ruleKey;
     const editorPending = () => host?.querySelector('#pricingRuleEditor')?.hidden === false;
     const invalidBillRows = () => draft.billLines.filter(l => !workspace.physicalLines.some(p => p.productVariantId === l.productVariantId && p.units.some(u => u.unitId === l.billUnitId)));
@@ -1173,7 +1234,7 @@
         const metadata = new Map(workspace.physicalLines.map(p => [p.stockDocumentLineId, p]));
         for (const rule of draft.rules.filter(giftRule)) { const p = physical(rule.giftLineId); if (p) metadata.set(p.stockDocumentLineId, p); }
         for (const variantId of [...draft.billLines.map(l => l.productVariantId), selectedProduct?.productVariantId]) { const p = product(variantId); if (p) metadata.set(p.stockDocumentLineId, p); }
-        return { draft: structuredClone(draft), dirty, step, physicalLines: structuredClone([...metadata.values()]),
+        return { draft: structuredClone(draft), dirty, step, globalDiscountMode, physicalLines: structuredClone([...metadata.values()]),
             basePlanId: workspace.planId, basePlanVersion: workspace.planRowVersion, baseState: workspace.state,
             entry: { key: editingBillKey, productVariantId: selectedProduct?.productVariantId,
                 fields: Object.fromEntries(['pricingBillSearch', 'pricingBillKind', 'pricingBillUnit', 'pricingBillQuantity', 'pricingBillPriceMode', 'pricingBillPrice', 'pricingBillAmount'].map(id => [id, input(id)])) },
@@ -1195,7 +1256,7 @@
             if (!localDraftKey) throw new Error('Missing draft scope');
             const saved = { version: 1, scope: localDraftKey, savedAt: new Date().toISOString(), state: captureDraft() };
             localStorage.setItem(localDraftKey, JSON.stringify(saved)); localDraftRemembered = true;
-            localDraftStatus(`Đã nhớ bản nháp trên trình duyệt này · ${new Date(saved.savedAt).toLocaleTimeString('vi-VN')}`);
+            localDraftStatus(`Đã nhớ bản nháp trên trình duyệt này · ${new Date(saved.savedAt).toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}`);
         } catch {
             localDraftRemembered = false;
             localDraftStatus('Chưa nhớ được bản nháp. Giữ trang này mở để tránh mất phần đang nhập.', true);
@@ -1230,6 +1291,8 @@
         draft.billLines = structuredClone(saved.draft.billLines); draft.rules = structuredClone(saved.draft.rules);
         draft.giftValuations = structuredClone(saved.draft.giftValuations);
         draft.actualBillTotal = saved.draft.actualBillTotal; draft.globalDiscountPercent = saved.draft.globalDiscountPercent;
+        draft.globalDiscountAmount = saved.draft.globalDiscountAmount || 0;
+        globalDiscountMode = saved.globalDiscountMode === 'percent' || draft.globalDiscountPercent > 0 ? 'percent' : 'amount';
         for (const rule of draft.rules.filter(giftRule)) {
             const previous = previousPhysical.get(rule.giftLineId);
             const target = workspace.physicalLines.find(p => p.productVariantId === previous?.productVariantId);
@@ -1301,6 +1364,7 @@
     function accept(value, clearRemembered = false) {
         const wasRestoring = restoringDraft; restoringDraft = true;
         workspace = value; draft = structuredClone(value.draft); preview = value.preview; dirty = false; pricingRevision++;
+        globalDiscountMode = draft.globalDiscountPercent > 0 ? 'percent' : 'amount';
         draft.receiptRowVersion = value.receiptRowVersion; draft.planRowVersion = value.planRowVersion;
         draft.lines = value.physicalLines.map(line => {
             const input = draft.lines.find(x => x.stockDocumentLineId === line.stockDocumentLineId) || {
@@ -1313,10 +1377,11 @@
         for (const line of workspace.physicalLines) {
             const row = workbench.querySelector(`.commercial-line[data-line-id="${line.stockDocumentLineId}"]`);
             const input = row?.querySelector('.commercial-unit-price'); if (!input) continue;
+            row.dataset.rowVersion = line.rowVersion;
             input.readOnly = !editable();
             row.dataset.exactUnitPrice = String(line.currentUnitPriceBeforeVat);
             row.dataset.exactBeforeVat = String(line.currentAmountBeforeVat);
-            if (line.currentUnitPriceBeforeVat > 0)
+            if (line.currentUnitPriceBeforeVat > 0 || applied())
                 window.GaoReceiptPriceDrafts?.acceptSavedPrice(line.stockDocumentLineId, line.currentUnitPriceBeforeVat, line.rowVersion);
         }
         byId('commercialHasVat')?.dispatchEvent(new Event('change'));
@@ -1333,7 +1398,10 @@
         rememberDraft();
     }
     function render() {
+        host.querySelectorAll('[data-pricing-price-basis]').forEach(label => { label.textContent = billPriceBasis(); });
         byId('pricingActualBillTotal').value = draft.actualBillTotal || ''; byId('pricingGlobalDiscount').value = draft.globalDiscountPercent || 0;
+        byId('pricingGlobalDiscountAmount').value = draft.globalDiscountAmount || 0;
+        renderGlobalDiscount();
         renderBill(); renderRules(); renderComparison(); renderPreview(); showStep(step, false); updateActions();
         if (!editable()) message('Phiếu đã ghi sổ. Kế hoạch giá và khuyến mãi là bằng chứng chỉ đọc.');
         else if (workspace.isStale) message('Giá Hàng hóa hoặc dữ liệu thực nhận đã thay đổi. Tính lại và lưu kế hoạch trước khi áp dụng lại. Khi duyệt, hệ thống dùng giá tại Hàng hóa.', true);
@@ -1365,6 +1433,11 @@
         byId('pricingBillTotal').textContent = draft.billLines.length ? money(decimalText(cents, 2)) : '—';
         renderXmlSourceWarning();
     }
+    function renderGlobalDiscount() {
+        byId('pricingGlobalDiscountMode').value = globalDiscountMode;
+        byId('pricingGlobalAmountField').hidden = globalDiscountMode !== 'amount';
+        byId('pricingGlobalPercentField').hidden = globalDiscountMode !== 'percent';
+    }
     const xmlKey = (invoice, detail) => `xml-${invoice.id}-${detail.id}`;
     const xmlRows = () => xmlInvoices.flatMap(invoice => invoice.details.map(detail => ({ invoice, detail })));
     function xmlChoice(invoice, detail) {
@@ -1372,28 +1445,44 @@
         if (!xmlChoices.has(key)) xmlChoices.set(key, { touched: false });
         const choice = xmlChoices.get(key);
         if (!choice.touched) {
-            const mapping = detail.itemCatalogMapping, p = products().find(x => x.productVariantId === mapping?.productVariantId);
+            const imported = bill(key), mapping = detail.itemCatalogMapping;
+            const p = products().find(x => x.productVariantId === (imported?.productVariantId || mapping?.productVariantId));
             const confirmedUnit = p?.units.find(u => u.conversionId === mapping?.productUnitConversionId && u.unitId === mapping?.confirmedUnitId);
             const namedUnits = p?.units.filter(u => normalize(u.name).trim() === normalize(detail.unitName || '').trim()) || [];
             Object.assign(choice, { productVariantId: p?.productVariantId || null,
-                unitId: confirmedUnit?.unitId || (namedUnits.length === 1 ? namedUnits[0].unitId : null),
-                kind: Number(detail.lineAmount) > 0 ? 'buy' : '', touched: false });
+                unitId: imported?.billUnitId || confirmedUnit?.unitId || (namedUnits.length === 1 ? namedUnits[0].unitId : null),
+                kind: imported ? (imported.isGift ? 'gift' : 'buy') : Number(detail.lineAmount) > 0 ? 'buy' : '', touched: false });
         }
         return choice;
     }
-    function xmlMappingMatches(detail, choice) {
+    function xmlMappingTargetMatches(detail, choice) {
         const mapping = detail.itemCatalogMapping, p = products().find(x => x.productVariantId === choice.productVariantId);
         const u = p?.units.find(x => x.unitId === choice.unitId);
-        return !!p && !!u && mapping?.isAutoApplicable === true && mapping.productVariantId === p.productVariantId &&
+        return !!p && !!u && !!mapping && mapping.productVariantId === p.productVariantId &&
             mapping.productUnitConversionId === u.conversionId && mapping.confirmedUnitId === u.unitId;
     }
+    function xmlMappingMatches(detail, choice) {
+        return detail.itemCatalogMapping?.isAutoApplicable === true && xmlMappingTargetMatches(detail, choice);
+    }
+    function xmlMappingRemembered(detail, choice) {
+        const mapping = detail.itemCatalogMapping;
+        // A durable name/unit mapping is saved even though each invoice still
+        // requires review. Keep that distinct from eligibility for automatic use.
+        return xmlMappingTargetMatches(detail, choice) && (mapping.isAutoApplicable === true ||
+            (mapping.mappingId > 0 && mapping.reasonCode === 'NameUnitSuggestionRequiresConfirmation'));
+    }
     function xmlAmount(detail, kind) {
-        const q = decimalParts(detail.quantity), amount = decimalParts(detail.lineAmount);
+        const beforeVat = byId('commercialHasVat')?.checked === true;
+        const q = decimalParts(detail.quantity), amount = decimalParts(
+            beforeVat || kind === 'gift' ? detail.lineAmount : detail.lineAmountAfterVat);
         if (!q || q.n <= 0n || q.scale > 9) throw new Error('Dòng này không có số lượng dương hợp lệ để thêm vào bill. Kiểm tra nội dung XML và nhập thủ công nếu cần.');
+        if (!beforeVat && kind !== 'gift' && detail.lineAmountAfterVat == null)
+            throw new Error('Chưa xác định được VAT của dòng XML để tính giá đã gồm thuế. Kiểm tra thuế suất và nhập bill thủ công nếu cần.');
         if (!amount || amount.scale > 2) throw new Error('Thành tiền XML không hợp lệ. Dòng điều chỉnh hoặc giảm tiền riêng cần được kiểm tra ở bước Chương trình.');
         if (!kind) throw new Error('Chọn Hàng mua hoặc Hàng tặng sau khi kiểm tra nội dung XML. Giá bằng 0 chưa đủ để xác định hàng tặng.');
         if (kind === 'gift') {
-            if (amount.n !== 0n) throw new Error('Hàng tặng phải có thành tiền bằng 0. Kiểm tra loại dòng XML trước khi thêm.');
+            if (amount.n !== 0n || Number(detail.effectiveVatAmount || 0) !== 0)
+                throw new Error('Hàng tặng phải có thành tiền và tiền VAT bằng 0. Kiểm tra loại dòng XML trước khi thêm.');
             return { price: '0', amount: '0' };
         }
         if (amount.n <= 0n) throw new Error('Hàng mua phải có thành tiền lớn hơn 0. Kiểm tra hàng tặng hoặc dòng đặc biệt trên XML.');
@@ -1422,7 +1511,12 @@
             const item = xmlRows().find(x => x.detail.id === Number(row.dataset.xmlDetailId) && x.invoice.id === Number(row.dataset.xmlHeadId));
             if (!item) continue;
             const choice = xmlChoice(item.invoice, item.detail), p = products().find(x => x.productVariantId === choice.productVariantId);
-            for (const control of row.querySelectorAll('input,select')) control.disabled = busy || xmlLoading || !editable() || !!bill(xmlKey(item.invoice, item.detail));
+            // Remembering the catalog match is independent of the current bill.
+            // Product/unit can still be remembered after a row was added without memory.
+            for (const control of row.querySelectorAll('input,select')) control.disabled = busy || xmlLoading || !editable() ||
+                (control.hasAttribute('data-xml-kind') && !!bill(xmlKey(item.invoice, item.detail)));
+            row.querySelector('[data-xml-remember]').disabled = busy || xmlLoading || !editable() ||
+                !p || !p.units.some(x => x.unitId === choice.unitId) || xmlMappingRemembered(item.detail, choice);
             row.querySelector('[data-xml-add]').disabled = busy || xmlLoading || !editable() || !!bill(xmlKey(item.invoice, item.detail)) ||
                 !p || !p.units.some(x => x.unitId === choice.unitId) || !!xmlProblem(item.detail, choice);
         }
@@ -1446,6 +1540,7 @@
                 option.addEventListener('click', () => {
                     if (!editable() || busy) return;
                     choice.productVariantId = p.productVariantId; choice.unitId = null; choice.touched = true;
+                    choice.rememberError = '';
                     renderXmlRows(); const row = byId('pricingXmlRows').querySelector(`[data-xml-detail-id="${detail.id}"]`);
                     row?.querySelector('[data-xml-unit]')?.focus();
                 });
@@ -1455,7 +1550,7 @@
             list.hidden = false; input.setAttribute('aria-expanded', 'true'); highlight();
         };
         input.addEventListener('focus', () => { input.select(); show(); });
-        input.addEventListener('input', () => { choice.productVariantId = null; choice.unitId = null; choice.touched = true; show(); updateXmlActions(); });
+        input.addEventListener('input', () => { choice.productVariantId = null; choice.unitId = null; choice.touched = true; choice.rememberError = ''; show(); updateXmlActions(); });
         input.addEventListener('blur', close);
         input.addEventListener('keydown', event => {
             if (event.isComposing) return;
@@ -1471,34 +1566,46 @@
         let added = 0, recognized = 0, unresolved = 0, special = 0;
         for (const { invoice, detail } of xmlRows()) {
             const choice = xmlChoice(invoice, detail), p = products().find(x => x.productVariantId === choice.productVariantId);
-            const imported = !!bill(xmlKey(invoice, detail)), known = xmlMappingMatches(detail, choice), problem = xmlProblem(detail, choice);
+            const imported = !!bill(xmlKey(invoice, detail)), known = xmlMappingMatches(detail, choice), remembered = xmlMappingRemembered(detail, choice), problem = xmlProblem(detail, choice);
             if (imported) added++; else if (problem) special++; else if (known) recognized++; else unresolved++;
             const row = create('div', undefined, 'sd-pricing-xml-row'); row.dataset.xmlDetailId = detail.id; row.dataset.xmlHeadId = invoice.id;
             const original = create('div', undefined, 'sd-pricing-xml-original');
             original.append(create('strong', `Dòng XML ${detail.lineNo || '—'} · ${detail.itemName}`),
                 create('small', `${quantity(detail.quantity)} ${detail.unitName || '(chưa có đơn vị)'} × ${unitMoney(detail.unitPrice)} · Thành tiền ${money(detail.lineAmount)} trước VAT`),
+                create('small', detail.lineAmountAfterVat == null ? 'Chưa xác định được giá sau VAT · cần kiểm tra thuế suất XML.' :
+                    `VAT ${detail.vatRate || '—'}: ${money(detail.effectiveVatAmount)} · Đơn giá sau VAT ${unitMoney(detail.unitPriceAfterVat)} · Thành tiền sau VAT ${money(detail.lineAmountAfterVat)}`),
                 create('small', `Hóa đơn ${invoice.invoiceSeries || ''} ${invoice.invoiceNumber || invoice.id}`));
             const fields = create('div', undefined, 'sd-pricing-xml-fields'), searchBox = create('div', undefined, 'sd-bill-search');
             const searchId = `pricingXmlSearch-${invoice.id}-${detail.id}`, suggestionsId = `pricingXmlSuggestions-${invoice.id}-${detail.id}`;
             const search = create('input', undefined, 'form-control'); search.id = searchId; search.dataset.xmlProductSearch = ''; search.value = p?.productName || ''; search.placeholder = 'Gõ chọn sản phẩm trên phiếu nhập…'; search.autocomplete = 'off';
             search.setAttribute('role', 'combobox'); search.setAttribute('aria-autocomplete', 'list'); search.setAttribute('aria-expanded', 'false'); search.setAttribute('aria-controls', suggestionsId);
-            const label = create('label', 'Sản phẩm hệ thống', 'form-label'); label.htmlFor = searchId;
+            const label = create('label', 'Sản phẩm nhân viên đã nhập', 'form-label'); label.htmlFor = searchId;
             const suggestions = create('div', undefined, 'sd-bill-suggestions'); suggestions.id = suggestionsId; suggestions.hidden = true; suggestions.setAttribute('role', 'listbox');
             searchBox.append(label, search, suggestions); bindXmlProductSearch(search, suggestions, invoice, detail, choice);
             const units = create('select', undefined, 'form-select'); units.dataset.xmlUnit = ''; units.add(new Option('Chọn đơn vị / quy đổi', ''));
             for (const u of p?.units || []) units.add(new Option(`${u.name} ×${quantity(u.factor)}`, u.unitId)); units.value = choice.unitId || '';
-            units.addEventListener('change', () => { choice.unitId = Number(units.value) || null; choice.touched = true; renderXmlRows(); byId('pricingXmlRows').querySelector(`[data-xml-detail-id="${detail.id}"] [data-xml-kind]`)?.focus(); });
+            units.addEventListener('change', () => { choice.unitId = Number(units.value) || null; choice.touched = true; choice.rememberError = ''; renderXmlRows(); byId('pricingXmlRows').querySelector(`[data-xml-detail-id="${detail.id}"] ${imported ? '[data-xml-remember]' : '[data-xml-kind]'}`)?.focus(); });
             const kind = create('select', undefined, 'form-select'); kind.dataset.xmlKind = ''; kind.add(new Option('Kiểm tra loại dòng', '')); kind.add(new Option('Hàng mua', 'buy')); kind.add(new Option('Hàng tặng', 'gift')); kind.value = choice.kind;
             kind.addEventListener('change', () => { choice.kind = kind.value; choice.touched = true; renderXmlRows(); byId('pricingXmlRows').querySelector(`[data-xml-detail-id="${detail.id}"] [data-xml-add]`)?.focus(); });
             fields.append(searchBox, field('Đơn vị hệ thống tương ứng trên XML', units), field('Loại dòng', kind));
             const identity = create('div', undefined, 'sd-pricing-xml-identity'); if (p) identity.append(thumbnail(p));
-            const state = create('span', imported ? '✓ Đã thêm vào bill' : known ? 'Đã nhớ sản phẩm và quy đổi' : p ? 'Cần xác nhận sản phẩm / đơn vị để nhớ' : 'Chưa ghép sản phẩm', imported ? 'text-success' : known ? 'text-success' : 'text-warning'); identity.append(state);
+            if (imported) identity.append(create('span', '✓ Đã thêm vào bill · Không thêm lại', 'text-success'));
+            const memoryStatus = create('span', known ? '✓ Đã nhớ sản phẩm và quy đổi cho lần sau' : remembered ? '✓ Đã nhớ ghép theo tên hàng · Kiểm tra trước khi thêm.' : p ? 'Chưa nhớ ghép cho lần sau' : 'Chọn sản phẩm nhân viên đã nhập và đơn vị tương ứng', remembered ? 'text-success' : 'text-warning');
+            memoryStatus.dataset.xmlMemoryState = remembered ? 'remembered' : 'unremembered'; memoryStatus.setAttribute('role', 'status'); identity.append(memoryStatus);
+            if (choice.rememberError) {
+                const error = create('span', choice.rememberError, 'text-danger'); error.dataset.xmlRememberError = ''; error.setAttribute('role', 'alert'); identity.append(error);
+            }
+            if (imported && !remembered) identity.append(create('small', 'Nhớ ghép không thay đổi dòng bill đã thêm.', 'text-muted'));
             if (!p && detail.itemCatalogMapping?.productVariantId) identity.append(create('span', 'Sản phẩm đã nhớ không có trong phiếu nhập này.', 'text-warning'));
             if (problem) identity.append(create('span', problem, 'text-warning'));
-            else if (choice.kind === 'buy' && lineAmount(detail.quantity, detail.unitPrice) !== xmlAmount(detail, choice.kind).amount)
+            else if (choice.kind === 'buy' && lineAmount(detail.quantity, detail.unitPrice) !== String(detail.lineAmount))
                 identity.append(create('span', 'Đơn giá × số lượng khác thành tiền XML. Khi thêm sẽ giữ thành tiền XML và tính lại đơn giá; kiểm tra chiết khấu trước khi thêm chương trình.', 'text-warning'));
-            const add = button(imported ? 'Đã thêm' : known ? 'Thêm dòng' : 'Nhớ và thêm dòng', () => importXmlRow(invoice, detail)); add.dataset.xmlAdd = ''; add.className = 'btn btn-outline-primary';
-            row.append(original, fields, identity, add); list.append(row);
+            const actions = create('div', undefined, 'sd-pricing-xml-actions');
+            const remember = button(choice.remembering ? 'Đang nhớ…' : remembered ? 'Đã nhớ' : 'Nhớ', () => rememberXmlRow(invoice, detail), 'btn btn-outline-primary'); remember.dataset.xmlRemember = ''; remember.setAttribute('aria-busy', String(!!choice.remembering));
+            remember.title = 'Chỉ nhớ ghép sản phẩm và đơn vị cho lần sau; không thêm số lượng vào bill.';
+            const add = button(imported ? 'Đã thêm' : 'Thêm dòng', () => importXmlRow(invoice, detail), 'btn btn-primary'); add.dataset.xmlAdd = '';
+            add.title = 'Thêm số lượng và thành tiền XML vào bill của phiếu hiện tại; không tự nhớ ghép.';
+            actions.append(remember, add); row.append(original, fields, identity, actions); list.append(row);
         }
         if (!xmlRows().length) list.append(create('div', xmlLoading ? 'Đang tải các dòng XML…' : 'Chưa có hóa đơn XML liên kết. Chọn hóa đơn XML của phiếu trước, rồi mở lại mục này.', 'sd-pricing-empty'));
         byId('pricingXmlSummary').textContent = `${recognized} sẵn sàng thêm · ${added} đã thêm · ${unresolved} cần ghép / xác nhận · ${special} cần kiểm tra loại dòng hoặc giá`;
@@ -1515,13 +1622,14 @@
             if (generation !== xmlGeneration || requestHost !== host) return;
             if (!Array.isArray(invoices) || invoices.some(x => !Array.isArray(x.details))) throw new Error('Dữ liệu XML không hợp lệ.');
             if (invoices.length > 1) { xmlInvoices = []; throw new Error('Phiếu có nhiều XML đang liên kết. Kiểm tra liên kết để chỉ dùng một hóa đơn trước khi nhập nhanh.'); }
-            xmlInvoices = invoices; xmlLoaded = true; byId('pricingXmlMessage').textContent = '';
-        } catch (error) { if (generation === xmlGeneration && requestHost === host) byId('pricingXmlMessage').textContent = error.message; }
+            xmlInvoices = invoices; xmlLoaded = true; byId('pricingXmlMessage').textContent = ''; return true;
+        } catch (error) { if (generation === xmlGeneration && requestHost === host) byId('pricingXmlMessage').textContent = error.message; return false; }
         finally { if (generation === xmlGeneration && requestHost === host) { xmlLoading = false; renderXmlRows(); } }
     }
     function appendXmlRow(invoice, detail) {
         if (bill(xmlKey(invoice, detail))) return false;
-        const choice = xmlChoice(invoice, detail); if (!xmlMappingMatches(detail, choice)) throw new Error('Xác nhận sản phẩm và đơn vị XML trước khi thêm dòng.');
+        const choice = xmlChoice(invoice, detail), p = products().find(x => x.productVariantId === choice.productVariantId);
+        if (!p?.units.some(x => x.unitId === choice.unitId)) throw new Error('Chọn sản phẩm trên phiếu và đơn vị hệ thống tương ứng với đơn vị XML.');
         const value = xmlAmount(detail, choice.kind);
         if (draft.billLines.length >= 500) throw new Error('Bill đã đạt giới hạn 500 dòng.');
         draft.billLines.push({ billLineKey: xmlKey(invoice, detail), lineNo: draft.billLines.length + 1,
@@ -1530,7 +1638,8 @@
         return true;
     }
     function xmlDetailSignature(detail) {
-        return JSON.stringify([detail.id, detail.lineNo, detail.itemName, detail.unitName, detail.quantity, detail.unitPrice, detail.lineAmount]);
+        return JSON.stringify([detail.id, detail.lineNo, detail.itemName, detail.unitName, detail.quantity, detail.unitPrice, detail.lineAmount,
+            detail.vatRate, detail.vatAmount, detail.lineAmountAfterVat]);
     }
     async function freshXmlInvoice(expectedHeadId, generation) {
         const requestHost = host, response = await fetch(`/admin/api/stock-documents/${receiptId}/input-invoices`, { cache: 'no-store' });
@@ -1544,28 +1653,59 @@
         xmlInvoices = invoices; xmlLoaded = true;
         return invoices[0];
     }
+    async function freshXmlRow(invoice, detail, choice, generation) {
+        const freshInvoice = await freshXmlInvoice(invoice.id, generation), freshDetail = freshInvoice.details.find(x => x.id === detail.id);
+        if (!freshDetail || xmlDetailSignature(freshDetail) !== xmlDetailSignature(detail)) { renderXmlRows(); throw new Error('Dòng XML vừa thay đổi. Kiểm tra dữ liệu mới trước khi ghi nhớ hoặc thêm.'); }
+        if (detail.itemCatalogMapping?.mappingRowVersion !== freshDetail.itemCatalogMapping?.mappingRowVersion && !xmlMappingRemembered(freshDetail, choice)) { renderXmlRows(); throw new Error('Ghép sản phẩm XML vừa thay đổi ở nơi khác. Kiểm tra lại sản phẩm và đơn vị trước khi ghi nhớ hoặc thêm.'); }
+        return { invoice: freshInvoice, detail: freshDetail };
+    }
+    function rememberXmlRow(invoice, detail) {
+        if (!editable() || busy || xmlLoading || xmlMappingRemembered(detail, xmlChoice(invoice, detail))) return;
+        return action(async () => {
+            const requestHost = host, generation = xmlGeneration, choice = xmlChoice(invoice, detail), p = products().find(x => x.productVariantId === choice.productVariantId), u = p?.units.find(x => x.unitId === choice.unitId);
+            choice.rememberError = ''; choice.remembering = true; renderXmlRows();
+            try {
+                if (!p || !u) throw new Error('Chọn sản phẩm trên phiếu và đơn vị hệ thống tương ứng với đơn vị XML.');
+                ({ invoice, detail } = await freshXmlRow(invoice, detail, choice, generation));
+                if (!xmlMappingRemembered(detail, choice)) {
+                    const response = await fetch(`/admin/api/stock-documents/${receiptId}/pricing/xml-mappings`, { method: 'POST', headers: {
+                        'Content-Type': 'application/json', 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+                    }, body: JSON.stringify({ receiptRowVersion: workspace.receiptRowVersion, inputInvoiceHeadId: invoice.id, inputInvoiceDetailId: detail.id,
+                        productVariantId: p.productVariantId, productUnitConversionId: u.conversionId, mappingRowVersion: detail.itemCatalogMapping?.mappingRowVersion || null }) });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(result.message || 'Chưa nhớ được ghép sản phẩm XML.');
+                    if (generation !== xmlGeneration || requestHost !== host) throw new Error('Liên kết XML vừa thay đổi. Kiểm tra danh sách XML trước khi thêm.');
+                    detail.itemCatalogMapping = result;
+                }
+                const reloaded = await loadXmlRows();
+                if (requestHost !== host) return;
+                if (!reloaded) {
+                    choice.rememberError = 'Đã lưu ghép, nhưng chưa tải lại được danh sách XML. Đóng và mở lại XML để kiểm tra.';
+                    return;
+                }
+                const savedDetail = xmlRows().find(item => item.invoice.id === invoice.id && item.detail.id === detail.id)?.detail;
+                if (!savedDetail || !xmlMappingRemembered(savedDetail, choice))
+                    throw new Error('Ghép đã thay đổi khi tải lại XML. Kiểm tra sản phẩm và đơn vị trước khi ghi nhớ lại.');
+                byId('pricingXmlMessage').textContent = xmlMappingMatches(savedDetail, choice)
+                    ? 'Đã nhớ ghép sản phẩm và đơn vị cho lần sau. Số lượng và danh sách bill của phiếu hiện tại không thay đổi.'
+                    : 'Đã nhớ ghép theo tên hàng và đơn vị. Các XML sau vẫn cần kiểm tra trước khi thêm. Số lượng và danh sách bill hiện tại không thay đổi.';
+            } catch (error) {
+                if (requestHost === host) choice.rememberError = error.message;
+                throw error;
+            } finally {
+                choice.remembering = false;
+                if (requestHost === host) renderXmlRows();
+            }
+        });
+    }
     function importXmlRow(invoice, detail) {
         if (!editable() || busy || xmlLoading || bill(xmlKey(invoice, detail))) return;
         return action(async () => {
-            const generation = xmlGeneration, choice = xmlChoice(invoice, detail), p = products().find(x => x.productVariantId === choice.productVariantId), u = p?.units.find(x => x.unitId === choice.unitId);
+            const generation = xmlGeneration, choice = xmlChoice(invoice, detail);
             xmlAmount(detail, choice.kind);
-            if (!p || !u) throw new Error('Chọn sản phẩm trên phiếu và đơn vị hệ thống tương ứng với đơn vị XML.');
-            const original = detail, freshInvoice = await freshXmlInvoice(invoice.id, generation), freshDetail = freshInvoice.details.find(x => x.id === detail.id);
-            if (!freshDetail || xmlDetailSignature(freshDetail) !== xmlDetailSignature(original)) { renderXmlRows(); throw new Error('Dòng XML vừa thay đổi. Kiểm tra dữ liệu mới trước khi thêm.'); }
-            if (original.itemCatalogMapping?.mappingRowVersion !== freshDetail.itemCatalogMapping?.mappingRowVersion && !xmlMappingMatches(freshDetail, choice)) { renderXmlRows(); throw new Error('Ghép sản phẩm XML vừa thay đổi ở nơi khác. Kiểm tra lại sản phẩm và đơn vị trước khi thêm.'); }
-            invoice = freshInvoice; detail = freshDetail;
-            if (!xmlMappingMatches(detail, choice)) {
-                const response = await fetch(`/admin/api/stock-documents/${receiptId}/pricing/xml-mappings`, { method: 'POST', headers: {
-                    'Content-Type': 'application/json', 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
-                }, body: JSON.stringify({ receiptRowVersion: workspace.receiptRowVersion, inputInvoiceHeadId: invoice.id, inputInvoiceDetailId: detail.id,
-                    productVariantId: p.productVariantId, productUnitConversionId: u.conversionId, mappingRowVersion: detail.itemCatalogMapping?.mappingRowVersion || null }) });
-                const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.message || 'Chưa nhớ được ghép sản phẩm XML.');
-                if (generation !== xmlGeneration) throw new Error('Liên kết XML vừa thay đổi. Kiểm tra danh sách XML trước khi thêm.');
-                detail.itemCatalogMapping = result;
-            }
+            ({ invoice, detail } = await freshXmlRow(invoice, detail, choice, generation));
             if (generation !== xmlGeneration || !xmlRows().some(x => x.invoice.id === invoice.id && x.detail.id === detail.id)) throw new Error('XML vừa thay đổi. Kiểm tra lại trước khi thêm.');
-            if (appendXmlRow(invoice, detail)) { renderBill(); markDirty(); renderXmlRows(); await loadXmlRows(); byId('pricingXmlMessage').textContent = 'Đã thêm dòng XML vào bill. Dữ liệu đang nhập được nhớ trên trình duyệt; giá Hàng hóa chỉ đổi khi Áp dụng giá nhập.'; }
+            if (appendXmlRow(invoice, detail)) { renderBill(); markDirty(); renderXmlRows(); byId('pricingXmlMessage').textContent = 'Đã thêm dòng XML vào bill để đối chiếu phiếu hiện tại. Dòng đã thêm sẽ không thêm lại; dùng nút Nhớ nếu muốn lưu ghép cho lần sau. Giá Hàng hóa chỉ đổi khi Áp dụng giá nhập.'; }
         }, true);
     }
     function importKnownXmlRows() {
@@ -1660,9 +1800,12 @@
         if (invalid.length) overview.append(create('small', `${invalid.length} dòng bill có sản phẩm hoặc đơn vị cần kiểm tra lại.`, 'text-danger fw-semibold'));
     }
     function renderPreview() {
-        byId('pricingSystemTotal').textContent = preview ? money(preview.systemTotal) : '—';
-        byId('pricingDifference').textContent = preview ? money(preview.difference) : '—';
-        byId('pricingDifference').classList.toggle('text-danger', !!preview?.difference);
+        byId('pricingFinalTitle').textContent = draft.rules.length || draft.globalDiscountPercent > 0 || draft.globalDiscountAmount > 0 ? 'Giá nhập sau phân bổ' : 'Giá nhập tính theo bill';
+        byId('pricingManualHelp').hidden = !editable() || !preview?.errors?.length;
+        const hasTotal = preview?.systemTotal > 0, hasDifference = hasTotal && draft.actualBillTotal > 0;
+        byId('pricingSystemTotal').textContent = hasTotal ? money(preview.systemTotal) : '—';
+        byId('pricingDifference').textContent = hasDifference ? money(preview.difference) : '—';
+        byId('pricingDifference').classList.toggle('text-danger', hasDifference && !!preview.difference);
         const results = new Map((preview?.lines || []).map(x => [x.stockDocumentLineId, x])), list = byId('pricingFinalPrices'); list.replaceChildren();
         for (const received of workspace.physicalLines) {
             const line = results.get(received.stockDocumentLineId), row = create('div', undefined, 'sd-pricing-price-row'); row.dataset.pricingLineId = received.stockDocumentLineId;
@@ -1677,7 +1820,7 @@
     function programGroups() { const groups = new Map(); for (const rule of draft.rules) { const key = groupKey(rule); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(rule); } return groups; }
     function renderRules() {
         const list = byId('pricingRuleList'); list.replaceChildren();
-        if (!draft.rules.length) list.append(create('div', 'Chưa có chương trình.', 'sd-pricing-empty'));
+        if (!draft.rules.length) list.append(create('div', 'Không có chương trình: tính giá theo bill như thông thường. Có thể chuyển thẳng sang Giá nhập cuối.', 'sd-pricing-empty'));
         for (const [key, rules] of programGroups()) {
             const first = rules[0], card = create('div', undefined, 'sd-pricing-rule'); card.dataset.programKey = key;
             const text = create('div', undefined, 'sd-pricing-rule-description');
@@ -1757,10 +1900,10 @@
                 price.value = roundedRatio(a.n * 10n ** BigInt(q.scale + 12), q.n * 10n ** BigInt(a.scale), 12);
                 if (lineAmount(qty, price.value) !== decimalText(a.n, a.scale)) billPriceError = 'Kiểm tra lại số lượng: đơn giá quy đổi chưa khớp thành tiền đã nhập.';
             }
-            hint.textContent = billPriceError || (price.value && q?.n > 0n ? `${money(amount.value)} ÷ ${quantity(qty)} = ${unitMoney(price.value)} / đơn vị bill.` : 'Nhập thành tiền của dòng trước VAT; đơn giá tự tính theo số lượng trên bill.');
+            hint.textContent = billPriceError || (price.value && q?.n > 0n ? `${money(amount.value)} ÷ ${quantity(qty)} = ${unitMoney(price.value)} / đơn vị bill.` : `Nhập thành tiền của dòng ${billPriceBasis()}; đơn giá tự tính theo số lượng trên bill.`);
         } else {
             amount.value = lineAmount(qty, price.value);
-            hint.textContent = amount.value ? `Thành tiền: ${quantity(qty)} × ${unitMoney(price.value)} = ${money(amount.value)}.` : 'Nhập đơn giá trước VAT; thành tiền tự tính theo số lượng trên bill.';
+            hint.textContent = amount.value ? `Thành tiền: ${quantity(qty)} × ${unitMoney(price.value)} = ${money(amount.value)}.` : `Nhập đơn giá ${billPriceBasis()}; thành tiền tự tính theo số lượng trên bill.`;
         }
         hint.classList.toggle('text-danger', !!billPriceError);
     }
@@ -1778,7 +1921,7 @@
         byId('pricingBillPriceMode').value = line.billPriceInputMode || 'unit'; byId('pricingBillAmount').value = line.billEnteredAmount ?? lineAmount(line.billQuantity, line.billUnitPriceBeforeVat); renderSelectedProduct();
         byId('pricingBillAdd').textContent = 'Lưu dòng bill'; byId('pricingBillCancelEdit').hidden = false; updateConversion(); byId('pricingBillSearch').focus(); closeSuggestions();
     }
-    function removeBill(line) { if (dependent(line.billLineKey)) { message('Gỡ chương trình của dòng này trước khi xóa.', true); return; } draft.billLines = draft.billLines.filter(x => x !== line); resetEntry(); markDirty(); renderBill(); }
+    function removeBill(line) { if (dependent(line.billLineKey)) { message('Gỡ chương trình của dòng này trước khi xóa.', true); return; } draft.billLines = draft.billLines.filter(x => x !== line); resetEntry(); markDirty(); renderBill(); if (xmlLoaded) renderXmlRows(); }
     function saveBill() {
         if (!editable() || busy) return;
         if (!selectedProduct || byId('pricingBillSearch').value !== selectedProduct.productName) { message('Chọn sản phẩm từ gợi ý trên phiếu nhập.', true); return; }
@@ -1810,12 +1953,16 @@
     }
     function remainingProgramQuantity(line) {
         const used = [];
+        const giftProgram = numeric('pricingRuleType') === 1;
         for (const [key, rules] of programGroups()) {
             if (key === editingProgramKey) continue;
             if (!line.isGift) {
+                // Gift participation and discount participation have separate quantities.
+                // The same purchased units can earn a gift and receive a discount.
+                const sameKind = rules.filter(r => giftRule(r) === giftProgram);
                 // A program can have several gift rules sharing the same source rows.
                 // Reserve each source once for that program, rather than once per gift.
-                const quantities = rules.flatMap(r => r.billSources.filter(s => s.billLineKey === line.billLineKey).map(s => s.quantity));
+                const quantities = sameKind.flatMap(r => r.billSources.filter(s => s.billLineKey === line.billLineKey).map(s => s.quantity));
                 if (quantities.length) used.push(Math.max(...quantities));
             } else {
                 for (const rule of rules.filter(r => giftRule(r) && r.giftBillLineKey === line.billLineKey)) {
@@ -1841,8 +1988,8 @@
         const identity = create('div', undefined, 'sd-program-line-identity'), text = create('span');
         text.append(create('strong', `Dòng ${line.lineNo} · ${p?.productName || 'Sản phẩm'}`),
             create('span', line.isGift ? 'Quà tặng' : 'Hàng mua', `badge ${line.isGift ? 'bg-label-success' : 'bg-label-primary'} ms-2`),
-            create('small', `${quantity(line.billQuantity)} ${u?.name || ''} × ${unitMoney(line.billUnitPriceBeforeVat)} · Thành tiền ${money(lineAmount(line.billQuantity, line.billUnitPriceBeforeVat))} trước VAT`, 'd-block text-muted'));
-        if (available !== undefined && available < line.billQuantity) text.append(create('strong', `Còn lại: ${quantity(available)} ${u?.name || ''} · ${money(lineAmount(available, line.billUnitPriceBeforeVat))} trước VAT`, 'd-block text-primary'));
+            create('small', `${quantity(line.billQuantity)} ${u?.name || ''} × ${unitMoney(line.billUnitPriceBeforeVat)} · Thành tiền ${money(lineAmount(line.billQuantity, line.billUnitPriceBeforeVat))} ${billPriceBasis()}`, 'd-block text-muted'));
+        if (available !== undefined && available < line.billQuantity) text.append(create('strong', `Còn lại: ${quantity(available)} ${u?.name || ''} · ${money(lineAmount(available, line.billUnitPriceBeforeVat))} ${billPriceBasis()}`, 'd-block text-primary'));
         identity.append(thumbnail(p), text); return identity;
     }
     function resetProgramSearches() { for (const search of programSearches) { search.input.value = ''; search.close(); } }
@@ -1922,8 +2069,9 @@
     function programType() {
         const gift = numeric('pricingRuleType') === 1;
         byId('pricingDiscountFields').hidden = numeric('pricingRuleType') !== 2; byId('pricingDiscountAmountFields').hidden = numeric('pricingRuleType') !== 3; byId('pricingGiftFields').hidden = !gift;
-        byId('pricingRuleSearchHint').textContent = gift ? 'Chỉ hiện dòng còn SL chưa dùng trong chương trình khác. Chọn dòng mua hoặc quà; mặc định lấy hết SL còn lại, có thể sửa sau khi thêm.' : 'Chỉ hiện dòng mua còn SL chưa dùng và chưa có chương trình giảm giá khác. Mặc định lấy hết SL còn lại, có thể sửa SL tham gia.';
+        byId('pricingRuleSearchHint').textContent = gift ? 'Chỉ hiện dòng còn SL chưa dùng trong chương trình tặng quà khác. Dòng đã giảm giá vẫn được chọn để tặng quà. Mặc định lấy hết SL còn lại, có thể sửa sau khi thêm.' : 'Chọn dòng mua chưa có chương trình giảm giá khác, kể cả dòng đã tham gia tặng quà. Mặc định lấy toàn bộ SL dòng bill, có thể sửa SL tham gia.';
         resetProgramSearches();
+        renderSources();
     }
     function giftProduct(g) { return g.key.startsWith('b:') ? product(bill(g.key.slice(2))?.productVariantId) : product(g.key.slice(2)); }
     function renderGifts() {
@@ -1958,7 +2106,7 @@
         sources.sort((a, b) => bill(a.billLineKey).lineNo - bill(b.billLineKey).lineNo);
         if (!sources.length || sources.some(s => !Number.isFinite(s.quantity) || s.quantity <= 0 || s.quantity > bill(s.billLineKey).billQuantity)) { fail('Chọn dòng mua và SL tham gia lớn hơn 0, không vượt số lượng dòng bill.'); return; }
         const overused = sources.find(s => s.quantity > remainingProgramQuantity(bill(s.billLineKey)));
-        if (overused) { const row = bill(overused.billLineKey); fail(`Dòng bill ${row.lineNo}: chỉ còn ${quantity(remainingProgramQuantity(row))} ${unit(row.productVariantId, row.billUnitId)?.name || ''} chưa dùng trong chương trình khác.`); return; }
+        if (overused) { const row = bill(overused.billLineKey); fail(`Dòng bill ${row.lineNo}: chỉ còn ${quantity(remainingProgramQuantity(row))} ${unit(row.productVariantId, row.billUnitId)?.name || ''} chưa dùng trong chương trình ${numeric('pricingRuleType') === 1 ? 'tặng quà' : 'giảm giá'} khác.`); return; }
         const type = numeric('pricingRuleType'), percent = numeric('pricingRuleDiscount'), key = editingProgramKey || crypto.randomUUID(), name = byId('pricingRuleName').value.trim();
         const remaining = draft.rules.filter(r => groupKey(r) !== editingProgramKey);
         if (type === 2 && (percent <= 0 || percent >= 100)) { fail('Mức giảm phải lớn hơn 0% và dưới 100%.'); return; }
@@ -2031,6 +2179,12 @@
         const remembered = retained || readLocalDraft();
         byId('pricingReload').addEventListener('click', () => action(async () => { if ((dirty || editorPending() || entryPending() || pendingLocalDraft) && !window.confirm('Tải lại sẽ bỏ bản nháp bill và chương trình đang nhập, lấy kế hoạch từ máy chủ. Tiếp tục?')) return; accept(await api('GET'), true); }, true));
         byId('pricingPreview').addEventListener('click', calculatePreview);
+        byId('pricingManualGoods')?.addEventListener('click', () => {
+            window.activateStockDocumentWorkbenchTab?.('goods');
+            const prices = [...document.querySelectorAll('#commercialApprovalWorkbench .commercial-unit-price')].filter(input => !input.disabled && !input.readOnly);
+            const input = prices.find(input => Number(input.value) <= 0) || prices[0];
+            input?.focus(); input?.select();
+        });
         byId('pricingXmlImport').addEventListener('click', () => { byId('pricingXmlPanel').hidden = false; loadXmlRows(); });
         byId('pricingXmlClose').addEventListener('click', () => { byId('pricingXmlPanel').hidden = true; });
         byId('pricingXmlAddAll').addEventListener('click', importKnownXmlRows);
@@ -2044,7 +2198,15 @@
         for (const event of ['input', 'change']) host.addEventListener(event, rememberDraft);
         host.addEventListener('click', () => queueMicrotask(rememberDraft));
         for (const el of host.querySelectorAll('[data-pricing-step]')) el.addEventListener('click', () => showStep(el.dataset.pricingStep));
-        for (const [id, key] of [['pricingActualBillTotal', 'actualBillTotal'], ['pricingGlobalDiscount', 'globalDiscountPercent']]) byId(id).addEventListener('input', () => { draft[key] = numeric(id); markDirty(); timer = setTimeout(calculatePreview, 450); });
+        byId('pricingActualBillTotal').addEventListener('input', () => { draft.actualBillTotal = numeric('pricingActualBillTotal'); markDirty(); timer = setTimeout(calculatePreview, 450); });
+        byId('pricingGlobalDiscountMode').addEventListener('change', () => {
+            globalDiscountMode = byId('pricingGlobalDiscountMode').value;
+            if (globalDiscountMode === 'amount') draft.globalDiscountPercent = 0; else draft.globalDiscountAmount = 0;
+            byId('pricingGlobalDiscount').value = draft.globalDiscountPercent || 0;
+            byId('pricingGlobalDiscountAmount').value = draft.globalDiscountAmount || 0;
+            renderGlobalDiscount(); markDirty(); timer = setTimeout(calculatePreview, 450);
+        });
+        for (const [id, key] of [['pricingGlobalDiscount', 'globalDiscountPercent'], ['pricingGlobalDiscountAmount', 'globalDiscountAmount']]) byId(id).addEventListener('input', () => { draft[key] = numeric(id); markDirty(); timer = setTimeout(calculatePreview, 450); });
         byId('pricingBillSearch').addEventListener('focus', suggestions);
         byId('pricingBillSearch').addEventListener('click', suggestions);
         byId('pricingBillSearch').addEventListener('input', () => { selectedProduct = null; renderSelectedProduct(); suggestions(); updateActions(); });

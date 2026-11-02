@@ -59,7 +59,7 @@ public static class DeliveryPickingPolicy
     }
     public static DeliveryCapability ForOperation(string operation) => operation switch
     {
-        "claim" or "report" or "submit" => DeliveryCapability.Pick,
+        "claim" or "report" or "submit" or "complete" => DeliveryCapability.Pick,
         "plan" or "approve" or "reopen" or "reassign" => DeliveryCapability.ApproveChanges,
         _ => throw new DeliveryRuleException("COMMAND_INVALID", "Thao tác soạn không hợp lệ.")
     };
@@ -68,6 +68,7 @@ public static class DeliveryPickingPolicy
         var allowed = operation switch
         {
             "claim" => state == DeliveryState.Created,
+            "complete" => state is DeliveryState.Created or DeliveryState.Picking,
             "report" or "submit" => state == DeliveryState.Picking,
             "plan" or "reassign" => state is DeliveryState.Picking or DeliveryState.AwaitingApproval or DeliveryState.ReadyForHandover,
             "approve" => state == DeliveryState.AwaitingApproval,

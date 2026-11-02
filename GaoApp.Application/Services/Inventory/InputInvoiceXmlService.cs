@@ -608,7 +608,9 @@ public sealed class InputInvoiceXmlService : IInputInvoiceXmlService
                 map.InputInvoiceDetailId = xmlLine.Id;
 
                 var quantityDiff = line.Quantity - xmlLine.Quantity;
-                var amountDiff = line.LineTotal - xmlLine.LineAmount;
+                var xmlAfterVat = xmlLine.LineAmount + InputInvoiceVatAmounts.VatAmount(
+                    xmlLine.LineAmount, xmlLine.VatRate, xmlLine.VatAmount);
+                var amountDiff = line.LineTotal - xmlAfterVat;
 
                 map.QuantityDifference = quantityDiff;
                 map.AmountDifference = amountDiff;

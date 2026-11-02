@@ -12,6 +12,26 @@ public sealed class InvoiceInputStockAvailabilityDto
 
     public IReadOnlyList<InvoiceInputStockAvailabilityLineDto> Lines { get; init; }
         = Array.Empty<InvoiceInputStockAvailabilityLineDto>();
+
+    /// <summary>Tồn khả dụng quy đổi về đơn vị từng dòng để kiểm tra trước phát hành.</summary>
+    public IReadOnlyList<InvoiceDetailStockLineDto> DetailLines { get; init; }
+        = Array.Empty<InvoiceDetailStockLineDto>();
+}
+
+public sealed class InvoiceDetailStockLineDto
+{
+    public int InvoiceDetailId { get; init; }
+    public int ProductVariantId { get; init; }
+    public int WarehouseId { get; init; }
+    public string WarehouseName { get; init; } = string.Empty;
+    public string UnitName { get; init; } = string.Empty;
+    public string BaseUnitName { get; init; } = string.Empty;
+    public decimal UnitFactor { get; init; } = 1m;
+    public decimal AvailableQuantity { get; init; }
+    /// <summary>Tổng cần và thiếu tính tất cả dòng cùng sản phẩm, cùng kho trong hóa đơn.</summary>
+    public decimal RequiredQuantity { get; init; }
+    public decimal ShortageQuantity { get; init; }
+    public int SharedLineCount { get; init; }
 }
 
 public sealed class InvoiceInputStockAvailabilityLineDto

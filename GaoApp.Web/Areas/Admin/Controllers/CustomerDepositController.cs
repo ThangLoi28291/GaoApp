@@ -11,24 +11,33 @@ namespace GaoApp.Web.Areas.Admin.Controllers;
 [Route("admin/customer-deposit")]
 [AutoValidateAntiforgeryToken]
 public sealed class CustomerDepositController(ICustomerDepositService deposits, IPOSService pos,
-    ICurrentPOSContext currentPos, IHubContext<PosHub> hub, CustomerDepositDisplayState displayState) : Controller
+    ICurrentPOSContext currentPos, IHubContext<PosHub> hub, CustomerDepositDisplayState displayState,
+    CustomerPaymentDisplayService paymentDisplay) : Controller
 {
     private string TerminalGroup => $"store:{currentPos.StoreId}:terminal:{currentPos.TerminalId}";
-    private Task DisplayAsync(string eventType, object payload, CancellationToken ct)
+    private Task DisplayAsync(CancellationToken ct)
         => currentPos.IsAvailable
             ? hub.Clients.Group(TerminalGroup).SendAsync("pos:event", new
             {
-                eventType,
+                eventType = "customer_payment_display_changed",
                 terminalId = currentPos.TerminalId.ToString(),
                 storeId = currentPos.StoreId,
-                payload,
                 occurredAtUtc = DateTime.UtcNow
             }, ct)
             : Task.CompletedTask;
     [HttpGet("")]
     [Authorize(Policy = PermissionCodes.CustomerDeposit.View)]
-    public async Task<IActionResult> Index(int? customerId, CancellationToken ct)
-        => View(await deposits.GetAsync(customerId, ct));
+    public async Task<IActionResult> Index(int? customerId, CancellationToken ct, string? search = null, int page = 1, string? status = null, string? tab = null, int? received = null)
+    {
+        ViewBag.DepositTab = tab == "list" ? "list" : null;
+        var model = await deposits.GetAsync(customerId, ct, search, page, status);
+        ViewBag.ReceivedDepositId = model.List.Rows.Any(d => d.Id == received) ? received : null;
+        return View(model);
+    }
+    [HttpGet("{depositId:int}/print")]
+    [Authorize(Policy = PermissionCodes.CustomerDeposit.View)]
+    public async Task<IActionResult> Print(int depositId, CancellationToken ct)
+        => View("Print", await deposits.GetReceiptAsync(depositId, ct));
     [HttpGet("customers/search")]
     [Authorize(Policy = PermissionCodes.CustomerDeposit.View)]
     public async Task<IActionResult> SearchCustomers([FromQuery] string? keyword, [FromQuery] int take = 12, CancellationToken ct = default)
@@ -42,16 +51,9 @@ public sealed class CustomerDepositController(ICustomerDepositService deposits, 
     public async Task<IActionResult> Receive([FromBody] ReceiveDepositRequest request, CancellationToken ct)
     {
         var depositId = await deposits.ReceiveAsync(request, ct);
-        if (currentPos.IsAvailable) displayState.Clear(currentPos.StoreId, currentPos.TerminalId);
-        await DisplayAsync("customer_payment_success", new
-        {
-            finalized = true,
-            kind = "deposit",
-            title = "Đã nhận tiền đặt cọc",
-            message = "Phiếu cọc đã được ghi nhận. Cảm ơn quý khách!",
-            paidAmount = request.Amount,
-            durationMs = 5000
-        }, ct);
+        if (currentPos.IsAvailable)
+            await paymentDisplay.ShowDepositReceiptAsync(currentPos.StoreId, currentPos.TerminalId, depositId, ct);
+        await DisplayAsync(ct);
         return Ok(new { depositId });
     }
     [HttpPost("receive-qr")]
@@ -59,35 +61,25 @@ public sealed class CustomerDepositController(ICustomerDepositService deposits, 
     public async Task<IActionResult> ReceiveQr([FromBody] CreateDepositQrRequest request, CancellationToken ct)
     {
         var qr = await deposits.CreateReceiveQrAsync(request, ct);
-        if (currentPos.IsAvailable) displayState.Set(currentPos.StoreId, currentPos.TerminalId, qr);
-        await DisplayAsync("customer_payment_qr_created", new
-        {
-            qr.QrDataUrl,
-            qr.Amount,
-            qr.Content,
-            qr.BankName,
-            qr.AccountNumber,
-            qr.AccountName,
-            kind = "deposit",
-            title = "Quét mã để đặt cọc",
-            intro = "Chuyển tiền đặt cọc đến"
-        }, ct);
+        if (currentPos.IsAvailable)
+            await paymentDisplay.ShowDepositQrAsync(currentPos.StoreId, currentPos.TerminalId, qr, ct);
+        await DisplayAsync(ct);
         return Ok(qr);
     }
     [HttpGet("active-qr")]
     [Authorize(Policy = PermissionCodes.Pos.Order.View)]
-    public IActionResult ActiveQr()
+    public async Task<IActionResult> ActiveQr(CancellationToken ct)
     {
         if (!currentPos.IsAvailable) return NoContent();
-        var qr = displayState.Get(currentPos.StoreId, currentPos.TerminalId);
-        return qr == null ? NoContent() : Ok(qr);
+        var snapshot = await paymentDisplay.GetAsync(currentPos.StoreId, currentPos.TerminalId, ct);
+        return snapshot.Mode == "qr" && snapshot.OrderId == null ? Ok(snapshot.Payload) : NoContent();
     }
     [HttpPost("display/hide")]
     [Authorize(Policy = PermissionCodes.CustomerDeposit.Receive)]
     public async Task<IActionResult> HideDisplay(CancellationToken ct)
     {
         if (currentPos.IsAvailable) displayState.Clear(currentPos.StoreId, currentPos.TerminalId);
-        await DisplayAsync("customer_payment_hide", new { kind = "deposit" }, ct);
+        await DisplayAsync(ct);
         return NoContent();
     }
     [HttpPost("refund")]

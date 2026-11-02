@@ -11,6 +11,7 @@ public sealed class PurchaseRequestLineInputDto
     [Range(1, int.MaxValue)] public int? ProductUnitConversionId { get; set; }
     [StringLength(250)] public string? ProductName { get; set; }
     [StringLength(100)] public string? UnitName { get; set; }
+    [StringLength(1000, ErrorMessage = "Ghi chú sản phẩm không được vượt quá 1000 ký tự.")] public string? Note { get; set; }
     [Range(typeof(decimal), "0.001", "999999999999")] public decimal Quantity { get; set; }
 }
 
@@ -18,7 +19,7 @@ public sealed class SavePurchaseRequestRequest
 {
     public int? Id { get; set; }
     [Required, StringLength(250)] public string Title { get; set; } = string.Empty;
-    public DateTime RequestDate { get; set; } = DateTime.Today;
+    public DateTime RequestDate { get; set; } = VietnamTime.Today;
     public DateTime? NeedByDate { get; set; }
     [StringLength(1000)] public string? Note { get; set; }
     public string? RowVersion { get; set; }
@@ -43,6 +44,7 @@ public sealed class PurchaseRequestListItemDto
 
 public sealed class PurchaseRequestLineDto
 {
+    public string? Note { get; set; }
     public int Id { get; set; }
     public int LineNo { get; set; }
     public PurchaseItemKind ItemKind { get; set; }
@@ -153,7 +155,7 @@ public sealed class PurchaseRequestOrderGroupRequest
     public int? SupplierId { get; set; }
     [Range(1, int.MaxValue)] public int ExpectedWarehouseId { get; set; }
     [Range(1, int.MaxValue)] public int LegalEntityId { get; set; }
-    public DateTime OrderDate { get; set; } = DateTime.Today;
+    public DateTime OrderDate { get; set; } = VietnamTime.Today;
     public DateTime? ExpectedDeliveryDate { get; set; }
     public bool HasVat { get; set; }
     [StringLength(1000)] public string? Note { get; set; }
@@ -175,6 +177,7 @@ public sealed class ConvertPurchaseRequestResultDto
 
 public sealed class PurchaseRequestPreparationLineDto
 {
+    public string? Note { get; set; }
     public int PurchaseRequestLineId { get; set; }
     public PurchaseItemKind ItemKind { get; set; }
     public int? ProductVariantId { get; set; }

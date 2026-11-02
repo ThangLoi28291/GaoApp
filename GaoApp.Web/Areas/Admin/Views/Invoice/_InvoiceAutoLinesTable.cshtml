@@ -3,6 +3,7 @@
 
 @{
     var invoice = Model.Invoice;
+    var isHardLocked = !invoice.CanEditDetails;
 
     var autoLines = invoice.Details
         .Where(x => x.SourceType == InvoiceDetailSourceType.FromOrderLine)
@@ -16,9 +17,14 @@
             Dòng tự sinh từ OrderLine
         </div>
 
-        <div>
-            Tổng:
-            <strong>@autoLines.Count</strong>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span>Tổng: <strong>@autoLines.Count</strong></span>
+            @if (!isHardLocked)
+            {
+                <button type="button" class="btn btn-sm btn-primary" data-add-invoice-detail>
+                    <i class="bx bx-plus" aria-hidden="true"></i> Thêm sản phẩm
+                </button>
+            }
         </div>
     </div>
 
@@ -30,10 +36,15 @@
                     <th>Sản phẩm</th>
                     <th>ĐVT</th>
                     <th class="text-end">SL</th>
+                    <th class="text-end invoice-stock-heading">SL hiện tại</th>
                     <th class="text-end">Đơn giá</th>
+                    <th class="text-end">VAT %</th>
+                    <th class="text-end">VAT tiền</th>
                     <th class="text-end">Thành tiền</th>
+                    <th>Ghi chú</th>
                     <th>OrderLine</th>
                     <th>Allocation HKD</th>
+                    <th class="text-end">Thao tác</th>
                 </tr>
             </thead>
 
@@ -41,7 +52,7 @@
                 @if (!autoLines.Any())
                 {
                     <tr>
-                        <td colspan="8" class="text-center text-muted py-4">
+                        <td colspan="13" class="text-center text-muted py-4">
                             Không có dòng tự sinh.
                         </td>
                     </tr>
@@ -50,7 +61,12 @@
                 {
                     foreach (var item in autoLines)
                     {
-                        <tr>
+                        <tr class="manual-detail-row @(isHardLocked ? "is-locked" : "")"
+                            data-manual-detail-id="@item.Id"
+                            data-manual-quantity="@item.Quantity.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                            data-manual-unit-price="@item.UnitPrice.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                            data-manual-vat-rate="@item.VatRate.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                            data-manual-note="@item.Note">
                             <td>#@item.Id</td>
 
                             <td>
@@ -62,15 +78,43 @@
 
                             <td>@item.UnitName</td>
 
-                            <td class="text-end">@item.Quantity.ToString("N2")</td>
-                            <td class="text-end">@item.UnitPrice.ToString("N0")</td>
-                            <td class="text-end fw-bold text-primary">@item.TotalAmount.ToString("N0")</td>
+                            <td class="text-end" data-manual-display="quantity">@item.Quantity.ToString("N2")</td>
+                            <td class="text-end invoice-stock-cell"
+                                data-invoice-stock-detail-id="@item.Id"
+                                data-stock-product-id="@item.ProductVariantId">
+                                <span class="text-muted small">@(item.ProductVariantId.HasValue ? "Đang tải…" : "—")</span>
+                            </td>
+                            <td class="text-end" data-manual-display="unitPrice">@item.UnitPrice.ToString("N0")</td>
+                            <td class="text-end" data-manual-display="vatRate">@item.VatRate.ToString("N2")</td>
+                            <td class="text-end">@item.VatAmount.ToString("N0")</td>
+                            <td class="text-end fw-bold text-primary" data-manual-display="totalAmount">@item.TotalAmount.ToString("N0")</td>
+                            <td data-manual-display="note">@item.Note</td>
 
                             <td>#@item.OrderLineId</td>
                             <td>
                                 @(item.OrderLegalEntityAllocationId.HasValue
                                     ? $"#{item.OrderLegalEntityAllocationId}"
                                     : "Legacy")
+                            </td>
+                            <td class="text-end" data-manual-actions>
+                                @if (!isHardLocked)
+                                {
+                                    <div class="d-flex gap-1 justify-content-end">
+                                        <button type="button" class="btn btn-sm btn-outline-primary"
+                                                data-edit-manual-detail-id="@item.Id">
+                                            <i class="bx bx-edit" aria-hidden="true"></i> Sửa
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                data-delete-manual-detail-id="@item.Id"
+                                                data-delete-manual-detail-name="@item.ItemName">
+                                            <i class="bx bx-trash" aria-hidden="true"></i> Xóa
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted small">Đã khóa</span>
+                                }
                             </td>
                         </tr>
                     }

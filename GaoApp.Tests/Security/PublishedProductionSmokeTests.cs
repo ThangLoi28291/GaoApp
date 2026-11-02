@@ -27,6 +27,10 @@ public sealed class PublishedProductionSmokeTests
         Assert.Equal(1, await db.Users.CountAsync());
         Assert.Equal(0, await db.Orders.CountAsync());
         var terminal = await db.POSTerminals.SingleAsync();
+        var bootstrapEvidence = await db.AuditOutbox.AsNoTracking().ToListAsync();
+        Assert.Contains(bootstrapEvidence, message => message.StoreId == terminal.StoreId &&
+            JsonDocument.Parse(message.PayloadJson).RootElement.GetProperty("EntityName").GetString() == "User");
+        Assert.All(bootstrapEvidence, message => Assert.DoesNotContain(fixture.AdminPassword, message.PayloadJson));
         // A repeated invocation must neither add another owner nor add demo business data.
         await fixture.RunMigratorAsync(bootstrap: true);
         Assert.Equal(1, await db.Users.CountAsync());
@@ -137,7 +141,60 @@ public sealed class PublishedProductionSmokeTests
         Assert.False(Directory.Exists(Path.Combine(fixture.WebRoot, "runtime-should-not-exist")));
     }
 
-    private sealed class PublishedFixture : IAsyncDisposable
+    [Fact]
+    public async Task Published_web_refuses_unprepared_or_mismatched_CSKH_storage_without_creating_or_changing_data()
+    {
+        await using var fixture = await PublishedFixture.CreateAsync();
+        var before = GaoApp.Web.Services.Assistant.AssistantStorageMaintenance.Capture(fixture.CustomerDatabasePath, fixture.AssistantSettingsPath);
+        foreach (var pair in new[] { ("Assistant__StorageId", "StorageId"), ("Assistant__StoreSettingsDirectory", "StoreSettingsDirectory"), ("CustomerService__DatabasePath", "DatabasePath") })
+            await fixture.AssertStartupRejectedAsync(start => start.Environment.Remove(pair.Item1), pair.Item2);
+        await fixture.AssertStartupRejectedAsync(start => start.Environment["Assistant__StorageId"] = Guid.NewGuid().ToString("D"), "StorageId");
+        var missing = Path.Combine(Path.GetDirectoryName(fixture.CustomerDatabasePath)!, "missing-c1.db");
+        await fixture.AssertStartupRejectedAsync(start => start.Environment["CustomerService__DatabasePath"] = missing, "DatabasePath");
+        var publicFile = Path.Combine(fixture.WebRoot, "wwwroot", "must-not-create-c1.db");
+        await fixture.AssertStartupRejectedAsync(start => start.Environment["CustomerService__DatabasePath"] = publicFile, "outside release");
+        Assert.False(File.Exists(missing)); Assert.False(File.Exists(publicFile));
+        Assert.Equal(before.Tables, GaoApp.Web.Services.Assistant.AssistantStorageMaintenance.Tables(fixture.CustomerDatabasePath));
+        Assert.Equal(before.Files, GaoApp.Web.Services.Assistant.AssistantStorageMaintenance.Files(fixture.AssistantSettingsPath, fixture.CustomerDatabasePath));
+    }
+
+    [Fact]
+    public async Task Published_web_rejects_public_channel_keys_and_private_keys_are_unreachable_over_anonymous_HTTP()
+    {
+        await using var fixture=await PublishedFixture.CreateAsync();
+        const string synthetic="SYNTHETIC_C2_TOKEN_NEVER_A_REAL_CREDENTIAL";
+        var name="c2-"+Guid.NewGuid().ToString("N")+".txt";
+        var publicFile=Path.Combine(fixture.WebRoot,"wwwroot",name);
+        var reserved=Path.Combine(fixture.WebRoot,"wwwroot","ChannelCredentials","c2-"+Guid.NewGuid().ToString("N"));
+        var privateDirectory=Path.Combine(fixture.KeysPath,"..","channel-private");privateDirectory=Path.GetFullPath(privateDirectory);
+        Directory.CreateDirectory(privateDirectory);var privateFile=Path.Combine(privateDirectory,name);File.WriteAllText(privateFile,synthetic);
+        void Configure(ProcessStartInfo start,string directory,string file){
+            start.Environment["CustomerChannels__WorkerEnabled"]="false";
+            start.Environment["CustomerChannels__CredentialDirectory"]=directory;
+            foreach(var pair in new Dictionary<string,string>{{"Id","facebook-c2"},{"StoreId","1"},{"Provider","facebook"},{"AccountId","12345"},{"Enabled","true"},{"GraphVersion","v26.0"},{"AccessTokenFile",file},{"AppSecretFile",file},{"VerifyTokenFile",file}})
+                start.Environment["CustomerChannels__Connections__0__"+pair.Key]=pair.Value;
+        }
+        try{
+            File.WriteAllText(publicFile,synthetic);
+            await fixture.AssertStartupRejectedAsync(start=>Configure(start,Path.GetDirectoryName(publicFile)!,publicFile),"CustomerChannels credentials");
+            using var client=fixture.CreateClient();
+            await Assert.ThrowsAsync<HttpRequestException>(async()=>{using var response=await client.GetAsync("/"+name);});
+            File.Delete(publicFile);
+            await fixture.RunMigratorAsync(bootstrap:false);
+            Directory.CreateDirectory(reserved);File.WriteAllText(Path.Combine(reserved,name),synthetic);
+            await fixture.StartWebAsync(client,start=>Configure(start,privateDirectory,privateFile));
+            foreach(var path in new[]{"/"+name,"/ChannelCredentials/"+Path.GetFileName(reserved)+"/"+name,"/channelcredentials/"+Path.GetFileName(reserved)+"/"+name}){
+                using var response=await client.GetAsync(path);Assert.Equal(HttpStatusCode.NotFound,response.StatusCode);Assert.DoesNotContain(synthetic,await response.Content.ReadAsStringAsync());
+            }
+            fixture.AssertLogsOmit(synthetic);
+        }finally{
+            await fixture.StopWebAsync();File.Delete(publicFile);
+            if(Directory.Exists(reserved))Directory.Delete(reserved,true);
+            var parent=Path.GetDirectoryName(reserved)!;if(Directory.Exists(parent)&&!Directory.EnumerateFileSystemEntries(parent).Any())Directory.Delete(parent);
+        }
+    }
+
+    internal sealed class PublishedFixture : IAsyncDisposable
     {
         internal InventoryPostingLocalDb Database { get; } = new();
         internal string TenantHost => "shop.phase6.test";
@@ -145,26 +202,33 @@ public sealed class PublishedProductionSmokeTests
         internal string AdminPassword { get; } = "Release!" + Guid.NewGuid().ToString("N") + "7aA";
         private readonly string pfxPassword = Guid.NewGuid().ToString("N");
         private readonly string runtimeRoot;
-        private readonly string releaseRoot;
+        private string releaseRoot;
+        private readonly JsonElement assistantStorage;
         private readonly X509Certificate2 certificate;
         private readonly ConcurrentQueue<string> logs = new();
         private readonly List<Process> processes = [];
         private Process? web;
         internal string WebRoot => Path.Combine(releaseRoot, "web");
         internal string KeysPath => Path.Combine(runtimeRoot, "keys");
+        internal string CustomerDatabasePath => assistantStorage.GetProperty("databasePath").GetString()!;
+        internal string AssistantSettingsPath => assistantStorage.GetProperty("settingsDirectory").GetString()!;
         internal Uri HttpAddress { get; }
         private Uri HttpsAddress { get; }
+        internal Uri BrowserAddress => new UriBuilder(HttpsAddress) { Host = TenantHost }.Uri;
 
         internal static async Task<PublishedFixture> CreateAsync()
             => new(await PublishedTestRelease.GetAsync());
 
-        private PublishedFixture(string verifiedReleaseRoot)
+        internal PublishedFixture(string verifiedReleaseRoot)
         {
             releaseRoot = verifiedReleaseRoot;
             Assert.True(File.Exists(Path.Combine(releaseRoot, "release-manifest.json")), "Verify the release before running smoke tests.");
             runtimeRoot = Path.Combine(FullApplicationFixture.SourceRoot(), "Logs", "security-phase6-runtime", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(KeysPath);
             Directory.CreateDirectory(Path.Combine(runtimeRoot, "uploads"));
+            Directory.CreateDirectory(Path.Combine(runtimeRoot, "uploads", "XML"));
+            assistantStorage = JsonSerializer.SerializeToElement(GaoApp.Web.Services.Assistant.AssistantStorageMaintenance.Prepare(
+                new("initialize", DestinationDirectory: Path.Combine(runtimeRoot, "assistant-storage"), WritersQuiesced: true)));
             using var rsa = RSA.Create(2048);
             var request = new CertificateRequest("CN=GaoApp isolated release test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
             var names = new SubjectAlternativeNameBuilder(); names.AddIpAddress(IPAddress.Loopback); names.AddDnsName(TenantHost);
@@ -203,6 +267,9 @@ public sealed class PublishedProductionSmokeTests
             start.Environment["Serilog__MinimumLevel__Default"] = "Warning";
             if (component == "Web")
             {
+                start.Environment["Assistant__StorageId"] = assistantStorage.GetProperty("storageId").GetString()!;
+                start.Environment["Assistant__StoreSettingsDirectory"] = assistantStorage.GetProperty("settingsDirectory").GetString()!;
+                start.Environment["CustomerService__DatabasePath"] = assistantStorage.GetProperty("databasePath").GetString()!;
                 start.Environment["Storage__UploadRoot"] = Path.Combine(runtimeRoot, "uploads");
                 start.Environment["AppUrl__BaseUrl"] = "https://phase6.test";
                 start.Environment["AppUrl__AdminUrl"] = "https://admin.phase6.test";
@@ -250,9 +317,10 @@ public sealed class PublishedProductionSmokeTests
             Assert.True(process.ExitCode == 0, "Published Migrator failed: " + string.Join('\n', logs.TakeLast(15)));
         }
 
-        internal async Task StartWebAsync(HttpClient client)
+        internal void AssertLogsOmit(string value)=>Assert.DoesNotContain(value,string.Join('\n',logs));
+        internal async Task StartWebAsync(HttpClient client,Action<ProcessStartInfo>? change=null)
         {
-            web = Start(StartInfo("Web"));
+            var start=StartInfo("Web");change?.Invoke(start);web = Start(start);
             var timer = Stopwatch.StartNew();
             while (timer.Elapsed < TimeSpan.FromSeconds(45))
             {
@@ -279,6 +347,13 @@ public sealed class PublishedProductionSmokeTests
         {
             if (web is not null && !web.HasExited) { web.Kill(entireProcessTree: true); await web.WaitForExitAsync(); }
             web = null;
+        }
+
+        internal async Task SwitchReleaseAsync(string verifiedReleaseRoot, HttpClient client)
+        {
+            await StopWebAsync();
+            releaseRoot = verifiedReleaseRoot;
+            await StartWebAsync(client);
         }
 
         public async ValueTask DisposeAsync()

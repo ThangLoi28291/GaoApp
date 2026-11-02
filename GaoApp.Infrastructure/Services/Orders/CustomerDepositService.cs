@@ -9,7 +9,7 @@ using GaoApp.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 namespace GaoApp.Infrastructure.Services.Orders;
 
-public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, ICurrentPOSContext pos,
+public sealed partial class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, ICurrentPOSContext pos,
     ILocalVietQrGenerator vietQr) : ICustomerDepositService
 {
     private int StoreId => db.CurrentStoreId ?? throw new BusinessRuleException("Chưa chọn cửa hàng.");
@@ -207,15 +207,16 @@ public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, 
     public Task<List<DepositBalanceDto>> GetAvailableAsync(int customerId, CancellationToken ct)
         => db.Set<CustomerDeposit>().AsNoTracking().Where(x => x.StoreId == StoreId && x.CustomerId == customerId && x.Balance > 0)
             .OrderBy(x => x.Id).Select(x => new DepositBalanceDto(x.Id, x.Purpose, x.Balance, x.ExpectedDeliveryDate)).ToListAsync(ct);
-    public async Task<DepositPageDto> GetAsync(int? customerId, CancellationToken ct)
+    public async Task<DepositPageDto> GetAsync(int? customerId, CancellationToken ct, string? search = null, int page = 1, string? status = null)
     {
         var bank = await DefaultBankAsync(ct);
-        var page = new DepositPageDto { CustomerId = customerId, DefaultBank = bank == null ? null : bank.BankName + " · " + bank.AccountNumber };
-        if (!customerId.HasValue) return page;
-        page.CustomerName = await db.Customers.Where(x => x.StoreId == StoreId && x.Id == customerId).Select(x => x.Name).SingleOrDefaultAsync(ct)
+        var result = new DepositPageDto { CustomerId = customerId, DefaultBank = bank == null ? null : bank.BankName + " · " + bank.AccountNumber };
+        result.List = await GetListAsync(customerId, search, page, status, ct);
+        if (!customerId.HasValue) return result;
+        result.CustomerName = await db.Customers.Where(x => x.StoreId == StoreId && x.Id == customerId).Select(x => x.Name).SingleOrDefaultAsync(ct)
             ?? throw new BusinessRuleException("Không tìm thấy khách hàng.");
-        page.Deposits = await GetAvailableAsync(customerId.Value, ct);
-        page.Journal = await (from e in db.Set<CustomerDepositEntry>().AsNoTracking()
+        result.Deposits = await GetAvailableAsync(customerId.Value, ct);
+        result.Journal = await (from e in db.Set<CustomerDepositEntry>().AsNoTracking()
             join d in db.Set<CustomerDeposit>() on e.CustomerDepositId equals d.Id
             join b in db.StoreBankAccounts on e.StoreBankAccountId equals b.Id into banks
             from b in banks.DefaultIfEmpty()
@@ -223,6 +224,6 @@ public sealed class CustomerDepositService(AppDbContext db, IAppUnitOfWork uow, 
             orderby e.Id descending
             select new DepositJournalDto(e.Id, d.Id, e.CreatedAtUtc, e.Kind, e.Amount, e.Method,
                 b == null ? null : b.BankName + " · " + b.AccountNumber, e.Reference, e.Note, e.OrderId, e.POSShiftId, e.CreatedBy)).Take(500).ToListAsync(ct);
-        return page;
+        return result;
     }
 }

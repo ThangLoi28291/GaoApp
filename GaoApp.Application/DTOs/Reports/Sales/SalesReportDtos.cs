@@ -65,6 +65,10 @@ public sealed class SalesResolvedPeriodSet
 
 public sealed class SalesMetricSummaryDto
 {
+    public decimal StorefrontServiceGross { get; set; }
+    public decimal StorefrontServiceNet { get; set; }
+    public decimal StorefrontServiceTax { get; set; }
+    public string StorefrontServiceText => $"Dịch vụ giao website: tổng {StorefrontServiceGross.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))} đ; chưa thuế {StorefrontServiceNet.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))} đ; thuế {StorefrontServiceTax.ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))} đ. Đã gồm trong doanh số; không tính là sản phẩm hoặc đơn bán bổ sung.";
     public decimal GrossSales { get; set; }
     public decimal Discounts { get; set; }
     public decimal SalesAfterDiscount { get; set; }

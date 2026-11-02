@@ -17,6 +17,9 @@ public sealed class InvoiceBuyerSelfServiceLinkDto
 
 public sealed class InvoiceBuyerSelfServiceViewDto
 {
+    public bool CanView { get; set; }
+    public string? PublicMessage { get; set; }
+
     public int OrderId { get; set; }
 
     public string? OrderNumber { get; set; }

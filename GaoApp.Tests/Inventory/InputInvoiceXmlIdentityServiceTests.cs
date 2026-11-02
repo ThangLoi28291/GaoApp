@@ -805,7 +805,7 @@ public sealed class InputInvoiceXmlIdentityServiceTests
         out TenantContext tenant)
     {
         tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
         var options = new DbContextOptionsBuilder<InMemoryAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;

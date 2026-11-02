@@ -55,6 +55,7 @@ public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
         // Migration chỉ cần model metadata, không cần tenant runtime thật.
         var tenant = new TenantContext();
         tenant.SetHostAdmin();
+        tenant.SetAuthenticatedHostAdmin(true); // Explicit design-time context; never an HTTP host lookup.
 
         // User giả cho design-time
         ICurrentUser currentUser = new DesignTimeCurrentUser();

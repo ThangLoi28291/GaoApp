@@ -1,0 +1,78 @@
+@using GaoApp.Domain.Entities
+@using GaoApp.Web.Services.Acb
+@using GaoApp.Application.Common.Security
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
+@model IReadOnlyList<BankNotificationDevice>
+@{
+    var accounts = (IReadOnlyList<StoreBankAccount>)ViewBag.Accounts;
+    var receipts = (IReadOnlyList<BankNotificationHistoryItem>)ViewBag.History;
+    var phoneStates = (IReadOnlyDictionary<int, BankNotificationPhoneState>)ViewBag.PhoneStates;
+    var waiting = (IReadOnlyList<BankNotificationAdminWait>)ViewBag.Waiting;
+    var acknowledgedQrIds = receipts.Where(x => x.QrId.HasValue && (x.AwaitingTerminal || x.PaymentId.HasValue)).Select(x => x.QrId!.Value).ToHashSet();
+    var visibleWaiting = waiting.Where(x => !x.Approved && !acknowledgedQrIds.Contains(x.QrId)).ToArray();
+    var canManage = (await Authorization.AuthorizeAsync(User, null, PermissionCodes.System.BankAccount.Manage)).Succeeded;
+    var canApprove = canManage && (await Authorization.AuthorizeAsync(User, null, PermissionCodes.Pos.Payment.Create)).Succeeded &&
+        (await Authorization.AuthorizeAsync(User, null, PermissionCodes.Pos.Order.Finalize)).Succeeded;
+}
+<div id="bankNotificationLiveState">
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h6">Điện thoại đã đăng ký</h2>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Tên</th><th>Tài khoản</th><th>Trạng thái</th><th>Liên lạc gần nhất (giờ VN)</th><th></th></tr></thead><tbody id="bankNotificationDeviceRows" data-bank-live-region>
+        @foreach (var device in Model) {
+            var phone = phoneStates[device.Id];
+            var label = phone.State switch { "Connected" => "Đang kết nối", "Disconnected" => "Mất liên lạc", "Queued" => "Có tin chờ gửi", "SendError" => "Lỗi gửi tin", "Revoked" => "Đã thu hồi", _ => "Chưa có trạng thái điện thoại" };
+            <tr data-live-key="device-@device.Id"><td>@device.Name <small class="text-muted">#@device.Id</small></td><td>@(accounts.FirstOrDefault(a => a.Id == device.BankAccountId)?.AccountNumber ?? $"#{device.BankAccountId}")</td><td>@label @if (phone.QueuedCount > 0) { <span>(@phone.QueuedCount tin)</span> }</td><td>@phone.LastContactAtUtc?.AddHours(7).ToString("yyyy-MM-dd HH:mm:ss")</td><td>
+                @if (canManage) {
+                    <form method="post" class="d-inline" action="@Url.Action("Renew", new { id = device.Id })">@Html.AntiForgeryToken()<button type="submit" class="btn btn-sm btn-outline-primary">@(device.Enabled ? "Cấp lại cấu hình" : "Kích hoạt lại & cấp cấu hình")</button></form>
+                    @if (device.Enabled) { <form class="d-inline" method="post" action="@Url.Action("Revoke", new { id = device.Id })">@Html.AntiForgeryToken()<button type="submit" class="btn btn-sm btn-outline-danger">Thu hồi kết nối</button></form> }
+                }
+            </td></tr>
+        }
+        </tbody></table></div>
+        <p class="small text-muted mb-1">Mất liên lạc: máy chủ chưa nhận tín hiệu từ điện thoại quá 90 giây. Android có thể đang hạn chế chạy nền khi khóa màn hình; đây không phải xác nhận điện thoại đã ngắt mạng. Cho phép GaoApp chạy nền và tắt tối ưu pin để duy trì gửi tin.</p>
+        <p class="small text-muted mb-0">Điện thoại báo 401: cấp lại cấu hình đúng mã thiết bị #, nhập lại file đó trên điện thoại để gửi tiếp hàng đợi. Không cần tạo thiết bị mới.</p>
+    </div></div>
+    <div class="card mb-3"><div class="card-body">
+        <h2 class="h6">Chuyển khoản đang chờ tại quầy</h2>
+        <p class="small text-muted">Khi đã kiểm tra tiền vào ngân hàng nhưng điện thoại chưa gửi được, admin có thể xác nhận tại đây. POS nhận lệnh khi kết nối lại và chỉ chốt đơn khi đủ tiền.</p>
+        <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Quầy</th><th>Đơn</th><th>Số tiền chờ</th><th>Mã QR</th><th></th></tr></thead><tbody id="bankNotificationWaitingRows" data-bank-live-region>
+        @foreach (var row in visibleWaiting) {
+            <tr data-live-key="qr-@row.QrId"><td>@row.TerminalName</td><td>#@row.OrderId</td><td>@row.Amount.ToString("N0") đ</td><td class="small text-break">@row.RequestCode</td><td>
+            @if (canApprove) {
+                <form data-bank-approval data-order="@row.OrderId" data-terminal="@row.TerminalName" data-amount="@row.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)" data-sender="Chưa có thông báo từ điện thoại">
+                    @Html.AntiForgeryToken()<input type="hidden" name="qrId" value="@row.QrId" /><input type="hidden" name="amount" value="@row.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                    <button type="submit" class="btn btn-sm btn-primary">Đã nhận tiền</button>
+                </form>
+            }
+            </td></tr>
+        }
+        @if (visibleWaiting.Length == 0) { <tr data-live-key="empty"><td colspan="5" class="text-muted">Không có khoản chuyển khoản đang chờ.</td></tr> }
+        </tbody></table></div>
+    </div></div>
+    <div class="card" id="bankNotificationHistory" data-pending-qr-ids="@string.Join(",", receipts.Where(x => x.AwaitingTerminal && x.QrId.HasValue).Select(x => x.QrId!.Value).Distinct().Order())"><div class="card-body"><h2 class="h6">Lịch sử nhận và xác nhận chuyển khoản</h2>
+        <div class="table-responsive"><table class="table"><thead><tr><th>Giờ VN</th><th>Số tiền</th><th>Người chuyển</th><th>POS</th><th>Mã giao dịch</th><th>Kết quả</th></tr></thead><tbody id="bankNotificationHistoryRows" data-bank-live-region>
+        @foreach (var item in receipts) {
+            var targets = visibleWaiting.Where(w => w.Amount == item.Amount && w.BankAccountId == item.BankAccountId &&
+                (item.OrderId == null || w.OrderId == item.OrderId) && (item.QrCode == null || string.Equals(w.RequestCode, item.QrCode, StringComparison.OrdinalIgnoreCase))).ToArray();
+            var outcome = item.ConfirmationSource switch { "AdminApprovalPending" or "NotificationAdminPending" => "Admin đã gửi xác nhận — chờ quầy ghi nhận", "NotificationAdmin" or "AdminManualConfirmed" => "Admin xác nhận — đã ghi nhận tiền",
+                "LateManualReview" => "Đến muộn / cần đối soát khoản thủ công", "NotificationAuto" => "Tự xác nhận theo POS", _ => item.PaymentId.HasValue ? "Thu ngân chọn Đúng" : "Chưa ghép / đang chờ xử lý" };
+            if (item.PaymentId == null && item.QrStatus is GaoApp.Domain.Enums.PosPaymentQrStatus.Cancelled or GaoApp.Domain.Enums.PosPaymentQrStatus.Expired or GaoApp.Domain.Enums.PosPaymentQrStatus.Failed) { outcome = "QR đã kết thúc — chưa ghi nhận tiền"; }
+            <tr data-live-key="@(item.ReceiptId.HasValue ? $"receipt-{item.ReceiptId.Value}" : $"qr-{item.QrId}")"><td>@item.PostedAtUtc.AddHours(7).ToString("yyyy-MM-dd HH:mm:ss")</td><td>@item.Amount.ToString("N0") đ</td><td>@(item.SenderName ?? (item.ReceiptId.HasValue ? "Chưa đọc được tên" : "Không có thông báo điện thoại"))</td><td>@if (item.OrderId.HasValue) { <span>POS-@item.OrderId</span> }<div class="small text-muted">@item.TerminalName</div></td><td>@(item.TransactionCode ?? "Chưa có mã ngân hàng")</td><td>@outcome
+                @if (item.ConfirmedByUserId.HasValue) { <div class="small text-muted">Người xác nhận: @(item.ConfirmedByName ?? $"#{item.ConfirmedByUserId}") · @item.ConfirmedAtUtc?.AddHours(7).ToString("yyyy-MM-dd HH:mm:ss")</div> }
+                @if (item.QrCode != null) { <div class="small text-muted text-break">Mã QR: @item.QrCode</div> }
+                @if (item.Content != null) { <details><summary>Nội dung gốc</summary><pre class="text-wrap mb-0">@item.Content</pre></details> }
+                @if (canApprove && item.ReceiptId.HasValue && item.PaymentId == null && item.AppliedWaitId == null && targets.Length > 0) {
+                    <form data-bank-approval data-sender="@(item.SenderName ?? "Chưa đọc được tên")" data-reference="@item.TransactionCode" data-amount="@item.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)" class="d-flex gap-2 mt-2">
+                        @Html.AntiForgeryToken()<input type="hidden" name="receiptId" value="@item.ReceiptId" /><input type="hidden" name="amount" value="@item.Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)" />
+                        <select class="form-select form-select-sm" name="qrId" aria-label="Chọn khoản chờ" required>
+                        @if (targets.Length > 1) { <option value="">Chọn đúng quầy / đơn</option> }
+                        @foreach (var target in targets) { <option value="@target.QrId" data-order="@target.OrderId" data-terminal="@target.TerminalName">@target.TerminalName · Đơn #@target.OrderId · @target.Amount.ToString("N0") đ</option> }
+                        </select><button class="btn btn-sm btn-primary text-nowrap" type="submit">Đã nhận tiền</button>
+                    </form>
+                }
+            </td></tr>
+        }
+        @if (receipts.Count == 0) { <tr data-live-key="empty"><td colspan="6" class="text-muted">Chưa có thông báo hoặc xác nhận chuyển khoản.</td></tr> }
+        </tbody></table></div>
+    </div></div>
+</div>

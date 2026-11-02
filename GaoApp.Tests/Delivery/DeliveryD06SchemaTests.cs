@@ -19,7 +19,7 @@ public sealed class DeliveryD06SchemaTests(DeliveryD02Fixture fixture)
 {
     private const string Previous = "20261007100000_AddDeliveryInventoryPosting";
     private const string Current = "20261008100000_AddDeliveryTrips";
-    private const string Latest = "20261008180000_AllowDeliveryOpeningCostSources";
+    private const string Latest = "20261022090000_AddDurableAuditOutbox";
 
     [Fact]
     public async Task M01_Current73_real_SQL_matches_the_complete_manifest_and_seven_store_scoped_custody_tables()
@@ -47,7 +47,7 @@ public sealed class DeliveryD06SchemaTests(DeliveryD02Fixture fixture)
             var before = await c.SnapshotAsync(); await using var db = isolated.Web.Database.CreateHostContext();
             try
             {
-                await db.GetService<IMigrator>().MigrateAsync(Previous); await AssertSchema(db, current: false);
+                await MigrationTestSupport.MigrateHistoricalPrefixAsync(isolated.Web.Database, Previous); await AssertSchema(db, current: false);
                 Assert.Equal(before, await c.SnapshotAsync());
                 await db.GetService<IMigrator>().MigrateAsync(Latest); await AssertSchema(db, current: true);
                 Assert.Equal(before, await c.SnapshotAsync());
@@ -81,8 +81,9 @@ public sealed class DeliveryD06SchemaTests(DeliveryD02Fixture fixture)
             await using var db = isolated.Web.Database.CreateHostContext();
             try
             {
-                // Exercise historical73 Down before restoring the later Opening protection.
-                await db.GetService<IMigrator>().MigrateAsync(Current);
+                // Exercise the immutable73 Down guard directly; safe later Down migrations must not
+                // be mistaken for part of the trip guard's fail-before-DDL promise.
+                await MigrationTestSupport.MigrateHistoricalPrefixAsync(isolated.Web.Database, Current);
                 await AssertSchema(db, current: true, tripPrefix: true);
                 var before = await c.SnapshotAsync();
                 var error = await Assert.ThrowsAsync<SqlException>(() => db.GetService<IMigrator>().MigrateAsync(Previous));
@@ -230,7 +231,8 @@ public sealed class DeliveryD06SchemaTests(DeliveryD02Fixture fixture)
     private static async Task<DatabaseSchemaManifest> AssertSchema(AppDbContext db, bool current, bool tripPrefix = false)
     {
         var applied = (await db.Database.GetAppliedMigrationsAsync()).ToArray();
-        Assert.Equal(current ? tripPrefix ? 73 : 74 : 72, applied.Length); Assert.Equal(current ? tripPrefix ? Current : Latest : Previous, applied[^1]);
+        Assert.Equal(current ? tripPrefix ? 73 : 80 : 72, applied.Length);
+        Assert.Equal(current ? tripPrefix ? Current : Latest : Previous, applied[^1]);
         Assert.Equal(Previous, applied[71]);
         var catalog = new EfCoreDatabaseSchemaManifestCatalog(db);
         Assert.True(catalog.TryGetManifestForAppliedMigrationPrefix(applied, out var expected));
@@ -241,6 +243,6 @@ public sealed class DeliveryD06SchemaTests(DeliveryD02Fixture fixture)
         finally { if (!wasOpen) await db.Database.CloseConnectionAsync(); }
         var compared = DatabaseSchemaComparer.Compare(expected, actual);
         Assert.True(compared.IsMatch, JsonSerializer.Serialize(compared)); Assert.Equal(0, compared.Mismatches.Total);
-        Assert.Equal(current ? 38 : 27, actual.Tables.Sum(x => x.Triggers.Count)); return actual;
+        Assert.Equal(current ? tripPrefix ? 38 : 41 : 27, actual.Tables.Sum(x => x.Triggers.Count)); return actual;
     }
 }

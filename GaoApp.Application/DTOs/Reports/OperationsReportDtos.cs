@@ -1,4 +1,5 @@
 using GaoApp.Application.DTOs.Reports.Sales;
+using GaoApp.Domain.Entities;
 
 namespace GaoApp.Application.DTOs.Reports;
 
@@ -12,13 +13,38 @@ public sealed class OperationsReportQueryDto
 }
 public sealed record ReportOptionDto(string Id, string Name);
 public sealed record MoneyMovementDto(string Id, DateTime AtUtc, string Fund, string Name, string Source,
-    decimal Amount, string? Reference, int? ManualId = null, string? RowVersion = null, bool CanReverse = false, bool IsTransfer = false);
+    decimal Amount, string? Reference, int? ManualId = null, string? RowVersion = null, bool CanReverse = false, bool IsTransfer = false,
+    BankTimePrecision? TimePrecision = null, DateTime? BankBusinessDate = null)
+{
+    public string AmountText => ReportMoneyText.Format(Amount);
+    public string InflowText => ReportMoneyText.Format(Math.Max(0,Amount));
+    public string OutflowText => ReportMoneyText.Format(Math.Max(0,-Amount));
+    public string? TimeText => TimePrecision==BankTimePrecision.BankDay?BankBusinessDate?.ToString("dd/MM/yyyy",System.Globalization.CultureInfo.InvariantCulture)+" (ngày ngân hàng)":null;
+}
 public sealed record FundSummaryDto(string Fund, string Name, decimal? Opening, decimal Inflow, decimal Outflow,
-    decimal Net, decimal? Closing, DateTime? BaselineDate);
-public sealed record CashTrendDto(string Label, decimal Inflow, decimal Outflow, decimal Net);
+    decimal Net, decimal? Closing, DateTime? BaselineDate)
+{
+    public string OpeningText=>ReportMoneyText.Format(Opening);public string InflowText=>ReportMoneyText.Format(Inflow);
+    public string OutflowText=>ReportMoneyText.Format(Outflow);public string NetText=>ReportMoneyText.Format(Net);public string ClosingText=>ReportMoneyText.Format(Closing);
+}
+public sealed record CashTrendDto(string Label, decimal Inflow, decimal Outflow, decimal Net)
+{
+    public string InflowText=>ReportMoneyText.Format(Inflow);public string OutflowText=>ReportMoneyText.Format(Outflow);public string NetText=>ReportMoneyText.Format(Net);
+}
+public sealed record BankEvidenceReviewDto(string Id,decimal Amount,string Reason,string? BankDay)
+{public string AmountText=>ReportMoneyText.Format(Amount);}
 public sealed record CashFlowReportDto(SalesReportPeriodDto Period, IReadOnlyList<ReportOptionDto> Funds,
     IReadOnlyList<FundSummaryDto> Summary, IReadOnlyList<CashTrendDto> Trend, IReadOnlyList<MoneyMovementDto> Items,
-    int Count, IReadOnlyList<string> Warnings, decimal ClosingShiftDifference);
+    int Count, IReadOnlyList<string> Warnings, decimal ClosingShiftDifference,IReadOnlyList<BankEvidenceReviewDto>? BankReceiptReviews=null)
+{
+    private IEnumerable<MoneyMovementDto> External=>Items.Where(x=>!x.IsTransfer&&x.Source!="Phiếu tiền mặt ca");
+    public string ExternalInflowText=>ReportMoneyText.Format(External.Sum(x=>Math.Max(0,x.Amount)));
+    public string ExternalOutflowText=>ReportMoneyText.Format(External.Sum(x=>Math.Max(0,-x.Amount)));
+    public string ExternalNetText=>ReportMoneyText.Format(External.Sum(x=>x.Amount));
+    public string SelectedClosingText=>ReportMoneyText.Format(Summary.Where(x=>x.Fund!="other").Any()&&Summary.Where(x=>x.Fund!="other").All(x=>x.Closing.HasValue)?Summary.Where(x=>x.Fund!="other").Sum(x=>x.Closing):null);
+}
+internal static class ReportMoneyText
+{internal static string Format(decimal? value)=>value?.ToString("#,0.###",System.Globalization.CultureInfo.GetCultureInfo("vi-VN"))??"Chưa xác định";}
 public sealed record StockReportRowDto(int WarehouseId, int VariantId, string Warehouse, string Name, string Sku,
     string Category, string Unit, decimal? Opening, decimal Inbound, decimal Outbound, decimal? Closing,
     decimal? OpeningValue, decimal? ClosingValue, decimal Sold, DateTime? LastSoldAtUtc, decimal? DaysCover,

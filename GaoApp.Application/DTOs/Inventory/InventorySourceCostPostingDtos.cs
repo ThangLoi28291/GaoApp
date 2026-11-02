@@ -8,10 +8,11 @@ public sealed record InventoryDeliveryReturnPosting(int DeliveryOrderId, int Dis
     decimal StartQuantity, decimal Quantity, Guid RequestId);
 public sealed record InventorySourcePreservingTransfer(int DocumentId, int LineId);
 public sealed record InventorySourceCostMirrorPart(int SourceValuationEntryId, string? SourceReferenceSubKey,
-    int SourceCostBudgetDebitId, decimal Quantity, decimal UnitCost, decimal Amount);
+    int SourceCostBudgetDebitId, decimal Quantity, decimal UnitCost, decimal Amount,
+    bool IsProvisional = false, int? SourceProvisionalAllocationId = null, decimal? SourceStartQuantity = null);
 public sealed record InventoryDeliveryPostingProof(int StoreId, int WarehouseId, int VariantId, int LegalEntityId,
     decimal Quantity, int? OwnReservationId, IReadOnlyList<InventorySourceCostMirrorPart> Parts,
-    int? DeliveryOrderLineId = null);
+    int? DeliveryOrderLineId = null, bool? StorefrontAllowNegativeInventory = null);
 public sealed record InventoryTransferPostingProof(int StoreId, int DocumentId, int LineId, int SourceWarehouseId,
     int DestinationWarehouseId, int VariantId, decimal Quantity, string DocumentNo);
 

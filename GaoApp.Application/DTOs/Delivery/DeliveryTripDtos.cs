@@ -71,9 +71,13 @@ public sealed record DeliveryTripDetailDto(int StoreId, int TripId, string Code,
     public DeliveryTripReturnDto? ReturnToStore { get; init; }
     public bool AllOutcomesComplete { get; init; }
     public bool ReadyForReconciliation { get; init; }
+    public bool IsCompleted { get; init; }
 }
 public sealed record DeliveryTripSummaryDto(int TripId, string Code, string State, int Revision, string Version,
     int CourierUserId, string CourierName, int ActiveOrderCount, DateTimeOffset CreatedAtUtc,
-    DateTimeOffset? HandedOverAtUtc, DateTimeOffset? DepartedAtUtc);
+    DateTimeOffset? HandedOverAtUtc, DateTimeOffset? DepartedAtUtc)
+{
+    public bool IsCompleted { get; init; }
+}
 public sealed record DeliveryTripPageDto(int StoreId, DateTimeOffset ServerTimeUtc,
     IReadOnlyList<DeliveryTripSummaryDto> Items, int? NextBeforeId);

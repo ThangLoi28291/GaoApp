@@ -2,6 +2,7 @@
 @using GaoApp.Web.Areas.Admin.ViewModels.Promotions
 
 @model PromotionIndexVM
+@inject Microsoft.AspNetCore.Authorization.IAuthorizationService Authorization
 
 @{
     ViewData["Title"] = "Khuyến mãi";
@@ -19,6 +20,11 @@
         </div>
 
         <div class="d-flex gap-2">
+            @if ((await Authorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.Catalog.Promotion.Manage)).Succeeded &&
+                 (await Authorization.AuthorizeAsync(User, null, GaoApp.Application.Common.Security.PermissionCodes.System.ProductLabel.Manage)).Succeeded)
+            {
+                <a class="btn btn-outline-primary" href="@Url.Content("~/admin/promotion-labels")">In tem khuyến mãi</a>
+            }
             <button type="button" id="btnOpenCreatePromotion" class="btn btn-primary">
                 <i class="bx bx-plus me-1"></i> Thêm khuyến mãi
             </button>
@@ -28,6 +34,7 @@
 
 @section PageStyles {
     <link rel="stylesheet" href="~/admin/css/promotions.page.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/admin/css/promotions.mobile.css" asp-append-version="true" />
 }
 
 <div class="promo-shell"
@@ -432,4 +439,5 @@
 
 @section PageScripts {
     <script src="~/admin/js/promotions.page.js" asp-append-version="true"></script>
+    <script src="~/admin/js/promotions.mobile.js" asp-append-version="true"></script>
 }

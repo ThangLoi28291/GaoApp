@@ -1,4 +1,4 @@
-﻿using GaoApp.Domain.Constants;
+using GaoApp.Domain.Constants;
 using GaoApp.Domain.Entities;
 using GaoApp.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +10,12 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 {
     public void Configure(EntityTypeBuilder<InvoiceHead> b)
     {
-        b.ToTable("InvoiceHeads", t => t.HasCheckConstraint("CK_InvoiceHeads_LegacyOrder", "[OrderId] IS NOT NULL OR ([LegacySourceId] IS NOT NULL AND [LegacyReadOnly] = 1) OR [IsAutoInvoiceGroup] = 1"));
+        b.ToTable("InvoiceHeads", t => t.HasCheckConstraint("CK_InvoiceHeads_LegacyOrder", "[OrderId] IS NOT NULL OR ([LegacySourceId] IS NOT NULL AND [LegacyReadOnly] = 1) OR [IsAutoInvoiceGroup] = 1 OR ([StorefrontServiceRevenueId] IS NOT NULL AND [NativeServiceInvoiceRoute] IN (1,2) AND [NativeServiceRecognizedAtUtc] IS NOT NULL AND [NativeServiceActorUserId] IS NOT NULL AND [LegacyReadOnly]=0 AND [LegacySourceId] IS NULL)"));
+        b.HasOne<GaoApp.Domain.Storefront.StorefrontServiceRevenue>().WithMany().HasForeignKey(x => new { x.StoreId, x.StorefrontServiceRevenueId })
+            .HasPrincipalKey(x => new { x.StoreId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<UserInStore>().WithMany().HasForeignKey(x => new { x.StoreId, x.NativeServiceActorUserId })
+            .HasPrincipalKey(x => new { x.StoreId, x.UserId }).OnDelete(DeleteBehavior.Restrict);
+        b.HasIndex(x => new { x.StoreId, x.StorefrontServiceRevenueId }).IsUnique().HasFilter("[StorefrontServiceRevenueId] IS NOT NULL AND [OriginalInvoiceHeadId] IS NULL AND [IsDeleted]=0");
 
         b.HasKey(x => x.Id);
 
@@ -82,7 +87,7 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         // Tiền
         b.Property(x => x.TotalQuantity)
-            .HasPrecision(18, 3);
+            .HasPrecision(19, 4);
 
         b.Property(x => x.SubTotal)
             .HasPrecision(18, 2);
@@ -92,6 +97,11 @@ public class InvoiceHeadConfiguration : IEntityTypeConfiguration<InvoiceHead>
 
         b.Property(x => x.GrandTotal)
             .HasPrecision(18, 2);
+
+        b.Property(x => x.RevenueTaxPercentage);
+        b.Property(x => x.RevenueTaxReductionAmount).HasPrecision(18, 2).HasDefaultValue(0m);
+        b.ToTable("InvoiceHeads", t => t.HasCheckConstraint("CK_InvoiceHeads_RevenueTax",
+            "([RevenueTaxPercentage] IS NULL AND [RevenueTaxReductionAmount] = 0) OR ([RevenueTaxPercentage] IS NOT NULL AND [RevenueTaxPercentage] IN (1,2,3,5) AND [RevenueTaxReductionAmount] >= 0)"));
 
         b.Property(x => x.Note)
             .HasMaxLength(500);

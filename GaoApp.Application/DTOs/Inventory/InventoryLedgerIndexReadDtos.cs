@@ -51,6 +51,12 @@ public sealed class InventoryLedgerIndexSummaryDto
 
 public sealed class InventoryLedgerIndexItemDto
 {
+    public int WarehouseId { get; set; }
+    public int ProductVariantId { get; set; }
+    [JsonIgnore] public string? SourceKind { get; set; }
+    [JsonIgnore] public int? SourceId { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceUrl { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public InventoryLedgerInboundCostDto? InboundCost { get; set; }
     public int TransactionId { get; set; }
@@ -65,6 +71,8 @@ public sealed class InventoryLedgerIndexItemDto
     public InventoryReferenceType ReferenceType { get; set; }
     public string ReferenceTypeLabel { get; set; } = string.Empty;
     public string? ReferenceCode { get; set; }
+    public string? ReceiptDocumentNo { get; set; }
+    public List<InventoryLedgerInputInvoiceDto> LinkedInputInvoices { get; set; } = [];
     public decimal BeforeQty { get; set; }
     public decimal QuantityChange { get; set; }
     public decimal AfterQty { get; set; }
@@ -87,9 +95,34 @@ public sealed class InventoryLedgerIndexItemDto
     public string? Note { get; set; }
 }
 
+/// <summary>Base-unit quantities for ONE variant in ONE warehouse, by Vietnam business date.
+/// Independent of transaction type, reference, state, sort and paging filters.</summary>
+public sealed class InventoryLedgerPeriodDto
+{
+    public int WarehouseId { get; set; }
+    public int ProductVariantId { get; set; }
+    public string WarehouseName { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public string? VariantName { get; set; }
+    public string BaseUnitName { get; set; } = "";
+    public DateTime? FromDate { get; set; }
+    public DateTime? ToDate { get; set; }
+    public bool HasRecordedHistory { get; set; }
+    public decimal? OpeningQty { get; set; }
+    public decimal IncreaseQty { get; set; }
+    public decimal DecreaseQty { get; set; }
+    public decimal? ClosingQty { get; set; }
+}
+
 public sealed class InventoryLedgerIndexQuickViewDto
 {
     public InventoryLedgerIndexItemDto Item { get; set; } = new();
+}
+
+public sealed class InventoryLedgerInputInvoiceDto
+{
+    public string? InvoiceSeries { get; set; }
+    public string? InvoiceNumber { get; set; }
 }
 
 public sealed class InventoryLedgerInboundCostDto

@@ -26,7 +26,7 @@ public class InvoiceCorrectionCreateInfoDto
 
     public string DefaultAgreementDocumentNo { get; set; } = string.Empty;
 
-    public DateTime DefaultAgreementDate { get; set; } = DateTime.Today;
+    public DateTime DefaultAgreementDate { get; set; } = VietnamTime.Today;
 }
 
 public class CreateInvoiceCorrectionRequestDto
@@ -39,7 +39,7 @@ public class CreateInvoiceCorrectionRequestDto
 
     public string AgreementDocumentNo { get; set; } = string.Empty;
 
-    public DateTime AgreementDate { get; set; } = DateTime.Today;
+    public DateTime AgreementDate { get; set; } = VietnamTime.Today;
 
     public string? Note { get; set; }
 }

@@ -188,13 +188,13 @@ public sealed class StockCountIndexReadRepository : IStockCountIndexReadReposito
 
         if (request.FromDate.HasValue)
         {
-            var fromDate = request.FromDate.Value.Date;
+            var fromDate = VietnamTime.ToUtc(request.FromDate.Value.Date);
             query = query.Where(document => document.DocumentDate >= fromDate);
         }
 
         if (request.ToDate.HasValue)
         {
-            var toDateExclusive = request.ToDate.Value.Date.AddDays(1);
+            var toDateExclusive = VietnamTime.ToUtc(request.ToDate.Value.Date.AddDays(1));
             query = query.Where(document => document.DocumentDate < toDateExclusive);
         }
 

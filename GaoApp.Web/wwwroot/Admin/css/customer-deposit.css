@@ -149,6 +149,17 @@
 .deposit-ticket__balance span { color: #8490a3; font-size: .61rem; }
 .deposit-ticket__balance strong { margin-top: 2px; color: #155cc2; font-size: 1.12rem; font-variant-numeric: tabular-nums; }
 .deposit-ticket__date { position: relative; z-index: 1; margin-top: 11px; color: #778397; font-size: .65rem; }
+.deposit-ticket__print { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; color: var(--deposit-blue); font-size: .72rem; font-weight: 700; text-decoration: none; }
+.deposit-list-filters { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(160px, .4fr) auto auto; align-items: end; gap: 12px; margin-bottom: 18px; }
+.deposit-list-filters .deposit-field { margin-bottom: 0; }
+.deposit-list-table { min-width: 1020px; }
+.deposit-list-table td:nth-child(3) { min-width: 200px; max-width: 330px; overflow-wrap: anywhere; }
+.deposit-list-table .deposit-list-customer { margin-top: 0; color: var(--deposit-blue); font-size: .72rem; font-weight: 750; }
+.deposit-list-table .deposit-list-print { margin-top: 10px; white-space: nowrap; }
+.deposit-list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; color: var(--deposit-muted); font-size: .72rem; }
+.deposit-list-pagination > div { display: flex; gap: 8px; }
+.deposit-list-pagination a { text-decoration: none; }
+.deposit-received-notice { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; background: #eaf8f1; color: #087f5b; font-size: .8rem; }
 
 .deposit-table-wrap { overflow: auto; border: 1px solid #dfe5ed; border-radius: 12px; }
 .deposit-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .71rem; }
@@ -186,6 +197,9 @@
 }
 
 @media (max-width: 760px) {
+    .deposit-list-filters { grid-template-columns: 1fr 1fr; }
+    .deposit-list-filters .deposit-field:first-of-type { grid-column: 1 / -1; }
+    .deposit-list-pagination, .deposit-received-notice { align-items: flex-start; flex-direction: column; }
     .deposit-page { padding: 0; }
     .deposit-layout { grid-template-columns: 1fr; }
     .deposit-customer-pane { position: static; }

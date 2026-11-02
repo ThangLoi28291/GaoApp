@@ -1,0 +1,146 @@
+/* UI-13a/b: the native list, filters and quick views remain their own owners. */
+@media (max-width: 767.98px) {
+    .ledger-period { background: #fff; border: 1px solid #dce5f3; border-radius: 18px; padding: 16px; color: #172d4d; }
+    .ledger-period__heading { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: #2463eb; }
+    .ledger-period__help { color: #60728b; font-size: .78rem; margin: 10px 0 12px; line-height: 1.5; }
+    .ledger-period__grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .ledger-period__metric { background: #f3f6fc; border-radius: 12px; padding: 12px; min-width: 0; }
+    .ledger-period__metric span { display: block; color: #60728b; font-size: .78rem; }
+    .ledger-period__metric strong { display: block; font-size: 1.2rem; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+    .ledger-period__metric:last-child { background: #eaf1ff; color: #1756cd; }
+    .ledger-period__caption { margin: 8px 0 0; font-size: .76rem; color: #60728b; }
+    .ledger-source-link { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border: 1px solid #dce5f3; border-radius: 10px; margin: 8px 0; color: #1756cd; font-weight: 600; }
+    body[data-inventory-lookup-phone] {
+        --lookup-ink: #172d4d;
+        --lookup-blue: #2463eb;
+        --lookup-bg: #f3f6fb;
+        --lookup-line: #dce5f0;
+        --lookup-muted: #63758d;
+    }
+    body[data-inventory-lookup-phone] .content-wrapper { background: var(--lookup-bg); }
+    [data-lookup-phone-header] { gap: 12px; margin-bottom: 16px; }
+    [data-lookup-phone-header] .gds-page-header__title { color: var(--lookup-ink); font-size: 21px; line-height: 1.4; overflow-wrap: anywhere; }
+    [data-lookup-phone-header] .gds-page-header__subtitle { color: var(--lookup-muted); font-size: 13px; line-height: 1.6; }
+    [data-lookup-phone-header] .gds-page-header__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    [data-lookup-phone-header] .btn { min-height: 44px; border-radius: 12px; font-size: 13px; white-space: normal; }
+    [data-lookup-phone-root].gds-page { gap: 16px; min-width: 0; padding-bottom: calc(24px + env(safe-area-inset-bottom)); color: var(--lookup-ink); }
+    [data-lookup-phone-root] > * { min-width: 0; }
+    [data-lookup-phone-root] > section:first-child .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+    [data-lookup-phone-root] > section:first-child .row > .col { width: auto; min-width: 0; padding: 0; margin: 0; }
+    [data-lookup-phone-root] .gds-kpi-card { display: flex; min-height: 98px; flex-direction: row; align-items: center; gap: 9px; padding: 12px; border: 1px solid var(--lookup-line) !important; border-radius: 16px; background: #fff; box-shadow: none !important; }
+    [data-lookup-phone-root] .gds-kpi-card.is-active { border-color: var(--lookup-blue) !important; background: #edf3ff; box-shadow: inset 0 0 0 1px var(--lookup-blue) !important; }
+    [data-lookup-phone-root] .gds-kpi-card__icon { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 10px; font-size: 19px; }
+    [data-lookup-phone-root] .gds-kpi-card__body { min-width: 0; }
+    [data-lookup-phone-root] .gds-kpi-card__label { display: block; color: var(--lookup-muted); font-size: 11px; font-weight: 500; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] .gds-kpi-card__value { display: block; margin-top: 4px; font-size: 24px; font-weight: 750; line-height: 1.2; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] > .card,
+    [data-lookup-phone-root] .gds-list-panel { border: 1px solid var(--lookup-line) !important; border-radius: 18px; box-shadow: none !important; background: #fff; }
+    [data-lookup-phone-root] .card-header { padding: 16px 16px 0; }
+    [data-lookup-phone-root] .card-header h5 { font-size: 16px; line-height: 1.5; }
+    [data-lookup-phone-root] .card-header small { display: block; margin-top: 4px; color: var(--lookup-muted); font-size: 12px; line-height: 1.6; }
+    [data-lookup-phone-root] .card-header .avatar { flex-shrink: 0; }
+    [data-lookup-phone-root] .card-body { padding: 16px; }
+    [data-lookup-phone-root] :is(.inventory-filter-bar, .ledger-filter-bar) { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    [data-lookup-phone-root] :is(.inventory-search-wrap, .ledger-search-wrap, .gds-search-field) { min-width: 0; }
+    [data-lookup-phone-root] .form-label { color: var(--lookup-ink); font-size: 13px; font-weight: 600; }
+    body[data-inventory-lookup-phone] :is(.form-control, .form-select, .select2-search__field) { min-height: 48px; min-width: 0; font-size: 16px !important; border-radius: 12px; }
+    [data-lookup-phone-root] :is(.btn, .gds-icon-button, .gds-search-field__clear),
+    body[data-inventory-lookup-phone] :is(.modal, .offcanvas) .btn { min-height: 44px; min-width: 44px; border-radius: 12px; }
+    [data-lookup-phone-root] :is(.inventory-mobile-filter-button, .ledger-mobile-filter-button) { width: 100%; min-height: 46px; justify-self: stretch; color: var(--lookup-blue); background: #edf3ff; }
+    [data-lookup-phone-root] :is(.inventory-results-heading, .ledger-results-heading) { padding: 16px; align-items: flex-start; border-color: var(--lookup-line); }
+    [data-lookup-phone-root] :is(.inventory-results-heading, .ledger-results-heading) h5 { color: var(--lookup-ink) !important; font-size: 16px; line-height: 1.5; }
+    [data-lookup-phone-root] :is(.inventory-results-heading, .ledger-results-heading) small { font-size: 12px; line-height: 1.6; }
+
+    /* Reuse the original mobile cards and their server-controlled cost visibility. */
+    [data-lookup-phone-root] :is(.inventory-mobile-list, .ledger-mobile-list) { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px; background: #f8fafd; }
+    [data-lookup-phone-root] :is(.inventory-mobile-card, .ledger-mobile-card) { gap: 12px; padding: 14px; border: 1px solid var(--lookup-line); border-radius: 16px; box-shadow: 0 3px 12px #172d4d06; }
+    [data-lookup-phone-root] .inventory-mobile-card__header { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    [data-lookup-phone-root] .inventory-mobile-card__header > .gds-status { justify-self: start; }
+    [data-lookup-phone-root] :is(.inventory-mobile-card__product, .ledger-product) { min-width: 0; align-items: flex-start; gap: 10px; }
+    [data-lookup-phone-root] :is(.inventory-product-image-button, .ledger-product-image-button) { width: 54px; height: 54px; flex: 0 0 54px; border-radius: 12px; }
+    [data-lookup-phone-root] :is(.inventory-product-name, .ledger-product-name) { color: var(--lookup-ink); font-size: 15px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] :is(.inventory-mobile-card__context, .ledger-product-meta) { color: var(--lookup-muted); font-size: 12px; line-height: 1.6; }
+    [data-lookup-phone-root] .ledger-product-meta span { white-space: normal; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] .inventory-mobile-card__barcode { min-width: 0; padding: 8px 10px; border-radius: 12px; background: var(--lookup-bg); }
+    [data-lookup-phone-root] .inventory-barcode { min-width: 0; max-width: 100%; overflow-wrap: anywhere; white-space: normal; }
+    [data-lookup-phone-root] .inventory-mobile-card__metrics { border-color: var(--lookup-line); border-radius: 12px; background: #f8fafd; }
+    [data-lookup-phone-root] .inventory-mobile-card__metric { padding: 10px 5px; }
+    [data-lookup-phone-root] .inventory-mobile-card__metric + .inventory-mobile-card__metric { border-color: var(--lookup-line); }
+    [data-lookup-phone-root] .inventory-mobile-card__metric-label { overflow: visible; color: var(--lookup-muted); font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] .inventory-mobile-card__metric-value { margin-top: 6px; font-size: 18px; line-height: 1.4; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] :is(.inventory-mobile-cost, .ledger-mobile-cost) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px; border-radius: 12px; background: #edf3ff; font-size: 13px; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] :is(.inventory-mobile-cost, .ledger-mobile-cost) .text-end { text-align: left !important; }
+    [data-lookup-phone-root] :is(.inventory-mobile-card__action, .ledger-mobile-card__action) { color: var(--lookup-blue); background: #edf3ff; font-size: 14px; }
+    [data-lookup-phone-root] .ledger-mobile-card__top { flex-wrap: wrap; gap: 8px; }
+    [data-lookup-phone-root] .ledger-date { color: var(--lookup-muted); font-size: 12px; }
+    [data-lookup-phone-root] .ledger-mobile-card__movement { min-width: 0; padding: 12px; gap: 10px; border-color: var(--lookup-line); border-radius: 12px; background: var(--lookup-bg); }
+    [data-lookup-phone-root] .ledger-mobile-card__movement > div { min-width: 0; }
+    [data-lookup-phone-root] .ledger-mobile-card__label { color: var(--lookup-muted); font-size: 11px; line-height: 1.5; }
+    [data-lookup-phone-root] .ledger-change { display: block; font-size: 19px; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] .ledger-transaction-label { max-width: 100%; font-size: 12px; line-height: 1.5; }
+    [data-lookup-phone-root] .ledger-quantity-flow { max-width: 100%; flex-wrap: wrap; font-size: 15px; line-height: 1.6; white-space: normal; overflow-wrap: anywhere; }
+    [data-lookup-phone-root] .ledger-mobile-card__facts { min-width: 0; color: var(--lookup-muted); font-size: 12px; line-height: 1.6; }
+    [data-lookup-phone-root] .ledger-mobile-card__facts a { color: var(--lookup-blue); overflow-wrap: anywhere; }
+    [data-lookup-phone-root] :is(.inventory-list-footer, .ledger-list-footer) { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 0; background: transparent; border: 0; }
+    [data-lookup-phone-root] .gds-list-footer__summary { color: var(--lookup-muted); font-size: 12px; line-height: 1.6; }
+    [data-lookup-phone-root] :is(.inventory-pagination, .ledger-pagination) { flex-wrap: wrap; gap: 6px; }
+    [data-lookup-phone-root] .pagination .page-link { width: 44px; height: 44px; border-radius: 12px !important; background: #fff; }
+    [data-lookup-phone-root] .pagination .active .page-link { background: var(--lookup-blue); box-shadow: none; }
+
+    /* Both layers of a body-appended Select2 dropdown must fit the phone. */
+    body[data-inventory-lookup-phone] .select2-container { min-width: 0; max-width: 100%; }
+    body[data-inventory-lookup-phone] > .select2-container--open { min-width: 0 !important; max-width: calc(100vw - 64px); }
+    body[data-inventory-lookup-phone] .select2-dropdown { min-width: 0 !important; max-width: calc(100vw - 64px); border-color: var(--lookup-line); border-radius: 12px; overflow: hidden; }
+    body[data-inventory-lookup-phone] .select2-selection { min-height: 48px; border-radius: 12px; }
+    body[data-inventory-lookup-phone] .select2-selection__rendered { font-size: 16px; line-height: 46px !important; padding-right: 30px; }
+    body[data-inventory-lookup-phone] .select2-results__option { min-height: 44px; padding: 12px; overflow-wrap: anywhere; }
+
+    /* Native Bootstrap keeps opening/closing and filter state ownership. */
+    body[data-inventory-lookup-phone] .modal .modal-dialog:not(.modal-fullscreen) { display: flex; align-items: flex-end; width: 100%; max-width: none; height: var(--gao-mobile-visible-height, 100dvh); min-height: 0; margin: 0; padding-top: max(12px, env(safe-area-inset-top)); box-sizing: border-box; }
+    body[data-inventory-lookup-phone] .modal .modal-content { display: flex; width: 100%; max-width: 100%; min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); overflow: hidden; border: 1px solid var(--lookup-line) !important; border-radius: 22px 22px 0 0 !important; box-shadow: 0 -8px 40px #172d4d1a !important; }
+    body[data-inventory-lookup-phone] :is(.modal-header, .offcanvas-header) { align-items: flex-start; flex-shrink: 0; gap: 8px; padding: 16px; }
+    body[data-inventory-lookup-phone] :is(.modal-header, .offcanvas-header) > :first-child:not(.btn-close) { min-width: 0; flex: 1 1 0; }
+    body[data-inventory-lookup-phone] :is(.modal-title, .offcanvas-title) { color: var(--lookup-ink); font-size: 18px; line-height: 1.5; overflow-wrap: anywhere; }
+    body[data-inventory-lookup-phone] :is(.modal, .offcanvas) .btn-close { position: static; inset: auto; display: inline-flex; flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; padding: 12px; margin: 0 0 0 auto; background-size: 13px; transform: none !important; }
+    body[data-inventory-lookup-phone] .modal .modal-body { min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 16px; }
+    body[data-inventory-lookup-phone] .modal .modal-footer { flex-shrink: 0; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--lookup-line); background: #fff; }
+    body[data-inventory-lookup-phone] .modal .modal-footer > .btn { flex: 1 1 0; margin: 0; }
+    body[data-inventory-lookup-phone] :is(.inventory-filter-sheet, .ledger-filter-sheet) { height: min(88dvh, 760px) !important; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - max(12px, env(safe-area-inset-top))); border-color: var(--lookup-line); border-radius: 22px 22px 0 0; }
+    body[data-inventory-lookup-phone] .offcanvas-body { min-height: 0; padding: 16px; overscroll-behavior: contain; }
+    body[data-inventory-lookup-phone] :is(.inventory-filter-sheet__footer, .ledger-filter-sheet__footer) { flex-shrink: 0; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-color: var(--lookup-line); }
+    body[data-inventory-lookup-phone] :is(.inventory-filter-sheet__footer, .ledger-filter-sheet__footer) .btn { margin: 0; }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-grid, .ledger-quick-grid) { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-image-panel, .ledger-quick-image-panel) { min-height: 120px; max-height: 180px; padding: 12px; border-radius: 14px; background: var(--lookup-bg); }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-image-panel, .ledger-quick-image-panel) img { max-height: 156px; }
+    body[data-inventory-lookup-phone] .inventory-quick-grid > div > .d-flex { flex-wrap: wrap; }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-metrics, .ledger-quick-metrics) { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-metric, .ledger-quick-metric) { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--lookup-line); border-radius: 12px; background: #f8fafd; }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-metric__label, .ledger-quick-metric span) { color: var(--lookup-muted); font-size: 12px; line-height: 1.5; }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-metric__value, .ledger-quick-metric strong) { min-width: 0; margin: 0; font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
+    body[data-inventory-lookup-phone] :is(.inventory-cost-grid, .ledger-cost-grid, .ledger-quick-facts) { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+    body[data-inventory-lookup-phone] :is(.inventory-cost-details, .ledger-inbound-cost) { min-width: 0; padding: 12px; border-color: var(--lookup-line); border-radius: 14px; }
+    body[data-inventory-lookup-phone] :is(.inventory-cost-details, .ledger-inbound-cost) h5 { color: var(--lookup-ink); font-size: 16px; }
+    body[data-inventory-lookup-phone] :is(.inventory-cost-grid, .ledger-cost-grid) > div { border-radius: 10px; background: var(--lookup-bg); }
+    body[data-inventory-lookup-phone] :is(.inventory-cost-grid, .ledger-cost-grid) :is(span, small) { color: var(--lookup-muted); font-size: 12px; line-height: 1.6; }
+    body[data-inventory-lookup-phone] :is(.inventory-cost-grid, .ledger-cost-grid) strong { color: var(--lookup-blue); font-size: 17px; }
+    body[data-inventory-lookup-phone] .ledger-quick-fact { padding: 12px; border-radius: 12px; background: var(--lookup-bg); }
+    body[data-inventory-lookup-phone] :is(.inventory-quick-note, .ledger-quick-note) { min-width: 0; padding: 12px; color: var(--lookup-ink); border-radius: 12px; font-size: 13px; line-height: 1.6; }
+    body[data-inventory-lookup-phone] :is(.inventory-image-preview-body, .ledger-image-preview-body) { min-height: 0; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 110px); }
+    body[data-inventory-lookup-phone] :is(.inventory-image-preview-body, .ledger-image-preview-body) img { max-width: 100%; max-height: calc(var(--gao-mobile-visible-height, 100dvh) - 160px); object-fit: contain; }
+
+    /* The existing unit table supplies these labels and all conversion values. */
+    body[data-inventory-lookup-phone] .inventory-unit-table,
+    body[data-inventory-lookup-phone] .inventory-unit-table tbody { display: block; width: 100%; min-width: 0; }
+    body[data-inventory-lookup-phone] .inventory-unit-table thead { display: block; position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    body[data-inventory-lookup-phone] .inventory-unit-table tbody > tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; border-bottom: 1px solid var(--lookup-line); }
+    body[data-inventory-lookup-phone] .inventory-unit-table tbody > tr:last-child { border-bottom: 0; }
+    body[data-inventory-lookup-phone] .inventory-unit-table td:not([hidden]):not(.d-none) { display: block; min-width: 0; padding: 0 !important; border: 0 !important; text-align: left !important; overflow-wrap: anywhere; }
+    body[data-inventory-lookup-phone] .inventory-unit-table td[data-label]::before { display: block; margin-bottom: 4px; color: var(--lookup-muted); content: attr(data-label); font-size: 11px; font-weight: 500; line-height: 1.5; text-transform: none; letter-spacing: normal; }
+    body[data-inventory-lookup-phone] .inventory-unit-table td[colspan] { grid-column: 1 / -1; }
+    body[data-inventory-lookup-phone] .inventory-unit-table td[colspan]::before { display: none; }
+    body[data-inventory-lookup-phone] .inventory-unit-table .inventory-barcode { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    [data-lookup-phone-root] :is(.inventory-kpi-filter, .ledger-kpi-filter),
+    body[data-inventory-lookup-phone] :is(.modal.fade .modal-dialog, .offcanvas, .btn) { transition: none !important; animation: none !important; }
+}

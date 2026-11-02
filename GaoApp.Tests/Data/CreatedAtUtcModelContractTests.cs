@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using GaoApp.Application.Common.Interfaces;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Entities;
@@ -130,7 +130,7 @@ public class CreatedAtUtcModelContractTests
             .Options;
 
         var tenant = new TenantContext();
-        tenant.SetHostAdmin();
+        tenant.SetHostAdminForTest();
 
         return new AppDbContext(
             options,

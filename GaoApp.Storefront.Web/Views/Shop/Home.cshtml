@@ -1,0 +1,19 @@
+@model StorefrontHomePage
+@{ ViewData["Title"] = "Trang chủ"; var featured = Model.Products.Items.FirstOrDefault(x => x.Media.Any(m => m.Kind == StorefrontMediaKind.Image)); var heroImage = featured?.Media.First(x => x.Kind == StorefrontMediaKind.Image); }
+<div class="page-shell home-page">
+    <section class="hero">
+        <div class="hero-copy"><p class="eyebrow">Một chút mới cho mỗi ngày</p><h1>Nhà xinh.<br /><span>Sống tiện.</span></h1><p>Chọn sản phẩm hợp nhu cầu, xem rõ giá và đơn vị trước khi mua.</p><a class="button white-button" href="/shop/products">Khám phá sản phẩm <partial name="_Icon" model='"arrow"' /></a></div>
+        @if (featured is not null && heroImage is not null) { <a class="hero-art" href="/shop/products/@featured.ProductId" aria-label="Xem @featured.Name"><img src="@(heroImage.Path + "?width=640")" srcset="@(heroImage.Path + "?width=320") 320w, @(heroImage.Path + "?width=640") 640w, @(heroImage.Path + "?width=960") 960w" sizes="(max-width:600px) 1px, (max-width:900px) 38vw, 480px" alt="@featured.Name" width="600" height="600" fetchpriority="high" decoding="async" data-image-fallback /></a> }
+        else { <div class="hero-pattern" aria-hidden="true"><span></span><span></span><span></span></div> }
+    </section>
+    <div class="shopping-notes"><span>Giá rõ theo từng đơn vị</span><span>Chọn hàng không cần tài khoản</span><span>Kiểm tra lại trước khi đặt</span></div>
+    @if (Model.Groups.Count > 0)
+    { <section class="section-block"><div class="section-head"><h2>Chọn theo nhu cầu</h2></div><div class="group-grid">@foreach (var group in Model.Groups.Take(8)) { <a class="group-tile" href="/shop/products?DisplayGroup=@Uri.EscapeDataString(group)"><span><partial name="_Icon" model='"grid"' /></span>@group</a> }</div></section> }
+    <section class="section-block" id="goi-y">
+        <div class="section-head"><div><p class="eyebrow">Ghé xem, chọn món hợp ý</p><h2>Gợi ý từ cửa hàng</h2></div><a class="text-link" href="/shop/products">Xem tất cả <partial name="_Icon" model='"arrow"' /></a></div>
+        @if (Model.Products.Items.Count == 0) { <div class="empty-state"><partial name="_Icon" model='"grid"' /><h3>Cửa hàng đang chuẩn bị sản phẩm</h3><p>Danh mục sẽ xuất hiện khi có sản phẩm được đăng bán.</p></div> }
+        else { <div class="product-grid">@foreach (var product in Model.Products.Items.Take(4)) { <partial name="_ProductCard" model="product" /> }</div> }
+    </section>
+    <section class="mid-banner"><p class="eyebrow">Vừa đủ cho điều bạn cần</p><h2><span>Chọn món hợp ý.</span><span>Vừa túi tiền.</span></h2><p>Khám phá những lựa chọn đang có tại cửa hàng.</p><a class="button outline-white" href="/shop/products">Xem gợi ý <partial name="_Icon" model='"arrow"' /></a></section>
+    @if (Model.Products.Items.Count > 4) { <section class="section-block"><div class="section-head"><h2>Thêm lựa chọn cho bạn</h2></div><div class="product-grid">@foreach (var product in Model.Products.Items.Skip(4)) { <partial name="_ProductCard" model="product" /> }</div></section> }
+</div>

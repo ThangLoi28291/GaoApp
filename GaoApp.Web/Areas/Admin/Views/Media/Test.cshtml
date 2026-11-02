@@ -4,16 +4,17 @@
 }
 
 @section VendorStyles {
-    <link href="https://unpkg.com/filepond/dist/filepond.min.css" rel="stylesheet" />
-    <link href="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.css" rel="stylesheet" />
+    <link href="~/lib/filepond/filepond.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link href="~/lib/filepond/filepond-plugin-image-preview.min.css" rel="stylesheet"  asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/media-workspace.mobile.css" asp-append-version="true" />
 }
 
 <input type="file" id="testUpload" name="file" multiple />
 @Html.AntiForgeryToken()
 
 @section PageScripts {
-    <script src="https://unpkg.com/filepond/dist/filepond.min.js"></script>
-    <script src="https://unpkg.com/filepond-plugin-image-preview/dist/filepond-plugin-image-preview.min.js"></script>
+    <script src="~/lib/filepond/filepond.min.js" asp-append-version="true"></script>
+    <script src="~/lib/filepond/filepond-plugin-image-preview.min.js" asp-append-version="true"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
@@ -48,4 +49,5 @@
             });
         });
     </script>
+    <script src="~/Admin/js/media-workspace.mobile.js" asp-append-version="true" defer></script>
 }

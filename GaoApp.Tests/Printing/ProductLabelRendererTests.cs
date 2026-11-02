@@ -12,15 +12,16 @@ public sealed class ProductLabelRendererTests
     public static IEnumerable<object[]> LayoutCases() =>
         from layout in ProductLabelLayouts.All
         from dpi in new[] { 203, 300 }
-        from width in new[] { 35, 50 }
+        from width in new[] { 35, 50, 80 }
+        where layout.Key == "promotion-shelf" ? width >= 50 : width <= 50
         from barcode in new[] { "8938505974194", "AB1234" }
         select new object[] { layout.Key, dpi, width, barcode };
 
     [Theory, MemberData(nameof(LayoutCases))]
     public void Every_layout_and_paper_decodes_automatic_barcodes_at_printer_resolution(string layout, int dpi, int width, string barcode)
     {
-        var design = new ProductLabelDesign { Layout = layout, Columns = 1, WidthMm = width, HeightMm = width == 35 ? 22 : 30 };
-        using var stream = new MemoryStream(ProductLabelRenderer.Preview(design, ProductLabelRenderer.Sample with { Barcode = barcode }, dpi));
+        var design = new ProductLabelDesign { Layout = layout, Columns = 1, WidthMm = width, HeightMm = width == 35 ? 22 : width == 80 ? 50 : 30 };
+        using var stream = new MemoryStream(ProductLabelRenderer.Preview(design, ProductLabelRenderer.SampleFor(design) with { Barcode = barcode }, dpi));
         using var bitmap = new Bitmap(stream);
         var result = Decode(bitmap);
         Assert.Equal(barcode, result.Text);
@@ -53,7 +54,7 @@ public sealed class ProductLabelRendererTests
         {
             var design = new ProductLabelDesign { Layout = layout.Key, WidthMm = 50, HeightMm = 30, Columns = 2 };
             var payload = new LabelPrintPayload(design, new("Test", "Test", 203, 108, 0, 0),
-                [new(ProductLabelRenderer.Sample, 1), new(ProductLabelRenderer.Sample with { Barcode = "8938505974195" }, 1)]);
+                [new(ProductLabelRenderer.SampleFor(design), 1), new(ProductLabelRenderer.SampleFor(design) with { Barcode = "8938505974195" }, 1)]);
             var commands = ProductLabelRenderer.Commands(payload).ToArray();
             Assert.Equal(2, commands.Length);
             var raster = commands[1]; int headerEnd = 0;
@@ -80,17 +81,17 @@ public sealed class ProductLabelRendererTests
         var previews = new HashSet<string>();
         foreach (var layout in ProductLabelLayouts.All)
         {
-            var design = new ProductLabelDesign { Layout = layout.Key };
+            var design = layout.Key == "promotion-shelf" ? ProductLabelLayouts.DefaultDesign(layout.Key) : new ProductLabelDesign { Layout = layout.Key };
             previews.Add(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ProductLabelRenderer.Preview(design))));
             for (int mask = 1; mask < 16; mask++)
             {
                 var hidden = design with { ShowName = (mask & 1) != 0, ShowBarcode = (mask & 2) != 0, ShowBarcodeText = false,
                     ShowUnit = (mask & 4) != 0, ShowPrice = (mask & 8) != 0 };
                 if (!hidden.ShowName && !hidden.ShowBarcode && !hidden.ShowUnit && !hidden.ShowPrice) continue;
-                var product = hidden.ShowBarcode ? ProductLabelRenderer.Sample : ProductLabelRenderer.Sample with { Barcode = "" };
+                var product = ProductLabelRenderer.SampleFor(hidden) with { Barcode = hidden.ShowBarcode ? ProductLabelRenderer.Sample.Barcode : "" };
                 Assert.NotEmpty(ProductLabelRenderer.Preview(hidden, product));
             }
-            Assert.Throws<ValidationAppException>(() => ProductLabelRenderer.Preview(design, ProductLabelRenderer.Sample with { Barcode = "8938505974195" }));
+            Assert.Throws<ValidationAppException>(() => ProductLabelRenderer.Preview(design, ProductLabelRenderer.SampleFor(design) with { Barcode = layout.Key == "promotion-shelf" ? new string('1', 64) : "8938505974195" }));
         }
         Assert.Equal(ProductLabelLayouts.All.Count, previews.Count);
         Assert.Throws<ValidationAppException>(() => new ProductLabelDesign { Layout = "unknown" }.Validate());
@@ -100,6 +101,41 @@ public sealed class ProductLabelRendererTests
         var legacy = LabelJson.Read<ProductLabelDesign>("{\"barcodeFormat\":\"EAN8\"}");
         Assert.Equal("standard", legacy.Layout); Assert.Equal("EAN8", legacy.BarcodeFormat);
         Assert.NotEmpty(ProductLabelRenderer.Preview(legacy));
+    }
+
+    [Theory]
+    [InlineData(203, "AUTO", true)] [InlineData(300, "AUTO", true)]
+    [InlineData(203, "EAN13", true)] [InlineData(300, "EAN13", true)]
+    [InlineData(203, "AUTO", false)] [InlineData(300, "AUTO", false)]
+    public void Ean13_has_extended_guards_and_grouped_digits_without_changing_the_encoded_value(int dpi, string format, bool showText)
+    {
+        var design = new ProductLabelDesign { WidthMm = 50, HeightMm = 30, Columns = 1, BarcodeFormat = format,
+            ShowName = false, ShowUnit = false, ShowPrice = false, ShowBarcodeText = showText };
+        using var bitmap = ProductLabelRenderer.RenderRow(design, [ProductLabelRenderer.Sample], dpi, 0, 0);
+        Assert.Equal(ProductLabelRenderer.Sample.Barcode, Decode(bitmap).Text);
+        bool Black(int x, int y) => bitmap.GetPixel(x, y).ToArgb() == Color.Black.ToArgb();
+        int top = Enumerable.Range(0, bitmap.Height).First(y => Enumerable.Range(0, bitmap.Width).Any(x => Black(x, y)));
+        int start = Enumerable.Range(0, bitmap.Width).First(x => Black(x, top));
+        int module = 1; while (Black(start + module, top)) module++;
+        int Length(int column)
+        {
+            int height = 0; while (top + height < bitmap.Height && Black(column, top + height)) height++;
+            return height;
+        }
+        var bars = ProductLabelRenderer.EncodeBarcode("EAN13", ProductLabelRenderer.Sample.Barcode);
+        int dataBar = Enumerable.Range(3, 42).First(i => bars[i, 0]);
+        int bodyHeight = Length(start + dataBar * module);
+        foreach (int guard in new[] { 0, 2, 46, 48, 92, 94 })
+            Assert.Equal(bodyHeight + 5 * module, Length(start + guard * module));
+        bool InkInDigitCell(int left) => Enumerable.Range(left, 7 * module).Any(x =>
+            Enumerable.Range(top + bodyHeight + 1, bitmap.Height - top - bodyHeight - 1).Any(y => Black(x, y)));
+        Assert.Equal(showText, InkInDigitCell(start - 12 * module));
+        if (showText)
+            for (int i = 0; i < 6; i++)
+            {
+                Assert.True(InkInDigitCell(start + (3 + i * 7) * module));
+                Assert.True(InkInDigitCell(start + (50 + i * 7) * module));
+            }
     }
 
     private static Result Decode(Bitmap bitmap)

@@ -8,6 +8,8 @@ namespace GaoApp.Domain.Entities;
 [Table("PosPaymentQrRequests")]
 public class PosPaymentQrRequest : BaseStoreEntity
 {
+    [StringLength(64)] public string? AccountIdentitySnapshot { get; set; }
+    [StringLength(16)] public string? AccountVersionSnapshot { get; set; }
     public int OrderId { get; set; }
     public Order Order { get; set; } = default!;
 
@@ -30,6 +32,9 @@ public class PosPaymentQrRequest : BaseStoreEntity
 
     [StringLength(80)]
     public string RequestCode { get; set; } = string.Empty;
+    public int? NotificationReceiptId { get; set; }
+    [StringLength(40)]
+    public string? NotificationConfirmationSource { get; set; }
     // VD: QR-20260508-000001
 
     [StringLength(200)]

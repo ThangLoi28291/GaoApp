@@ -1,0 +1,247 @@
+/* UI-06d. Phone presentation only; hidden/disabled and QR evidence stay owned by
+   PosPayment/PosQrHistory/PosAcb/PosBankNotifications/Bootstrap. */
+@media (max-width: 767.98px) {
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) {
+        --transfer-ink: #172d4d;
+        --transfer-muted: #52647c;
+        --transfer-blue: #2463eb;
+        top: var(--pos-transfer-visible-top, 0px);
+        height: var(--pos-transfer-visible-height, 100dvh);
+        padding: 0 !important;
+        overflow: hidden;
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) .modal-dialog {
+        width: 100%;
+        max-width: none;
+        height: 100%;
+        min-height: 0;
+        margin: 0;
+        padding: 0;
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) .modal-content {
+        display: flex;
+        height: 100%;
+        max-height: none;
+        min-height: 0;
+        border: 0;
+        border-radius: 0;
+        background: #f3f6fb;
+        color: var(--transfer-ink);
+        overflow: hidden;
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) :is(.modal-header, .pos-bank-review__heading) {
+        flex: 0 0 auto;
+        gap: 12px;
+        padding: max(14px, env(safe-area-inset-top)) 16px 14px;
+        border-bottom: 1px solid #dce5f0 !important;
+        background: #fff;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .modal-header > div { flex: 1; min-width: 0; }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) :is(.modal-title, h2) {
+        margin: 4px 0;
+        font-size: 18px;
+        line-height: 1.35;
+        font-weight: 750;
+        color: var(--transfer-ink);
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) :is(.pos-payment-workspace__eyebrow, .pos-bank-review__eyebrow) {
+        color: #486589;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: .12em;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-modal-subtitle { font-size: 12px; line-height: 1.5; color: var(--transfer-muted); }
+    #posShell[data-pos-phone] ~ #paymentQrModal .btn-close {
+        position: static;
+        transform: none;
+        flex: 0 0 44px;
+        width: 44px;
+        height: 44px;
+        box-sizing: border-box;
+        padding: 14px;
+        margin: 0;
+        border-radius: 14px;
+        background-color: #edf2f9;
+        background-size: 12px;
+        opacity: 1;
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) .modal-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        padding: 16px;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scroll-padding: 14px;
+        -webkit-overflow-scrolling: touch;
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) [hidden] { display: none !important; }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) :is(strong, p, .alert, .pos-bank-review__meta) { overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) .alert {
+        padding: 12px;
+        margin: 0 0 12px;
+        border-radius: 14px;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-content {
+        padding: 14px;
+        border: 1px solid #dce5f0;
+        border-radius: 20px;
+        background: #fff;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal #paymentQrRequestCode { font-size: 11px; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-amount { padding: 0 0 12px; text-align: center; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-amount > div { font-size: 12px; color: var(--transfer-muted); }
+    #posShell[data-pos-phone] ~ #paymentQrModal #paymentQrAmount {
+        display: block;
+        margin-top: 2px;
+        font-size: clamp(28px, 8vw, 38px);
+        line-height: 1.25;
+        font-weight: 800;
+        font-variant-numeric: tabular-nums;
+        color: var(--transfer-ink);
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-image-wrap {
+        width: min(100%, 288px);
+        height: auto;
+        margin: 0 auto 16px;
+        padding: 10px;
+        border: 1px solid #dce5f0;
+        border-radius: 16px;
+        background: #fff;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal #paymentQrImage {
+        display: block;
+        width: 100%;
+        height: auto;
+        max-width: none;
+        max-height: none;
+        aspect-ratio: 1;
+        object-fit: contain;
+        border: 0;
+        border-radius: 0;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-bank { display: grid; gap: 10px; padding: 0; background: none; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-bank > div {
+        display: grid;
+        grid-template-columns: minmax(80px, .8fr) minmax(0, 1.5fr);
+        gap: 12px;
+        align-items: baseline;
+        font-size: 13px;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-bank span { color: var(--transfer-muted); }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-bank strong { text-align: right; color: var(--transfer-ink); }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-transfer-content {
+        display: grid;
+        gap: 4px;
+        margin: 14px 0 0;
+        padding: 12px;
+        border: 1px solid #d8e5ff;
+        border-radius: 12px;
+        background: #f0f5ff;
+        text-align: left;
+        font-size: 13px;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-transfer-content span { color: var(--transfer-muted); }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-payment-qr-transfer-content strong { text-align: left; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait {
+        margin: 12px 0 0;
+        padding: 14px;
+        border-color: #cfdefa;
+        border-radius: 16px;
+        background: #edf4ff;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait__indicator { border-color: #c2d4fa; border-top-color: var(--transfer-blue); }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait :is(strong, p) { color: var(--transfer-ink); }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait p { font-size: 12px; line-height: 1.6; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait:is(.is-manual, .is-warning) { border-color: #efd394; background: #fff7e6; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait:is(.is-manual, .is-warning) .pos-transfer-wait__indicator { border-color: #f0d69f; border-top-color: #a96b08; }
+    #posShell[data-pos-phone] ~ #paymentQrModal #paymentQrShortcuts { display: none; }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) .pos-transfer-mobile-footer {
+        flex: 0 0 auto;
+        max-height: 48%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+        border-top: 1px solid #dce5f0;
+        background: #fff;
+        box-shadow: 0 -6px 22px #172d4d08;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-mobile-footer > .d-grid { margin: 0 !important; gap: 8px !important; }
+    #posShell[data-pos-phone] ~ #paymentQrModal #paymentInlineErrorBox {
+        max-height: 96px;
+        overflow-y: auto;
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #fff4dc;
+        color: #805112;
+        font-size: 12px;
+        line-height: 1.5;
+    }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) .pos-transfer-mobile-footer .btn {
+        min-height: 46px;
+        min-width: 44px;
+        padding: 11px 14px;
+        border-radius: 13px;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.5;
+        white-space: normal;
+        touch-action: manipulation;
+    }
+    #posShell[data-pos-phone] ~ #paymentQrModal #btnConfirmPaymentQrPaid { background: #2463eb; border-color: #2463eb; }
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-mobile-footer .btn-outline-primary { color: #2463eb; border-color: #b7cef7; background: #f3f7ff; }
+    #posShell[data-pos-phone] ~ #paymentQrModal #btnCancelPaymentQr { border-color: #efced0; background: #fff8f8; color: #a6343d; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__icon { width: 40px; height: 40px; border-radius: 13px; background: #e8f0ff; color: #2463eb; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__amount {
+        padding: 20px 16px;
+        margin-bottom: 16px;
+        border-radius: 20px;
+        background: #172d4d;
+        color: #fff;
+        text-align: left;
+    }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__amount span { color: #ceddf4; font-size: 12px; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__amount strong { color: #fff; font-size: clamp(28px, 8vw, 38px); line-height: 1.3; font-variant-numeric: tabular-nums; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__sender { padding: 16px; border: 1px solid #dce5f0; border-radius: 16px; background: #fff; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__sender strong { font-size: 18px; color: var(--transfer-ink); }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__meta { gap: 6px; color: var(--transfer-muted); font-size: 12px; line-height: 1.65; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__source { border-color: #dce5f0; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__source summary {
+        display: list-item;
+        min-height: 44px;
+        padding: 12px 4px;
+        font-size: 13px;
+        color: #244f9d;
+        cursor: pointer;
+    }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__source p { max-height: none; padding: 12px; border-radius: 12px; background: #fff; color: var(--transfer-ink); font-size: 13px; line-height: 1.65; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__actions { margin: 0; gap: 8px; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__actions kbd { display: none; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal #btnBankReviewConfirm { background: #2463eb; border-color: #2463eb; }
+    #posShell[data-pos-phone] ~ #bankTransferReviewModal .pos-bank-review__footer { margin: 10px 0 0; font-size: 11px; line-height: 1.5; color: var(--transfer-muted); }
+    #posShell[data-pos-phone] ~ #paymentModal :is(#paymentQrBox, #paymentQrHistory) { border: 1px solid #d7e3f6; border-radius: 16px; padding: 12px; background: #f0f5ff; }
+    #posShell[data-pos-phone] ~ #paymentModal :is(#paymentQrBox, #paymentQrHistory) :is(button, a, summary) { min-height: 44px; min-width: 44px; touch-action: manipulation; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__heading { gap: 12px; font-size: 13px; color: #172d4d; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__reload { padding: 10px; border-radius: 10px; color: #244f9d; background: #fff; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__status { margin: 4px 0 0; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__primary { border-radius: 12px; font-size: 13px; white-space: normal; }
+    #posShell[data-pos-phone] ~ #paymentModal #paymentQrHistory details { margin-top: 8px; border-color: #d7e3f6; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__list { max-height: none; overflow: visible; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__row { flex-direction: column; gap: 10px; padding: 12px 0; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__actions { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__actions :is(button, a) { display: inline-flex; align-items: center; padding: 10px 12px; border-radius: 10px; font-size: 12px; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-qr-history__badge { font-size: 11px; white-space: normal; }
+    #posShell[data-pos-phone] ~ #paymentModal .pos-payment-workspace-qr__status { font-size: 12px; line-height: 1.6; color: #52647c; }
+    #posShell[data-pos-phone] ~ #paymentModal #paymentQrBox .btn { border-radius: 12px; font-size: 13px; white-space: normal; }
+    #posShell[data-pos-phone] ~ :is(#paymentQrModal, #bankTransferReviewModal) :is(button, summary):focus-visible { outline: 3px solid #78a6ed; outline-offset: 2px; }
+    #posShell[data-pos-phone] ~ #bankNotificationSuggestions,
+    #posShell[data-pos-phone] ~ #paymentQrModal #bankNotificationSuggestions { padding: 0 12px; overflow-wrap: anywhere; font-size: 13px; }
+    #posShell[data-pos-phone] ~ #bankNotificationSuggestions .btn,
+    #posShell[data-pos-phone] ~ #paymentQrModal #bankNotificationSuggestions .btn { min-height: 44px; min-width: 44px; padding: 10px 12px; border-radius: 12px; white-space: normal; }
+}
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    #posShell[data-pos-phone] ~ #paymentQrModal .pos-transfer-wait__indicator { animation: none; }
+}

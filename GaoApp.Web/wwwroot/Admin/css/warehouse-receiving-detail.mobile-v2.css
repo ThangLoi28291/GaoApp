@@ -1,0 +1,87 @@
+@media (max-width: 767.98px) {
+    body.wrd-app-mode:has([data-receiving-phone]) { background: #f3f6fb !important; color: #203554; }
+    /* Keep the existing sidebar swipe gesture inside content, clear of fixed transaction controls. */
+    body:has([data-receiving-phone]) .drag-target { inset-block-start: var(--gao-mobile-header-height,100px); inset-block-end: calc(var(--gao-mobile-dock-height,188px) + var(--gao-mobile-visible-bottom,0px)); block-size: auto; }
+    [data-receiving-phone] { min-width: 0; }
+    [data-receiving-phone] .wra-header { min-height: 88px; gap: 8px; border-color: #dfe6f1; box-shadow: 0 3px 18px #20355408; }
+    [data-receiving-phone] .wra-icon { width: 44px; height: 44px; border-color: #e2e9f5; background: #f0f4ff; color: #284e94; border-radius: 14px; }
+    [data-receiving-phone] .wra-heading > small { font-size: 10px; letter-spacing: .4px; color: #6b7f9e; gap: 5px; flex-wrap: wrap; }
+    [data-receiving-phone] .wra-heading h1 { font-size: 17px; color: #203554; margin: 4px 0; }
+    [data-receiving-phone] .wra-heading p { font-size: 11px; color: #6b7f9e; }
+    [data-receiving-phone] .wra-badge { color: #315dab; background: #edf3ff; border-radius: 7px; }
+    [data-receiving-phone] .wrd-scan-panel { padding: 12px !important; border: 1px solid #dfe6f1; border-radius: 18px; background: #fff; margin-bottom: 18px !important; }
+    [data-receiving-phone][data-receiving-readonly] .wrd-scan-panel:not(:has(#wrdLastSaved:not([hidden]))) { display: none; }
+    [data-receiving-phone] .wrd-scan-panel > .d-flex { display: flex !important; }
+    [data-receiving-phone] .wrd-scan-panel > .wrd-hint { display: none; }
+    [data-receiving-phone] .wrd-scan-panel .wrd-panel-title { font-size: 13px; margin: 0; color: #3e587d; }
+    [data-receiving-phone] .wrd-desktop-lookup .select2-selection { min-height: 48px !important; border-color: #dce5f3 !important; background: #f8faff !important; border-radius: 13px !important; }
+    [data-receiving-phone] .wrd-desktop-lookup .select2-selection__rendered { color: #637c9b !important; font-size: 16px !important; }
+    [data-receiving-phone] .wrd-scan-card { padding: 12px; background: #eef5ff; border: 1px solid #d4e3fb; border-radius: 14px; gap: 10px; }
+    [data-receiving-phone] .wrd-scan-caption { color: #386b57; font-size: 11px; flex-wrap: wrap; }
+    [data-receiving-phone] #wrdScanName { color: #203554; overflow-wrap: anywhere; font-size: 14px; }
+    [data-receiving-phone] .wrd-scan-code { color: #617996; overflow-wrap: anywhere; }
+    [data-receiving-phone] .wrd-scan-quantities { color: #38577f; }
+    [data-receiving-phone] #wrdScanAdded { background: #fff; color: #275bd8; border-radius: 8px; }
+    [data-receiving-phone] .wrd-panel-header { margin: 0 2px 12px; }
+    [data-receiving-phone] .wrd-panel-title { color: #203554; font-size: 16px; }
+    [data-receiving-phone] .wrd-panel-header .wrd-hint { color: #687f9e; font-size: 12px; }
+    [data-receiving-phone] .wrd-table tbody tr { border-color: #dfe6f1; border-radius: 17px; box-shadow: 0 3px 14px #20355407; padding: 14px !important; }
+    [data-receiving-phone] .wrd-line-name { color: #203554; font-size: 14px; overflow-wrap: anywhere; }
+    [data-receiving-phone] .wrd-line-meta { color: #6b7f9e; font-size: 11px; overflow-wrap: anywhere; }
+    [data-receiving-phone] .wrd-line-img-empty { color: #6c87ae; background: #f1f5fb; }
+    [data-receiving-phone] .wrd-table tbody td:nth-child(3) { color: #48658b; overflow-wrap: anywhere; min-width: 0; }
+    [data-receiving-phone] .wra-row-stepper { border-color: #d8e3f4; background: #f0f5ff; }
+    [data-receiving-phone] .wra-row-stepper button { color: #275bd8; }
+    [data-receiving-phone] .wra-row-stepper [data-wra-edit] { color: #203554; border-color: #d8e3f4; }
+    [data-receiving-phone] .wrd-table tbody tr.wrd-just-received { border-color: #83b59f; background: #eff9f4; }
+    [data-receiving-phone] .wrd-table tbody tr.wra-unsaved { border-color: #d6ad52; background: #fff9ec; }
+    [data-receiving-phone] .wrd-readonly-qty { color: #355b92; background: #eef4ff; }
+    [data-receiving-phone] .wrd-empty { background: #fff; border: 1px dashed #cad8ec; border-radius: 18px; color: #607a9a; padding: 28px 16px; }
+    [data-receiving-phone] .wra-dock { border-color: #dfe6f1; box-shadow: 0 -4px 20px #2035540b; }
+    [data-receiving-phone] .wra-dock-status { font-size: 11px; min-height: 32px; color: #617996; }
+    [data-receiving-readonly] #wraStatus[data-state=saved], [data-receiving-readonly] .wrb-readonly-status { display: none; }
+    [data-receiving-readonly] .wra-dock-status:has(#wraStatus[data-state=saved]) .wrb-readonly-status { display: inline; }
+    /* Quantities from different units are not a meaningful receipt-wide progress total. Keep the existing line count tab. */
+    [data-receiving-phone] #wraSummary, [data-receiving-phone] .wrd-info-row:has(#wrdTotalQty) { display: none !important; }
+    [data-receiving-phone] #wraRetry { min-height: 44px; border-radius: 10px; }
+    [data-receiving-phone] .wra-dock-actions { grid-template-columns: 52px minmax(0,1fr) 96px; gap: 8px; padding-bottom: 8px; }
+    [data-receiving-phone] .wra-dock-actions button { min-height: 48px; border-radius: 13px; border-color: #dce5f3; color: #355781; background: #f1f5fc; }
+    [data-receiving-phone] .wra-dock-actions #wrdOpenCamera { color: #fff; background: #275bd8; border-color: #275bd8; }
+    [data-receiving-phone] .wra-dock-actions #btnSubmitReceiving { color: #275bd8; background: #edf3ff; border-color: #d6e3fd; }
+    [data-receiving-phone] .wra-tabs { padding: 4px 0 6px; border-color: #e6edf7; gap: 8px; }
+    [data-receiving-phone] .wra-tabs button { position: relative; min-height: 48px; color: #778aa7; border-radius: 11px; font-size: 11px; }
+    [data-receiving-phone] .wra-tabs i { font-size: 20px; }
+    [data-receiving-phone] .wra-tabs span { color: #476b9e; background: #edf3fb; }
+    [data-receiving-phone] .wra-tabs [aria-selected=true] { color: #275bd8; background: #edf3ff; }
+    [data-receiving-phone] .wra-tabs [aria-selected=true]::before { content: ''; position: absolute; top: -5px; left: calc(50% - 12px); width: 24px; height: 3px; border-radius: 3px; background: #275bd8; }
+    [data-receiving-phone] #wraInfo > .wrd-topbar { display: grid; gap: 10px; padding: 16px; margin-bottom: 12px; background: #fff; border: 1px solid #dfe6f1; border-radius: 18px; }
+    [data-receiving-phone] #wraInfo .wrd-back { color: #275bd8; min-height: 44px; display: inline-flex; align-items: center; }
+    [data-receiving-phone] #wraInfo .wrd-document-title { font-size: 20px; line-height: 1.45; color: #203554; overflow-wrap: anywhere; white-space: normal; }
+    [data-receiving-phone] #wraInfo .wrd-document-code { font-size: 12px; color: #6b7f9e; overflow-wrap: anywhere; }
+    [data-receiving-phone] #wraInfo > #receiptDocumentActions { padding: 12px; background: #fff; border: 1px solid #dfe6f1; border-radius: 16px; color: #617996; font-size: 12px; overflow-wrap: anywhere; }
+    [data-receiving-phone] #receiptDocumentToolbar > .btn { min-height: 44px; border-radius: 11px; display: inline-flex; align-items: center; }
+    [data-receiving-phone] .wrd-status { color: #355b92; background: #edf3ff; white-space: normal; }
+    [data-receiving-phone] .wrd-side-card { border-color: #dfe6f1; border-radius: 18px; padding: 16px !important; }
+    [data-receiving-phone] .wrd-side-title { color: #203554; font-size: 16px; }
+    [data-receiving-phone] .wrd-info-row { color: #6b7f9e; gap: 12px; border-color: #e8eef7; }
+    [data-receiving-phone] .wrd-info-row b { color: #304e78; min-width: 0; overflow-wrap: anywhere; }
+    [data-receiving-phone] .wra-info-extra .alert { border-radius: 16px; overflow-wrap: anywhere; }
+    body:has([data-receiving-phone]) :is(.wra-sheet,#wrdCaptureModal,#quickAddProductModal) .modal-content { color: #203554; border-color: #dfe6f1; }
+    body:has([data-receiving-phone]) .wra-sheet .modal-title { color: #203554; }
+    body:has([data-receiving-phone]) .wra-menu > :is(a,button) { color: #355781; border-color: #dfe6f1; border-radius: 14px; min-height: 56px; }
+    body:has([data-receiving-phone]) .wra-menu small { color: #6b7f9e; }
+    body:has([data-receiving-phone]) :is(.wra-sheet,#wrdCaptureModal,#quickAddProductModal) .btn-close { min-width: 44px; width: 44px; height: 44px; box-sizing: border-box; padding: 12px; }
+    body:has([data-receiving-phone]) .wra-sheet .wra-primary,
+    body:has([data-receiving-phone]) :is(#wrdAddAndScan,#btnPopupQuickAddLine) { background: #275bd8; border-color: #275bd8; color: #fff; box-shadow: none; }
+    body:has([data-receiving-phone]) .wra-sheet-stepper button { color: #275bd8; background: #edf3ff; border-color: #d6e3fd; }
+    body:has([data-receiving-phone]) .wra-sheet-stepper input { color: #203554; border-color: #b6caec; }
+    [data-receiving-phone] :is(button,a):focus-visible { outline: 3px solid #91b6ff; outline-offset: 2px; }
+    @media (prefers-reduced-motion: no-preference) {
+        [data-receiving-phone] .wrd-scan-card { animation: receiving-v2-ack .18s ease-out; }
+        @keyframes receiving-v2-ack { from { opacity: .6; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+    }
+    @media (forced-colors: active) {
+        [data-receiving-phone] .wra-tabs [aria-selected=true] { outline: 2px solid Highlight; outline-offset: -2px; }
+        [data-receiving-phone] .wrd-table tbody tr { border-color: CanvasText; }
+    }
+}

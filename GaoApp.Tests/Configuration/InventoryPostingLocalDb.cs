@@ -80,6 +80,62 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
         await command.ExecuteNonQueryAsync(ct);
     }
 
+    // Copy the exact security graph from the explicitly selected local test
+    // dataset. Source commands are SELECT-only; all writes target our GUID DB.
+    internal async Task<IReadOnlyDictionary<string, long>> CopySecurityStandardDataAsync(CancellationToken ct = default)
+    {
+        GuardDatabaseName();
+        var sourceName = Environment.GetEnvironmentVariable("GAOAPP_SECURITY_STANDARD_SOURCE");
+        if (sourceName != "GaoAppDb")
+            throw new InvalidOperationException("Explicitly select the local GaoAppDb test dataset before this acceptance test.");
+        await MigrateAsync(ct: ct);
+        var sourceSettings = new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = sourceName, ApplicationIntent = ApplicationIntent.ReadOnly };
+        await using var source = new SqlConnection(sourceSettings.ConnectionString);
+        await using var destination = new SqlConnection(ConnectionString);
+        await source.OpenAsync(ct); await destination.OpenAsync(ct);
+        await using var sourceTransaction = (SqlTransaction)await source.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        await using var destinationTransaction = (SqlTransaction)await destination.BeginTransactionAsync(ct);
+        string[] tables = ["Users", "Stores", "Permissions", "Roles", "RolePermissions", "UserInStores", "AdminMenuItems"];
+        var counts = new Dictionary<string, long>();
+        foreach (var table in tables)
+        {
+            await using var empty = new SqlCommand($"SELECT COUNT_BIG(*) FROM dbo.[{table}]", destination, destinationTransaction);
+            if ((long)(await empty.ExecuteScalarAsync(ct))! != 0)
+                throw new InvalidOperationException("A standard-data import requires empty destination tables.");
+            await using var columnsCommand = new SqlCommand("SELECT name FROM sys.columns WHERE object_id=OBJECT_ID(@table) AND is_computed=0 AND system_type_id<>189 ORDER BY column_id", source, sourceTransaction);
+            columnsCommand.Parameters.AddWithValue("@table", "dbo." + table);
+            var columns = new List<string>();
+            await using (var columnsReader = await columnsCommand.ExecuteReaderAsync(ct))
+                while (await columnsReader.ReadAsync(ct)) columns.Add(columnsReader.GetString(0));
+            if (columns.Count == 0) throw new InvalidOperationException("The source security schema is incomplete.");
+            var projection = string.Join(",", columns.Select(x => "[" + x.Replace("]", "]]") + "]"));
+            await using var read = new SqlCommand($"SELECT {projection} FROM dbo.[{table}] WITH (TABLOCK,HOLDLOCK) ORDER BY Id", source, sourceTransaction);
+            await using (var reader = await read.ExecuteReaderAsync(ct))
+            {
+                using var bulk = new SqlBulkCopy(destination, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.KeepNulls | SqlBulkCopyOptions.CheckConstraints, destinationTransaction)
+                    { DestinationTableName = "dbo.[" + table + "]" };
+                foreach (var column in columns) bulk.ColumnMappings.Add(column, column);
+                await bulk.WriteToServerAsync(reader, ct);
+            }
+            var digestSql = $"SELECT COUNT_BIG(*),HASHBYTES('SHA2_256',(SELECT {projection} FROM dbo.[{table}] ORDER BY Id FOR JSON PATH,INCLUDE_NULL_VALUES)) FROM dbo.[{table}]";
+            await using var originalDigest = new SqlCommand(digestSql, source, sourceTransaction);
+            long count; byte[] hash;
+            await using (var reader = await originalDigest.ExecuteReaderAsync(ct))
+            {
+                Assert.True(await reader.ReadAsync(ct)); count = reader.GetInt64(0); hash = (byte[])reader[1];
+            }
+            await using var copiedDigest = new SqlCommand(digestSql, destination, destinationTransaction);
+            await using (var reader = await copiedDigest.ExecuteReaderAsync(ct))
+            {
+                Assert.True(await reader.ReadAsync(ct)); Assert.Equal(count, reader.GetInt64(0)); Assert.Equal(hash, (byte[])reader[1]);
+            }
+            counts.Add(table, count);
+        }
+        await destinationTransaction.CommitAsync(ct);
+        await sourceTransaction.RollbackAsync(ct);
+        return counts;
+    }
+
     public async Task<InventoryPostingSeed> SeedInventoryCatalogAsync(
         bool allowNegativeInventory = false,
         CancellationToken ct = default)
@@ -259,7 +315,7 @@ internal sealed class InventoryPostingLocalDb : IAsyncDisposable
         }
         else
         {
-            tenant.SetHostAdmin();
+            tenant.SetHostAdminForTest();
         }
 
         return new AppDbContext(

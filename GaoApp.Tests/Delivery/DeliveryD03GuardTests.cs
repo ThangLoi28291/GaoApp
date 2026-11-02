@@ -23,14 +23,14 @@ public sealed class DeliveryD03GuardTests(DeliveryD02Fixture fixture)
     }
     [Theory]
     [InlineData("payment","PAYMENT_EXISTS")] [InlineData("deposit","PAYMENT_EXISTS")]
-    [InlineData("promotion","PRICE_FEATURE_UNSUPPORTED")] [InlineData("multiAllocation","SOURCE_ALREADY_ALLOCATED")]
+    [InlineData("discount-snapshot","CART_CHANGED")] [InlineData("multiAllocation","SOURCE_ALREADY_ALLOCATED")]
     public async Task Payment_deposit_and_unsupported_price_or_allocations_do_not_transfer(string kind,string code)
     {
         using var c=await fixture.CaseAsync(false); var body=await Request(c); await using var db=c.Context();
         var cart=await db.Orders.SingleAsync(x=>x.Id==c.CartId);
         if(kind=="payment") db.OrderPayments.Add(new(){StoreId=c.Account.Store.StoreId,OrderId=cart.Id,Amount=1,Method=PaymentMethod.Cash});
         if(kind=="deposit") cart.DepositAmount=1;
-        if(kind=="promotion") cart.PromotionDiscountTotal=1;
+        if(kind=="discount-snapshot") cart.PromotionDiscountTotal=1;
         if(kind=="multiAllocation") cart.HasMultipleLegalEntities=true;
         await db.SaveChangesAsync(); await Reject(c,body,HttpStatusCode.Conflict,code);
     }
@@ -110,7 +110,7 @@ public sealed class DeliveryD03GuardTests(DeliveryD02Fixture fixture)
     {
         using var c=await fixture.CaseAsync(false);var body=await Request(c);
         await fixture.Web.Database.ExecuteAsync($"UPDATE POSTerminals SET IsActive=0 WHERE Id={c.Account.Store.TerminalId}");
-        await Reject(c,body,HttpStatusCode.Forbidden,"DELIVERY_FORBIDDEN");
+        await Reject(c,body,HttpStatusCode.Unauthorized,"");
     }
     [Fact]
     public async Task Changing_current_cart_blocks_transfer_of_the_previous_cart()

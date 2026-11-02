@@ -3,7 +3,7 @@
     const byId=id=>document.getElementById(id);
     if(!byId('wrdScanFeedback'))return;
     const num=value=>new Intl.NumberFormat('vi-VN',{maximumFractionDigits:3}).format(value);
-    const time=value=>new Intl.DateTimeFormat('vi-VN',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(value);
+    const time=value=>new Intl.DateTimeFormat('vi-VN',{ timeZone: 'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(value);
     const rows=()=>[...document.querySelectorAll('#wrdLinesContainer tbody [data-receiving-key]')];
     const rowFor=key=>rows().find(row=>row.dataset.receivingKey===key);
     const reducedMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -44,8 +44,13 @@
     }
     function loadState(entries){
         if(!Array.isArray(entries))return;
-        recentReceipts=entries.map(entry=>({...entry,at:new Date(entry.occurredAtUtc)})).filter(entry=>entry.quantity>0&&!isNaN(entry.at)).slice(0,10);
+        recentReceipts=entries.map(entry=>({...entry,at:new Date(typeof entry.occurredAtUtc === 'string' && !/(Z|[+-]\d{2}:?\d{2})$/i.test(entry.occurredAtUtc) ? entry.occurredAtUtc + 'Z' : entry.occurredAtUtc)})).filter(entry=>entry.quantity>0&&!isNaN(entry.at)).slice(0,10);
         restoreOrder();
+    }
+    function matchesSnapshot(entries,commandId){
+        const entry=entries?.find(x=>x.commandId===commandId);
+        const row=entry && rowFor(entry.rowKey);
+        return !!row && !entry.isRemoved && Number(row.dataset.receivingQuantity)===Number(entry.currentQuantity);
     }
     function confirm(item){
         if(!item?.commandId || acknowledged.has(item.commandId))return;
@@ -78,6 +83,6 @@
             if(event.detail.state==='saved'&&event.detail.feedback)confirm(event.detail.feedback);
         });
     }
-    window.WarehouseReceivingFeedback={prepare,restoreOrder,loadState};
+    window.WarehouseReceivingFeedback={prepare,restoreOrder,loadState,matchesSnapshot};
     if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

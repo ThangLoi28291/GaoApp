@@ -5,6 +5,8 @@ using GaoApp.Application.Interfaces.Common;
 using GaoApp.Application.Interfaces.Repositories.Security;
 using GaoApp.Application.Interfaces.Services.Security;
 using GaoApp.Domain.Entities;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common.Exceptions;
 
 namespace GaoApp.Application.Services.Security;
 
@@ -13,15 +15,18 @@ public class RoleAdminService : IRoleAdminService
     private readonly IRoleRepository _roleRepository;
     private readonly IUserInStoreRepository _userInStoreRepository;
     private readonly IAppUnitOfWork _uow;
+    private readonly ISecurityAdministrationGuard _security;
 
     public RoleAdminService(
         IRoleRepository roleRepository,
         IUserInStoreRepository userInStoreRepository,
-        IAppUnitOfWork uow)
+        IAppUnitOfWork uow,
+        ISecurityAdministrationGuard security)
     {
         _roleRepository = roleRepository;
         _userInStoreRepository = userInStoreRepository;
         _uow = uow;
+        _security = security;
     }
 
     public async Task<RoleIndexVm> GetPagedAsync(int storeId, RoleIndexQueryDto query, CancellationToken ct = default)
@@ -90,8 +95,12 @@ public class RoleAdminService : IRoleAdminService
 
     public async Task<int> CreateAsync(int storeId, int? actorUserId, RoleCreateRequest request, CancellationToken ct = default)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Create, ct);
+        security.RequireAdministrator();
         var name = request.Name.Trim();
         var code = request.Code.Trim();
+        if (code.Equals("ADMIN", StringComparison.OrdinalIgnoreCase))
+            throw new ValidationAppException("ADMIN là mã vai trò hệ thống được bảo vệ.");
 
         if (await _roleRepository.ExistsNameAsync(storeId, name, null, ct))
             throw new InvalidOperationException("Tên vai trò đã tồn tại trong cửa hàng hiện tại.");
@@ -110,18 +119,24 @@ public class RoleAdminService : IRoleAdminService
         };
 
         await _roleRepository.AddAsync(entity, ct);
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Tạo vai trò", nameof(Role), 0, null, new { entity.Code, entity.Name }, ct: ct);
 
         return entity.Id;
     }
 
     public async Task<bool> UpdateAsync(int storeId, int? actorUserId, RoleUpdateRequest request, CancellationToken ct = default)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Update, ct);
+        security.RequireAdministrator();
         var role = await _roleRepository.GetByIdAsync(storeId, request.Id, ct);
         if (role == null) return false;
 
         var name = request.Name.Trim();
         var code = request.Code.Trim();
+        if ((role.Code.Equals("ADMIN", StringComparison.OrdinalIgnoreCase) && !security.Actor.IsHostAdmin) ||
+            (!role.IsSystemRole && code.Equals("ADMIN", StringComparison.OrdinalIgnoreCase)))
+            throw new ForbiddenAppException("Vai trò ADMIN được bảo vệ; chỉ Host Admin được quản lý.");
+        var before = new { role.Code, role.Name };
 
         if (await _roleRepository.ExistsNameAsync(storeId, name, request.Id, ct))
             throw new InvalidOperationException("Tên vai trò đã tồn tại trong cửa hàng hiện tại.");
@@ -133,23 +148,26 @@ public class RoleAdminService : IRoleAdminService
             throw new InvalidOperationException("Không được đổi mã của vai trò hệ thống.");
 
         role.Name = name;
-        role.Code = code;
+        // System identifiers stay byte-for-byte stable, including casing.
+        role.Code = role.IsSystemRole ? role.Code : code;
         role.UpdatedAtUtc = DateTime.UtcNow;
         role.UpdatedBy = actorUserId;
 
         await _roleRepository.UpdateAsync(role, ct);
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Sửa vai trò", nameof(Role), role.Id, before, new { role.Code, role.Name }, ct: ct);
 
         return true;
     }
 
     public async Task<(bool Success, string? ErrorMessage)> DeleteAsync(int storeId, int roleId, int? actorUserId, CancellationToken ct = default)
     {
+        await using var security = await _security.BeginAsync(storeId, actorUserId, PermissionCodes.Security.Role.Delete, ct);
+        security.RequireAdministrator();
         var role = await _roleRepository.GetByIdAsync(storeId, roleId, ct);
         if (role == null)
             return (false, "Không tìm thấy vai trò.");
 
-        if (role.IsSystemRole)
+        if (role.IsSystemRole || role.Code.Equals("ADMIN", StringComparison.OrdinalIgnoreCase))
             return (false, "Không thể xóa vai trò hệ thống.");
 
         var userCount = await _userInStoreRepository.CountByRoleIdAsync(storeId, roleId, ct);
@@ -160,7 +178,8 @@ public class RoleAdminService : IRoleAdminService
         if (!ok)
             return (false, "Xóa vai trò không thành công.");
 
-        await _uow.SaveChangesAsync(ct);
+        await security.CompleteAsync("Xóa vai trò", nameof(Role), role.Id,
+            new { role.Code, role.Name, IsDeleted = false }, new { role.Code, role.Name, IsDeleted = true }, ct: ct);
         return (true, null);
     }
 

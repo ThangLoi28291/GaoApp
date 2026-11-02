@@ -1,4 +1,4 @@
-﻿using GaoApp.Application.DTOs.Inventory;
+using GaoApp.Application.DTOs.Inventory;
 using GaoApp.Application.Interfaces.Repositories.Inventory;
 using GaoApp.Application.Interfaces.Services.Inventory;
 using GaoApp.Domain.Entities;
@@ -89,7 +89,7 @@ public class StockCountService : IStockCountService
         {
             WarehouseId = request.WarehouseId,
             DocumentNo = await GenerateDocumentNoAsync(ct),
-            DocumentDate = request.DocumentDate ?? DateTime.Now,
+            DocumentDate = request.DocumentDate ?? DateTime.UtcNow,
             Status = StockCountDocumentStatus.Draft,
             Note = request.Note?.Trim()
         };
@@ -187,174 +187,236 @@ public class StockCountService : IStockCountService
 
         return "/" + storagePath.TrimStart('/');
     }
+    private Task ExecuteDocumentMutationAsync(int documentId, Func<Task> mutation, CancellationToken ct)
+        => ExecuteDocumentMutationAsync(documentId, async () =>
+        {
+            await mutation();
+            return true;
+        }, ct);
+
+    private async Task<T> ExecuteDocumentMutationAsync<T>(int documentId, Func<Task<T>> mutation, CancellationToken ct)
+    {
+        await _stockCountRepository.BeginTransactionAsync(ct);
+        try
+        {
+            await _stockCountRepository.LockDocumentForUpdateAsync(documentId, ct);
+            var result = await mutation();
+            await _stockCountRepository.CommitTransactionAsync(ct);
+            return result;
+        }
+        catch
+        {
+            // Request cancellation must not skip rollback and keep a document locked.
+            await _stockCountRepository.RollbackTransactionAsync(CancellationToken.None);
+            throw;
+        }
+    }
+
     public async Task UpdateHeaderAsync(UpdateStockCountDocumentHeaderRequest request, CancellationToken ct = default)
     {
-        var document = await _stockCountRepository.GetByIdAsync(request.StockCountDocumentId, ct);
-        if (document == null)
-            throw new BusinessRuleException("Không tìm thấy phiếu kiểm kê.");
+        await ExecuteDocumentMutationAsync(request.StockCountDocumentId, async () =>
+        {
+            var document = await _stockCountRepository.GetByIdAsync(request.StockCountDocumentId, ct);
+            if (document == null)
+                throw new BusinessRuleException("Không tìm thấy phiếu kiểm kê.");
 
-        EnsureEditable(document.Status);
+            EnsureEditable(document.Status);
 
-        if (!request.WarehouseId.HasValue || request.WarehouseId.Value <= 0)
-            throw new BusinessRuleException("Vui lòng chọn kho.");
+            if (!request.WarehouseId.HasValue || request.WarehouseId.Value <= 0)
+                throw new BusinessRuleException("Vui lòng chọn kho.");
 
-        var warehouseExists = await _stockCountRepository.WarehouseExistsAsync(request.WarehouseId.Value, ct);
-        if (!warehouseExists)
-            throw new BusinessRuleException("Kho không tồn tại.");
+            var warehouseExists = await _stockCountRepository.WarehouseExistsAsync(request.WarehouseId.Value, ct);
+            if (!warehouseExists)
+                throw new BusinessRuleException("Kho không tồn tại.");
 
-        document.WarehouseId = request.WarehouseId.Value;
-        document.DocumentDate = request.DocumentDate ?? document.DocumentDate;
-        document.Note = request.Note?.Trim();
+            // The document lock also serializes this check with line inserts/deletes.
+            if (request.WarehouseId.Value != document.WarehouseId &&
+                await _stockCountRepository.HasActiveLinesAsync(document.Id, ct))
+            {
+                throw new BusinessRuleException(
+                    "Phiếu đã có dòng kiểm kê, không thể đổi kho. Hãy xóa hết dòng hoặc lập phiếu mới.");
+            }
 
-        await _stockCountRepository.SaveChangesAsync(ct);
+            document.WarehouseId = request.WarehouseId.Value;
+            document.DocumentDate = request.DocumentDate ?? document.DocumentDate;
+            document.Note = request.Note?.Trim();
+
+            await _stockCountRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task<int> AddLineAsync(int stockCountDocumentId, AddStockCountLineRequest request, CancellationToken ct = default)
     {
-        var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
-        if (document == null)
-            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
-
-        EnsureEditable(document.Status);
-
-        var variant = await _stockCountRepository.GetVariantForStockCountAsync(request.ProductVariantId, ct);
-        if (variant == null)
-            throw new BusinessRuleException("Sản phẩm không tồn tại.");
-
-        var unitInfo = await _inventoryUnitResolver.ResolveAsync(
-            request.ProductVariantId,
-            request.UnitId,
-            ct);
-
-        var factor = unitInfo.Factor <= 0 ? 1m : unitInfo.Factor;
-
-        var balance = await _stockCountRepository.GetInventoryBalanceAsync(
-            document.WarehouseId,
-            request.ProductVariantId,
-            ct);
-
-        var systemQtyBase = balance?.OnHandQty ?? 0m;
-
-        // Nếu đã có line cùng variant + unit thì cộng dồn vào line cũ
-        // để tránh trùng dòng không cần thiết.
-        var existingLine = await _stockCountRepository.FindExistingEditableLineAsync(
-            document.Id,
-            request.ProductVariantId,
-            unitInfo.UnitId,
-            ct);
-
-        if (existingLine != null)
+        return await ExecuteDocumentMutationAsync(stockCountDocumentId, async () =>
         {
-            existingLine.CountedQty += request.CountedQty;
-            existingLine.UnitNameSnapshot = unitInfo.UnitName;
-            existingLine.Factor = factor;
-            existingLine.SystemQtyBase = systemQtyBase;
-            existingLine.CountedQtyBase = existingLine.CountedQty * factor;
-            existingLine.DifferenceQtyBase = existingLine.CountedQtyBase - systemQtyBase;
+            var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
+            if (document == null)
+                throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
-            // Cập nhật lại barcode snapshot để phản ánh đơn vị hiện tại rõ hơn
-            existingLine.BarcodeSnapshot = ResolveBarcodeSnapshot(variant, unitInfo.UnitId);
+            EnsureEditable(document.Status);
 
-            var incomingNote = request.Note?.Trim();
+            var variant = await _stockCountRepository.GetVariantForStockCountAsync(request.ProductVariantId, ct);
+            if (variant == null)
+                throw new BusinessRuleException("Sản phẩm không tồn tại.");
 
-            // NOTE RULE:
-            // - Nếu là note quét mã -> chỉ giữ 1 note chuẩn, không nối lặp
-            // - Nếu là note thường -> nối thêm để giữ lịch sử nhập
-            if (!string.IsNullOrWhiteSpace(incomingNote))
+            await ValidateUnitAsync(variant, request.UnitId, ct);
+            var unitInfo = await _inventoryUnitResolver.ResolveAsync(
+                request.ProductVariantId,
+                request.UnitId,
+                ct);
+
+            var factor = unitInfo.Factor <= 0 ? 1m : unitInfo.Factor;
+
+            var balance = await _stockCountRepository.GetInventoryBalanceAsync(
+                document.WarehouseId,
+                request.ProductVariantId,
+                ct);
+
+            var systemQtyBase = balance?.OnHandQty ?? 0m;
+
+            // Nếu đã có line cùng variant + unit thì cộng dồn vào line cũ
+            // để tránh trùng dòng không cần thiết.
+            var existingLine = await _stockCountRepository.FindExistingEditableLineAsync(
+                document.Id,
+                request.ProductVariantId,
+                unitInfo.UnitId,
+                ct);
+
+            if (existingLine != null)
             {
-                if (incomingNote.StartsWith("Quét mã:", StringComparison.OrdinalIgnoreCase))
+                existingLine.CountedQty += request.CountedQty;
+                existingLine.UnitNameSnapshot = unitInfo.UnitName;
+                existingLine.Factor = factor;
+                existingLine.SystemQtyBase = systemQtyBase;
+                existingLine.CountedQtyBase = existingLine.CountedQty * factor;
+                existingLine.DifferenceQtyBase = existingLine.CountedQtyBase - systemQtyBase;
+
+                // Cập nhật lại barcode snapshot để phản ánh đơn vị hiện tại rõ hơn
+                existingLine.BarcodeSnapshot = ResolveBarcodeSnapshot(variant, unitInfo.UnitId);
+
+                var incomingNote = request.Note?.Trim();
+
+                // NOTE RULE:
+                // - Nếu là note quét mã -> chỉ giữ 1 note chuẩn, không nối lặp
+                // - Nếu là note thường -> nối thêm để giữ lịch sử nhập
+                if (!string.IsNullOrWhiteSpace(incomingNote))
                 {
-                    existingLine.Note = incomingNote;
+                    if (incomingNote.StartsWith("Quét mã:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        existingLine.Note = incomingNote;
+                    }
+                    else
+                    {
+                        existingLine.Note = string.IsNullOrWhiteSpace(existingLine.Note)
+                            ? incomingNote
+                            : $"{existingLine.Note} | {incomingNote}";
+                    }
                 }
-                else
-                {
-                    existingLine.Note = string.IsNullOrWhiteSpace(existingLine.Note)
-                        ? incomingNote
-                        : $"{existingLine.Note} | {incomingNote}";
-                }
+
+                await _stockCountRepository.SaveChangesAsync(ct);
+                return existingLine.Id;
             }
 
+            var countedQty = request.CountedQty;
+            var countedQtyBase = countedQty * factor;
+            var differenceQtyBase = countedQtyBase - systemQtyBase;
+
+            var line = new StockCountLine
+            {
+                StockCountDocumentId = document.Id,
+                LineNo = await _stockCountRepository.GetNextLineNoAsync(document.Id, ct),
+                ProductVariantId = request.ProductVariantId,
+                UnitId = unitInfo.UnitId,
+                UnitNameSnapshot = unitInfo.UnitName,
+                Factor = factor,
+                SystemQtyBase = systemQtyBase,
+                CountedQty = countedQty,
+                CountedQtyBase = countedQtyBase,
+                DifferenceQtyBase = differenceQtyBase,
+                ProductNameSnapshot = variant.Product?.Name ?? $"Variant #{variant.Id}",
+                SkuSnapshot = variant.Sku,
+
+                // Không còn dùng variant.Barcode.
+                // Snapshot barcode được resolve từ conversion/barcode entity.
+                BarcodeSnapshot = ResolveBarcodeSnapshot(variant, unitInfo.UnitId),
+
+                Note = request.Note?.Trim()
+            };
+
+            document.Lines.Add(line);
             await _stockCountRepository.SaveChangesAsync(ct);
-            return existingLine.Id;
-        }
 
-        var countedQty = request.CountedQty;
-        var countedQtyBase = countedQty * factor;
-        var differenceQtyBase = countedQtyBase - systemQtyBase;
-
-        var line = new StockCountLine
-        {
-            StockCountDocumentId = document.Id,
-            LineNo = await _stockCountRepository.GetNextLineNoAsync(document.Id, ct),
-            ProductVariantId = request.ProductVariantId,
-            UnitId = unitInfo.UnitId,
-            UnitNameSnapshot = unitInfo.UnitName,
-            Factor = factor,
-            SystemQtyBase = systemQtyBase,
-            CountedQty = countedQty,
-            CountedQtyBase = countedQtyBase,
-            DifferenceQtyBase = differenceQtyBase,
-            ProductNameSnapshot = variant.Product?.Name ?? $"Variant #{variant.Id}",
-            SkuSnapshot = variant.Sku,
-
-            // Không còn dùng variant.Barcode.
-            // Snapshot barcode được resolve từ conversion/barcode entity.
-            BarcodeSnapshot = ResolveBarcodeSnapshot(variant, unitInfo.UnitId),
-
-            Note = request.Note?.Trim()
-        };
-
-        document.Lines.Add(line);
-        await _stockCountRepository.SaveChangesAsync(ct);
-
-        return line.Id;
+            return line.Id;
+        }, ct);
     }
 
     public async Task UpdateLineAsync(int lineId, UpdateStockCountLineRequest request, CancellationToken ct = default)
     {
-        var line = await _stockCountRepository.GetLineByIdAsync(lineId, ct);
-        if (line == null)
-            throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
-
-        EnsureEditable(line.StockCountDocument.Status);
-
-        var unitInfo = await _inventoryUnitResolver.ResolveAsync(
-            line.ProductVariantId,
-            request.UnitId,
-            ct);
-
-        var factor = unitInfo.Factor <= 0 ? 1m : unitInfo.Factor;
-        var countedQty = request.CountedQty;
-        var countedQtyBase = countedQty * factor;
-        var differenceQtyBase = countedQtyBase - line.SystemQtyBase;
-
-        line.UnitId = unitInfo.UnitId;
-        line.UnitNameSnapshot = unitInfo.UnitName;
-        line.Factor = factor;
-        line.CountedQty = countedQty;
-        line.CountedQtyBase = countedQtyBase;
-        line.DifferenceQtyBase = differenceQtyBase;
-        line.Note = request.Note?.Trim();
-
-        // Nếu đổi đơn vị khi sửa line thì cũng refresh lại barcode snapshot tương ứng
-        if (line.ProductVariant != null)
+        var documentId = await _stockCountRepository.GetDocumentIdForLineAsync(lineId, ct)
+            ?? throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
+        await ExecuteDocumentMutationAsync(documentId, async () =>
         {
-            line.BarcodeSnapshot = ResolveBarcodeSnapshot(line.ProductVariant, unitInfo.UnitId);
-        }
+            var line = await _stockCountRepository.GetLineByIdAsync(lineId, ct);
+            if (line == null)
+                throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
 
-        await _stockCountRepository.SaveChangesAsync(ct);
+            EnsureEditable(line.StockCountDocument.Status);
+
+            var variant = await _stockCountRepository.GetVariantForStockCountAsync(line.ProductVariantId, ct)
+                ?? throw new BusinessRuleException("Sản phẩm không tồn tại.");
+            await ValidateUnitAsync(variant, request.UnitId, ct);
+            var unitInfo = await _inventoryUnitResolver.ResolveAsync(
+                line.ProductVariantId,
+                request.UnitId,
+                ct);
+
+            var factor = unitInfo.Factor <= 0 ? 1m : unitInfo.Factor;
+            var countedQty = request.CountedQty;
+            var countedQtyBase = countedQty * factor;
+            var differenceQtyBase = countedQtyBase - line.SystemQtyBase;
+
+            line.UnitId = unitInfo.UnitId;
+            line.UnitNameSnapshot = unitInfo.UnitName;
+            line.Factor = factor;
+            line.CountedQty = countedQty;
+            line.CountedQtyBase = countedQtyBase;
+            line.DifferenceQtyBase = differenceQtyBase;
+            line.Note = request.Note?.Trim();
+
+            // Nếu đổi đơn vị khi sửa line thì cũng refresh lại barcode snapshot tương ứng
+            if (line.ProductVariant != null)
+            {
+                line.BarcodeSnapshot = ResolveBarcodeSnapshot(line.ProductVariant, unitInfo.UnitId);
+            }
+
+            await _stockCountRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task DeleteLineAsync(int lineId, CancellationToken ct = default)
     {
-        var line = await _stockCountRepository.GetLineByIdAsync(lineId, ct);
-        if (line == null)
-            throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
+        var documentId = await _stockCountRepository.GetDocumentIdForLineAsync(lineId, ct)
+            ?? throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
+        await ExecuteDocumentMutationAsync(documentId, async () =>
+        {
+            var line = await _stockCountRepository.GetLineByIdAsync(lineId, ct);
+            if (line == null)
+                throw new BusinessRuleException("Dòng kiểm kê không tồn tại.");
 
-        EnsureEditable(line.StockCountDocument.Status);
+            EnsureEditable(line.StockCountDocument.Status);
 
-        await _stockCountRepository.RemoveLineAsync(line, ct);
-        await _stockCountRepository.SaveChangesAsync(ct);
+            await _stockCountRepository.RemoveLineAsync(line, ct);
+            await _stockCountRepository.SaveChangesAsync(ct);
+        }, ct);
+    }
+
+    private async Task ValidateUnitAsync(ProductVariant variant, int unitId, CancellationToken ct)
+    {
+        if (variant.Product?.BaseUnitId != unitId &&
+            await _stockCountRepository.GetConversionAsync(variant.Id, unitId, ct) == null)
+        {
+            throw new BusinessRuleException("Đơn vị kiểm kê không hợp lệ hoặc chưa có cấu hình quy đổi.");
+        }
     }
 
     /// <summary>
@@ -378,7 +440,7 @@ public class StockCountService : IStockCountService
 
     private async Task<string> GenerateDocumentNoAsync(CancellationToken ct)
     {
-        var now = DateTime.Now;
+        var now = VietnamTime.Now;
         var prefix = $"KK-{now:yyyyMMdd}-";
 
         var lastDocumentNo = await _stockCountRepository.GetLastDocumentNoByDateAsync(now.Date, ct);
@@ -401,25 +463,23 @@ public class StockCountService : IStockCountService
 
     public async Task ConfirmAsync(int stockCountDocumentId, CancellationToken ct = default)
     {
-        var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
-        if (document == null)
-            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
-
-        if (document.Status != StockCountDocumentStatus.PendingApproval)
-            throw new BusinessRuleException("Chỉ phiếu kiểm kê đang chờ duyệt mới được xác nhận.");
-
-        if (!document.Lines.Any())
-            throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
-
-        var movementLines = document.Lines
-            .Where(x => x.DifferenceQtyBase != 0)
-            .OrderBy(x => x.LineNo)
-            .ToList();
-
-        await _stockCountRepository.BeginTransactionAsync(ct);
-
-        try
+        await ExecuteDocumentMutationAsync(stockCountDocumentId, async () =>
         {
+            var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
+            if (document == null)
+                throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
+
+            if (document.Status != StockCountDocumentStatus.PendingApproval)
+                throw new BusinessRuleException("Chỉ phiếu kiểm kê đang chờ duyệt mới được xác nhận.");
+
+            if (!document.Lines.Any())
+                throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
+
+            var movementLines = document.Lines
+                .Where(x => x.DifferenceQtyBase != 0)
+                .OrderBy(x => x.LineNo)
+                .ToList();
+
             await _inventoryMovementService.PreLockBalancesAsync(
                 movementLines.Select(line => new InventoryPostingLockKey(
                     document.StoreId,
@@ -533,69 +593,72 @@ public class StockCountService : IStockCountService
             document.ConfirmedByUserId = null;
 
             await _stockCountRepository.SaveChangesAsync(ct);
-            await _stockCountRepository.CommitTransactionAsync(ct);
-        }
-        catch
-        {
-            await _stockCountRepository.RollbackTransactionAsync(ct);
-            throw;
-        }
+        }, ct);
     }
 
     public async Task SubmitForApprovalAsync(int stockCountDocumentId, CancellationToken ct = default)
     {
-        var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
-        if (document == null)
-            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
-
-        if (document.Status != StockCountDocumentStatus.Draft &&
-            document.Status != StockCountDocumentStatus.Rejected)
+        await ExecuteDocumentMutationAsync(stockCountDocumentId, async () =>
         {
-            throw new BusinessRuleException("Chỉ phiếu Draft hoặc Rejected mới được gửi duyệt.");
-        }
+            var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
+            if (document == null)
+                throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
-        if (!document.Lines.Any())
-            throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
+            if (document.Status != StockCountDocumentStatus.Draft &&
+                document.Status != StockCountDocumentStatus.Rejected)
+            {
+                throw new BusinessRuleException("Chỉ phiếu Draft hoặc Rejected mới được gửi duyệt.");
+            }
 
-        document.Status = StockCountDocumentStatus.PendingApproval;
-        await _stockCountRepository.SaveChangesAsync(ct);
+            if (!document.Lines.Any())
+                throw new BusinessRuleException("Phiếu kiểm kê chưa có dòng chi tiết.");
+
+            document.Status = StockCountDocumentStatus.PendingApproval;
+            await _stockCountRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task RejectAsync(int stockCountDocumentId, CancellationToken ct = default)
     {
-        var document = await _stockCountRepository.GetByIdAsync(stockCountDocumentId, ct);
-        if (document == null)
-            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
+        await ExecuteDocumentMutationAsync(stockCountDocumentId, async () =>
+        {
+            var document = await _stockCountRepository.GetByIdAsync(stockCountDocumentId, ct);
+            if (document == null)
+                throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
-        if (document.Status != StockCountDocumentStatus.PendingApproval)
-            throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
+            if (document.Status != StockCountDocumentStatus.PendingApproval)
+                throw new BusinessRuleException("Chỉ phiếu đang chờ duyệt mới được từ chối.");
 
-        document.Status = StockCountDocumentStatus.Rejected;
-        await _stockCountRepository.SaveChangesAsync(ct);
+            document.Status = StockCountDocumentStatus.Rejected;
+            await _stockCountRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     public async Task RefreshSystemQtyAsync(int stockCountDocumentId, CancellationToken ct = default)
     {
-        var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
-        if (document == null)
-            throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
-
-        EnsureEditable(document.Status);
-
-        foreach (var line in document.Lines)
+        await ExecuteDocumentMutationAsync(stockCountDocumentId, async () =>
         {
-            var balance = await _stockCountRepository.GetInventoryBalanceAsync(
-                document.WarehouseId,
-                line.ProductVariantId,
-                ct);
+            var document = await _stockCountRepository.GetDetailAsync(stockCountDocumentId, ct);
+            if (document == null)
+                throw new BusinessRuleException("Phiếu kiểm kê không tồn tại.");
 
-            var systemQtyBase = balance?.OnHandQty ?? 0m;
+            EnsureEditable(document.Status);
 
-            line.SystemQtyBase = systemQtyBase;
-            line.DifferenceQtyBase = line.CountedQtyBase - systemQtyBase;
-        }
+            foreach (var line in document.Lines)
+            {
+                var balance = await _stockCountRepository.GetInventoryBalanceAsync(
+                    document.WarehouseId,
+                    line.ProductVariantId,
+                    ct);
 
-        await _stockCountRepository.SaveChangesAsync(ct);
+                var systemQtyBase = balance?.OnHandQty ?? 0m;
+
+                line.SystemQtyBase = systemQtyBase;
+                line.DifferenceQtyBase = line.CountedQtyBase - systemQtyBase;
+            }
+
+            await _stockCountRepository.SaveChangesAsync(ct);
+        }, ct);
     }
 
     /// <summary>

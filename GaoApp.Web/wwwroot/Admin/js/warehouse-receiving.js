@@ -5,6 +5,9 @@ let wrPageSize = 10;
 let wrFilteredReceipts = [];
 let wrReceiptFormOptions = null;
 let wrStatusFilter = 'all';
+let wrReceiptsLoading = false;
+let wrReceiptsLoaded = false;
+let wrReceiptsRequest = null;
 document.addEventListener('DOMContentLoaded', function () {
     const modalEl = document.getElementById('wrCreateModal');
     if (modalEl) {
@@ -29,6 +32,10 @@ function bindWarehouseReceivingEvents() {
 
     document.getElementById('btnCreateReceiving')?.addEventListener('click', createReceivingReceipt);
     document.getElementById('wrBtnReload')?.addEventListener('click', loadWarehouseReceivingReceipts);
+    document.getElementById('wrLoadStatus')?.addEventListener('click', function (event) {
+        if (event.target.closest('[data-wr-retry]')) loadWarehouseReceivingReceipts();
+    });
+    window.addEventListener('pagehide', () => wrReceiptsRequest?.abort());
 
     document.getElementById('wrSearch')?.addEventListener('input', function () {
         wrPage = 1;
@@ -103,36 +110,69 @@ async function readApiResponse(response) {
 }
 
 async function loadWarehouseReceivingReceipts() {
+    if (wrReceiptsLoading) return;
     const list = document.getElementById('wrReceiptList');
-    if (list) {
+    if (!list) return;
+    const status = document.getElementById('wrLoadStatus');
+    const reload = document.getElementById('wrBtnReload');
+    const controller = new AbortController();
+    wrReceiptsRequest = controller;
+    wrReceiptsLoading = true;
+    if (reload) reload.disabled = true;
+    list.setAttribute('aria-busy', 'true');
+    if (status) {
+        status.hidden = false;
+        status.textContent = wrReceiptsLoaded ? 'Đang cập nhật danh sách phiếu…' : 'Đang tải danh sách phiếu…';
+    }
+    if (!wrReceiptsLoaded) {
         list.innerHTML = `<div class="wr-empty">Đang tải danh sách phiếu...</div>`;
     }
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, 30000);
 
     try {
         const response = await fetch('/admin/warehouse-receiving/receipts', {
             method: 'GET',
-            cache: 'no-store'
+            cache: 'no-store',
+            signal: controller.signal
         });
 
         const api = await readApiResponse(response);
 
-        if (!api.ok) {
-            list.innerHTML = `<div class="wr-empty text-danger">${escapeHtml(api.data?.message || 'Không tải được danh sách.')}</div>`;
-            return;
+        if (!api.ok || !Array.isArray(api.data)) {
+            throw new Error(response.status === 401 || response.status === 403
+                ? 'Phiên đăng nhập hoặc quyền truy cập đã thay đổi. Hãy tải lại trang.'
+                : 'Không tải được danh sách phiếu. Hãy thử lại.');
         }
 
-        wrAllReceipts = api.data || [];
+        wrAllReceipts = api.data;
+        wrReceiptsLoaded = true;
         wrPage = 1;
         renderWarehouseReceivingReceipts();
+        if (status) { status.hidden = true; status.textContent = ''; }
     } catch (error) {
+        if (controller.signal.aborted && !timedOut) return;
         console.error(error);
-        list.innerHTML = `<div class="wr-empty text-danger">Có lỗi khi tải danh sách.</div>`;
+        const message = timedOut ? 'Tải danh sách mất quá lâu. Hãy thử lại.' : (error.message || 'Có lỗi khi tải danh sách.');
+        if (!wrReceiptsLoaded) list.innerHTML = '<div class="wr-empty">Chưa tải được danh sách phiếu.</div>';
+        if (status) {
+            status.hidden = false;
+            status.innerHTML = `<span class="text-danger">${escapeHtml(message)}${wrReceiptsLoaded ? ' Đang hiển thị danh sách đã tải trước đó.' : ''}</span> <button type="button" class="btn btn-outline-secondary btn-sm ms-2" data-wr-retry>Thử lại</button>`;
+        }
+    } finally {
+        clearTimeout(timeout);
+        wrReceiptsRequest = null;
+        wrReceiptsLoading = false;
+        list.setAttribute('aria-busy', 'false');
+        if (reload) reload.disabled = false;
     }
 }
 
 function renderWarehouseReceivingReceipts() {
     const list = document.getElementById('wrReceiptList');
     if (!list) return;
+
+    window.GaoReceivingListMobile?.receipts(wrAllReceipts);
 
     const keyword = (document.getElementById('wrSearch')?.value || '').trim().toLowerCase();
 
@@ -146,7 +186,7 @@ function renderWarehouseReceivingReceipts() {
         const matchesStatus = wrStatusFilter === 'all'
             || String(Number(x.status)) === wrStatusFilter;
 
-        return matchesKeyword && matchesStatus;
+        return matchesKeyword && matchesStatus && (window.GaoReceivingListMobile?.matches(x) ?? true);
     });
 
     updateStats();
@@ -165,6 +205,7 @@ function renderWarehouseReceivingReceipts() {
 
     if (pageItems.length === 0) {
         list.innerHTML = `<div class="wr-empty">Không có phiếu nào cần xử lý.</div>`;
+        window.GaoReceivingListMobile?.rendered([]);
         return;
     }
 
@@ -208,6 +249,7 @@ function renderWarehouseReceivingReceipts() {
             </div>
         `;
     }).join('');
+    window.GaoReceivingListMobile?.rendered(pageItems);
 }
 
 function updateStats() {
@@ -452,10 +494,10 @@ function updateWrPagination(totalItems, startIndex, currentCount, totalPages) {
 function formatDateTime(value) {
     if (!value) return '-';
 
-    const d = new Date(value);
+    const d = new Date(typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value + 'Z' : value);
     if (isNaN(d.getTime())) return '-';
 
-    return d.toLocaleString('vi-VN', {
+    return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh',
         hour: '2-digit',
         minute: '2-digit',
         day: '2-digit',

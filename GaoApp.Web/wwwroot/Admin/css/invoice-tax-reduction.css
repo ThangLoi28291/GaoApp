@@ -1,0 +1,11 @@
+.invoice-tax-relief [hidden]{display:none!important}
+.invoice-tax-relief [data-tax-unsaved]{color:#8a4b08!important}
+.invoice-tax-relief .form-select{max-width:320px;min-height:44px}
+.invoice-tax-relief .form-check{min-height:32px;display:flex;align-items:flex-start;gap:10px;padding-left:0}
+.invoice-tax-relief .form-check-input{flex:0 0 auto;margin:3px 0 0;width:20px;height:20px}
+.invoice-tax-relief .form-check-label{padding:2px 0;cursor:pointer}
+.invoice-tax-relief__totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:16px 0;padding:16px;background:#f4f7fc;border-radius:10px}
+.invoice-tax-relief__totals dt{font-size:13px;font-weight:400;color:#56667d}
+.invoice-tax-relief__totals dd{margin:6px 0 0;font-size:18px;font-weight:700;color:#23344e;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.invoice-tax-relief__actions{display:flex;align-items:center;justify-content:space-between;gap:16px}
+@media(max-width:600px){.invoice-tax-relief .form-select{max-width:none;font-size:16px}.invoice-tax-relief__totals{grid-template-columns:1fr;gap:12px}.invoice-tax-relief__totals>div{display:flex;justify-content:space-between;align-items:baseline;gap:12px}.invoice-tax-relief__totals dd{font-size:16px;text-align:right}.invoice-tax-relief__actions{align-items:stretch;flex-direction:column}.invoice-tax-relief__actions .btn{min-height:44px}}

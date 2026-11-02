@@ -49,7 +49,8 @@ public sealed partial class AcbPaymentTests
     {
         await using var f = await Fixture.Create();
         await f.Service.TryCreateAsync(100, default);
-        f.Db.Add(new Store { Id = 1, Name = "Main store", SubDomain = "www", SubDomainNormalized = "www", IsActive = true });
+        var store = await f.Db.Stores.SingleAsync(x => x.Id == 1);
+        store.Name = "Main store"; store.SubDomain = "www"; store.SubDomainNormalized = "www"; store.IsActive = true;
         await f.Db.SaveChangesAsync();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing", ContentRootPath = Path.GetTempPath() });
         builder.Logging.ClearProviders();

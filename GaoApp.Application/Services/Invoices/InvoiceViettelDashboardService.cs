@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.Common;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.Common;
 using GaoApp.Application.Common.Results;
 using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Application.Interfaces.Repositories.Invoices;
@@ -24,15 +25,7 @@ public class InvoiceViettelDashboardService : IInvoiceViettelDashboardService
     {
         query ??= new ViettelInvoiceDashboardQueryDto();
 
-        query.Page = query.Page <= 0 ? 1 : query.Page;
-        query.PageSize = query.PageSize <= 0 ? 20 : query.PageSize;
-
-        if (query.PageSize > 100)
-            query.PageSize = 100;
-
-        query.Keyword = string.IsNullOrWhiteSpace(query.Keyword)
-            ? null
-            : query.Keyword.Trim();
+        query.NormalizeAndValidate();
 
         var (summary, items, total) = await _invoiceRepository
             .QueryViettelDashboardAsync(query, ct);
@@ -139,6 +132,10 @@ public class InvoiceViettelDashboardService : IInvoiceViettelDashboardService
         };
 
         ApplyProblemInfo(item);
+        // Classification above uses the original diagnostics; only the read DTO is protected.
+        item.LastErrorMessage = InvoiceErrorReadSanitizer.Message(item.LastErrorMessage, item.LastErrorCode);
+        item.LastEmailErrorMessage = InvoiceErrorReadSanitizer.Message(item.LastEmailErrorMessage);
+        item.LastErrorCode = InvoiceErrorReadSanitizer.Code(item.LastErrorCode);
 
         return item;
     }

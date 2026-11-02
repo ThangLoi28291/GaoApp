@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using GaoApp.Domain.Common;
 using GaoApp.Domain.Enums;
@@ -6,7 +6,7 @@ using GaoApp.Domain.Enums;
 namespace GaoApp.Domain.Entities;
 
 [Table("SalesReturnPayments")]
-public class SalesReturnPayment : BaseStoreEntity
+public class SalesReturnPayment : BaseStoreEntity, IAuditTrackedEntity
 {
     public int SalesReturnId { get; set; }
     public SalesReturn SalesReturn { get; set; } = default!;

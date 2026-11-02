@@ -1,0 +1,161 @@
+/* UI-15: native customer money screens. Screen-only to preserve native print output. */
+@media screen and (max-width: 767.98px) {
+    body[data-customer-finance-phone] { background: #f3f6fb; }
+    body[data-customer-finance-phone] [data-mobile-shell-content] { background: #f3f6fb; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root], [data-finance-phone-header] { --debt-primary: #2463eb; --debt-ink: #172d4d; --debt-muted: #62738b; --debt-line: #dce5f0; --deposit-blue: #2463eb; --deposit-blue-soft: #edf3ff; --deposit-navy: #172d4d; --deposit-ink: #172d4d; --deposit-muted: #62738b; --deposit-border: #dce5f0; color: #172d4d; min-width: 0; font-family: var(--commerce-font, system-ui), -apple-system, "Segoe UI", sans-serif; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] *, [data-finance-phone-header] * { box-sizing: border-box; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] { width: 100%; max-width: 100%; padding: 0 0 20px; gap: 16px; overflow-wrap: anywhere; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.row > *, .card, .card-body, .debt-workspace > *, .deposit-layout > *, .deposit-field, .deposit-field-grid > *, .deposit-form > *, .deposit-customer__copy) { min-width: 0; }
+    [data-finance-phone-header] { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 4px 0 8px; }
+    [data-finance-phone-header] .gds-page-header__title { margin: 0; color: #172d4d; font-size: 23px; line-height: 1.3; letter-spacing: -.4px; overflow-wrap: anywhere; }
+    [data-finance-phone-header] .gds-page-header__subtitle { margin-top: 7px; color: #62738b; font-size: 13px; line-height: 1.6; }
+    [data-finance-phone-header] .gds-page-header__actions { width: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+    [data-finance-phone-header] .btn { display: inline-flex; align-items: center; justify-content: center; flex: 1 1 120px; min-height: 46px; border-radius: 12px; font-size: 13px; white-space: normal; }
+    body[data-customer-finance-phone] [data-finance-phone-header] > .btn { flex: 0 0 auto; align-self: stretch; width: 100%; max-width: none; }
+    body[data-customer-finance-phone] :is(:is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root], [data-finance-phone-header]) .btn-primary { color: #fff; border-color: #2463eb; background: #2463eb; box-shadow: 0 4px 12px #2463eb1f; }
+    body[data-customer-finance-phone] :is(:is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root], [data-finance-phone-header]) .btn-outline-primary { color: #2463eb; border-color: #b7cefa; background: #fff; }
+    body[data-customer-finance-phone] :is(:is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root], [data-finance-phone-header]) .btn-outline-primary:is(:hover, :focus) { background: #edf3ff; border-color: #2463eb; }
+    body[data-customer-finance-phone] :is(:is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root], [data-finance-phone-header]) :is(button, a, summary):focus-visible { outline: 3px solid #2463eb80; outline-offset: 3px; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.btn, .page-link, .deposit-primary-action, .deposit-secondary-action, .deposit-danger-action, .deposit-qr-action) { min-height: 46px; min-width: 0; border-radius: 12px; font-size: 13px; white-space: normal; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(input:not([type="hidden"]):not([type="radio"]):not([type="checkbox"]), select, textarea) { min-width: 0; max-width: 100%; min-height: 46px; border-radius: 12px; border-color: #cfdbea; font-size: 16px; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.form-control, .form-select, .deposit-field input, .deposit-field select, .deposit-field textarea):focus { border-color: #2463eb; box-shadow: 0 0 0 3px #2463eb18; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.form-label, .deposit-field > span) { font-size: 13px; color: #52647c; font-weight: 600; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-section-heading, .deposit-panel__heading) { gap: 10px; padding: 15px; align-items: flex-start; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-section-heading h2, .deposit-panel__heading h3) { font-size: 17px; line-height: 1.4; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-section-heading p, .deposit-panel__heading p) { font-size: 12px; line-height: 1.6; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-surface, .debt-collection, .deposit-customer-pane, .deposit-workspace) { border: 1px solid #dce5f0 !important; border-radius: 18px; box-shadow: 0 3px 12px #172d4d05 !important; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section[aria-label] > .row, :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section[aria-label] > .row > .col, :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] > .col { width: auto; margin: 0; padding: 0; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card, :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] article { display: flex; flex-direction: row; align-items: center; gap: 10px; min-height: 91px; padding: 13px 11px !important; border: 1px solid #dce5f0 !important; border-radius: 16px; box-shadow: none !important; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card--primary { background: linear-gradient(115deg, #edf3ff, #fff); }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card__icon { flex: 0 0 31px; width: 31px; height: 31px; margin: 0; border-radius: 10px; font-size: 19px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card__body { min-width: 0; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card__label { font-size: 11px; line-height: 1.45; white-space: normal; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card__value { font-size: clamp(17px, 5vw, 22px); line-height: 1.35; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .gds-kpi-card__value small { font-size: 12px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] article { flex-direction: column; align-items: flex-start; gap: 3px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] article > span { font-size: 12px; color: #62738b; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] article > strong { font-size: clamp(18px, 5.3vw, 23px) !important; line-height: 1.4; font-variant-numeric: tabular-nums; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] > section.row[aria-label] article > small { font-size: 11px; line-height: 1.45; color: #62738b; }
+    body[data-customer-finance-phone] #customerDebtPage .debt-search { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: stretch; padding: 0 14px 14px; }
+    #customerDebtPage[data-finance-phone-root] .debt-search-field { width: 100%; }
+    #customerDebtPage[data-finance-phone-root] .debt-workspace { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+    #customerDebtPage[data-finance-phone-root] .debt-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; overflow: visible; padding: 5px 10px 12px; border-bottom: 1px solid #dce5f0; }
+    #customerDebtPage[data-finance-phone-root] .debt-tabs button { min-height: 46px; padding: 8px 6px; border: 1px solid #e1e8f2; border-radius: 12px; background: #f7f9fc; font-size: 12px; white-space: normal; }
+    #customerDebtPage[data-finance-phone-root] .debt-tabs button.is-active { color: #2463eb; border-color: #b8cffb; background: #edf3ff; }
+    #customerDebtPage[data-finance-phone-root] .debt-tabs span { display: inline-block; margin-left: 4px; }
+    #customerDebtPage[data-finance-phone-root] .debt-collection { scroll-margin-top: 12px; border-top: 3px solid #2463eb !important; }
+    #customerDebtPage[data-finance-phone-root] .debt-records { scroll-margin-top: 12px; }
+    #customerDebtPage[data-finance-phone-root] .debt-collection .card-body { padding: 14px; }
+    #customerDebtPage[data-finance-phone-root] .debt-collection .row > div { width: 100%; }
+    #customerDebtPage[data-finance-phone-root] #debtAmount { min-height: 54px; font-size: 24px; color: #2463eb; }
+    #customerDebtPage[data-finance-phone-root] #debtSubmit { min-height: 48px; }
+    #customerDebtPage[data-finance-phone-root] .debt-report-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; padding: 0 14px 14px; }
+    #customerDebtPage[data-finance-phone-root] .debt-report-filters > :is(.debt-filter-customer, .debt-report-search, .finance-phone-filters, .debt-actions, #debtReportError) { grid-column: 1 / -1; }
+    #customerDebtPage[data-finance-phone-root] .debt-report-filters label { min-width: 0; font-size: 12px; }
+    #customerDebtPage[data-finance-phone-root] .debt-report-filters .debt-actions { display: flex; gap: 8px; width: 100%; justify-content: stretch; }
+    #customerDebtPage[data-finance-phone-root] .debt-report-filters .debt-actions > .btn { flex: 1 1 100px; }
+    .finance-phone-filters { min-width: 0; border: 1px solid #dce5f0; border-radius: 13px; background: #f8faff; }
+    .finance-phone-filters > summary { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 11px 12px; color: #2463eb; font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
+    .finance-phone-filters > summary::-webkit-details-marker { display: none; }
+    .finance-phone-filters > summary::after { content: "+"; padding-left: 8px; font-size: 20px; }
+    .finance-phone-filters[open] > summary::after { content: "−"; }
+    .finance-phone-filter-fields { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 0 12px 12px; }
+    .finance-phone-sections { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 5px; border-radius: 14px; background: #e8eef7; }
+    .finance-phone-sections a { display: flex; min-height: 44px; align-items: center; justify-content: center; padding: 8px 5px; border-radius: 10px; background: #fff; color: #2463eb; font-size: 12px; font-weight: 650; text-align: center; }
+    body[data-customer-finance-phone] #customerDepositPage .deposit-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-pane { position: static; overflow: visible; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-pane .card-header { padding: 15px 14px 0; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-pane .card-body { padding: 14px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-pane h5 { font-size: 17px; line-height: 1.4; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-pane small { font-size: 12px; line-height: 1.5; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-picker { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-search { min-height: 48px; border-radius: 12px; }
+    #customerDepositPage[data-finance-phone-root] #depositCustomerSearch { width: 100%; min-width: 0; min-height: 46px; font-size: 16px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-search__key { display: none; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-suggestions { width: 100%; min-width: 0; max-width: 100%; border-radius: 13px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-suggestion { min-height: 56px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-selected-customer { flex-wrap: wrap; padding: 12px; border-radius: 13px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-selected-customer .btn { flex: 1 1 100%; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer__copy strong { font-size: 15px; line-height: 1.4; }
+    #customerDepositPage[data-finance-phone-root] .deposit-workspace { min-height: 0; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; }
+    #customerDepositPage[data-finance-phone-root] :is(.deposit-customer-summary__identity, .deposit-balance-card) { grid-column: 1 / -1; }
+    #customerDepositPage[data-finance-phone-root] .deposit-customer-summary__identity h2 { font-size: 20px; line-height: 1.4; }
+    #customerDepositPage[data-finance-phone-root] .deposit-balance-card { padding: 15px; border-radius: 14px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-balance-card strong { font-size: 28px; line-height: 1.35; overflow-wrap: anywhere; }
+    #customerDepositPage[data-finance-phone-root] .deposit-balance-card > span { font-size: 11px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-balance-card em { font-size: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-summary-metric { padding: 12px; border-radius: 13px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-summary-metric span { font-size: 11px; line-height: 1.5; }
+    #customerDepositPage[data-finance-phone-root] .deposit-summary-metric strong { font-size: 16px; overflow-wrap: anywhere; }
+    #customerDepositPage[data-finance-phone-root] .deposit-tabs { flex-wrap: wrap; overflow: visible; gap: 7px; padding: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-tabs button { flex: 1 1 120px; justify-content: center; min-height: 46px; padding: 9px 7px; border: 1px solid #e0e7f1; border-radius: 12px; background: #f7f9fc; font-size: 12px; white-space: normal; }
+    #customerDepositPage[data-finance-phone-root] .deposit-tabs button.is-active { color: #2463eb; border-color: #b8cffb; background: #edf3ff; }
+    #customerDepositPage[data-finance-phone-root] .deposit-panel { padding: 14px 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-panel__heading { flex-wrap: wrap; margin-bottom: 14px; padding: 0; }
+    #customerDepositPage[data-finance-phone-root] .deposit-panel__heading > div { min-width: 0; align-items: flex-start; }
+    #customerDepositPage[data-finance-phone-root] .deposit-security { display: none; }
+    #customerDepositPage[data-finance-phone-root] :is(.deposit-form, .deposit-field-grid, .deposit-refund-form) { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    #customerDepositPage[data-finance-phone-root] :is(.deposit-form__main, .deposit-form__payment, .deposit-refund-form) { padding: 14px 12px; border-radius: 15px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-field--wide { grid-column: auto; }
+    #customerDepositPage[data-finance-phone-root] .deposit-field { margin-bottom: 14px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-field small { font-size: 12px; line-height: 1.6; }
+    #customerDepositPage[data-finance-phone-root] .deposit-money-input { grid-template-columns: minmax(0, 1fr) 27px; border-radius: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-money-input input { min-height: 50px; font-size: 23px; border: 0; }
+    #customerDepositPage[data-finance-phone-root] .deposit-methods label { min-height: 67px; padding: 11px 10px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-methods span strong { font-size: 14px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-methods span small { font-size: 11px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-form__caption { margin-bottom: 10px; font-size: 11px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-confirm { min-height: 62px; gap: 10px; padding: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-confirm input { flex: 0 0 19px; width: 19px; height: 19px; margin-top: 2px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-confirm strong { font-size: 13px; line-height: 1.5; }
+    #customerDepositPage[data-finance-phone-root] .deposit-confirm small { font-size: 11px; line-height: 1.55; }
+    #customerDepositPage[data-finance-phone-root] :is(.deposit-primary-action, .deposit-danger-action) { min-height: 50px; padding: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-primary-action kbd { display: none; }
+    #customerDepositPage[data-finance-phone-root] .deposit-message { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+    #customerDepositPage[data-finance-phone-root] .deposit-qr-preview__content { grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; }
+    #customerDepositPage[data-finance-phone-root] .deposit-qr-preview__content img { width: 160px; height: 160px; max-width: 100%; }
+    #customerDepositPage[data-finance-phone-root] .deposit-qr-preview__content :is(span, code, small) { font-size: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-qr-preview__content strong { font-size: 22px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-card-grid { grid-template-columns: minmax(0, 1fr); }
+    #customerDepositPage[data-finance-phone-root] .deposit-ticket { border-radius: 15px; padding: 15px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-ticket h4 { font-size: 16px; min-height: 0; }
+    #customerDepositPage[data-finance-phone-root] .deposit-ticket__balance strong { font-size: 25px; }
+    #customerDepositPage[data-finance-phone-root] :is(.deposit-ticket__date, .deposit-ticket__top span, .deposit-ticket__top em, .deposit-ticket__balance span) { font-size: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-ticket__print { display: inline-flex; min-height: 44px; align-items: center; font-size: 13px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-list-filters { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    #customerDepositPage[data-finance-phone-root] .deposit-list-filters .deposit-field:first-of-type { grid-column: auto; }
+    #customerDepositPage[data-finance-phone-root] .deposit-list-filters > :is(a, button) { width: 100%; }
+    #customerDepositPage[data-finance-phone-root] .deposit-received-notice { padding: 14px; flex-direction: column; align-items: stretch; font-size: 13px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-pager, .deposit-list-pagination) { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 14px; font-size: 12px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-pager .debt-actions, .deposit-list-pagination > div) { display: flex; gap: 8px; flex-wrap: wrap; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.debt-pager .debt-actions, .deposit-list-pagination > div) > a { flex: 1 1 100px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] .debt-table-note { padding: 12px 14px; font-size: 12px; line-height: 1.6; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] :is(.table-responsive, .deposit-table-wrap):has(> [data-finance-phone-table]) { min-width: 0; overflow: visible; border: 0; border-radius: 0; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] { display: block; width: 100%; min-width: 0; max-width: 100%; margin: 0; table-layout: auto; border: 0; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] > thead { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] > :is(tbody, tfoot) { display: grid; width: 100%; min-width: 0; gap: 12px; padding: 12px; background: #f3f6fb; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] > :is(tbody, tfoot) > tr:not([hidden]):not(.d-none) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 12px; min-width: 0; width: 100%; padding: 14px; border: 1px solid #dce5f0; border-radius: 15px; background: #fff; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(td, th):not([hidden]):not(.d-none) { width: auto; min-width: 0; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font-size: 13px; line-height: 1.6; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(tbody, tfoot) :is(td, th):not([hidden]):not(.d-none) { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] [data-finance-phone-label]::before { content: attr(data-finance-phone-label); display: block; color: #71839a; font-size: 11px; line-height: 1.4; font-weight: 500; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] [data-finance-phone-wide] { grid-column: 1 / -1; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] [data-finance-phone-actions] > .btn { width: 100%; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] [data-finance-phone-money] { color: #172d4d; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(.debt-positive, .is-positive) { color: #087f5b; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(.debt-negative, .is-negative) { color: #b45318; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] .debt-balance { color: #2463eb; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(.debt-name, td > strong) { font-size: 15px; line-height: 1.5; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(.debt-secondary, td small) { max-width: 100%; margin: 0; font-size: 12px; line-height: 1.6; color: #71839a; }
+    body[data-customer-finance-phone] :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(.debt-note, td:nth-child(3)) { min-width: 0; max-width: 100%; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] :is(.debt-badge, .deposit-kind) { max-width: 100%; font-size: 12px; white-space: normal; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] td :is(.deposit-list-print, a[href*="/print"], a[href*="pos-shift/requests"]) { display: inline-flex; min-height: 44px; align-items: center; font-size: 13px; }
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] [data-finance-phone-table] tfoot > tr { border-color: #b8cffb; background: #edf3ff; }
+    body[data-customer-finance-phone] .select2-container--open { min-width: 0 !important; max-width: calc(100vw - 64px) !important; }
+    body[data-customer-finance-phone] .select2-dropdown { min-width: 0 !important; max-width: calc(100vw - 64px) !important; }
+    body[data-customer-finance-phone] :is(.select2-search__field, .select2-results__option) { font-size: 16px !important; min-height: 44px; overflow-wrap: anywhere; }
+}
+@media screen and (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+    :is(#customerDebtPage, #customerDepositPage)[data-finance-phone-root] *, [data-finance-phone-header] * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}

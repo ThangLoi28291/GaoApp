@@ -16,8 +16,9 @@
     new ResizeObserver(fitPreview).observe(previewStage);
     const sample = {
         orderId: 1286, orderNumber: 'POS-001286', createdAtUtc: '2026-09-10T03:25:00Z', cashierName: 'Nguyễn Minh Anh', terminalName: 'Quầy thu ngân 01',
-        customerName: 'Nguyễn Hoàng An', subtotal: 285000, discountTotal: 15000, grandTotal: 270000, paidTotal: 300000, changeDue: 30000, balanceDue: 0,
-        lines: [{ itemName: 'Cà phê Arabica rang mộc', sku: 'CF-001', quantity: 2, sellingUnitName: 'Gói', unitPrice: 85000, lineTotal: 170000 },
+        customerId: 1, customerName: 'Nguyễn Hoàng An', customerCurrentPoints: 125, subtotal: 285000, discountTotal: 15000, grandTotal: 270000, paidTotal: 300000, changeDue: 30000, balanceDue: 0,
+        lines: [{ itemName: 'Cà phê Arabica rang mộc', sku: 'CF-001', quantity: 2, sellingUnitName: 'Gói', unitPrice: 85000, lineTotal: 155000,
+            promotionDiscount: 15000, promotionName: 'Ưu đãi cà phê' },
             { itemName: 'Trà ô long túi lọc', sku: 'TRA-02', quantity: 1, sellingUnitName: 'Hộp', unitPrice: 75000, lineTotal: 75000 },
             { itemName: 'Bánh hạnh nhân nguyên hạt', sku: 'BANH-03', quantity: 1, sellingUnitName: 'Gói', unitPrice: 40000, lineTotal: 40000 }],
         payments: [{ method: 0, amount: 300000 }] };
@@ -33,7 +34,7 @@
     }
     function design() { return ReceiptTemplates.normalize({ name: el('designName').value, layout: el('designLayout').value, paperSize: el('designSize').value,
         title: el('designTitle').value, headerText: el('designHeader').value, footerText: el('designFooter').value,
-        showCustomer: el('showCustomer').checked, showCashier: el('showCashier').checked, showSku: el('showSku').checked, showPayments: el('showPayments').checked }); }
+        showCustomer: el('showCustomer').checked, showCustomerPoints: el('showCustomerPoints').checked, showCashier: el('showCashier').checked, showSku: el('showSku').checked, showPayments: el('showPayments').checked }); }
     function syncPaperSize() {
         const allowed = ReceiptTemplates.paperSizes(el('designLayout').value), select = el('designSize');
         for (const option of select.options) option.disabled = !allowed.includes(option.value);
@@ -52,9 +53,9 @@
     }
     function choose(option) {
         current = option; editingId = option.builtIn ? null : Number(option.key.replace('custom-', '')); dirty = false;
-        const d = option.design;
+        const d = ReceiptTemplates.normalize(option.design);
         for (const [id, field] of Object.entries({ designName: 'name', designLayout: 'layout', designSize: 'paperSize', designTitle: 'title', designHeader: 'headerText', designFooter: 'footerText' })) el(id).value = d[field] ?? '';
-        for (const id of ['showCustomer', 'showCashier', 'showSku', 'showPayments']) el(id).checked = d[id];
+        for (const id of ['showCustomer', 'showCustomerPoints', 'showCashier', 'showSku', 'showPayments']) el(id).checked = d[id];
         if (el('saveTemplate')) el('saveTemplate').textContent = editingId ? 'Lưu thay đổi' : 'Lưu mẫu mới';
         if (el('deleteTemplate')) el('deleteTemplate').hidden = !editingId;
         gallery(); preview(); previewStage.scrollTop = 0;
@@ -82,15 +83,7 @@
         return data;
     }
     async function busy(button, work) { button.disabled = true; try { await work(); } catch (e) { message(e.message, true); } finally { button.disabled = false; } }
-    function localChoice() {
-        if (storeInfoDirty) throw new Error('Bấm Lưu thông tin tiệm trước khi áp dụng hoặc in thử.');
-        if (dirty) throw new Error('Lưu các chỉnh sửa thành mẫu trước khi áp dụng.');
-        return { mode: el('printMode').value, printer: el('clientPrinter').value, copies: Number(el('printCopies').value),
-            color: false, templateKey: current.key, template: current.design };
-    }
     function profile() {
-        const p = PosPrinting.preferences(setup);
-        el('activePrintProfile').textContent = `Máy in tại quầy: ${p.mode === 'helper' ? 'Linux Print Helper' : p.mode === 'qz' ? p.printer : 'Hộp thoại trình duyệt'}`;
         el('storeDefaultName').textContent = 'Đang áp dụng: ' + receiptDefault.template.design.name;
     }
     el('paperFilters').addEventListener('click', event => { const button = event.target.closest('[data-size]'); if (!button) return;
@@ -109,34 +102,12 @@
             message('Đã lưu thông tin tiệm trên hóa đơn.');
         } finally { fields.disabled = !setup.canManage; }
     }));
-    function printModeChanged() {
-        el('qzSettings').hidden = el('printMode').value !== 'qz';
-        el('helperSettings').hidden = el('printMode').value !== 'helper';
-        el('printCopySettings').hidden = el('printMode').value === 'browser';
-    }
-    el('printMode').addEventListener('change', printModeChanged);
-    el('checkHelper').addEventListener('click', event => busy(event.currentTarget, async () => {
-        await PosPrinting.health(); message('Print Helper sẵn sàng nhận ảnh hóa đơn 80 mm.');
-    }));
-    el('connectPrinters').addEventListener('click', event => busy(event.currentTarget, async () => {
-        const printers = await PosPrinting.printers(), selected = el('clientPrinter').value;
-        el('clientPrinter').replaceChildren(new Option('Chọn máy in', ''), ...printers.map(name => new Option(name, name)));
-        el('clientPrinter').value = printers.includes(selected) ? selected : '';
-        message(printers.length ? `Đã tìm thấy ${printers.length} máy in trên client này.` : 'Chưa có máy in. Cài driver máy in trong hệ điều hành rồi kết nối lại.');
-    }));
-    el('applyTemplate').addEventListener('click', event => busy(event.currentTarget, async () => {
-        PosPrinting.savePreferences(setup, localChoice()); profile(); message('Đã lưu máy in tại quầy. Mẫu hóa đơn dùng theo mặc định cửa hàng.');
-    }));
     el('setStoreDefault')?.addEventListener('click', event => busy(event.currentTarget, async () => {
         if (dirty || storeInfoDirty) throw new Error('Lưu nội dung mẫu và thông tin tiệm trước khi đặt mặc định.');
         receiptDefault = await api('/default', 'PUT', { key: current.key, rowVersion: receiptDefault.rowVersion, templateVersion: current.rowVersion });
         storeInfo.rowVersion = receiptDefault.rowVersion;
         profile(); gallery(); message('Đã đặt mẫu mặc định cho cửa hàng. Các nhân viên tính tiền sẽ tự dùng mẫu này khi in.');
     }));
-    el('testPrint').addEventListener('click', () => {
-        try { PosPrinting.savePreferences(setup, localChoice()); profile(); PosPrinting.openLocal({ ...sample, ...storeInfo }, { ...setup, receiptDefault: { template: current } }, catalog); }
-        catch (e) { message(e.message, true); }
-    });
     el('saveTemplate')?.addEventListener('click', event => busy(event.currentTarget, async () => {
         const saved = await api(editingId ? '/' + editingId : '', editingId ? 'PUT' : 'POST', { design: design(), rowVersion: editingId ? current.rowVersion : null });
         catalog = await api(); receiptDefault = await api('/default'); storeInfo.rowVersion = receiptDefault.rowVersion;
@@ -150,9 +121,6 @@
     }));
     try {
         fillStoreInfo();
-        const p = PosPrinting.preferences(setup); el('printMode').value = p.mode; printModeChanged();
-        if (p.printer) el('clientPrinter').append(new Option(p.printer, p.printer, true, true));
-        el('printCopies').value = p.copies;
         choose(catalog.find(x => x.key === receiptDefault.template.key) || catalog.find(x => x.key === 'modern-80')); profile();
     } catch (error) { choose(catalog[0]); message(error.message, true); }
 })();

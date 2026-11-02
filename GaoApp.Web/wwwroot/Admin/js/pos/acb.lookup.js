@@ -12,7 +12,7 @@
     const date = value => {
         if (!value) return 'Chưa tra cứu';
         const parsed = new Date(/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value) ? value : value + 'Z');
-        return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('vi-VN');
+        return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
     };
     function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; }
     function badge(value) { return el('span', labels[value] || value, 'acb-badge acb-' + (tones[value] || 'muted')); }
@@ -116,7 +116,7 @@
             const response = await fetch(`/admin/acb/payments/orders/${encodeURIComponent(root.dataset.orderId)}/${refresh ? 'refresh' : 'data'}`, { method: refresh ? 'POST' : 'GET', headers: headers() });
             if (!response.ok) throw await responseError(response);
             const data = await response.json(); render(data);
-            setStatus(refresh ? 'Đã cập nhật từ ACB lúc ' + new Date().toLocaleTimeString('vi-VN') + '.' : data.sessions.length ? 'Dữ liệu đã lưu · Bấm Tra cứu ACB để cập nhật trực tiếp từ ngân hàng.' : 'Dữ liệu khoản thu do thu ngân ghi nhận trên hóa đơn.');
+            setStatus(refresh ? 'Đã cập nhật từ ACB lúc ' + new Date().toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) + '.' : data.sessions.length ? 'Dữ liệu đã lưu · Bấm Tra cứu ACB để cập nhật trực tiếp từ ngân hàng.' : 'Dữ liệu khoản thu do thu ngân ghi nhận trên hóa đơn.');
         } catch (error) { setStatus(error.message, true); }
         finally { button.disabled = false; }
     }

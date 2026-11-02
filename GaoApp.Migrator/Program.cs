@@ -66,6 +66,10 @@ try
     // graph here also pulls in request/POS services that only make sense in the
     // Web host (for example ICurrentPOSContext).
     builder.Services.AddInfrastructure(builder.Configuration, builder.Environment);
+    builder.Services.AddScoped<ProvisioningAuditContext>();
+    builder.Services.Replace(ServiceDescriptor.Scoped<
+        GaoApp.Application.Interfaces.Services.Audit.IAuditExecutionContextAccessor>(
+        services => services.GetRequiredService<ProvisioningAuditContext>()));
     // The migrator only needs persistence, schema inspection and seed services.
     // Remove Web/POS runtime services whose constructors require request-scoped
     // application contexts that intentionally do not exist in this host.
@@ -80,6 +84,9 @@ try
     builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Delivery.IDeliveryTripService>();
     builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.Reports.IOperationsReportService>();
     builder.Services.RemoveAll<IReceiptInvoiceBackfillService>();
+    // Pin editing uses the Web application's filtered menu service; the schema
+    // host neither renders navigation nor configures pins.
+    builder.Services.RemoveAll<GaoApp.Application.Interfaces.Services.AdminMenus.IAdminMenuPinService>();
     builder.Services.AddSingleton<
         IInputInvoiceXmlDocumentParser,
         InputInvoiceXmlDocumentParser>();
@@ -128,6 +135,8 @@ try
     var host = builder.Build();
 
     using var scope = host.Services.CreateScope();
+    using var dataAccess = scope.ServiceProvider.GetRequiredService<GaoApp.Infrastructure.Tenant.TenantContext>()
+        .BeginSystemAccess(GaoApp.Infrastructure.Tenant.SystemDataAccessPurpose.Provisioning);
 
     Log.Information(
         "Running explicit Migrator operation for environment: {EnvironmentName}",

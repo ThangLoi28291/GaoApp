@@ -160,7 +160,7 @@ public class ViettelInvoiceAuthClient : IViettelInvoiceAuthClient
             // Dùng để kiểm tra quyền đọc danh sách hóa đơn.
             // Không phát hành hóa đơn.
             // =====================================================
-            var today = DateTime.Now.Date;
+            var today = VietnamTime.Now.Date;
             var startDate = today.AddDays(-30).ToString("yyyy-MM-dd");
             var endDate = today.ToString("yyyy-MM-dd");
 

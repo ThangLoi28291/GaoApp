@@ -26,7 +26,7 @@
 
     async function init() {
         if (els.documentDate) {
-            els.documentDate.value = new Date().toISOString().slice(0, 10);
+            els.documentDate.value = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
         }
 
         await loadPermissions();

@@ -4,6 +4,10 @@
     Layout = "_ContentNavbarLayout";
 }
 
+@section PageStyles {
+    <link rel="stylesheet" href="~/Admin/css/products.mobile.css" asp-append-version="true" />
+}
+
 <div class="row g-4">
     <!-- Gallery -->
     <div class="col-md-5">
@@ -63,6 +67,7 @@
 </div>
 
 @section Scripts {
+    <script src="~/Admin/js/products.mobile.js" asp-append-version="true"></script>
     <script>
         (() => {
             const gallery = document.querySelector('.p-main')?.parentElement;

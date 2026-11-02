@@ -32,7 +32,7 @@ public static class ForwardedHeadersExtensions
 
             // Xóa mặc định để chủ động chỉ trust proxy/network do mình khai báo
             options.KnownProxies.Clear();
-            options.KnownNetworks.Clear();
+            options.KnownIPNetworks.Clear();
 
 
 
@@ -62,8 +62,7 @@ public static class ForwardedHeadersExtensions
                     continue;
                 }
 
-                options.KnownNetworks.Add(
-     new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, prefixLength));
+                options.KnownIPNetworks.Add(new System.Net.IPNetwork(prefix, prefixLength));
             }
 
             // Cho phép tối đa 2 hop proxy.

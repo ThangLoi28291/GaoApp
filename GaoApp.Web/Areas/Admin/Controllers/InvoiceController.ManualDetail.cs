@@ -1,4 +1,5 @@
-﻿using GaoApp.Application.DTOs.Invoices;
+using GaoApp.Application.Common.Security;
+using GaoApp.Application.DTOs.Invoices;
 using GaoApp.Web.Areas.Admin.ViewModels.Invoices;
 using Microsoft.AspNetCore.Mvc;
 
@@ -42,7 +43,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxBadRequest(
-      result.Error?.Message,
+      InvoiceErrorReadSanitizer.UserMessage(result.Error),
       "Không thêm được dòng manual.");
         }
 
@@ -64,7 +65,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxBadRequest(
-     result.Error?.Message,
+     InvoiceErrorReadSanitizer.UserMessage(result.Error),
      "Không xóa được dòng manual.");
         }
 
@@ -86,7 +87,7 @@ public partial class InvoiceController
         if (!result.IsSuccess)
         {
             return AjaxBadRequest(
-     result.Error?.Message,
+     InvoiceErrorReadSanitizer.UserMessage(result.Error),
      "Không cập nhật được dòng manual.");
         }
 

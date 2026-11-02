@@ -3,8 +3,11 @@
     ViewData["container"] = "container-fluid";
     Layout = "_ContentNavbarLayout";
 }
-@section VendorStyles { <link rel="stylesheet" href="~/Admin/css/input-invoice-library.css" asp-append-version="true" /> }
-<main class="il" id="invoiceLibrary" data-review="@(((bool)ViewBag.CanReview).ToString().ToLowerInvariant())">
+@section VendorStyles {
+    <link rel="stylesheet" href="~/Admin/css/input-invoice-library.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Admin/css/input-invoice-library.mobile.css" asp-append-version="true" />
+}
+<main class="il" id="invoiceLibrary">
     @Html.AntiForgeryToken()
     <header class="il-heading"><div><span class="il-kicker">MUA HÀNG / THƯ VIỆN HÓA ĐƠN</span><h1>Hóa đơn đầu vào</h1><p>Tập trung chứng từ, kiểm tra nguồn mua và theo dõi liên kết phiếu nhập.</p></div>
         @if (ViewBag.CanImport) { <div class="il-actions"><button class="btn btn-outline-primary" id="ilSync"><i class="bx bx-refresh"></i> Cập nhật từ thư viện</button><button class="btn btn-primary" id="ilUpload"><i class="bx bx-upload"></i> Thêm XML / PDF</button></div> }
@@ -18,7 +21,7 @@
     </section>
     <form class="il-filters" id="ilFilters">
         <label class="il-search">Tìm hóa đơn<input name="search" placeholder="Số, ký hiệu, nhà cung cấp, MST hoặc người mua…" maxlength="200" /></label>
-        <label>Năm<input name="year" type="number" min="2000" max="9999" value="@DateTime.Now.Year" placeholder="Tất cả" /></label>
+        <label>Năm<input name="year" type="number" min="2000" max="9999" value="@VietnamTime.Now.Year" placeholder="Tất cả" /></label>
         <label>Tháng<select name="month"><option value="">Cả năm</option>@for (var m = 1; m <= 12; m++) { <option value="@m">Tháng @m</option> }</select></label>
         <label>Loại hóa đơn<select name="kind"><option value="">Tất cả loại</option><option value="0">Hóa đơn gốc</option><option value="1">Thay thế</option><option value="2">Điều chỉnh</option><option value="3">Chưa xác định</option></select></label>
         <label>Liên kết phiếu nhập<select name="linked"><option value="">Tất cả</option><option value="false">Chưa liên kết</option><option value="true">Đã liên kết</option></select></label>
@@ -50,4 +53,7 @@
     <label>PDF cùng hóa đơn (nếu có)<input type="file" name="pdf" accept=".pdf" /></label><small>Tối đa 50 MB. Hãy kiểm tra PDF khớp với XML.</small>
     <div id="ilUploadMessage" role="status"></div><footer><button type="button" class="btn btn-outline-secondary" data-close>Đóng</button><button type="submit" class="btn btn-primary">Nhập hóa đơn</button></footer>
 </form></dialog>
-@section PageScripts { <script src="~/Admin/js/input-invoice-library.js" asp-append-version="true"></script> }
+@section PageScripts {
+    <script src="~/Admin/js/input-invoice-library.js" asp-append-version="true"></script>
+    <script src="~/Admin/js/input-invoice-library.mobile.js" asp-append-version="true"></script>
+}

@@ -195,11 +195,16 @@ public sealed class PurchaseReceiptWorkflowContractTests
             "function bindRevisionRequestActions()",
             StringComparison.Ordinal)..];
 
-        resolution.Should().Contain("returnToEdit: true");
-        resolution.Should().Contain("returnToEdit: false");
+        resolution.Should().Contain("btnReturn.onclick = () => openResolution(true)");
+        resolution.Should().Contain("btnIgnore.onclick = () => openResolution(false)");
+        resolution.Should().Contain("returnToEdit = shouldReturn");
+        resolution.Should().Contain("if (!returnToEdit && !note.trim())");
+        resolution.Should().Contain("Nhập lý do từ chối yêu cầu xin sửa.");
+        resolution.Should().Contain("returnToEdit: returnToEdit");
+        resolution.Should().Contain("note: note");
         resolution.Split("rowVersion: window.stockDocumentPage.rowVersion")
-            .Should().HaveCount(3,
-                "both resolution payloads must carry the current concurrency token");
+            .Should().HaveCount(2,
+                "both resolution choices share one payload carrying the current concurrency token");
     }
 
     [Fact]

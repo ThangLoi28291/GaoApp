@@ -1,0 +1,29 @@
+@model GaoApp.Web.Controllers.CustomerSupportPage
+@{ Layout=null; }
+<!doctype html><html lang="vi"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/><title>Hỗ trợ · @Model.StoreName</title><link rel="stylesheet" href="~/css/customer-support.css" asp-append-version="true"/><link rel="stylesheet" href="~/css/customer-feedback.css" asp-append-version="true"/><link rel="stylesheet" href="~/css/gaoapp.mobile-public.css" asp-append-version="true"/></head>
+<body class="cs-public"><main id="customerSupport" class="cs-shell" data-base="@Url.Content("~/support")" data-store="@Model.StoreId" data-enabled="@Model.Enabled.ToString().ToLowerInvariant()">
+    <header class="cs-header"><span class="cs-mark" aria-hidden="true">G</span><div><p class="cs-eyebrow">CHĂM SÓC KHÁCH HÀNG</p><h1>@Model.StoreName</h1></div><span class="cs-status" id="csMode">Hỗ trợ tại cửa hàng</span></header>
+    @Html.AntiForgeryToken()
+    @if(!Model.Enabled) { <section class="cs-welcome"><h2>Cửa hàng chưa bật chat trực tuyến</h2><p>Mình vui lòng liên hệ cửa hàng qua kênh đang sử dụng để được hỗ trợ.</p></section> }
+    else {
+    <section class="cs-welcome" id="csWelcome"><span class="cs-kicker">MÌNH CẦN HỖ TRỢ GÌ HÔM NAY?</span><h2>Tìm đúng món.<br/>Hỏi đúng người.</h2><p>Tra sản phẩm, giá lẻ và chính sách của cửa hàng. Khi cần, mình có thể chuyển sang nhân viên ngay trong cuộc trò chuyện.</p>
+        <form id="csStartForm"><label for="csName">Mình muốn được gọi là</label><input id="csName" name="name" maxlength="80" placeholder="Tên hoặc cách xưng hô" autocomplete="nickname" required/>
+            <label for="csContact">Liên hệ để cửa hàng hỗ trợ (không bắt buộc)</label><input id="csContact" name="contact" maxlength="100" placeholder="Số điện thoại hoặc email" autocomplete="off"/>
+            <label class="cs-consent"><input id="csConsent" type="checkbox" required/><span>Tôi đồng ý để cửa hàng lưu hội thoại và thông tin vừa nhập tối đa @Model.RetentionDays ngày để hỗ trợ yêu cầu này.</span></label><small>Thông tin tự khai dùng để liên hệ; không dùng để truy cập tài khoản hay đơn hàng.</small><button class="cs-primary" type="submit">Bắt đầu trò chuyện <span aria-hidden="true">↗</span></button>
+        </form>
+    </section>
+    <section class="cs-chat" id="csChat" hidden aria-label="Hội thoại với cửa hàng"><div class="cs-toolbar"><label class="cs-sr" for="csConversations">Chọn hội thoại</label><select id="csConversations"></select><button id="csNew" type="button">Cuộc trò chuyện mới</button><button id="csEnd" type="button">Kết thúc phiên</button></div>
+        <details id="csPrivate" class="cs-private"><summary>Đơn mua &amp; quyền lợi</summary><p id="csPrivateStatus" role="status">Xác minh với nhân viên để mở tra cứu riêng.</p>
+            <form id="csVerifyForm"><label for="csVerifyCode">Mã nhân viên đã cấp sau khi xác minh</label><input id="csVerifyCode" maxlength="40" autocomplete="off" spellcheck="false" placeholder="Nhập mã dùng một lần" required/><button type="submit">Xác minh</button></form>
+            <small>Mã không gửi trong tin nhắn. Quyền xem có hiệu lực tối đa 30 phút, chỉ cho hội thoại này.</small>
+            <div id="csPrivateTools" hidden><button id="csOrders" type="button">Đơn mua 90 ngày</button><button id="csRewards" type="button">Điểm &amp; tích lũy</button><button id="csPrivateLock" type="button">Khóa tra cứu</button></div>
+            <div id="csPrivateData" aria-live="polite"></div><button id="csMoreOrders" type="button" hidden>Trang đơn tiếp theo</button>
+        </details>
+        <div id="csLog" class="cs-log" role="log" aria-live="polite" aria-relevant="additions text"></div>
+        <div class="cs-compose"><div class="cs-shortcuts"><button type="button" data-question="Cửa hàng giao hàng thế nào?">Giao hàng</button><button type="button" data-question="Chính sách đổi trả thế nào?">Đổi trả</button><button type="button" id="csHuman">Gặp nhân viên</button></div>
+            <form id="csSendForm"><label class="cs-sr" for="csMessage">Nội dung tin nhắn</label><textarea id="csMessage" rows="2" maxlength="2000" placeholder="Mình đang tìm sản phẩm hoặc cần hỗ trợ gì?" required></textarea><button class="cs-primary" id="csSend" type="submit">Gửi ↗</button></form><small id="csHint">Enter gửi · Shift+Enter xuống dòng. Giá và chính sách được kiểm tra theo cửa hàng.</small>
+        </div>
+    </section>
+    }
+    <p id="csNotice" class="cs-notice" role="status" aria-live="polite"></p><footer class="cs-footer">Hỗ trợ bởi GaoApp · Trợ lý tự động và nhân viên được hiển thị riêng trong hội thoại.</footer>
+</main><script src="~/js/customer-feedback.js" asp-append-version="true"></script><script src="~/js/customer-support.js" asp-append-version="true"></script><script src="~/js/customer-business.js" asp-append-version="true"></script><script src="~/js/gaoapp.mobile-public.js" asp-append-version="true"></script></body></html>
